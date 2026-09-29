@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Референсная дозиметрия фотонов</title>
+<meta name="description" content="Расчёт поглощённой дозы в воде для МВ фотонов по AAPM TG-51 (с аддендумом 2014) и МАГАТЭ TRS-398 Rev.1 (2024).">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Макет: рабочий лист измерения слева, «табло прибора» с результатом справа.
+   Цвета заданы токенами; тёмная тема переопределяет только токены. */
+:root {
+  --paper: #eef1ee;
+  --sheet: #ffffff;
+  --ink: #1b2326;
+  --muted: #58646a;
+  --rule: #d5dcd8;
+  --field: #fbfcfb;
+  --field-border: #b9c3bf;
+  --accent: #0d6670;
+  --accent-ink: #ffffff;
+  --accent-soft: #e0eeee;
+  --calc: #f1f5f3;
+  --display: #121a1c;
+  --display-ink: #e8eee9;
+  --display-dim: #93a4a6;
+  --amber: #ffbf5a;
+  --err: #b42318;
+  --err-soft: #fdecea;
+  --warn: #875600;
+  --warn-soft: #fff3d6;
+  --info: #3b5864;
+  --info-soft: #e8f0f2;
+  --ok: #1d7549;
+
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+  --font-body: "Golos Text", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  --radius: 6px;
+  --gap: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e1315;
+    --sheet: #151c1f;
+    --ink: #e2e8e6;
+    --muted: #9aa7aa;
+    --rule: #28333a;
+    --field: #10171a;
+    --field-border: #3a474d;
+    --accent: #56b7c0;
+    --accent-ink: #062427;
+    --accent-soft: #15302f;
+    --calc: #1a2427;
+    --display: #0a0f11;
+    --display-ink: #e8eee9;
+    --display-dim: #82979a;
+    --amber: #ffc267;
+    --err: #ff8b80;
+    --err-soft: #3a1714;
+    --warn: #f1c35e;
+    --warn-soft: #33280f;
+    --info: #a3c6d1;
+    --info-soft: #15262b;
+    --ok: #6fd3a0;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0e1315;
+  --sheet: #151c1f;
+  --ink: #e2e8e6;
+  --muted: #9aa7aa;
+  --rule: #28333a;
+  --field: #10171a;
+  --field-border: #3a474d;
+  --accent: #56b7c0;
+  --accent-ink: #062427;
+  --accent-soft: #15302f;
+  --calc: #1a2427;
+  --display: #0a0f11;
+  --display-ink: #e8eee9;
+  --display-dim: #82979a;
+  --amber: #ffc267;
+  --err: #ff8b80;
+  --err-soft: #3a1714;
+  --warn: #f1c35e;
+  --warn-soft: #33280f;
+  --info: #a3c6d1;
+  --info-soft: #15262b;
+  --ok: #6fd3a0;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 var(--font-body);
+}
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; margin: 0; }
+sub { font-size: 0.72em; line-height: 0; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+/* ------------------------------------------------------------ шапка */
+.topbar {
+  background: var(--sheet);
+  border-bottom: 1px solid var(--rule);
+  padding-inline: 16px;
+}
+.topbar-inner {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding-block: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+}
+.brand { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.brand h1 { font-size: 20px; letter-spacing: 0.01em; }
+.brand .tag { font: 500 12px var(--font-mono); color: var(--muted); }
+.modules { display: flex; gap: 4px; flex-wrap: wrap; }
+.modules a, .modules span {
+  font: 500 14px var(--font-display);
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--muted);
+}
+.modules a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
+.modules span { opacity: 0.7; }
+.modules small { font: 11px var(--font-body); }
+.protocol-switch { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.protocol-switch > span { font: 500 12px var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--field);
+}
+.segmented label { position: relative; }
+.segmented input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.segmented span {
+  display: block;
+  padding: 6px 12px;
+  font: 500 14px var(--font-display);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.segmented label + label span { border-left: 1px solid var(--field-border); }
+.segmented input:checked + span { background: var(--accent); color: var(--accent-ink); }
+.segmented input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+/* ------------------------------------------------------------ раскладка */
+.layout {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 20px 16px 48px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+@media (min-width: 1080px) {
+  .layout { grid-template-columns: minmax(0, 1fr) 400px; }
+  .readout { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); max-height: calc(100vh - 32px); overflow-y: auto; }
+}
+
+.intro { color: var(--muted); max-width: 70ch; margin: 0; font-size: 14px; }
+
+/* ------------------------------------------------------------ рабочий лист */
+.sheet { display: grid; gap: 14px; min-width: 0; }
+.step {
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 16px 18px 18px;
+  min-width: 0;
+}
+.step > header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.step-no {
+  font: 500 12px var(--font-mono);
+  color: var(--accent);
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 6px;
+  line-height: 20px;
+}
+.step h2 { font-size: 18px; }
+.step .hint { color: var(--muted); font-size: 13px; margin: 0; flex-basis: 100%; }
+
+.grid { display: grid; gap: 12px 16px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.grid.two { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.span-all { grid-column: 1 / -1; }
+
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field > label, .field > .label {
+  font: 500 13px var(--font-display);
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+.field .sub { color: var(--muted); font: 12px/1.35 var(--font-body); }
+input[type="text"], input[type="number"], input[type="date"], select, textarea {
+  font: 15px var(--font-body);
+  color: var(--ink);
+  background: var(--field);
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius);
+  padding: 7px 9px;
+  width: 100%;
+  min-width: 0;
+}
+input.num, textarea.num { font-family: var(--font-mono); font-size: 14px; font-variant-numeric: tabular-nums; }
+textarea { resize: vertical; min-height: 64px; }
+textarea.profile { min-height: 120px; }
+select { cursor: pointer; }
+.inline { display: flex; gap: 6px; min-width: 0; }
+.inline > input { flex: 1 1 auto; }
+.inline > select { flex: 0 0 auto; width: auto; }
+
+.check { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; cursor: pointer; }
+.check input { margin-top: 3px; accent-color: var(--accent); }
+
+.presets { display: flex; gap: 6px; flex-wrap: wrap; }
+button, .button {
+  font: 500 13px var(--font-display);
+  border: 1px solid var(--field-border);
+  background: var(--sheet);
+  color: var(--ink);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.primary:hover { filter: brightness(1.08); color: var(--accent-ink); }
+button.danger-armed { border-color: var(--err); color: var(--err); }
+
+.calc {
+  background: var(--calc);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.calc b { font: 500 14px var(--font-mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+.calc .eq { flex-basis: 100%; font-size: 12px; }
+
+.duo { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.proto-card {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 12px 14px 14px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.proto-card h3 { font-size: 15px; display: flex; gap: 8px; align-items: baseline; }
+.proto-card h3 small { font: 12px var(--font-body); color: var(--muted); }
+
+details.more { border-top: 1px dashed var(--rule); padding-top: 10px; margin-top: 4px; }
+details.more summary { cursor: pointer; font: 500 13px var(--font-display); color: var(--accent); }
+details.more[open] summary { margin-bottom: 10px; }
+
+/* ------------------------------------------------------------ табло */
+.readout { display: grid; gap: 14px; min-width: 0; }
+.display {
+  background: var(--display);
+  color: var(--display-ink);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  display: grid;
+  gap: 14px;
+}
+.display h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--display-dim); font-weight: 500; }
+#dose-rows { display: grid; gap: 16px; }
+.demo-flag { margin: 0; font-size: 12px; color: var(--amber); border: 1px dashed currentColor; border-radius: var(--radius); padding: 4px 8px; }
+.dose-row { display: grid; gap: 4px; }
+.dose-row .proto { font: 500 13px var(--font-display); color: var(--display-dim); display: flex; justify-content: space-between; gap: 8px; }
+.dose-big { font: 500 34px/1.1 var(--font-mono); color: var(--amber); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.dose-big small { font-size: 14px; color: var(--display-dim); margin-left: 6px; letter-spacing: 0; }
+.dose-row .secondary { font: 13px var(--font-mono); color: var(--display-dim); font-variant-numeric: tabular-nums; }
+.dose-row.blocked .dose-big { color: var(--display-dim); }
+.chip {
+  display: inline-block;
+  font: 500 12px var(--font-mono);
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.display .chip { color: var(--display-ink); }
+.display .chip.good { color: #7ee0a8; }
+.display .chip.bad { color: #ffab9f; }
+.delta { border-top: 1px solid #2a3538; padding-top: 10px; font: 13px var(--font-body); color: var(--display-dim); }
+.delta b { font: 500 15px var(--font-mono); color: var(--display-ink); }
+
+.panel { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius); padding: 14px 16px; min-width: 0; }
+.panel h2 { font-size: 15px; margin-bottom: 8px; }
+.table-wrap { overflow-x: auto; }
+table.factors { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.factors th, table.factors td { padding: 5px 6px; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: top; }
+table.factors th { font: 500 12px var(--font-display); color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+table.factors td.v { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.factors td.v i { font-style: normal; color: var(--muted); font-family: var(--font-body); font-size: 12px; }
+table.factors tr.total td { font-weight: 600; border-bottom: 0; }
+
+.messages { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.messages li { border-radius: var(--radius); padding: 8px 10px; font-size: 13px; display: grid; gap: 2px; border-left: 3px solid; }
+.messages li.error { background: var(--err-soft); border-color: var(--err); }
+.messages li.warn { background: var(--warn-soft); border-color: var(--warn); }
+.messages li.info { background: var(--info-soft); border-color: var(--info); }
+.messages .lvl { font: 500 11px var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; }
+.messages li.error .lvl { color: var(--err); }
+.messages li.warn .lvl { color: var(--warn); }
+.messages li.info .lvl { color: var(--info); }
+.messages .ref { color: var(--muted); font-size: 12px; }
+.muted { color: var(--muted); }
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.status-line { font-size: 12px; color: var(--muted); min-height: 1.4em; }
+
+footer.page-foot { max-width: 1320px; margin: 0 auto; padding: 0 16px 40px; color: var(--muted); font-size: 13px; }
+footer.page-foot p { max-width: 90ch; }
+
+/* мобильная строка с результатом */
+.mobile-result {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  background: var(--display); color: var(--display-ink);
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom, 0px));
+  font: 13px var(--font-mono);
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  z-index: 5;
+}
+.mobile-result b { color: var(--amber); font-weight: 500; font-size: 15px; }
+.mobile-result a { color: var(--display-ink); font-family: var(--font-body); }
+@media (min-width: 1080px) { .mobile-result { display: none; } }
+@media (max-width: 1079px) { body { padding-bottom: 56px; } }
+
+@media (max-width: 560px) {
+  .protocol-switch { margin-left: 0; }
+  .segmented span { padding: 6px 9px; font-size: 13px; }
+  .dose-big { font-size: 28px; }
+  .step { padding: 14px 14px 16px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dose-big { transition: color 0.2s; }
+}
+
+/* ------------------------------------------------------------ печать */
+@media print {
+  body { background: #fff; color: #000; font-size: 11px; padding-bottom: 0; }
+  .topbar .protocol-switch, .actions, .mobile-result, .presets, .no-print { display: none !important; }
+  .layout { display: block; padding: 0; }
+  .readout { position: static; max-height: none; overflow: visible; margin-top: 12px; }
+  .step, .panel { break-inside: avoid; border-color: #999; }
+  .display { background: #fff; color: #000; border: 1px solid #999; }
+  .dose-big, .display .chip, .delta b { color: #000 !important; }
+  input, select, textarea { border: 0; padding: 0; background: none; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <h1>Референсная дозиметрия</h1>
+      <span class="tag">TG-51 · TRS-398 Rev.1</span>
+    </div>
+    <nav class="modules" aria-label="Разделы">
+      <a href="#" aria-current="page">МВ фотоны</a>
+      <span title="Следующий этап">Электроны <small>скоро</small></span>
+    </nav>
+    <div class="protocol-switch">
+      <span id="protocol-label">Протокол</span>
+      <div class="segmented" role="radiogroup" aria-labelledby="protocol-label">
+        <label><input type="radio" name="protocol" id="protocol_trs" value="trs" checked><span>TRS-398 Rev.1</span></label>
+        <label><input type="radio" name="protocol" id="protocol_tg51" value="tg51"><span>TG-51</span></label>
+        <label><input type="radio" name="protocol" id="protocol_both" value="both"><span>Оба</span></label>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="layout">
+  <form id="sheet" class="sheet" autocomplete="off" novalidate>
+    <p class="intro">Рабочий лист калибровки пучка МВ фотонов: поглощённая доза в воде на глубине 10 см и на d<sub>max</sub>. Числа можно вводить с запятой или точкой; несколько показаний — через пробел. Всё считается в браузере, данные никуда не отправляются.</p>
+
+    <!-- 1 -->
+    <section class="step" aria-labelledby="s1">
+      <header><span class="step-no">1</span><h2 id="s1">Аппарат и пучок</h2></header>
+      <div class="grid">
+        <div class="field"><label for="meta_institution">Учреждение</label><input type="text" id="meta_institution"></div>
+        <div class="field"><label for="meta_machine">Аппарат</label><input type="text" id="meta_machine" placeholder="Модель, заводской №"></div>
+        <div class="field"><label for="meta_beam">Пучок</label><input type="text" id="meta_beam" placeholder="6 МВ"></div>
+        <div class="field"><label for="meta_energy">Номинальная энергия, МВ</label><input type="text" id="meta_energy" class="num" inputmode="decimal" placeholder="6"></div>
+        <div class="field"><label for="meta_date">Дата измерения</label><input type="date" id="meta_date"></div>
+        <div class="field"><label for="meta_physicist">Медицинский физик</label><input type="text" id="meta_physicist"></div>
+        <div class="field span-all"><label class="check"><input type="checkbox" id="meta_fff"> <span>Пучок без выравнивающего фильтра (БВФ, FFF)</span></label></div>
+        <div class="field span-all">
+          <label for="setup_geometry">Геометрия измерения дозы</label>
+          <select id="setup_geometry">
+            <option value="SSD">РИП = 100 см, поле 10 × 10 см на поверхности воды</option>
+            <option value="SAD">РИО: камера в изоцентре на глубине 10 см, поле 10 × 10 см в плоскости камеры</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section class="step" aria-labelledby="s2">
+      <header><span class="step-no">2</span><h2 id="s2">Камера и электрометр</h2></header>
+      <div class="grid two">
+        <div class="field span-all">
+          <label for="ch_model">Ионизационная камера</label>
+          <select id="ch_model"></select>
+          <span class="sub" id="chamber-info"></span>
+        </div>
+        <div class="field"><label for="ch_serial">Серийный № камеры</label><input type="text" id="ch_serial"></div>
+        <div class="field">
+          <label for="ch_ndw">Калибровочный коэффициент N<sub>D,w</sub> (⁶⁰Co)</label>
+          <div class="inline">
+            <input type="text" id="ch_ndw" class="num" inputmode="decimal" placeholder="0,05335">
+            <select id="ch_ndw_unit" aria-label="Единица N_D,w"></select>
+          </div>
+        </div>
+        <div class="field">
+          <span class="label">Стандартные условия из сертификата</span>
+          <div class="inline">
+            <input type="text" id="ch_T0" class="num" inputmode="decimal" aria-label="T₀, °C">
+            <span class="muted" style="align-self:center">°C</span>
+            <input type="text" id="ch_P0" class="num" inputmode="decimal" aria-label="P₀, кПа">
+            <span class="muted" style="align-self:center">кПа</span>
+          </div>
+          <div class="presets">
+            <button type="button" data-preset-ref="20|101,325">20 °C · 101,325 кПа</button>
+            <button type="button" data-preset-ref="22|101,33">22 °C · 101,33 кПа</button>
+          </div>
+        </div>
+        <div class="field"><label for="el_model">Электрометр</label><input type="text" id="el_model"></div>
+        <div class="field"><label for="el_serial">Серийный № электрометра</label><input type="text" id="el_serial"></div>
+        <div class="field">
+          <label for="el_kelec">k<sub>elec</sub> (P<sub>elec</sub>)</label>
+          <input type="text" id="el_kelec" class="num" inputmode="decimal">
+          <span class="sub">1,000, если камера и электрометр калиброваны вместе</span>
+        </div>
+      </div>
+      <details class="more">
+        <summary>Поправки, которые лаборатория могла не внести</summary>
+        <div class="grid two">
+          <div class="field">
+            <label class="check"><input type="checkbox" id="lab_pol_applied" checked> <span>Лаборатория внесла поправку на полярность</span></label>
+            <div class="field" data-show="lab_pol_applied:false">
+              <label for="lab_kpol">k<sub>pol</sub> в пучке лаборатории</label>
+              <input type="text" id="lab_kpol" class="num" inputmode="decimal">
+              <span class="sub">Показания делятся на это значение: TRS-398, ур. (12); TG-51, разд. VII.A</span>
+            </div>
+          </div>
+          <div class="field">
+            <label class="check"><input type="checkbox" id="lab_ks_applied" checked> <span>Лаборатория внесла поправку на рекомбинацию</span></label>
+            <div class="field" data-show="lab_ks_applied:false">
+              <label for="lab_ks">k<sub>s</sub> при калибровке</label>
+              <input type="text" id="lab_ks" class="num" inputmode="decimal">
+              <span class="sub">TRS-398, ур. (18): k<sub>s</sub> = k<sub>s,Q</sub>/k<sub>s,Q₀</sub>; в TG-51 так же делится P<sub>ion</sub></span>
+            </div>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- 3 -->
+    <section class="step" aria-labelledby="s3">
+      <header><span class="step-no">3</span><h2 id="s3">Температура и давление</h2>
+        <p class="hint">Температура воды у камеры и давление по поверенному барометру в помещении, без приведения к уровню моря.</p></header>
+      <div class="grid">
+        <div class="field"><label for="env_T">Температура воды, °C</label><input type="text" id="env_T" class="num" inputmode="decimal"></div>
+        <div class="field">
+          <label for="env_P">Давление</label>
+          <div class="inline">
+            <input type="text" id="env_P" class="num" inputmode="decimal">
+            <select id="env_P_unit" aria-label="Единица давления"></select>
+          </div>
+        </div>
+      </div>
+      <div class="calc" style="margin-top:12px">
+        <span data-protocol="trs">k<sub>TP</sub> = <b data-out="trs.kTP" data-digits="4"></b></span>
+        <span data-protocol="tg51">P<sub>TP</sub> = <b data-out="tg51.PTP" data-digits="4"></b></span>
+        <span>P = <b data-out="inputs.P" data-digits="2"></b> кПа</span>
+      </div>
+    </section>
+
+    <!-- 4 -->
+    <section class="step" aria-labelledby="s4">
+      <header><span class="step-no">4</span><h2 id="s4">Показания электрометра</h2>
+        <p class="hint">Камера в точке измерения на глубине 10 см. Все три серии — при одном и том же числе МЕ; значения можно вводить со знаком или без.</p></header>
+      <div class="grid">
+        <div class="field"><label for="rd_mu">Облучение, МЕ</label><input type="text" id="rd_mu" class="num" inputmode="decimal"></div>
+        <div class="field">
+          <label for="rd_polarity">Обычная полярность</label>
+          <select id="rd_polarity"><option value="+">положительная (+)</option><option value="-">отрицательная (−)</option></select>
+        </div>
+        <div class="field"><label for="rd_V1">V₁ — рабочее напряжение, В</label><input type="text" id="rd_V1" class="num" inputmode="decimal"></div>
+        <div class="field"><label for="rd_V2">V₂ — пониженное, В</label><input type="text" id="rd_V2" class="num" inputmode="decimal"></div>
+        <div class="field">
+          <label for="rd_beam">Режим пучка</label>
+          <select id="rd_beam"><option value="pulsed">импульсный</option><option value="scanned">импульсно-сканирующий</option></select>
+        </div>
+      </div>
+      <div class="grid two" style="margin-top:12px">
+        <div class="field"><label for="rd_M1">M при V₁, обычная полярность, нКл</label><input type="text" id="rd_M1" class="num" inputmode="decimal" placeholder="12,346 12,348 12,345"></div>
+        <div class="field"><label for="rd_Mopp">M при V₁, обратная полярность, нКл</label><input type="text" id="rd_Mopp" class="num" inputmode="decimal"></div>
+        <div class="field"><label for="rd_M2">M при V₂, обычная полярность, нКл</label><input type="text" id="rd_M2" class="num" inputmode="decimal"></div>
+        <div class="field">
+          <label for="rd_kleak">Поправка на утечку</label>
+          <input type="text" id="rd_kleak" class="num" inputmode="decimal">
+          <span class="sub">1,000, если утечка меньше 0,1 % показания</span>
+        </div>
+      </div>
+      <div class="calc" style="margin-top:12px">
+        <span>M̄ = <b data-out="inputs.M1.mean" data-digits="4" data-abs="1"></b> нКл <span data-out-sd="inputs.M1"></span></span>
+        <span>V₁/V₂ = <b data-out="inputs.nV" data-digits="2"></b></span>
+        <span>M₁/M₂ = <b data-out="inputs.ratio12" data-digits="5"></b></span>
+        <span data-protocol="trs">k<sub>pol</sub> = <b data-out="trs.kpol" data-digits="4"></b></span>
+        <span data-protocol="trs">k<sub>s</sub> = <b data-out="trs.ks" data-digits="4"></b></span>
+        <span data-protocol="tg51">P<sub>pol</sub> = <b data-out="tg51.Ppol" data-digits="4"></b></span>
+        <span data-protocol="tg51">P<sub>ion</sub> = <b data-out="tg51.Pion" data-digits="4"></b></span>
+        <span class="eq" data-protocol="trs">k<sub>s</sub>: <span data-out-text="trs.ksEquation"></span>. P<sub>ion</sub> по TG-51 — ур. (12) для импульсного пучка.</span>
+      </div>
+    </section>
+
+    <!-- 5 -->
+    <section class="step" aria-labelledby="s5">
+      <header><span class="step-no">5</span><h2 id="s5">Качество пучка и k<sub>Q</sub></h2>
+        <p class="hint" id="shift-hint">Качество пучка измеряют при каждой референсной дозиметрии.</p></header>
+      <div class="duo">
+        <div class="proto-card" data-protocol="trs">
+          <h3>TRS-398 Rev.1 <small>TPR<sub>20,10</sub></small></h3>
+          <div class="field">
+            <label for="qtrs_method">Как получен TPR<sub>20,10</sub></label>
+            <select id="qtrs_method">
+              <option value="direct">измерен (РИК 100 см, поле 10 × 10 в плоскости камеры)</option>
+              <option value="ratio">по показаниям камеры на 20 и 10 см</option>
+              <option value="pdd2010">из PDD(20)/PDD(10), пучки СВФ</option>
+            </select>
+          </div>
+          <div class="field" data-show="qtrs_method:direct"><label for="qtrs_tpr">TPR<sub>20,10</sub></label><input type="text" id="qtrs_tpr" class="num" inputmode="decimal" placeholder="0,668"></div>
+          <div class="grid" data-show="qtrs_method:ratio">
+            <div class="field"><label for="qtrs_m20">M на 20 см</label><input type="text" id="qtrs_m20" class="num" inputmode="decimal"></div>
+            <div class="field"><label for="qtrs_m10">M на 10 см</label><input type="text" id="qtrs_m10" class="num" inputmode="decimal"></div>
+          </div>
+          <div class="grid" data-show="qtrs_method:pdd2010">
+            <div class="field"><label for="qtrs_pdd20">PDD(20), %</label><input type="text" id="qtrs_pdd20" class="num" inputmode="decimal"></div>
+            <div class="field"><label for="qtrs_pdd10">PDD(10), %</label><input type="text" id="qtrs_pdd10" class="num" inputmode="decimal"></div>
+          </div>
+          <div class="calc">
+            <span>TPR<sub>20,10</sub> = <b data-out="trs.tpr" data-digits="4"></b></span>
+            <span>k<sub>Q</sub> = <b data-out="trs.kQ" data-digits="4"></b></span>
+            <span class="eq" data-out-text="trs.kQSource"></span>
+            <span class="eq" data-out-text="crossText"></span>
+          </div>
+          <label class="check"><input type="checkbox" id="kqtrs_manual_on"> <span>k<sub>Q</sub> измерен в лаборатории для этой камеры</span></label>
+          <div class="field" data-show="kqtrs_manual_on:true"><label for="kqtrs_manual">k<sub>Q</sub> (TRS-398)</label><input type="text" id="kqtrs_manual" class="num" inputmode="decimal"></div>
+        </div>
+
+        <div class="proto-card" data-protocol="tg51">
+          <h3>TG-51 <small>%dd(10)<sub>x</sub></small></h3>
+          <div class="field">
+            <label for="q51_method">Как получен %dd(10)<sub>x</sub></label>
+            <select id="q51_method">
+              <option value="open">открытый пучок, %dd(10) ≤ 75 % (ниже 10 МВ)</option>
+              <option value="foil50">свинцовая фольга 1 мм в 50 ± 5 см</option>
+              <option value="foil30">свинцовая фольга 1 мм в 30 ± 1 см</option>
+              <option value="interim">без фольги, формула (15): пучок с фильтром, от шторок до воды ≥ 45 см</option>
+              <option value="manual">%dd(10)ₓ уже известен</option>
+            </select>
+          </div>
+          <div class="field" data-show="q51_method:open,interim"><label for="q51_pdd10">%dd(10), открытый пучок, %</label><input type="text" id="q51_pdd10" class="num" inputmode="decimal" placeholder="66,4"></div>
+          <div class="field" data-show="q51_method:foil50,foil30"><label for="q51_pdd10pb">%dd(10)<sub>Pb</sub>, с фольгой, %</label><input type="text" id="q51_pdd10pb" class="num" inputmode="decimal"></div>
+          <div class="field" data-show="q51_method:manual"><label for="q51_manual">%dd(10)<sub>x</sub>, %</label><input type="text" id="q51_manual" class="num" inputmode="decimal"></div>
+          <div class="calc">
+            <span>%dd(10)<sub>x</sub> = <b data-out="tg51.pdd10x" data-digits="2"></b></span>
+            <span>k<sub>Q</sub> = <b data-out="tg51.kQ" data-digits="4"></b></span>
+            <span class="eq" data-out-text="tg51.pdd10xEquation"></span>
+            <span class="eq" data-out-text="tg51.kQSource"></span>
+          </div>
+          <label class="check"><input type="checkbox" id="kq51_manual_on"> <span>ввести k<sub>Q</sub> вручную</span></label>
+          <div class="field" data-show="kq51_manual_on:true"><label for="kq51_manual">k<sub>Q</sub> (TG-51)</label><input type="text" id="kq51_manual" class="num" inputmode="decimal"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6 -->
+    <section class="step" aria-labelledby="s6">
+      <header><span class="step-no">6</span><h2 id="s6">Неоднородность профиля: k<sub>vol</sub> (TRS-398) / P<sub>rp</sub> (TG-51)</h2>
+        <p class="hint">Нужна прежде всего в пучках БВФ и для длинных камер. Одна поправка применяется в обоих протоколах.</p></header>
+      <div class="grid two">
+        <div class="field span-all">
+          <label for="prof_mode">Способ</label>
+          <select id="prof_mode">
+            <option value="none">не применяется (профиль однороден по объёму камеры)</option>
+            <option value="manual">ввести готовое значение</option>
+            <option value="profile">рассчитать по измеренному профилю</option>
+            <option value="generic">оценка по формуле (22) TRS-398 для БВФ</option>
+          </select>
+        </div>
+        <div class="field" data-show="prof_mode:manual"><label for="prof_value">k<sub>vol</sub> = P<sub>rp</sub></label><input type="text" id="prof_value" class="num" inputmode="decimal"></div>
+        <div class="field" data-show="prof_mode:profile,generic">
+          <label for="prof_length">Длина полости камеры L, мм</label>
+          <input type="text" id="prof_length" class="num" inputmode="decimal">
+          <span class="sub" id="length-hint"></span>
+        </div>
+        <div class="field" data-show="prof_mode:generic">
+          <label for="prof_sdd">Расстояние источник — детектор, см</label>
+          <input type="text" id="prof_sdd" class="num" inputmode="decimal">
+          <span class="sub">По умолчанию 110 см (РИП 100 + 10) или 100 см (РИО)</span>
+        </div>
+        <div class="field span-all" data-show="prof_mode:profile">
+          <label for="prof_text">Профиль на глубине 10 см вдоль оси камеры: «положение, мм» и «доза» в каждой строке</label>
+          <textarea id="prof_text" class="num profile" spellcheck="false" placeholder="-15  99,52&#10;-10  99,78&#10;-5   99,95&#10;0    100&#10;5    99,94&#10;10   99,77&#10;15   99,50"></textarea>
+          <span class="sub">Детектор малого объёма, шаг около 1 мм; профиль нормируется на значение на оси.</span>
+        </div>
+      </div>
+      <div class="calc" style="margin-top:12px">
+        <span>k<sub>vol</sub> = P<sub>rp</sub> = <b data-out="profile.value" data-digits="4"></b></span>
+        <span class="eq" data-out-text="profile.method"></span>
+      </div>
+    </section>
+
+    <!-- 7 -->
+    <section class="step" aria-labelledby="s7">
+      <header><span class="step-no">7</span><h2 id="s7">Пересчёт на d<sub>max</sub></h2>
+        <p class="hint">Используйте клинические данные, заложенные в систему планирования (TG-51, разд. IX.C; TRS-398, разд. 6.4.3).</p></header>
+      <label class="check"><input type="checkbox" id="dd_on" checked> <span>Пересчитать дозу на глубину максимума</span></label>
+      <div class="grid" data-show="dd_on:true" style="margin-top:12px">
+        <div class="field" data-show="setup_geometry:SSD"><label for="dd_pdd">PDD(10), %</label><input type="text" id="dd_pdd" class="num" inputmode="decimal"><span class="sub">РИП 100 см, поле 10 × 10</span></div>
+        <div class="field" data-show="setup_geometry:SAD"><label for="dd_tmr">TMR(10, 10 × 10)</label><input type="text" id="dd_tmr" class="num" inputmode="decimal" placeholder="0,736"><span class="sub">отношение, не проценты</span></div>
+        <div class="field"><label for="dd_nominal">Номинальный выход, сГр/МЕ</label><input type="text" id="dd_nominal" class="num" inputmode="decimal"></div>
+      </div>
+    </section>
+
+    <!-- 8 -->
+    <section class="step" aria-labelledby="s8">
+      <header><span class="step-no">8</span><h2 id="s8">Примечания</h2></header>
+      <div class="field"><label for="meta_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="meta_notes"></textarea></div>
+    </section>
+  </form>
+
+  <aside class="readout" id="readout" aria-label="Результат расчёта">
+    <section class="display" aria-live="polite">
+      <h2 id="display-title">Поглощённая доза в воде</h2>
+      <p class="demo-flag" id="demo-flag" hidden>Сейчас загружен демонстрационный пример: значения вымышленные.</p>
+      <div id="dose-rows"></div>
+      <div class="delta" id="delta" hidden></div>
+    </section>
+
+    <section class="panel">
+      <h2>Замечания</h2>
+      <ul class="messages" id="messages"></ul>
+    </section>
+
+    <section class="panel">
+      <h2>Поправки и промежуточные величины</h2>
+      <div class="table-wrap"><table class="factors" id="factors"></table></div>
+    </section>
+
+    <section class="panel no-print">
+      <h2>Данные</h2>
+      <div class="actions">
+        <button type="button" class="primary" id="btn-sample">Загрузить пример</button>
+        <button type="button" id="btn-clear">Очистить</button>
+        <button type="button" id="btn-save" data-standalone>Сохранить в файл</button>
+        <button type="button" id="btn-load">Открыть файл</button>
+        <button type="button" id="btn-copy-json">Копировать данные</button>
+        <button type="button" id="btn-copy-report">Копировать протокол</button>
+        <button type="button" id="btn-print" data-standalone>Печать</button>
+      </div>
+      <input type="file" id="file-input" accept="application/json,.json" hidden>
+      <p class="status-line" id="status" role="status"></p>
+    </section>
+  </aside>
+</main>
+
+<footer class="page-foot">
+  <p>Инструмент помогает считать, но не заменяет независимую проверку медицинским физиком. Источники: AAPM TG-51 (Almond et al., Med. Phys. 26, 1999), аддендум для фотонов (McEwen et al., Med. Phys. 41, 2014), WGTG51 Report 374 (Muir et al., 2022), МАГАТЭ TRS-398 Rev.1 (2024). Подробности расчёта — в файле docs/photons.md репозитория.</p>
+</footer>
+
+<div class="mobile-result" id="mobile-result"><span id="mobile-value">—</span><a href="#readout">к результату</a></div>
+
+<script>(()=>{var Ye=/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;function $(e){if(e==null)return NaN;if(typeof e=="number")return e;let t=String(e).trim().replace(/−/g,"-").replace(/[\s  ]+/g,"");return t===""?NaN:((t.match(/,/g)||[]).length===1&&!t.includes(".")&&(t=t.replace(",",".")),Ye.test(t)?Number(t):NaN)}function oe(e){return e==null||String(e).trim()===""}function ne(e){if(oe(e))return{values:[],n:0,mean:NaN,sd:NaN,relSd:NaN,error:null};let t=String(e).replace(/−/g,"-").split(/[\s;]+|,(?=\s)/).map(l=>l.replace(/,$/,"").trim()).filter(l=>l!==""),o=t.map($),r=o.findIndex(l=>!Number.isFinite(l));if(r>=0)return{values:[],n:0,mean:NaN,sd:NaN,relSd:NaN,error:`\u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0442\u044C \xAB${t[r]}\xBB`};let n=o.length,c=o.reduce((l,s)=>l+s,0)/n,u=n>1?Math.sqrt(o.reduce((l,s)=>l+(s-c)**2,0)/(n-1)):0;return{values:o,n,mean:c,sd:u,relSd:c!==0?Math.abs(u/c):NaN,error:null}}var se={kPa:{label:"\u043A\u041F\u0430",toKPa:e=>e},hPa:{label:"\u0433\u041F\u0430 (\u043C\u0431\u0430\u0440)",toKPa:e=>e/10},mmHg:{label:"\u043C\u043C \u0440\u0442. \u0441\u0442.",toKPa:e=>e*101.325/760}};function Se(e,t){let o=se[t];if(!o)throw new Error(`\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u0435\u0434\u0438\u043D\u0438\u0446\u0430 \u0434\u0430\u0432\u043B\u0435\u043D\u0438\u044F: ${t}`);return o.toKPa(e)}var ie={"Gy/nC":{label:"\u0413\u0440/\u043D\u041A\u043B",toGyPerNC:e=>e},"cGy/nC":{label:"\u0441\u0413\u0440/\u043D\u041A\u043B",toGyPerNC:e=>e/100},"mGy/nC":{label:"\u043C\u0413\u0440/\u043D\u041A\u043B",toGyPerNC:e=>e/1e3},"Gy/C":{label:"\u0413\u0440/\u041A\u043B",toGyPerNC:e=>e*1e-9}};function Re(e,t){let o=ie[t];if(!o)throw new Error(`\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u0435\u0434\u0438\u043D\u0438\u0446\u0430 N_D,w: ${t}`);return o.toGyPerNC(e)}function T(e,t){return Number.isFinite(e)?e.toFixed(t).replace(".",",").replace("-","\u2212"):String(e)}function le({T:e,P:t,T0:o,P0:r,abs0:n}){return(n+e)/(n+o)*(r/t)}function xe(e,t){return(Math.abs(e)+Math.abs(t))/(2*Math.abs(e))}var ye=[58,63,66,71,81,93],ce=[{id:"PR06C",maker:"Capintec",model:"PR-06C/G",note:"\u0424\u0430\u0440\u043C\u0435\u0440 0,6 \u0441\u043C\xB3",sleeve:!0,rCavMm:3.2,tg51:{A:.9519,B:2.432,C:-2.704,kq63:.998},trs:{a:1.06833,b:-.08262}},{id:"PR05",maker:"Capintec",model:"PR-05/PR-05P",note:"\u0434\u0430\u043D\u043D\u044B\u0435 TG-51 1999 \u0433.",rCavMm:2,tg51Legacy:[.999,.997,.995,.99,.972,.948],notes:[{scope:"tg51",level:"warn",text:"\u0410\u0434\u0434\u0435\u043D\u0434\u0443\u043C 2014 \u0440\u0430\u0437\u0440\u0435\u0448\u0430\u0435\u0442 \u044D\u0442\u0443 \u043A\u0430\u043C\u0435\u0440\u0443, \u0442\u043E\u043B\u044C\u043A\u043E \u0435\u0441\u043B\u0438 \u043E\u043D\u0430 \u043E\u0442\u0432\u0435\u0447\u0430\u0435\u0442 \u0442\u0440\u0435\u0431\u043E\u0432\u0430\u043D\u0438\u044F\u043C \u043A \u043A\u0430\u043C\u0435\u0440\u0430\u043C \u044D\u0442\u0430\u043B\u043E\u043D\u043D\u043E\u0433\u043E \u043A\u043B\u0430\u0441\u0441\u0430 (\u0442\u0430\u0431\u043B. III \u0430\u0434\u0434\u0435\u043D\u0434\u0443\u043C\u0430)."}]},{id:"A19",maker:"Exradin",model:"A19",note:"\u0432\u043E\u0434\u043E\u043D\u0435\u043F\u0440\u043E\u043D\u0438\u0446\u0430\u0435\u043C\u044B\u0439 \u0424\u0430\u0440\u043C\u0435\u0440",rCavMm:3.05,tg51:{A:.9934,B:1.384,C:-2.125,kq63:.996},trs:{a:1.12024,b:-.10493}},{id:"A12",maker:"Exradin",model:"A12",note:"\u0424\u0430\u0440\u043C\u0435\u0440 0,6 \u0441\u043C\xB3",rCavMm:3.05,tg51:{A:1.0146,B:.777,C:-1.666,kq63:.997},trs:{a:1.09783,b:-.09544}},{id:"A12S",maker:"Exradin",model:"A12S",note:"\u043A\u043E\u0440\u043E\u0442\u043A\u0438\u0439 \u0424\u0430\u0440\u043C\u0435\u0440 0,2 \u0441\u043C\xB3",rCavMm:3.05,tg51:{A:.9692,B:1.974,C:-2.448,kq63:.996},trs:{a:1.11499,b:-.10057}},{id:"A18",maker:"Exradin",model:"A18",note:"0,125 \u0441\u043C\xB3",rCavMm:2.45,tg51:{A:.9944,B:1.286,C:-1.98,kq63:.997},trs:{a:1.10487,b:-.0967}},{id:"A1",maker:"Exradin",model:"A1",note:"0,06 \u0441\u043C\xB3",rCavMm:2,tg51:{A:1.0029,B:1.023,C:-1.803,kq63:.996}},{id:"A1SL",maker:"Exradin",model:"A1SL",note:"0,06 \u0441\u043C\xB3",rCavMm:2,tg51:{A:.9896,B:1.41,C:-2.049,kq63:.997},trs:{a:1.21633,b:-.13351}},{id:"A26",maker:"Exradin",model:"A26",trs:{a:1.09587,b:-.09383}},{id:"A28",maker:"Exradin",model:"A28",trs:{a:1.12453,b:-.10278}},{id:"NE2571",maker:"NE",model:"2571",note:"\u0424\u0430\u0440\u043C\u0435\u0440 0,6 \u0441\u043C\xB3",sleeve:!0,rCavMm:3.14,lengthMm:24.1,tg51:{A:.9882,B:1.486,C:-2.14,kq63:.997},trs:{a:1.08918,b:-.09222}},{id:"NE2561",maker:"NE",model:"2561 / 2611A",note:"\u0432\u0442\u043E\u0440\u0438\u0447\u043D\u044B\u0439 \u044D\u0442\u0430\u043B\u043E\u043D NPL",sleeve:!0,rCavMm:3.7,tg51:{A:.9722,B:1.977,C:-2.463,kq63:.999},trs:{a:1.07699,b:-.08732}},{id:"NE2505",maker:"NE",model:"2505/3, 3A",note:"\u0434\u0430\u043D\u043D\u044B\u0435 TG-51 1999 \u0433.",sleeve:!0,rCavMm:3.15,tg51Legacy:[1,.998,.995,.988,.972,.951]},{id:"NE2577",maker:"NE",model:"2577",note:"\u0434\u0430\u043D\u043D\u044B\u0435 TG-51 1999 \u0433.",sleeve:!0,rCavMm:3.15,tg51Legacy:[1,.998,.995,.988,.972,.951]},{id:"PTW30010",maker:"PTW",model:"30010",note:"\u0424\u0430\u0440\u043C\u0435\u0440 0,6 \u0441\u043C\xB3",sleeve:!0,rCavMm:3.05,lengthMm:23,tg51:{A:1.0093,B:.926,C:-1.771,kq63:.997},trs:{a:1.12594,b:-.1074}},{id:"PTW30011",maker:"PTW",model:"30011",note:"\u0424\u0430\u0440\u043C\u0435\u0440 0,6 \u0441\u043C\xB3",sleeve:!0,rCavMm:3.05,tg51:{A:.9676,B:2.061,C:-2.528,kq63:.997},trs:{a:1.1085,b:-.10107}},{id:"PTW30012",maker:"PTW",model:"30012",note:"\u0424\u0430\u0440\u043C\u0435\u0440 0,6 \u0441\u043C\xB3",sleeve:!0,rCavMm:3.05,lengthMm:23,tg51:{A:.9537,B:2.44,C:-2.75,kq63:.998},trs:{a:1.12442,b:-.10415}},{id:"PTW30013",maker:"PTW",model:"30013",note:"\u0432\u043E\u0434\u043E\u043D\u0435\u043F\u0440\u043E\u043D\u0438\u0446\u0430\u0435\u043C\u044B\u0439 \u0424\u0430\u0440\u043C\u0435\u0440",rCavMm:3.05,lengthMm:23,tg51:{A:.9652,B:2.141,C:-2.623,kq63:.996},trs:{a:1.18273,b:-.13256}},{id:"PTW31013",maker:"PTW",model:"31013",note:"Semiflex 0,3 \u0441\u043C\xB3",rCavMm:2.75,lengthMm:16.3,tg51:{A:.9725,B:1.957,C:-2.498,kq63:.997},trs:{a:1.19297,b:-.13366}},{id:"PTW31003",maker:"PTW",model:"31003",note:"k_Q \u043A\u0430\u043A \u0443 31013 \u043F\u043E \u0430\u0434\u0434\u0435\u043D\u0434\u0443\u043C\u0443 TG-51",rCavMm:2.75,tg51:{A:.9725,B:1.957,C:-2.498,kq63:.997},notes:[{scope:"tg51",level:"info",text:"\u0410\u0434\u0434\u0435\u043D\u0434\u0443\u043C TG-51, \u0440\u0430\u0437\u0434. 3.E(i): PTW 31003 \u0438\u0434\u0435\u043D\u0442\u0438\u0447\u043D\u0430 31013, \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044E\u0442\u0441\u044F \u0435\u0451 \u0434\u0430\u043D\u043D\u044B\u0435. \u0412 TRS-398 Rev.1 \u044D\u0442\u043E\u0439 \u043A\u0430\u043C\u0435\u0440\u044B \u043D\u0435\u0442."}]},{id:"PTW31010",maker:"PTW",model:"31010",note:"Semiflex 0,125 \u0441\u043C\xB3",rCavMm:2.75,lengthMm:6.5,trs:{a:1.23755,b:-.15295},notes:[{scope:"trs",level:"warn",text:"TRS-398 Rev.1, \u0442\u0430\u0431\u043B. 4: \u043A\u0430\u043C\u0435\u0440\u0430 \u043D\u0435 \u043E\u0442\u0432\u0435\u0447\u0430\u0435\u0442 \u0441\u043F\u0435\u0446\u0438\u0444\u0438\u043A\u0430\u0446\u0438\u0438 \u044D\u0442\u0430\u043B\u043E\u043D\u043D\u043E\u0433\u043E \u043A\u043B\u0430\u0441\u0441\u0430; \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u0430 \u043A\u0430\u043A \u0432\u043E\u0437\u043C\u043E\u0436\u043D\u044B\u0439 \u0432\u0430\u0440\u0438\u0430\u043D\u0442 \u0434\u043B\u044F \u043F\u0443\u0447\u043A\u043E\u0432 \u0411\u0412\u0424 \u0438 \u0442\u0440\u0435\u0431\u0443\u0435\u0442 \u0434\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0439 \u0445\u0430\u0440\u0430\u043A\u0442\u0435\u0440\u0438\u0437\u0430\u0446\u0438\u0438."}]},{id:"PTW31016",maker:"PTW",model:"31016",note:"PinPoint 3D",rCavMm:1.45,trs:{a:1.1165,b:-.10841},notes:[{scope:"trs",level:"warn",text:"TRS-398 Rev.1, \u0442\u0430\u0431\u043B. 16, \u043F\u0440\u0438\u043C. b: \u043E\u0431\u044A\u0451\u043C \u043C\u0435\u043D\u044C\u0448\u0435 \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u043E\u0432\u0430\u043D\u043D\u043E\u0433\u043E; \u043A\u0430\u043C\u0435\u0440\u0430 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u0430 \u0434\u043B\u044F \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u0439 \u0432 \u043F\u0443\u0447\u043A\u0430\u0445 \u0411\u0412\u0424."}]},{id:"PTW31021",maker:"PTW",model:"31021",note:"Semiflex 3D",rCavMm:2.4,lengthMm:4.8,trs:{a:1.29612,b:-.16514},notes:[{scope:"trs",level:"warn",text:"TRS-398 Rev.1, \u0442\u0430\u0431\u043B. 16, \u043F\u0440\u0438\u043C. b: \u043E\u0431\u044A\u0451\u043C \u043C\u0435\u043D\u044C\u0448\u0435 \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u043E\u0432\u0430\u043D\u043D\u043E\u0433\u043E; \u043A\u0430\u043C\u0435\u0440\u0430 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u0430 \u0434\u043B\u044F \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u0439 \u0432 \u043F\u0443\u0447\u043A\u0430\u0445 \u0411\u0412\u0424."}]},{id:"PTW31022",maker:"PTW",model:"31022",note:"PinPoint 3D",trs:{a:1.14435,b:-.1113},notes:[{scope:"trs",level:"warn",text:"TRS-398 Rev.1, \u0442\u0430\u0431\u043B. 16, \u043F\u0440\u0438\u043C. b: \u043E\u0431\u044A\u0451\u043C \u043C\u0435\u043D\u044C\u0448\u0435 \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u043E\u0432\u0430\u043D\u043D\u043E\u0433\u043E; \u043A\u0430\u043C\u0435\u0440\u0430 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u0430 \u0434\u043B\u044F \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u0439 \u0432 \u043F\u0443\u0447\u043A\u0430\u0445 \u0411\u0412\u0424."}]},{id:"PTW30001",maker:"PTW",model:"N30001 / N23333",note:"\u0434\u0430\u043D\u043D\u044B\u0435 TG-51 1999 \u0433.",sleeve:!0,rCavMm:3.05,tg51Legacy:[1,.996,.992,.984,.967,.945]},{id:"PTW30006",maker:"PTW",model:"30006",note:"k_Q \u043A\u0430\u043A \u0443 N30001, TG-51 1999 \u0433.",tg51Legacy:[1,.996,.992,.984,.967,.945],notes:[{scope:"tg51",level:"info",text:"TG-51, \u0440\u0430\u0437\u0434. XI, \u0438 \u0430\u0434\u0434\u0435\u043D\u0434\u0443\u043C, \u0440\u0430\u0437\u0434. 3.E(iii): \u0434\u043B\u044F PTW 30006 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044E\u0442\u0441\u044F \u0434\u0430\u043D\u043D\u044B\u0435 k_Q \u043A\u0430\u043C\u0435\u0440\u044B N30001."}]},{id:"PTW30002",maker:"PTW",model:"N30002",note:"\u0434\u0430\u043D\u043D\u044B\u0435 TG-51 1999 \u0433.",sleeve:!0,rCavMm:3.05,tg51Legacy:[1,.997,.994,.987,.97,.948]},{id:"PTW30004",maker:"PTW",model:"N30004",note:"\u0434\u0430\u043D\u043D\u044B\u0435 TG-51 1999 \u0433.",sleeve:!0,rCavMm:3.05,tg51Legacy:[1,.998,.995,.988,.973,.952]},{id:"FC65G",maker:"IBA",model:"FC65-G",note:"\u0432\u043E\u0434\u043E\u043D\u0435\u043F\u0440\u043E\u043D\u0438\u0446\u0430\u0435\u043C\u044B\u0439 \u0424\u0430\u0440\u043C\u0435\u0440",rCavMm:3.1,lengthMm:23,tg51:{A:.9708,B:1.972,C:-2.48,kq63:.997},trs:{a:1.09752,b:-.09642}},{id:"FC65P",maker:"IBA",model:"FC65-P",note:"\u0424\u0430\u0440\u043C\u0435\u0440",rCavMm:3.1,lengthMm:23,tg51:{A:.9828,B:1.664,C:-2.296,kq63:.997},trs:{a:1.12374,b:-.10784}},{id:"FC23C",maker:"IBA",model:"FC23-C",note:"\u043A\u043E\u0440\u043E\u0442\u043A\u0438\u0439 \u0424\u0430\u0440\u043C\u0435\u0440 0,2 \u0441\u043C\xB3",rCavMm:3.1,tg51:{A:.982,B:1.579,C:-2.166,kq63:.996},trs:{a:1.09189,b:-.09346}},{id:"CC25",maker:"IBA",model:"CC25",note:"0,25 \u0441\u043C\xB3",rCavMm:3,tg51:{A:.9551,B:2.353,C:-2.687,kq63:.997},trs:{a:1.08981,b:-.09254}},{id:"CC13",maker:"IBA",model:"CC13",note:"0,13 \u0441\u043C\xB3",rCavMm:3,lengthMm:5.8,tg51:{A:.9515,B:2.455,C:-2.768,kq63:.996},trs:{a:1.11441,b:-.1026}},{id:"IC10",maker:"IBA",model:"IC10 (Wellh\xF6fer)",note:"k_Q \u043A\u0430\u043A \u0443 CC13 \u043F\u043E \u0430\u0434\u0434\u0435\u043D\u0434\u0443\u043C\u0443 TG-51",tg51:{A:.9515,B:2.455,C:-2.768,kq63:.996},notes:[{scope:"tg51",level:"info",text:"\u0410\u0434\u0434\u0435\u043D\u0434\u0443\u043C TG-51, \u0440\u0430\u0437\u0434. 3.E(ii): \u0434\u043B\u044F IC10 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044E\u0442\u0441\u044F \u0434\u0430\u043D\u043D\u044B\u0435 CC13. \u0412 TRS-398 Rev.1 \u044D\u0442\u043E\u0439 \u043A\u0430\u043C\u0435\u0440\u044B \u043D\u0435\u0442."}]},{id:"CC08",maker:"IBA",model:"CC08",note:"0,08 \u0441\u043C\xB3",tg51:{A:.943,B:2.637,C:-2.884,kq63:.995}},{id:"SNC125c",maker:"Sun Nuclear",model:"SNC125c",trs:{a:1.097,b:-.09749}},{id:"SNC600c",maker:"Sun Nuclear",model:"SNC600c",note:"\u0424\u0430\u0440\u043C\u0435\u0440",trs:{a:1.068,b:-.08485}}];function J(e){return ce.find(t=>t.id===e)||null}function we(e){return`${e.maker} ${e.model}`}var De=273.2,Fe=22;var me=63,ze=86,de=58;function qe({mH:e,mL:t,vH:o,vL:r,beam:n="pulsed"}){let c=o/r,u=Math.abs(e)/Math.abs(t);return n==="continuous"?(1-c*c)/(u-c*c):(1-c)/(u-c)}function Ee({method:e,pdd10:t,pdd10Pb:o,manual:r}){switch(e){case"open":return Number.isFinite(t)?t>75?{value:NaN,error:"\u043F\u0440\u0438 %dd(10) > 75 % \u0431\u0435\u0437 \u0444\u043E\u043B\u044C\u0433\u0438 \u043D\u0435\u043B\u044C\u0437\u044F: \u043D\u0443\u0436\u043D\u0430 \u0441\u0432\u0438\u043D\u0446\u043E\u0432\u0430\u044F \u0444\u043E\u043B\u044C\u0433\u0430 \u0438\u043B\u0438 \u043F\u0440\u043E\u043C\u0435\u0436\u0443\u0442\u043E\u0447\u043D\u0430\u044F \u0444\u043E\u0440\u043C\u0443\u043B\u0430 (15)"}:{value:t,equation:"%dd(10)x = %dd(10) (\u044D\u043D\u0435\u0440\u0433\u0438\u044F \u043D\u0438\u0436\u0435 10 \u041C\u0412)"}:{error:"\u043D\u0435 \u0432\u0432\u0435\u0434\u0435\u043D\u043E %dd(10)"};case"foil50":return Number.isFinite(o)?o>=73?{value:(.8905+.0015*o)*o,equation:"\u0443\u0440. (13): (0,8905 + 0,00150\xB7%dd(10)Pb)\xB7%dd(10)Pb"}:{value:o,equation:"%dd(10)Pb < 73 % \u2192 %dd(10)x = %dd(10)Pb"}:{error:"\u043D\u0435 \u0432\u0432\u0435\u0434\u0435\u043D\u043E %dd(10)Pb"};case"foil30":return Number.isFinite(o)?o>=71?{value:(.8116+.00264*o)*o,equation:"\u0443\u0440. (14): (0,8116 + 0,00264\xB7%dd(10)Pb)\xB7%dd(10)Pb"}:{value:o,equation:"%dd(10)Pb < 71 % \u2192 %dd(10)x = %dd(10)Pb"}:{error:"\u043D\u0435 \u0432\u0432\u0435\u0434\u0435\u043D\u043E %dd(10)Pb"};case"interim":return Number.isFinite(t)?t<=75?{value:t,equation:"%dd(10) \u2264 75 % \u2192 %dd(10)x = %dd(10)"}:t>89?{value:NaN,error:"\u043F\u0440\u043E\u043C\u0435\u0436\u0443\u0442\u043E\u0447\u043D\u0430\u044F \u0444\u043E\u0440\u043C\u0443\u043B\u0430 (15) \u043F\u0440\u0438\u043C\u0435\u043D\u0438\u043C\u0430 \u0442\u043E\u043B\u044C\u043A\u043E \u0434\u043E %dd(10) = 89 %"}:{value:1.267*t-20,equation:"\u0443\u0440. (15): 1,267\xB7%dd(10) \u2212 20,0"}:{error:"\u043D\u0435 \u0432\u0432\u0435\u0434\u0435\u043D\u043E %dd(10)"};case"manual":return Number.isFinite(r)?{value:r,equation:"\u0432\u0432\u0435\u0434\u0435\u043D\u043E \u0432\u0440\u0443\u0447\u043D\u0443\u044E"}:{error:"\u043D\u0435 \u0432\u0432\u0435\u0434\u0435\u043D\u043E %dd(10)x"};default:return{error:`\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0441\u043F\u043E\u0441\u043E\u0431 \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u0438\u044F %dd(10)x: ${e}`}}}function Ze({A:e,B:t,C:o},r){return e+t*.001*r+o*1e-5*r*r}function et(e,t,o){for(let r=0;r<e.length-1;r++)if(o>=e[r]&&o<=e[r+1]){let n=(o-e[r])/(e[r+1]-e[r]);return t[r]+n*(t[r+1]-t[r])}return NaN}function Ae(e,t){if(!e)return{error:"\u043A\u0430\u043C\u0435\u0440\u0430 \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D\u0430"};if(!Number.isFinite(t))return{error:"\u043D\u0435\u0442 %dd(10)x"};if(e.tg51)return t>me&&t<ze?{value:Ze(e.tg51,t),source:"\u0430\u0434\u0434\u0435\u043D\u0434\u0443\u043C TG-51 (2014), \u0442\u0430\u0431\u043B. I, \u0443\u0440. (1)"}:t>=de&&t<=me?{value:1+(t-de)/(me-de)*(e.tg51.kq63-1),source:"\u0430\u0434\u0434\u0435\u043D\u0434\u0443\u043C TG-51, \u0440\u0430\u0437\u0434. 3.D: \u0438\u043D\u0442\u0435\u0440\u043F\u043E\u043B\u044F\u0446\u0438\u044F \u043C\u0435\u0436\u0434\u0443 k_Q(63) \u0438 1,000 \u043F\u0440\u0438 58"}:{error:`%dd(10)x = ${T(t,1)} \u0432\u043D\u0435 \u0434\u0438\u0430\u043F\u0430\u0437\u043E\u043D\u0430 \u0434\u0430\u043D\u043D\u044B\u0445 \u0430\u0434\u0434\u0435\u043D\u0434\u0443\u043C\u0430 (58\u201386)`};if(e.tg51Legacy){let o=et(ye,e.tg51Legacy,t);return Number.isFinite(o)?{value:o,source:"TG-51 (1999), \u0442\u0430\u0431\u043B. I, \u043B\u0438\u043D\u0435\u0439\u043D\u0430\u044F \u0438\u043D\u0442\u0435\u0440\u043F\u043E\u043B\u044F\u0446\u0438\u044F"}:{error:`%dd(10)x = ${T(t,1)} \u0432\u043D\u0435 \u0434\u0438\u0430\u043F\u0430\u0437\u043E\u043D\u0430 \u0442\u0430\u0431\u043B. I TG-51 (58\u201393)`}}return{error:"\u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043A\u0430\u043C\u0435\u0440\u044B \u0432 TG-51 \u0438 \u0430\u0434\u0434\u0435\u043D\u0434\u0443\u043C\u0435 \u043D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445 k_Q"}}var Ge=273.15;var rt=.56,ot=.82,nt=.57,ue={pulsed:{2:[2.337,-3.636,2.299],2.5:[1.474,-1.587,1.114],3:[1.198,-.875,.677],3.5:[1.08,-.542,.463],4:[1.022,-.363,.341],5:[.975,-.188,.214]},scanned:{2:[4.711,-8.242,4.533],2.5:[2.719,-3.977,2.261],3:[2.001,-2.402,1.404],3.5:[1.665,-1.647,.984],4:[1.468,-1.2,.734],5:[1.279,-.75,.474]}};function st(e){return Object.keys(ue.pulsed).map(Number).find(o=>Math.abs(o-e)<1e-6)}function Ie({m1:e,m2:t,v1:o,v2:r,beam:n="pulsed"}){let c=o/r,u=Math.abs(e)/Math.abs(t),l=st(c),s=[];if(l!==void 0){let b=n==="scanned"?ue.scanned:ue.pulsed,[D,C,P]=b[l];return{value:D+C*u+P*u*u,equation:`\u0443\u0440. (13), \u0442\u0430\u0431\u043B. 10, V1/V2 = ${l}`,n:c,notes:s}}if(n==="scanned")return{value:NaN,n:c,error:"\u0434\u043B\u044F \u0438\u043C\u043F\u0443\u043B\u044C\u0441\u043D\u043E-\u0441\u043A\u0430\u043D\u0438\u0440\u0443\u044E\u0449\u0435\u0433\u043E \u043F\u0443\u0447\u043A\u0430 V1/V2 \u0434\u043E\u043B\u0436\u043D\u043E \u0431\u044B\u0442\u044C 2; 2,5; 3; 3,5; 4 \u0438\u043B\u0438 5 (\u0442\u0430\u0431\u043B. 10)",notes:s};let v=1+(u-1)/(c-1);return v>=1.03&&s.push("\u0443\u0440. (14) \u0434\u0430\u0451\u0442 \u0442\u043E\u0447\u043D\u043E\u0441\u0442\u044C 0,1 % \u0442\u043E\u043B\u044C\u043A\u043E \u043F\u0440\u0438 k_s < 1,03; \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 V1/V2 \u0438\u0437 \u0442\u0430\u0431\u043B. 10"),{value:v,equation:"\u0443\u0440. (14): 1 + (M1/M2 \u2212 1)/(n \u2212 1)",n:c,notes:s}}function it({a:e,b:t},o){return(1+Math.exp((e-nt)/t))/(1+Math.exp((e-o)/t))}function Le(e,t){return e?e.trs?Number.isFinite(t)?t<rt||t>ot?{error:`TPR20,10 = ${T(t,3)} \u0432\u043D\u0435 \u0434\u0438\u0430\u043F\u0430\u0437\u043E\u043D\u0430 \u0442\u0430\u0431\u043B. 16 (0,56\u20130,82)`}:{value:it(e.trs,t),source:"TRS-398 Rev.1, \u0443\u0440. (34), \u0442\u0430\u0431\u043B. 45"}:{error:"\u043D\u0435\u0442 TPR20,10"}:{error:"\u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043A\u0430\u043C\u0435\u0440\u044B \u0432 TRS-398 Rev.1 \u043D\u0435\u0442 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u0432 k_Q (\u0442\u0430\u0431\u043B. 45)"}:{error:"\u043A\u0430\u043C\u0435\u0440\u0430 \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D\u0430"}}function Qe(e){return 1.2661*e-.0595}function Be(e){return-.7898+.0329*e-166e-6*e*e}function Ve({tpr:e,lengthCm:t,sddCm:o}){return 1+(.0062*e-.0036)*t*t*(100/o)**2}function Ue(e){let t=[],o=String(e||"").split(/\r?\n/);for(let r=0;r<o.length;r++){let n=o[r].trim();if(n===""||n.startsWith("#"))continue;let c=n.split(/[\s;\t]+/).filter(Boolean);if(c.length<2)return{points:[],error:`\u0441\u0442\u0440\u043E\u043A\u0430 ${r+1}: \u043D\u0443\u0436\u043D\u043E \u0434\u0432\u0430 \u0447\u0438\u0441\u043B\u0430`};let u=$(c[0]),l=$(c[1]);if(!Number.isFinite(u)||!Number.isFinite(l)){if(t.length===0&&r===0)continue;return{points:[],error:`\u0441\u0442\u0440\u043E\u043A\u0430 ${r+1}: \u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0442\u044C \u0447\u0438\u0441\u043B\u0430`}}t.push({x:u,y:l})}t.sort((r,n)=>r.x-n.x);for(let r=1;r<t.length;r++)if(t[r].x===t[r-1].x)return{points:[],error:`\u043F\u043E\u0432\u0442\u043E\u0440\u044F\u0435\u0442\u0441\u044F \u043F\u043E\u043B\u043E\u0436\u0435\u043D\u0438\u0435 ${t[r].x} \u043C\u043C`};return{points:t,error:null}}function pe(e,t){for(let o=0;o<e.length-1;o++){let r=e[o],n=e[o+1];if(t>=r.x&&t<=n.x)return r.y+(t-r.x)/(n.x-r.x)*(n.y-r.y)}return NaN}function We(e,t){if(!(t>0))return{error:"\u043D\u0435 \u0437\u0430\u0434\u0430\u043D\u0430 \u0434\u043B\u0438\u043D\u0430 \u043F\u043E\u043B\u043E\u0441\u0442\u0438 \u043A\u0430\u043C\u0435\u0440\u044B"};if(e.length<3)return{error:"\u0432 \u043F\u0440\u043E\u0444\u0438\u043B\u0435 \u043C\u0435\u043D\u044C\u0448\u0435 \u0442\u0440\u0451\u0445 \u0442\u043E\u0447\u0435\u043A"};let o=t/2;if(e[0].x>-o||e[e.length-1].x<o)return{error:`\u043F\u0440\u043E\u0444\u0438\u043B\u044C \u0434\u043E\u043B\u0436\u0435\u043D \u043F\u043E\u043A\u0440\u044B\u0432\u0430\u0442\u044C \u043E\u0442 \u2212${o} \u0434\u043E +${o} \u043C\u043C`};let r=pe(e,0);if(!(r>0))return{error:"\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435 \u043F\u0440\u043E\u0444\u0438\u043B\u044F \u043D\u0430 \u043E\u0441\u0438 \u0434\u043E\u043B\u0436\u043D\u043E \u0431\u044B\u0442\u044C \u043F\u043E\u043B\u043E\u0436\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u043C"};let n=[-o,...e.map(l=>l.x).filter(l=>l>-o&&l<o),o],c=0;for(let l=0;l<n.length-1;l++){let s=pe(e,n[l])/r,v=pe(e,n[l+1])/r;c+=(s+v)/2*(n[l+1]-n[l])}let u=c/t;return{value:1/u,mean:u,pointsUsed:n.length}}var E={protocol:"trs",meta_institution:"",meta_machine:"",meta_beam:"",meta_energy:"",meta_fff:!1,meta_date:"",meta_physicist:"",meta_notes:"",setup_geometry:"SSD",ch_model:"",ch_serial:"",ch_ndw:"",ch_ndw_unit:"Gy/nC",ch_T0:"20",ch_P0:"101,325",el_model:"",el_serial:"",el_kelec:"1,000",lab_pol_applied:!0,lab_kpol:"",lab_ks_applied:!0,lab_ks:"",env_T:"",env_P:"",env_P_unit:"kPa",rd_mu:"100",rd_polarity:"+",rd_V1:"300",rd_V2:"100",rd_beam:"pulsed",rd_M1:"",rd_Mopp:"",rd_M2:"",rd_kleak:"1,000",q51_method:"open",q51_pdd10:"",q51_pdd10pb:"",q51_manual:"",qtrs_method:"direct",qtrs_tpr:"",qtrs_m20:"",qtrs_m10:"",qtrs_pdd20:"",qtrs_pdd10:"",kq51_manual_on:!1,kq51_manual:"",kqtrs_manual_on:!1,kqtrs_manual:"",prof_mode:"none",prof_value:"",prof_length:"",prof_sdd:"",prof_text:"",dd_on:!0,dd_pdd:"",dd_tmr:"",dd_nominal:"1,000"},d={tg51:"TG-51 (1999)",add:"\u0430\u0434\u0434\u0435\u043D\u0434\u0443\u043C TG-51 (2014)",r374:"WGTG51 Report 374",trs:"TRS-398 Rev.1"};function lt(e){return!e||e.n<2||!e.mean?0:Math.max(...e.values.map(t=>Math.abs(t-e.mean)/Math.abs(e.mean)))}function Oe(e){let t={...E,...e},o=[],r=(i,a,k,q=null)=>o.push({level:i,scope:a,text:k,ref:q}),n=t.protocol==="tg51"||t.protocol==="both",c=t.protocol==="trs"||t.protocol==="both",u=!!t.meta_fff,l=$(t.meta_energy),s=(i,a,k="common")=>{let q=$(t[i]);return Number.isFinite(q)||r("error",k,oe(t[i])?`\u041D\u0435 \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u0435 \xAB${a}\xBB.`:`\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0442\u044C \u0447\u0438\u0441\u043B\u043E \u0432 \u043F\u043E\u043B\u0435 \xAB${a}\xBB.`),q},v=(i,a)=>{let k=ne(t[i]);return k.error?r("error","common",`\xAB${a}\xBB: ${k.error}.`):k.n===0?r("error","common",`\u041D\u0435 \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u043E \u043F\u043E\u043B\u0435 \xAB${a}\xBB.`):k.mean===0&&r("error","common",`\xAB${a}\xBB: \u0441\u0440\u0435\u0434\u043D\u0435\u0435 \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u0435 \u0440\u0430\u0432\u043D\u043E \u043D\u0443\u043B\u044E.`),k},b=J(t.ch_model);oe(t.ch_model)&&r("error","common","\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u0438\u043F \u043A\u0430\u043C\u0435\u0440\u044B."),b?.sleeve&&r("info","common","\u041A\u0430\u043C\u0435\u0440\u0430 \u043D\u0435 \u0432\u043E\u0434\u043E\u043D\u0435\u043F\u0440\u043E\u043D\u0438\u0446\u0430\u0435\u043C\u0430: \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u0442\u043E\u0442 \u0436\u0435 \u0447\u0435\u0445\u043E\u043B (\u041F\u041C\u041C\u0410 \u2264 1 \u043C\u043C), \u0447\u0442\u043E \u0438 \u043F\u0440\u0438 \u043A\u0430\u043B\u0438\u0431\u0440\u043E\u0432\u043A\u0435.",`${d.tg51}, \u0440\u0430\u0437\u0434. V.A; ${d.trs}, \u0440\u0430\u0437\u0434. 6.2.2`);let D=s("ch_ndw","N_D,w"),C=Number.isFinite(D)?Re(D,t.ch_ndw_unit):NaN;Number.isFinite(C)&&(C<.001||C>5)&&r("warn","common",`N_D,w = ${C.toPrecision(4).replace(".",",")} \u0413\u0440/\u043D\u041A\u043B \u0432\u044B\u0433\u043B\u044F\u0434\u0438\u0442 \u043D\u0435\u043F\u0440\u0430\u0432\u0434\u043E\u043F\u043E\u0434\u043E\u0431\u043D\u043E: \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0435\u0434\u0438\u043D\u0438\u0446\u044B.`);let P=s("ch_T0","T\u2080 \u0438\u0437 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u0430"),y=s("ch_P0","P\u2080 \u0438\u0437 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u0430");Number.isFinite(P)&&(P<15||P>25)&&r("error","common","T\u2080 \u0437\u0430\u0434\u0430\u0451\u0442\u0441\u044F \u0432 \xB0C (\u043E\u0431\u044B\u0447\u043D\u043E 20 \u0438\u043B\u0438 22)."),Number.isFinite(P)&&t.protocol==="tg51"&&Math.abs(P-Fe)>1e-9&&r("info","tg51","\u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u0435 \u0443\u0441\u043B\u043E\u0432\u0438\u044F \u0432 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u0435: \u0443 \u043B\u0430\u0431\u043E\u0440\u0430\u0442\u043E\u0440\u0438\u0439 ADCL \u044D\u0442\u043E 22 \xB0C \u0438 101,33 \u043A\u041F\u0430, \u0432 \u0444\u043E\u0440\u043C\u0443\u043B\u0435 P_TP \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044E\u0442\u0441\u044F \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F \u0438\u0437 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u0430.",`${d.tg51}, \u0443\u0440. (10)`),Number.isFinite(y)&&(y<95||y>105)&&r("warn","common","P\u2080 \u0437\u0430\u0434\u0430\u0451\u0442\u0441\u044F \u0432 \u043A\u041F\u0430 (\u043E\u0431\u044B\u0447\u043D\u043E 101,325 \u0438\u043B\u0438 101,33).");let p=s("el_kelec","k_elec (P_elec)");Number.isFinite(p)&&Math.abs(p-1)>.02&&r("warn","common","k_elec \u043E\u0442\u043B\u0438\u0447\u0430\u0435\u0442\u0441\u044F \u043E\u0442 1 \u0431\u043E\u043B\u044C\u0448\u0435 \u0447\u0435\u043C \u043D\u0430 2 %: \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0441\u0435\u0440\u0442\u0438\u0444\u0438\u043A\u0430\u0442 \u044D\u043B\u0435\u043A\u0442\u0440\u043E\u043C\u0435\u0442\u0440\u0430.");let N=s("env_T","\u0422\u0435\u043C\u043F\u0435\u0440\u0430\u0442\u0443\u0440\u0430 \u0432\u043E\u0434\u044B"),z=s("env_P","\u0414\u0430\u0432\u043B\u0435\u043D\u0438\u0435"),G=Number.isFinite(z)?Se(z,t.env_P_unit):NaN;Number.isFinite(G)&&(G<50||G>110)&&r("error","common",`\u0414\u0430\u0432\u043B\u0435\u043D\u0438\u0435 ${T(G,2)} \u043A\u041F\u0430 \u0432\u043D\u0435 \u043F\u0440\u0430\u0432\u0434\u043E\u043F\u043E\u0434\u043E\u0431\u043D\u043E\u0433\u043E \u0434\u0438\u0430\u043F\u0430\u0437\u043E\u043D\u0430: \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0435\u0434\u0438\u043D\u0438\u0446\u044B.`),Number.isFinite(N)&&(N<5||N>40?r("error","common",`\u0422\u0435\u043C\u043F\u0435\u0440\u0430\u0442\u0443\u0440\u0430 \u0432\u043E\u0434\u044B ${N} \xB0C \u043D\u0435\u043F\u0440\u0430\u0432\u0434\u043E\u043F\u043E\u0434\u043E\u0431\u043D\u0430.`):(N<15||N>25)&&r("info","common","\u0422\u0435\u043C\u043F\u0435\u0440\u0430\u0442\u0443\u0440\u0430 \u0432\u043E\u0434\u044B \u0432\u043D\u0435 15\u201325 \xB0C: \u0442\u0435\u043F\u043B\u043E\u0432\u043E\u0435 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u0435 \u043F\u043E\u043B\u043E\u0441\u0442\u0438 \u043C\u043E\u0436\u0435\u0442 \u0441\u0442\u0430\u0442\u044C \u0437\u0430\u043C\u0435\u0442\u043D\u044B\u043C.",`${d.add}, \u0440\u0430\u0437\u0434. 5.A.5`));let Z=s("rd_mu","\u041C\u043E\u043D\u0438\u0442\u043E\u0440\u043D\u044B\u0435 \u0435\u0434\u0438\u043D\u0438\u0446\u044B");Number.isFinite(Z)&&Z<=0&&r("error","common","\u0427\u0438\u0441\u043B\u043E \u041C\u0415 \u0434\u043E\u043B\u0436\u043D\u043E \u0431\u044B\u0442\u044C \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0443\u043B\u044F.");let F=s("rd_V1","\u0420\u0430\u0431\u043E\u0447\u0435\u0435 \u043D\u0430\u043F\u0440\u044F\u0436\u0435\u043D\u0438\u0435 V\u2081"),B=s("rd_V2","\u041F\u043E\u043D\u0438\u0436\u0435\u043D\u043D\u043E\u0435 \u043D\u0430\u043F\u0440\u044F\u0436\u0435\u043D\u0438\u0435 V\u2082");Number.isFinite(F)&&Number.isFinite(B)&&Math.abs(F)<=Math.abs(B)&&r("error","common","\u0420\u0430\u0431\u043E\u0447\u0435\u0435 \u043D\u0430\u043F\u0440\u044F\u0436\u0435\u043D\u0438\u0435 V\u2081 \u0434\u043E\u043B\u0436\u043D\u043E \u0431\u044B\u0442\u044C \u0431\u043E\u043B\u044C\u0448\u0435 \u043F\u043E\u043D\u0438\u0436\u0435\u043D\u043D\u043E\u0433\u043E V\u2082."),Number.isFinite(F)&&Math.abs(F)>300&&r("warn","common","\u0410\u0434\u0434\u0435\u043D\u0434\u0443\u043C TG-51 \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0443\u0435\u0442 \u0434\u043B\u044F \u0446\u0438\u043B\u0438\u043D\u0434\u0440\u0438\u0447\u0435\u0441\u043A\u0438\u0445 \u043A\u0430\u043C\u0435\u0440 \u043D\u0435 \u0431\u043E\u043B\u0435\u0435 300 \u0412.",`${d.add}, \u0440\u0430\u0437\u0434. 4.E`);let S=v("rd_M1","\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F \u043F\u0440\u0438 V\u2081, \u043E\u0431\u044B\u0447\u043D\u0430\u044F \u043F\u043E\u043B\u044F\u0440\u043D\u043E\u0441\u0442\u044C"),W=v("rd_Mopp","\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F \u043F\u0440\u0438 V\u2081, \u043E\u0431\u0440\u0430\u0442\u043D\u0430\u044F \u043F\u043E\u043B\u044F\u0440\u043D\u043E\u0441\u0442\u044C"),R=v("rd_M2","\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F \u043F\u0440\u0438 V\u2082");for(let[i,a]of[[S,"\u043F\u0440\u0438 V\u2081"],[W,"\u043E\u0431\u0440\u0430\u0442\u043D\u043E\u0439 \u043F\u043E\u043B\u044F\u0440\u043D\u043E\u0441\u0442\u0438"],[R,"\u043F\u0440\u0438 V\u2082"]]){let k=lt(i),q=T(k*100,2);k>.05?r("error","common",`\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F ${a} \u0440\u0430\u0441\u0445\u043E\u0434\u044F\u0442\u0441\u044F \u043D\u0430 ${q} % \u043E\u0442 \u0441\u0440\u0435\u0434\u043D\u0435\u0433\u043E: \u0432\u0435\u0440\u043E\u044F\u0442\u043D\u043E, \u043E\u0448\u0438\u0431\u043A\u0430 \u0432\u0432\u043E\u0434\u0430 (\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u043F\u0440\u043E\u0431\u0435\u043B \u0432\u043D\u0443\u0442\u0440\u0438 \u0447\u0438\u0441\u043B\u0430).`):k>.005?r("warn","common",`\u0420\u0430\u0437\u0431\u0440\u043E\u0441 \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u0439 ${a} \u0434\u043E ${q} % \u043E\u0442 \u0441\u0440\u0435\u0434\u043D\u0435\u0433\u043E: \u0443\u0441\u043A\u043E\u0440\u0438\u0442\u0435\u043B\u044C \u0438\u043B\u0438 \u043A\u0430\u043C\u0435\u0440\u0430 \u043D\u0435\u0441\u0442\u0430\u0431\u0438\u043B\u044C\u043D\u044B; Report 374 \u0441\u043E\u0432\u0435\u0442\u0443\u0435\u0442 \u043F\u043E\u0432\u0442\u043E\u0440\u044F\u0442\u044C \u043E\u0431\u043B\u0443\u0447\u0435\u043D\u0438\u044F, \u043F\u043E\u043A\u0430 \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0438\u0435 \u043D\u0435 \u0441\u0442\u0430\u043D\u0435\u0442 \u043C\u0435\u043D\u044C\u0448\u0435 \xB10,1 % \u0431\u0435\u0437 \u0442\u0440\u0435\u043D\u0434\u0430.`,`${d.r374}, \u0440\u0430\u0437\u0434. 4.4.2`):k>.001&&r("info","common",`\u0420\u0430\u0437\u0431\u0440\u043E\u0441 \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u0439 ${a} \u0434\u043E ${q} % \u043E\u0442 \u0441\u0440\u0435\u0434\u043D\u0435\u0433\u043E: Report 374 \u0441\u043E\u0432\u0435\u0442\u0443\u0435\u0442 \u043F\u043E\u0432\u0442\u043E\u0440\u044F\u0442\u044C \u043E\u0431\u043B\u0443\u0447\u0435\u043D\u0438\u044F, \u043F\u043E\u043A\u0430 \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0438\u0435 \u043D\u0435 \u0441\u0442\u0430\u043D\u0435\u0442 \u043C\u0435\u043D\u044C\u0448\u0435 \xB10,1 % \u0431\u0435\u0437 \u0442\u0440\u0435\u043D\u0434\u0430.`,`${d.r374}, \u0440\u0430\u0437\u0434. 4.4.2`)}let O=s("rd_kleak","\u041F\u043E\u043F\u0440\u0430\u0432\u043A\u0430 \u043D\u0430 \u0443\u0442\u0435\u0447\u043A\u0443");Number.isFinite(O)&&Math.abs(O-1)>.001&&r("warn","common","\u0423\u0442\u0435\u0447\u043A\u0430 \u0431\u043E\u043B\u044C\u0448\u0435 0,1 % \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F: \u043A\u0430\u043C\u0435\u0440\u0430 \u043D\u0435 \u043E\u0442\u0432\u0435\u0447\u0430\u0435\u0442 \u043A\u0440\u0438\u0442\u0435\u0440\u0438\u044E \u044D\u0442\u0430\u043B\u043E\u043D\u043D\u043E\u0433\u043E \u043A\u043B\u0430\u0441\u0441\u0430, \u043F\u0440\u0438\u0447\u0438\u043D\u0443 \u043D\u0443\u0436\u043D\u043E \u0432\u044B\u044F\u0441\u043D\u0438\u0442\u044C.",`${d.add}, \u0442\u0430\u0431\u043B. III; ${d.trs}, \u0442\u0430\u0431\u043B. 3`);let ee=S.n>0&&!S.error&&S.mean!==0,he=ee?Math.abs(S.mean):NaN,I=NaN;ee&&W.n>0&&!W.error&&(I=xe(S.mean,W.mean),Math.abs(I-1)>.004&&r("warn","common",`\u041F\u043E\u043F\u0440\u0430\u0432\u043A\u0430 \u043D\u0430 \u043F\u043E\u043B\u044F\u0440\u043D\u043E\u0441\u0442\u044C ${T(I,4)} \u043E\u0442\u043B\u0438\u0447\u0430\u0435\u0442\u0441\u044F \u043E\u0442 1 \u0431\u043E\u043B\u044C\u0448\u0435 \u0447\u0435\u043C \u043D\u0430 0,4 %: \u0434\u043B\u044F \u043A\u0430\u043C\u0435\u0440\u044B \u044D\u0442\u0430\u043B\u043E\u043D\u043D\u043E\u0433\u043E \u043A\u043B\u0430\u0441\u0441\u0430 \u044D\u0442\u043E \u043D\u0435\u043E\u0431\u044B\u0447\u043D\u043E.`,`${d.add}, \u0442\u0430\u0431\u043B. III; ${d.trs}, \u0442\u0430\u0431\u043B. 3`),Math.abs(I-1)>.003&&Number.isFinite(l)&&l<=6&&t.lab_pol_applied&&n&&r("info","tg51","P_pol \u043E\u0442\u043B\u0438\u0447\u0430\u0435\u0442\u0441\u044F \u043E\u0442 1 \u0431\u043E\u043B\u044C\u0448\u0435 \u0447\u0435\u043C \u043D\u0430 0,3 % \u043F\u0440\u0438 \u044D\u043D\u0435\u0440\u0433\u0438\u0438 \u2264 6 \u041C\u0412: TG-51 \u0442\u0440\u0435\u0431\u0443\u0435\u0442 \u0437\u043D\u0430\u0442\u044C P_pol \u0432 \u043F\u0443\u0447\u043A\u0435 \u043B\u0430\u0431\u043E\u0440\u0430\u0442\u043E\u0440\u0438\u0438. \u0415\u0441\u043B\u0438 \u043B\u0430\u0431\u043E\u0440\u0430\u0442\u043E\u0440\u0438\u044F \u043D\u0435 \u0432\u043D\u043E\u0441\u0438\u043B\u0430 \u043F\u043E\u043F\u0440\u0430\u0432\u043A\u0443 \u043D\u0430 \u043F\u043E\u043B\u044F\u0440\u043D\u043E\u0441\u0442\u044C, \u0441\u043D\u0438\u043C\u0438\u0442\u0435 \u043E\u0442\u043C\u0435\u0442\u043A\u0443 \u0432 \u0440\u0430\u0437\u0434\u0435\u043B\u0435 2 \u0438 \u0432\u0432\u0435\u0434\u0438\u0442\u0435 \u044D\u0442\u043E \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435.",`${d.tg51}, \u0440\u0430\u0437\u0434. VII.A`));let te=1;t.lab_pol_applied||(te=s("lab_kpol","\u041F\u043E\u043F\u0440\u0430\u0432\u043A\u0430 \u043D\u0430 \u043F\u043E\u043B\u044F\u0440\u043D\u043E\u0441\u0442\u044C \u043F\u0440\u0438 \u043A\u0430\u043B\u0438\u0431\u0440\u043E\u0432\u043A\u0435"));let ve=I/te,j=Math.abs(F)/Math.abs(B),re=ee&&R.n>0&&!R.error&&R.mean!==0&&Number.isFinite(j)&&j>1;ee&&R.n>0&&Math.sign(S.mean)!==Math.sign(R.mean)&&r("error","common","\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F \u043F\u0440\u0438 V\u2081 \u0438 V\u2082 \u0434\u043E\u043B\u0436\u043D\u044B \u0431\u044B\u0442\u044C \u0441\u043D\u044F\u0442\u044B \u043F\u0440\u0438 \u043E\u0434\u043D\u043E\u0439 \u0438 \u0442\u043E\u0439 \u0436\u0435 (\u043E\u0431\u044B\u0447\u043D\u043E\u0439) \u043F\u043E\u043B\u044F\u0440\u043D\u043E\u0441\u0442\u0438.");let Te=re?Math.abs(S.mean)/Math.abs(R.mean):NaN;re&&Te<1&&r("warn","common","\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u0435 \u043F\u0440\u0438 \u043F\u043E\u043D\u0438\u0436\u0435\u043D\u043D\u043E\u043C \u043D\u0430\u043F\u0440\u044F\u0436\u0435\u043D\u0438\u0438 \u0431\u043E\u043B\u044C\u0448\u0435, \u0447\u0435\u043C \u043F\u0440\u0438 \u0440\u0430\u0431\u043E\u0447\u0435\u043C: \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435, \u043D\u0435 \u043F\u0435\u0440\u0435\u043F\u0443\u0442\u0430\u043D\u044B \u043B\u0438 \u043F\u043E\u043B\u044F.");let H=1;t.lab_ks_applied||(H=s("lab_ks","\u041F\u043E\u043F\u0440\u0430\u0432\u043A\u0430 \u043D\u0430 \u0440\u0435\u043A\u043E\u043C\u0431\u0438\u043D\u0430\u0446\u0438\u044E \u043F\u0440\u0438 \u043A\u0430\u043B\u0438\u0431\u0440\u043E\u0432\u043A\u0435"));let w=$(t.prof_length);!Number.isFinite(w)&&b?.lengthMm&&(w=b.lengthMm);let K=$(t.prof_sdd);Number.isFinite(K)||(K=t.setup_geometry==="SAD"?100:110);let m={enabled:c};if(c){if(m.kTP=le({T:N,P:G,T0:P,P0:y,abs0:Ge}),m.kelec=p,m.kpol=ve,m.kpolRaw=I,m.kpolQ0=te,m.kleak=O,re){let a=Ie({m1:S.mean,m2:R.mean,v1:Math.abs(F),v2:Math.abs(B),beam:t.rd_beam});m.ksRaw=a.value,m.ksEquation=a.equation,a.error&&r("error","trs",a.error+".",`${d.trs}, \u0442\u0430\u0431\u043B. 10`),a.notes.forEach(k=>r("warn","trs",k+".",`${d.trs}, \u0440\u0430\u0437\u0434. 4.4.3.4`)),j<3-1e-9&&r("info","trs","TRS-398 \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0443\u0435\u0442 \u043E\u0442\u043D\u043E\u0448\u0435\u043D\u0438\u0435 \u043D\u0430\u043F\u0440\u044F\u0436\u0435\u043D\u0438\u0439 V\u2081/V\u2082 \u2265 3.",`${d.trs}, \u0440\u0430\u0437\u0434. 4.4.3.4`),m.ks=a.value/H,m.ksQ0=H,m.ks>1.05&&r("error","trs",`k_s = ${T(m.ks,4)} > 1,05: \u043C\u0435\u0442\u043E\u0434 \u0434\u0432\u0443\u0445 \u043D\u0430\u043F\u0440\u044F\u0436\u0435\u043D\u0438\u0439 \u043D\u0435\u043F\u0440\u0438\u043C\u0435\u043D\u0438\u043C, \u043D\u0443\u0436\u043D\u0430 \u0434\u0440\u0443\u0433\u0430\u044F \u043A\u0430\u043C\u0435\u0440\u0430 \u0438\u043B\u0438 \u0434\u0440\u0443\u0433\u043E\u0439 \u043C\u0435\u0442\u043E\u0434.`,`${d.trs}, \u0442\u0430\u0431\u043B. 3`)}else m.ks=NaN;let i=NaN;if(t.qtrs_method==="direct")i=s("qtrs_tpr","TPR20,10","trs"),m.tprEquation="\u0438\u0437\u043C\u0435\u0440\u0435\u043D\u043E";else if(t.qtrs_method==="ratio"){let a=ne(t.qtrs_m20),k=ne(t.qtrs_m10);a.n===0||k.n===0||a.error||k.error?r("error","trs","\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F \u043D\u0430 \u0433\u043B\u0443\u0431\u0438\u043D\u0430\u0445 20 \u0438 10 \u0441\u043C."):k.mean===0?r("error","trs","\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u0435 \u043D\u0430 \u0433\u043B\u0443\u0431\u0438\u043D\u0435 10 \u0441\u043C \u043D\u0435 \u043C\u043E\u0436\u0435\u0442 \u0431\u044B\u0442\u044C \u043D\u0443\u043B\u0435\u0432\u044B\u043C."):(i=Math.abs(a.mean)/Math.abs(k.mean),m.tprEquation="M(20 \u0441\u043C)/M(10 \u0441\u043C) \u043F\u0440\u0438 \u0420\u0418\u041A 100 \u0441\u043C")}else if(t.qtrs_method==="pdd2010"){let a=s("qtrs_pdd20","PDD(20)","trs"),k=s("qtrs_pdd10","PDD(10)","trs");Number.isFinite(k)&&k<=0&&r("error","trs","PDD(10) \u0434\u043E\u043B\u0436\u043D\u043E \u0431\u044B\u0442\u044C \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0443\u043B\u044F."),Number.isFinite(a)&&Number.isFinite(k)&&k>0&&(i=Qe(a/k),m.tprEquation="\u0441\u043D\u043E\u0441\u043A\u0430 36: 1,2661\xB7PDD20,10 \u2212 0,0595",u&&r("warn","trs","\u0424\u043E\u0440\u043C\u0443\u043B\u0430 TPR20,10 \u0447\u0435\u0440\u0435\u0437 PDD20,10 \u0432\u044B\u0432\u0435\u0434\u0435\u043D\u0430 \u0434\u043B\u044F \u043F\u0443\u0447\u043A\u043E\u0432 \u0441 \u0432\u044B\u0440\u0430\u0432\u043D\u0438\u0432\u0430\u044E\u0449\u0438\u043C \u0444\u0438\u043B\u044C\u0442\u0440\u043E\u043C; \u0434\u043B\u044F \u0411\u0412\u0424 \u0435\u0451 \u0442\u043E\u0447\u043D\u043E\u0441\u0442\u044C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430 \u043B\u0438\u0448\u044C \u0447\u0430\u0441\u0442\u0438\u0447\u043D\u043E.",`${d.trs}, \u0441\u043D\u043E\u0441\u043A\u0430 36`))}if(!Number.isNaN(i)&&(!Number.isFinite(i)||i<.5||i>.9)&&r("error","trs",`TPR20,10 = ${T(i,3)} \u043D\u0435\u043F\u0440\u0430\u0432\u0434\u043E\u043F\u043E\u0434\u043E\u0431\u043D\u043E: \u044D\u0442\u043E \u043E\u0442\u043D\u043E\u0448\u0435\u043D\u0438\u0435, \u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440 0,668.`),m.tpr=i,u&&Number.isFinite(l)&&l>10&&r("warn","trs","TRS-398 Rev.1 \u0440\u0430\u0441\u043F\u0440\u043E\u0441\u0442\u0440\u0430\u043D\u044F\u0435\u0442\u0441\u044F \u043D\u0430 \u043F\u0443\u0447\u043A\u0438 \u0411\u0412\u0424 \u0442\u043E\u043B\u044C\u043A\u043E \u0434\u043E ~10 \u041C\u0412.",`${d.trs}, \u0440\u0430\u0437\u0434. 6.1`),t.kqtrs_manual_on)m.kQ=s("kqtrs_manual","k_Q (TRS-398) \u0432\u0440\u0443\u0447\u043D\u0443\u044E","trs"),m.kQSource="\u0432\u0432\u0435\u0434\u0435\u043D\u043E \u0432\u0440\u0443\u0447\u043D\u0443\u044E (\u0438\u0437\u043C\u0435\u0440\u0435\u043D\u043E \u0432 \u043B\u0430\u0431\u043E\u0440\u0430\u0442\u043E\u0440\u0438\u0438)";else{let a=Le(b,i);t.ch_model==="OTHER"?r("error","trs","\u0414\u043B\u044F \u043A\u0430\u043C\u0435\u0440\u044B \u043D\u0435 \u0438\u0437 \u0441\u043F\u0438\u0441\u043A\u0430 \u0432\u0432\u0435\u0434\u0438\u0442\u0435 k_Q \u0432\u0440\u0443\u0447\u043D\u0443\u044E (\u0440\u0430\u0437\u0434\u0435\u043B 5)."):a.error&&b&&!b.trs?r("error","trs","\u0414\u043B\u044F \u044D\u0442\u043E\u0439 \u043A\u0430\u043C\u0435\u0440\u044B \u0432 TRS-398 Rev.1 \u043D\u0435\u0442 k_Q: \u0432\u0432\u0435\u0434\u0438\u0442\u0435 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435 \u0432\u0440\u0443\u0447\u043D\u0443\u044E.",`${d.trs}, \u0442\u0430\u0431\u043B. 45`):a.error&&Number.isFinite(i)&&b&&r("error","trs",a.error[0].toUpperCase()+a.error.slice(1)+".",`${d.trs}, \u0442\u0430\u0431\u043B. 16`),m.kQ=a.value,m.kQSource=a.source}(b?.notes||[]).filter(a=>a.scope==="trs").forEach(a=>r(a.level,"trs",a.text))}let _={enabled:n};if(n){_.PTP=le({T:N,P:G,T0:P,P0:y,abs0:De}),_.Pelec=p,_.Ppol=ve,_.PpolRaw=I,_.PpolQ0=te,_.Pleak=O,re?(_.PionRaw=qe({mH:S.mean,mL:R.mean,vH:Math.abs(F),vL:Math.abs(B),beam:"pulsed"}),j<2-1e-9&&r("warn","tg51","TG-51: \u043F\u043E\u043D\u0438\u0436\u0435\u043D\u043D\u043E\u0435 \u043D\u0430\u043F\u0440\u044F\u0436\u0435\u043D\u0438\u0435 \u0434\u043E\u043B\u0436\u043D\u043E \u0431\u044B\u0442\u044C \u043C\u0435\u043D\u044C\u0448\u0435 \u0440\u0430\u0431\u043E\u0447\u0435\u0433\u043E \u043A\u0430\u043A \u043C\u0438\u043D\u0438\u043C\u0443\u043C \u0432\u0434\u0432\u043E\u0435.",`${d.tg51}, \u0440\u0430\u0437\u0434. VII.D.2`),_.PionRaw>1.05&&r("error","tg51",`P_ion = ${T(_.PionRaw,4)} > 1,05: \u043D\u0435\u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0451\u043D\u043D\u043E\u0441\u0442\u044C \u043F\u043E\u043F\u0440\u0430\u0432\u043A\u0438 \u043D\u0435\u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C\u0430, \u043D\u0443\u0436\u043D\u0430 \u0434\u0440\u0443\u0433\u0430\u044F \u043A\u0430\u043C\u0435\u0440\u0430.`,`${d.tg51}, \u0440\u0430\u0437\u0434. VII.D.1`),_.Pion=_.PionRaw/H,_.PionQ0=H,t.lab_ks_applied||r("info","tg51","TG-51 \u043F\u0440\u0435\u0434\u043F\u043E\u043B\u0430\u0433\u0430\u0435\u0442, \u0447\u0442\u043E N_D,w \u043E\u0442\u043D\u0435\u0441\u0451\u043D \u043A \u043F\u043E\u043B\u043D\u043E\u043C\u0443 \u0441\u043E\u0431\u0438\u0440\u0430\u043D\u0438\u044E \u0437\u0430\u0440\u044F\u0434\u0430. \u0420\u0430\u0437 \u043B\u0430\u0431\u043E\u0440\u0430\u0442\u043E\u0440\u0438\u044F \u043D\u0435 \u0432\u043D\u043E\u0441\u0438\u043B\u0430 \u043F\u043E\u043F\u0440\u0430\u0432\u043A\u0443 \u043D\u0430 \u0440\u0435\u043A\u043E\u043C\u0431\u0438\u043D\u0430\u0446\u0438\u044E, P_ion \u043F\u043E\u0434\u0435\u043B\u0451\u043D \u043D\u0430 \u0435\u0451 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435 \u043F\u0440\u0438 \u043A\u0430\u043B\u0438\u0431\u0440\u043E\u0432\u043A\u0435.",`${d.tg51}, \u0443\u0440. (7), \u0440\u0430\u0437\u0434. VII.D.1`)):_.Pion=NaN;let i=Ee({method:t.q51_method,pdd10:$(t.q51_pdd10),pdd10Pb:$(t.q51_pdd10pb),manual:$(t.q51_manual)});if(i.error&&r("error","tg51",i.error[0].toUpperCase()+i.error.slice(1)+".",`${d.tg51}, \u0440\u0430\u0437\u0434. VIII.B`),_.pdd10x=i.value,_.pdd10xEquation=i.equation,u&&t.q51_method==="interim"?r("error","tg51","\u041F\u0440\u043E\u043C\u0435\u0436\u0443\u0442\u043E\u0447\u043D\u0430\u044F \u0444\u043E\u0440\u043C\u0443\u043B\u0430 (15) \u0432\u0435\u0440\u043D\u0430 \u0442\u043E\u043B\u044C\u043A\u043E \u0434\u043B\u044F \u043F\u0443\u0447\u043A\u043E\u0432 \u0441 \u0432\u044B\u0440\u0430\u0432\u043D\u0438\u0432\u0430\u044E\u0449\u0438\u043C \u0444\u0438\u043B\u044C\u0442\u0440\u043E\u043C; \u0434\u043B\u044F \u0411\u0412\u0424 \u0438\u0437\u043C\u0435\u0440\u044C\u0442\u0435 %dd(10)Pb \u0441\u043E \u0441\u0432\u0438\u043D\u0446\u043E\u0432\u043E\u0439 \u0444\u043E\u043B\u044C\u0433\u043E\u0439.",`${d.add}, \u0440\u0430\u0437\u0434. 4.K(3)`):u&&t.q51_method==="open"?r("warn","tg51","\u0414\u043B\u044F \u0432\u0441\u0435\u0445 \u043F\u0443\u0447\u043A\u043E\u0432 \u0411\u0412\u0424, \u0432 \u0442\u043E\u043C \u0447\u0438\u0441\u043B\u0435 \u043D\u0438\u0436\u0435 10 \u041C\u0412, %dd(10) \u0438\u0437\u043C\u0435\u0440\u044F\u044E\u0442 \u0441\u043E \u0441\u0432\u0438\u043D\u0446\u043E\u0432\u043E\u0439 \u0444\u043E\u043B\u044C\u0433\u043E\u0439.",`${d.add}, \u0440\u0430\u0437\u0434. 4.K(3); ${d.r374}, \u0440\u0430\u0437\u0434. 3.3`):t.q51_method==="interim"&&!i.error&&r("info","tg51","\u0424\u043E\u0440\u043C\u0443\u043B\u0430 (15) \u0431\u0435\u0437 \u0444\u043E\u043B\u044C\u0433\u0438 \u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C\u0430 \u0442\u043E\u043B\u044C\u043A\u043E \u0434\u043B\u044F \u043F\u0443\u0447\u043A\u043E\u0432 \u0441 \u0444\u0438\u043B\u044C\u0442\u0440\u043E\u043C \u0438 \u043F\u0440\u0438 \u0440\u0430\u0441\u0441\u0442\u043E\u044F\u043D\u0438\u0438 \u043E\u0442 \u0448\u0442\u043E\u0440\u043E\u043A \u0434\u043E \u043F\u043E\u0432\u0435\u0440\u0445\u043D\u043E\u0441\u0442\u0438 \u0432\u043E\u0434\u044B \u043D\u0435 \u043C\u0435\u043D\u044C\u0448\u0435 45 \u0441\u043C; \u0432 \u0431\u044E\u0434\u0436\u0435\u0442 \u043D\u0435\u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0451\u043D\u043D\u043E\u0441\u0442\u0438 \u0434\u043E\u0431\u0430\u0432\u043B\u044F\u044E\u0442 \u043A\u043E\u043C\u043F\u043E\u043D\u0435\u043D\u0442 (\u043E\u0448\u0438\u0431\u043A\u0430 k_Q \u0434\u043E ~0,2 %).",`${d.tg51}, \u0440\u0430\u0437\u0434. VIII.B; ${d.add}, \u0440\u0430\u0437\u0434. 4.H`),(t.q51_method==="foil50"||t.q51_method==="foil30")&&!i.error&&r("info","tg51","\u0423\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u0432\u0438\u043D\u0446\u043E\u0432\u0443\u044E \u0444\u043E\u043B\u044C\u0433\u0443 \u043F\u0435\u0440\u0435\u0434 \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u0435\u043C \u0434\u043E\u0437\u044B: \u0437\u0430\u0431\u044B\u0442\u0430\u044F \u0444\u043E\u043B\u044C\u0433\u0430 \u0434\u0430\u0451\u0442 \u043E\u0448\u0438\u0431\u043A\u0443 \u0434\u043E 5 %.",`${d.r374}, \u0440\u0430\u0437\u0434. 3.3`),t.kq51_manual_on)_.kQ=s("kq51_manual","k_Q (TG-51) \u0432\u0440\u0443\u0447\u043D\u0443\u044E","tg51"),_.kQSource="\u0432\u0432\u0435\u0434\u0435\u043D\u043E \u0432\u0440\u0443\u0447\u043D\u0443\u044E";else{let a=Ae(b,i.value);t.ch_model==="OTHER"?r("error","tg51","\u0414\u043B\u044F \u043A\u0430\u043C\u0435\u0440\u044B \u043D\u0435 \u0438\u0437 \u0441\u043F\u0438\u0441\u043A\u0430 \u0432\u0432\u0435\u0434\u0438\u0442\u0435 k_Q \u0432\u0440\u0443\u0447\u043D\u0443\u044E (\u0440\u0430\u0437\u0434\u0435\u043B 5)."):a.error&&b&&!b.tg51&&!b.tg51Legacy?r("error","tg51","\u0414\u043B\u044F \u044D\u0442\u043E\u0439 \u043A\u0430\u043C\u0435\u0440\u044B \u0432 TG-51 \u043D\u0435\u0442 k_Q: \u0432\u0432\u0435\u0434\u0438\u0442\u0435 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435 \u0432\u0440\u0443\u0447\u043D\u0443\u044E.",`${d.add}, \u0442\u0430\u0431\u043B. I`):a.error&&b&&Number.isFinite(i.value)&&r("error","tg51",a.error[0].toUpperCase()+a.error.slice(1)+".",`${d.add}, \u0442\u0430\u0431\u043B. I`),_.kQ=a.value,_.kQSource=a.source,b?.tg51Legacy&&r("info","tg51","\u0414\u043B\u044F \u044D\u0442\u043E\u0439 \u043A\u0430\u043C\u0435\u0440\u044B \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044E\u0442\u0441\u044F \u0434\u0430\u043D\u043D\u044B\u0435 \u0438\u0441\u0445\u043E\u0434\u043D\u043E\u0433\u043E TG-51 (1999): \u0432 \u0430\u0434\u0434\u0435\u043D\u0434\u0443\u043C\u0435 \u0435\u0451 \u043D\u0435\u0442.",`${d.add}, \u0440\u0430\u0437\u0434. 3.E`)}(b?.notes||[]).filter(a=>a.scope==="tg51").forEach(a=>r(a.level,"tg51",a.text))}let x={value:1,method:"\u043D\u0435 \u043F\u0440\u0438\u043C\u0435\u043D\u044F\u0435\u0442\u0441\u044F"};if(t.prof_mode==="none")u&&r("warn","common","\u041F\u0443\u0447\u043E\u043A \u0411\u0412\u0424: \u0431\u0435\u0437 \u043F\u043E\u043F\u0440\u0430\u0432\u043A\u0438 \u043D\u0430 \u0443\u0441\u0440\u0435\u0434\u043D\u0435\u043D\u0438\u0435 \u043F\u043E \u043E\u0431\u044A\u0451\u043C\u0443 (k_vol, P_rp) \u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C\u043E \u043E\u0431\u0445\u043E\u0434\u0438\u0442\u044C\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u0441 \u043A\u043E\u0440\u043E\u0442\u043A\u043E\u0439 \u043A\u0430\u043C\u0435\u0440\u043E\u0439. \u0414\u043B\u044F \u0424\u0430\u0440\u043C\u0435\u0440\u0430 \u0432 \u043F\u0443\u0447\u043A\u0435 \u0411\u0412\u0424 \u043E\u0448\u0438\u0431\u043A\u0430 \u0434\u043E\u0445\u043E\u0434\u0438\u0442 \u0434\u043E 0,7 %.",`${d.trs}, \u0440\u0430\u0437\u0434. 4.4.3.5; ${d.add}, \u0440\u0430\u0437\u0434. 4.K(2); ${d.r374}, \u0440\u0430\u0437\u0434. 4.5`);else if(t.prof_mode==="manual")x={value:s("prof_value","k_vol / P_rp"),method:"\u0432\u0432\u0435\u0434\u0435\u043D\u043E \u0432\u0440\u0443\u0447\u043D\u0443\u044E"};else if(t.prof_mode==="profile"){let i=Ue(t.prof_text);if(i.error)r("error","common",`\u041F\u0440\u043E\u0444\u0438\u043B\u044C: ${i.error}.`);else if(!Number.isFinite(w))r("error","common","\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0434\u043B\u0438\u043D\u0443 \u043F\u043E\u043B\u043E\u0441\u0442\u0438 \u043A\u0430\u043C\u0435\u0440\u044B (\u043C\u043C) \u0434\u043B\u044F \u0440\u0430\u0441\u0447\u0451\u0442\u0430 \u043F\u043E \u043F\u0440\u043E\u0444\u0438\u043B\u044E.");else{let a=We(i.points,w);a.error&&r("error","common",`\u041F\u0440\u043E\u0444\u0438\u043B\u044C: ${a.error}.`),x={value:a.value,method:`\u043F\u043E \u043F\u0440\u043E\u0444\u0438\u043B\u044E, L = ${w} \u043C\u043C`,mean:a.mean,points:i.points.length},u&&n&&r("info","tg51","\u0414\u043B\u044F \u043F\u0443\u0447\u043A\u043E\u0432 \u0411\u0412\u0424 \u0430\u0434\u0434\u0435\u043D\u0434\u0443\u043C TG-51 \u0434\u043E\u043F\u0443\u0441\u043A\u0430\u0435\u0442, \u0447\u0442\u043E \u043C\u043E\u0436\u0435\u0442 \u043F\u043E\u043D\u0430\u0434\u043E\u0431\u0438\u0442\u044C\u0441\u044F \u0434\u0432\u0443\u043C\u0435\u0440\u043D\u044B\u0439 \u043F\u0440\u043E\u0444\u0438\u043B\u044C; \u0437\u0434\u0435\u0441\u044C \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442\u0441\u044F \u043E\u0434\u043D\u043E\u043C\u0435\u0440\u043D\u043E\u0435 \u0443\u0441\u0440\u0435\u0434\u043D\u0435\u043D\u0438\u0435 \u0432\u0434\u043E\u043B\u044C \u043E\u0441\u0438 \u043A\u0430\u043C\u0435\u0440\u044B (\u043A\u0430\u043A \u0432 \u0443\u0440. (21) TRS-398).",`${d.add}, \u0440\u0430\u0437\u0434. 5.C.7`)}}else if(t.prof_mode==="generic"){let i=m.tpr;c?Number.isFinite(w)?Number.isFinite(i)&&(x={value:Ve({tpr:i,lengthCm:w/10,sddCm:K}),method:`\u0443\u0440. (22) TRS-398: L = ${w} \u043C\u043C, \u0420\u0418\u0414 = ${K} \u0441\u043C`},u||r("warn","common","\u0424\u043E\u0440\u043C\u0443\u043B\u0430 (22) \u043F\u0440\u0435\u0434\u043D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u0430 \u0434\u043B\u044F \u043F\u0443\u0447\u043A\u043E\u0432 \u0411\u0412\u0424.",`${d.trs}, \u0440\u0430\u0437\u0434. 4.4.3.5`),n&&r("info","tg51","\u0412 TG-51 P_rp \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u044F\u044E\u0442 \u043F\u043E \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u043D\u043E\u043C\u0443 \u043F\u0440\u043E\u0444\u0438\u043B\u044E; \u0437\u0434\u0435\u0441\u044C \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0430 \u043E\u0431\u0449\u0430\u044F \u043E\u0446\u0435\u043D\u043A\u0430 \u043F\u043E \u0443\u0440. (22) TRS-398.",`${d.r374}, \u0443\u0440. (8)`)):r("error","common","\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0434\u043B\u0438\u043D\u0443 \u043F\u043E\u043B\u043E\u0441\u0442\u0438 \u043A\u0430\u043C\u0435\u0440\u044B (\u043C\u043C) \u0434\u043B\u044F \u0444\u043E\u0440\u043C\u0443\u043B\u044B (22)."):r("error","common","\u041E\u0431\u0449\u0430\u044F \u0444\u043E\u0440\u043C\u0443\u043B\u0430 (22) TRS-398 \u0442\u0440\u0435\u0431\u0443\u0435\u0442 TPR20,10: \u0432\u043A\u043B\u044E\u0447\u0438\u0442\u0435 \u043F\u0440\u043E\u0442\u043E\u043A\u043E\u043B TRS-398 \u0438\u043B\u0438 \u0437\u0430\u0434\u0430\u0439\u0442\u0435 \u043F\u043E\u043F\u0440\u0430\u0432\u043A\u0443 \u0438\u043D\u0430\u0447\u0435.")}Number.isFinite(x.value)&&(x.value<.99||x.value>1.03)&&r("warn","common",`\u041F\u043E\u043F\u0440\u0430\u0432\u043A\u0430 \u043D\u0430 \u043F\u0440\u043E\u0444\u0438\u043B\u044C ${T(x.value,4)} \u043D\u0435\u043E\u0431\u044B\u0447\u043D\u043E \u0432\u0435\u043B\u0438\u043A\u0430: \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043F\u0440\u043E\u0444\u0438\u043B\u044C \u0438 \u0434\u043B\u0438\u043D\u0443 \u043A\u0430\u043C\u0435\u0440\u044B.`),m.kvol=x.value,_.Prp=x.value;let g={on:!!t.dd_on,geometry:t.setup_geometry};if(g.on){if(t.setup_geometry==="SAD"){let i=s("dd_tmr","TMR(10) \u0434\u043B\u044F \u043F\u0435\u0440\u0435\u0441\u0447\u0451\u0442\u0430 \u043D\u0430 d_max");Number.isFinite(i)&&(i<=.2||i>1)&&r("error","common","TMR(10) \u0432\u0432\u043E\u0434\u0438\u0442\u0441\u044F \u043A\u0430\u043A \u043E\u0442\u043D\u043E\u0448\u0435\u043D\u0438\u0435 (\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, 0,736), \u0430 \u043D\u0435 \u0432 \u043F\u0440\u043E\u0446\u0435\u043D\u0442\u0430\u0445."),g.factor=i,g.label="TMR(10, 10\xD710)"}else{let i=s("dd_pdd","PDD(10) \u0434\u043B\u044F \u043F\u0435\u0440\u0435\u0441\u0447\u0451\u0442\u0430 \u043D\u0430 d_max");Number.isFinite(i)&&(i<20||i>100)&&r("error","common","PDD(10) \u0432\u0432\u043E\u0434\u0438\u0442\u0441\u044F \u0432 \u043F\u0440\u043E\u0446\u0435\u043D\u0442\u0430\u0445, \u043E\u0442 20 \u0434\u043E 100."),g.factor=i/100,g.label="PDD(10)/100"}g.nominal=s("dd_nominal","\u041D\u043E\u043C\u0438\u043D\u0430\u043B\u044C\u043D\u044B\u0439 \u0432\u044B\u0445\u043E\u0434 \u043D\u0430 d_max")}let ge=(i,a,k)=>{i.M=a,i.D=a*k*C,i.DperMU=i.D*100/Z,g.on&&Number.isFinite(g.factor)&&(i.Dmax=i.D/g.factor,i.DmaxPerMU=i.DperMU/g.factor,Number.isFinite(g.nominal)&&g.nominal>0&&(i.deviation=(i.DmaxPerMU/g.nominal-1)*100)),i.ok=Number.isFinite(i.D)&&i.D>0};if(c){let i=he*m.kTP*m.kelec*m.kpol*m.ks*m.kleak*m.kvol;ge(m,i,m.kQ)}if(n){let i=he*_.PTP*_.Pion*_.Ppol*_.Pelec*_.Pleak*_.Prp;ge(_,i,_.kQ)}let Je=n&&(t.q51_method==="open"||t.q51_method==="interim")?$(t.q51_pdd10):NaN,Xe=g.on&&t.setup_geometry==="SSD"?$(t.dd_pdd):NaN,V=[Je,Xe].find(Number.isFinite),Pe=null;if(c&&Number.isFinite(m.tpr)&&Number.isFinite(V)&&V>50&&V<90){let i=Be(V),a=(m.tpr/i-1)*100;Pe={pdd10:V,tprEstimate:i,diff:a},Math.abs(a)>1.5&&r("warn","trs",`TPR20,10 = ${T(m.tpr,3)} \u0440\u0430\u0441\u0445\u043E\u0434\u0438\u0442\u0441\u044F \u0441 \u043E\u0446\u0435\u043D\u043A\u043E\u0439 \u043F\u043E PDD(10) = ${V} % (${T(i,3)}) \u043D\u0430 ${T(a,1)} %: \u043F\u0435\u0440\u0435\u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u043E \u043F\u0443\u0447\u043A\u0430.`,`${d.trs}, \u0441\u043D\u043E\u0441\u043A\u0430 36`)}[m.deviation,_.deviation].filter(Number.isFinite).some(i=>Math.abs(i)>2)&&r("warn","common","\u041E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0438\u0435 \u043E\u0442 \u043D\u043E\u043C\u0438\u043D\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0432\u044B\u0445\u043E\u0434\u0430 \u0431\u043E\u043B\u044C\u0448\u0435 2 %: \u043F\u0435\u0440\u0435\u0434 \u043F\u043E\u0434\u0441\u0442\u0440\u043E\u0439\u043A\u043E\u0439 \u0443\u0441\u043A\u043E\u0440\u0438\u0442\u0435\u043B\u044F \u043F\u0435\u0440\u0435\u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0432\u0432\u043E\u0434 \u0438 \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u044F.");let $e=null;n&&c&&_.ok&&m.ok&&($e={dRel:(_.D/m.D-1)*100});let Ne=i=>o.some(a=>a.level==="error"&&(a.scope==="common"||a.scope===i));c&&!m.ok&&!Ne("trs")&&r("error","trs","\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0432\u044B\u0447\u0438\u0441\u043B\u0438\u0442\u044C \u0434\u043E\u0437\u0443: \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u043E \u043F\u0443\u0447\u043A\u0430 \u0438 k_Q."),n&&!_.ok&&!Ne("tg51")&&r("error","tg51","\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0432\u044B\u0447\u0438\u0441\u043B\u0438\u0442\u044C \u0434\u043E\u0437\u0443: \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u043E \u043F\u0443\u0447\u043A\u0430 \u0438 k_Q.");let Me={error:0,warn:1,info:2};o.sort((i,a)=>Me[i.level]-Me[a.level]);let Ce=i=>o.some(a=>a.level==="error"&&(a.scope==="common"||a.scope===i));return m.blocked=c&&Ce("trs"),_.blocked=n&&Ce("tg51"),{protocol:t.protocol,chamber:b,inputs:{T:N,P:G,T0:P,P0:y,mu:Z,V1:F,V2:B,nV:j,ndw:C,ndwRaw:D,kelec:p,kleak:O,energy:l,fff:u,M1:S,Mopp:W,M2:R,ratio12:Te,lengthMm:w,sddCm:K},profile:x,depth:g,trs:m,tg51:_,comparison:$e,cross:Pe,messages:o,hasErrors:o.some(i=>i.level==="error")}}var X={...E,protocol:"both",meta_institution:"\u041F\u0440\u0438\u043C\u0435\u0440",meta_machine:"\u041B\u0438\u043D\u0435\u0439\u043D\u044B\u0439 \u0443\u0441\u043A\u043E\u0440\u0438\u0442\u0435\u043B\u044C (\u0434\u0435\u043C\u043E)",meta_beam:"6 \u041C\u0412",meta_energy:"6",meta_fff:!1,meta_physicist:"",meta_notes:"\u0414\u0435\u043C\u043E\u043D\u0441\u0442\u0440\u0430\u0446\u0438\u043E\u043D\u043D\u044B\u0435 \u0434\u0430\u043D\u043D\u044B\u0435, \u043D\u0435 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B \u0440\u0435\u0430\u043B\u044C\u043D\u044B\u0445 \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u0439.",setup_geometry:"SSD",ch_model:"PTW30013",ch_serial:"000000",ch_ndw:"0,05335",ch_ndw_unit:"Gy/nC",ch_T0:"20",ch_P0:"101,325",el_model:"\u042D\u043B\u0435\u043A\u0442\u0440\u043E\u043C\u0435\u0442\u0440 (\u0434\u0435\u043C\u043E)",el_kelec:"1,000",env_T:"21,4",env_P:"99,62",env_P_unit:"kPa",rd_mu:"100",rd_polarity:"+",rd_V1:"300",rd_V2:"100",rd_beam:"pulsed",rd_M1:"12,346 12,348 12,345",rd_Mopp:"-12,339 -12,341",rd_M2:"12,302 12,304",rd_kleak:"1,000",q51_method:"open",q51_pdd10:"66,4",qtrs_method:"direct",qtrs_tpr:"0,668",prof_mode:"none",dd_on:!0,dd_pdd:"66,4",dd_nominal:"1,000"};var Ke="reference-dosimetry.photons.v1",be={app:"reference-dosimetry",module:"photons",version:1},ct=(()=>{try{return window.self!==window.top}catch{return!0}})(),h=(e,t=document)=>t.querySelector(e),Q=(e,t=document)=>Array.from(t.querySelectorAll(e)),fe=new Map;function f(e,t=4){return Number.isFinite(e)?(fe.has(t)||fe.set(t,new Intl.NumberFormat("ru-RU",{minimumFractionDigits:t,maximumFractionDigits:t,useGrouping:!1})),fe.get(t).format(e).replace("-","\u2212")):"\u2014"}function U(e,t=2){return Number.isFinite(e)?(e>0?"+":e<0?"\u2212":"\xB1")+f(Math.abs(e),t):"\u2014"}function Y(e){return String(e??"").replace(/[&<>"']/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[t])}function _e(e,t){return t.split(".").reduce((o,r)=>o?.[r],e)}function mt(){let e=h("#ch_model"),t=new Map;for(let r of ce)t.has(r.maker)||t.set(r.maker,[]),t.get(r.maker).push(r);let o=['<option value="">\u2014 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043A\u0430\u043C\u0435\u0440\u0443 \u2014</option>'];for(let[r,n]of t){o.push(`<optgroup label="${Y(r)}">`);for(let c of n){let u=[c.tg51||c.tg51Legacy?"TG-51":null,c.trs?"TRS-398":null].filter(Boolean).join(", ");o.push(`<option value="${c.id}">${Y(c.model)}${c.note?" \u2014 "+Y(c.note):""} [${u}]</option>`)}o.push("</optgroup>")}o.push('<option value="OTHER">\u0414\u0440\u0443\u0433\u0430\u044F \u043A\u0430\u043C\u0435\u0440\u0430 (k_Q \u0432\u0440\u0443\u0447\u043D\u0443\u044E)</option>'),e.innerHTML=o.join(""),h("#ch_ndw_unit").innerHTML=Object.entries(ie).map(([r,n])=>`<option value="${r}">${n.label}</option>`).join(""),h("#env_P_unit").innerHTML=Object.entries(se).map(([r,n])=>`<option value="${r}">${n.label}</option>`).join("")}function dt(){let e={};for(let t of Object.keys(E)){if(t==="protocol"){e.protocol=h('input[name="protocol"]:checked')?.value??"trs";continue}let o=document.getElementById(t);o&&(e[t]=o.type==="checkbox"?o.checked:o.value)}return e}function ae(e){let t={...E,...e};for(let[o,r]of Object.entries(t)){if(o==="protocol"){let c=document.getElementById(`protocol_${r}`);c&&(c.checked=!0);continue}let n=document.getElementById(o);n&&(n.type==="checkbox"?n.checked=!!r:n.value=r??"")}}function ut(e){let t=e.protocol;for(let o of Q("[data-protocol]")){let r=o.dataset.protocol;o.hidden=!(t==="both"||t===r)}for(let o of Q("[data-show]")){let r=o.dataset.show.split(";").every(n=>{let[c,u]=n.split(":"),l=e[c],s=typeof l=="boolean"?String(l):l;return u.split(",").includes(s)});o.hidden=!r}for(let o of Q("[data-standalone]"))o.hidden=ct}function pt(e,t){let o={...e,crossText:ft(e)};for(let l of Q("[data-out]")){let s=_e(o,l.dataset.out);l.dataset.abs&&Number.isFinite(s)&&(s=Math.abs(s)),l.textContent=f(s,Number(l.dataset.digits??4))}for(let l of Q("[data-out-text]")){let s=_e(o,l.dataset.outText);l.textContent=s?String(s):""}for(let l of Q("[data-out-sd]")){let s=_e(o,l.dataset.outSd);l.textContent=s&&s.n>1?`(n = ${s.n}, s = ${f((s.relSd||0)*100,3)} %)`:s&&s.n===1?"(n = 1)":""}let r=J(t.ch_model),n=h("#chamber-info");if(r){let l=[];r.rCavMm&&l.push(`\u0440\u0430\u0434\u0438\u0443\u0441 \u043F\u043E\u043B\u043E\u0441\u0442\u0438 ${f(r.rCavMm,2)} \u043C\u043C`),r.lengthMm&&l.push(`\u0434\u043B\u0438\u043D\u0430 \u043F\u043E\u043B\u043E\u0441\u0442\u0438 ${f(r.lengthMm,1)} \u043C\u043C`);let s=[r.tg51?"\u0430\u0434\u0434\u0435\u043D\u0434\u0443\u043C TG-51":r.tg51Legacy?"TG-51 (1999)":null,r.trs?"TRS-398 Rev.1":null].filter(Boolean);l.push(`\u0434\u0430\u043D\u043D\u044B\u0435 k_Q: ${s.join(", ")}`),n.textContent=l.join(" \xB7 ")}else t.ch_model==="OTHER"?n.textContent="\u0414\u043B\u044F \u043A\u0430\u043C\u0435\u0440\u044B \u043D\u0435 \u0438\u0437 \u0441\u043F\u0438\u0441\u043A\u0430 k_Q \u0432\u0432\u043E\u0434\u0438\u0442\u0441\u044F \u0432\u0440\u0443\u0447\u043D\u0443\u044E \u0432 \u0440\u0430\u0437\u0434\u0435\u043B\u0435 5.":n.textContent="";let c=h("#shift-hint");c.textContent=r?.rCavMm?`\u041A\u0430\u0447\u0435\u0441\u0442\u0432\u043E \u043F\u0443\u0447\u043A\u0430 \u0438\u0437\u043C\u0435\u0440\u044F\u044E\u0442 \u043F\u0440\u0438 \u043A\u0430\u0436\u0434\u043E\u0439 \u0440\u0435\u0444\u0435\u0440\u0435\u043D\u0441\u043D\u043E\u0439 \u0434\u043E\u0437\u0438\u043C\u0435\u0442\u0440\u0438\u0438. \u041A\u0440\u0438\u0432\u0443\u044E \u0438\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u0438 \u0446\u0438\u043B\u0438\u043D\u0434\u0440\u0438\u0447\u0435\u0441\u043A\u043E\u0439 \u043A\u0430\u043C\u0435\u0440\u044B \u0441\u0434\u0432\u0438\u0433\u0430\u044E\u0442 \u043A \u043F\u043E\u0432\u0435\u0440\u0445\u043D\u043E\u0441\u0442\u0438 \u043D\u0430 0,6\xB7r = ${f(.6*r.rCavMm,1)} \u043C\u043C.`:"\u041A\u0430\u0447\u0435\u0441\u0442\u0432\u043E \u043F\u0443\u0447\u043A\u0430 \u0438\u0437\u043C\u0435\u0440\u044F\u044E\u0442 \u043F\u0440\u0438 \u043A\u0430\u0436\u0434\u043E\u0439 \u0440\u0435\u0444\u0435\u0440\u0435\u043D\u0441\u043D\u043E\u0439 \u0434\u043E\u0437\u0438\u043C\u0435\u0442\u0440\u0438\u0438.";let u=h("#length-hint");u.textContent=r?.lengthMm?`\u0415\u0441\u043B\u0438 \u043E\u0441\u0442\u0430\u0432\u0438\u0442\u044C \u043F\u0443\u0441\u0442\u044B\u043C, \u0432\u043E\u0437\u044C\u043C\u0451\u0442\u0441\u044F ${f(r.lengthMm,1)} \u043C\u043C \u0438\u0437 \u0442\u0430\u0431\u043B. 4 TRS-398.`:"\u0414\u043B\u0438\u043D\u0430 \u043F\u043E\u043B\u043E\u0441\u0442\u0438 \u043F\u043E \u0434\u0430\u043D\u043D\u044B\u043C \u043F\u0440\u043E\u0438\u0437\u0432\u043E\u0434\u0438\u0442\u0435\u043B\u044F."}function ft(e){return e.cross?`\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C: \u043E\u0446\u0435\u043D\u043A\u0430 TPR20,10 \u043F\u043E PDD(10) = ${f(e.cross.pdd10,1)} % \u0434\u0430\u0451\u0442 ${f(e.cross.tprEstimate,3)} (\u0440\u0430\u0441\u0445\u043E\u0436\u0434\u0435\u043D\u0438\u0435 ${U(e.cross.diff,1)} %, \u0444\u043E\u0440\u043C\u0443\u043B\u0430 \u0441\u043D\u043E\u0441\u043A\u0438 36 \u0442\u043E\u043B\u044C\u043A\u043E \u0434\u043B\u044F \u043E\u0446\u0435\u043D\u043A\u0438).`:""}var ke={trs:{name:"TRS-398 Rev.1"},tg51:{name:"TG-51 + \u0430\u0434\u0434\u0435\u043D\u0434\u0443\u043C 2014"}};function _t(e,t,o){let r=o.depth.on&&Number.isFinite(t.DmaxPerMU),n=r?t.DmaxPerMU:t.DperMU,c=r?"\u0441\u0413\u0440/\u041C\u0415 \u043D\u0430 d<sub>max</sub>":"\u0441\u0413\u0440/\u041C\u0415 \u043D\u0430 10 \u0441\u043C",u="";r&&Number.isFinite(t.deviation)&&!t.blocked&&(u=`<span class="chip ${Math.abs(t.deviation)<=1?"good":Math.abs(t.deviation)>2?"bad":""}" title="\u041E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0438\u0435 \u043E\u0442 \u043D\u043E\u043C\u0438\u043D\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0432\u044B\u0445\u043E\u0434\u0430">${U(t.deviation,2)} %</span>`);let l=o.inputs.mu,s=[`D<sub>w</sub>(10 \u0441\u043C) = ${f(t.D,4)} \u0413\u0440${Number.isFinite(l)?` \u0437\u0430 ${f(l,0)} \u041C\u0415`:""}`,r?`${f(t.DperMU,4)} \u0441\u0413\u0440/\u041C\u0415 \u043D\u0430 10 \u0441\u043C`:null].filter(Boolean).join(" \xB7 ");return`<div class="dose-row ${t.blocked?"blocked":""}">
+    <div class="proto"><span>${ke[e].name}</span>${u}</div>
+    <div class="dose-big">${t.blocked?"\u2014":f(n,4)}<small>${c}</small></div>
+    <div class="secondary">${t.blocked?"\u0418\u0441\u043F\u0440\u0430\u0432\u044C\u0442\u0435 \u043E\u0448\u0438\u0431\u043A\u0438 \u0432 \u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u044F\u0445":s}</div>
+  </div>`}function bt(e,t){let o=t.protocol==="both"?["trs","tg51"]:[t.protocol];h("#dose-rows").innerHTML=o.map(p=>_t(p,p==="trs"?e.trs:e.tg51,e)).join("");let r=h("#delta");e.comparison&&!e.trs.blocked&&!e.tg51.blocked?(r.hidden=!1,r.innerHTML=`TG-51 \u043E\u0442\u043D\u043E\u0441\u0438\u0442\u0435\u043B\u044C\u043D\u043E TRS-398: <b>${U(e.comparison.dRel,2)} %</b>`):r.hidden=!0;let n=o.map(p=>({k:p,x:p==="trs"?e.trs:e.tg51})).find(p=>!p.x.blocked&&p.x.ok),c=h("#mobile-value");if(n){let p=e.depth.on&&Number.isFinite(n.x.DmaxPerMU)?n.x.DmaxPerMU:n.x.DperMU;c.innerHTML=`${n.k==="trs"?"TRS":"TG-51"}: <b>${f(p,4)}</b> \u0441\u0413\u0440/\u041C\u0415${Number.isFinite(n.x.deviation)?` (${U(n.x.deviation,2)} %)`:""}`}else{let p=e.messages.filter(N=>N.level==="error").length;c.textContent=p?`\u041E\u0448\u0438\u0431\u043E\u043A: ${p}`:"\u2014"}let u={error:"\u041E\u0448\u0438\u0431\u043A\u0430",warn:"\u0412\u043D\u0438\u043C\u0430\u043D\u0438\u0435",info:"\u0421\u043F\u0440\u0430\u0432\u043A\u0430"},l={common:"",trs:"TRS-398 \xB7 ",tg51:"TG-51 \xB7 "},s=e.messages.filter(p=>p.scope==="common"||o.includes(p.scope));h("#messages").innerHTML=s.length?s.map(p=>`<li class="${p.level}"><span class="lvl">${l[p.scope]}${u[p.level]}</span><span>${Y(p.text)}</span>${p.ref?`<span class="ref">${Y(p.ref)}</span>`:""}</li>`).join(""):'<li class="info"><span class="lvl">\u0412\u0441\u0451 \u0432 \u043F\u043E\u0440\u044F\u0434\u043A\u0435</span><span>\u0417\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043A \u0432\u0432\u0435\u0434\u0451\u043D\u043D\u044B\u043C \u0434\u0430\u043D\u043D\u044B\u043C \u043D\u0435\u0442.</span></li>';let v=e.trs,b=e.tg51,D=o.includes("trs"),C=o.includes("tg51"),P=[["\u0422\u0435\u043C\u043F\u0435\u0440\u0430\u0442\u0443\u0440\u0430 \u0438 \u0434\u0430\u0432\u043B\u0435\u043D\u0438\u0435",["k<sub>TP</sub>",v.kTP,4],["P<sub>TP</sub>",b.PTP,4]],["\u042D\u043B\u0435\u043A\u0442\u0440\u043E\u043C\u0435\u0442\u0440",["k<sub>elec</sub>",v.kelec,4],["P<sub>elec</sub>",b.Pelec,4]],["\u041F\u043E\u043B\u044F\u0440\u043D\u043E\u0441\u0442\u044C",["k<sub>pol</sub>",v.kpol,4],["P<sub>pol</sub>",b.Ppol,4]],["\u0420\u0435\u043A\u043E\u043C\u0431\u0438\u043D\u0430\u0446\u0438\u044F",["k<sub>s</sub>",v.ks,4],["P<sub>ion</sub>",b.Pion,4]],["\u0423\u0442\u0435\u0447\u043A\u0430",["k<sub>leak</sub>",v.kleak,4],["P<sub>leak</sub>",b.Pleak,4]],["\u041F\u0440\u043E\u0444\u0438\u043B\u044C \u043F\u0443\u0447\u043A\u0430",["k<sub>vol</sub>",v.kvol,4],["P<sub>rp</sub>",b.Prp,4]],["\u0418\u0441\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u043E\u0435 \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u0435, \u043D\u041A\u043B",["M<sub>Q</sub>",v.M,4],["M",b.M,4]],["\u041A\u0430\u0447\u0435\u0441\u0442\u0432\u043E \u043F\u0443\u0447\u043A\u0430",["TPR<sub>20,10</sub>",v.tpr,4],["%dd(10)<sub>x</sub>",b.pdd10x,2]],["\u041F\u043E\u043F\u0440\u0430\u0432\u043A\u0430 \u043D\u0430 \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u043E",["k<sub>Q</sub>",v.kQ,4],["k<sub>Q</sub>",b.kQ,4]],["N<sub>D,w</sub>, \u0413\u0440/\u043D\u041A\u043B",["",e.inputs.ndw,5],["",e.inputs.ndw,5]],["D<sub>w</sub>(10 \u0441\u043C), \u0413\u0440",["",v.D,4],["",b.D,4],"total"],["\u041D\u0430 10 \u0441\u043C, \u0441\u0413\u0440/\u041C\u0415",["",v.DperMU,4],["",b.DperMU,4]]];e.depth.on&&(P.push([`${e.depth.label}`,["",e.depth.factor,4],["",e.depth.factor,4]]),P.push(["\u041D\u0430 d<sub>max</sub>, \u0441\u0413\u0440/\u041C\u0415",["",v.DmaxPerMU,4],["",b.DmaxPerMU,4],"total"]));let y=([p,N,z])=>`<td class="v">${p?`<i>${p}</i> `:""}${f(N,z)}</td>`;h("#factors").innerHTML=`<thead><tr><th>\u0412\u0435\u043B\u0438\u0447\u0438\u043D\u0430</th>${D?"<th>TRS-398</th>":""}${C?"<th>TG-51</th>":""}</tr></thead><tbody>`+P.map(p=>`<tr class="${p[3]||""}"><td>${p[0]}</td>${D?y(p[1]):""}${C?y(p[2]):""}</tr>`).join("")+"</tbody>"}function kt(e,t){let o=[],r=J(e.ch_model),n=(l,s)=>o.push(`${l}: ${s}`);o.push("\u041F\u0420\u041E\u0422\u041E\u041A\u041E\u041B \u0420\u0415\u0424\u0415\u0420\u0415\u041D\u0421\u041D\u041E\u0419 \u0414\u041E\u0417\u0418\u041C\u0415\u0422\u0420\u0418\u0418 \u2014 \u041C\u0412 \u0424\u041E\u0422\u041E\u041D\u042B"),n("\u041F\u0440\u043E\u0442\u043E\u043A\u043E\u043B",e.protocol==="both"?"TRS-398 Rev.1 \u0438 TG-51 (+ \u0430\u0434\u0434\u0435\u043D\u0434\u0443\u043C 2014)":ke[e.protocol].name),n("\u0423\u0447\u0440\u0435\u0436\u0434\u0435\u043D\u0438\u0435",e.meta_institution||"\u2014"),n("\u0410\u043F\u043F\u0430\u0440\u0430\u0442",e.meta_machine||"\u2014"),n("\u041F\u0443\u0447\u043E\u043A",`${e.meta_beam||"\u2014"}${e.meta_fff?", \u0411\u0412\u0424":""}`),n("\u0414\u0430\u0442\u0430",e.meta_date||"\u2014"),n("\u0424\u0438\u0437\u0438\u043A",e.meta_physicist||"\u2014"),n("\u0413\u0435\u043E\u043C\u0435\u0442\u0440\u0438\u044F",e.setup_geometry==="SAD"?"\u0420\u0418\u041E, \u043A\u0430\u043C\u0435\u0440\u0430 \u0432 \u0438\u0437\u043E\u0446\u0435\u043D\u0442\u0440\u0435 \u043D\u0430 10 \u0441\u043C":"\u0420\u0418\u041F 100 \u0441\u043C, \u043F\u043E\u043B\u0435 10\xD710 \u043D\u0430 \u043F\u043E\u0432\u0435\u0440\u0445\u043D\u043E\u0441\u0442\u0438"),o.push(""),n("\u041A\u0430\u043C\u0435\u0440\u0430",r?`${we(r)}, \u2116 ${e.ch_serial||"\u2014"}`:e.ch_model==="OTHER"?"\u0434\u0440\u0443\u0433\u0430\u044F":"\u2014"),n("N_D,w",`${e.ch_ndw} ${ie[e.ch_ndw_unit]?.label??""} (= ${f(t.inputs.ndw,6)} \u0413\u0440/\u043D\u041A\u043B); T0 = ${e.ch_T0} \xB0C, P0 = ${e.ch_P0} \u043A\u041F\u0430`),n("\u042D\u043B\u0435\u043A\u0442\u0440\u043E\u043C\u0435\u0442\u0440",`${e.el_model||"\u2014"}, \u2116 ${e.el_serial||"\u2014"}, k_elec = ${e.el_kelec}`),n("\u0423\u0441\u043B\u043E\u0432\u0438\u044F",`T = ${e.env_T} \xB0C, P = ${e.env_P} ${se[e.env_P_unit]?.label??""}`),n("\u041E\u0431\u043B\u0443\u0447\u0435\u043D\u0438\u0435",`${e.rd_mu} \u041C\u0415, V1 = ${e.rd_V1} \u0412, V2 = ${e.rd_V2} \u0412, \u043E\u0431\u044B\u0447\u043D\u0430\u044F \u043F\u043E\u043B\u044F\u0440\u043D\u043E\u0441\u0442\u044C ${e.rd_polarity}`),n("M(V1, \u043E\u0431\u044B\u0447\u043D\u0430\u044F)",e.rd_M1),n("M(V1, \u043E\u0431\u0440\u0430\u0442\u043D\u0430\u044F)",e.rd_Mopp),n("M(V2)",e.rd_M2),o.push("");let c=e.protocol==="both"?["trs","tg51"]:[e.protocol];for(let l of c){let s=l==="trs"?t.trs:t.tg51;o.push(`\u2014 ${ke[l].name} \u2014`),l==="trs"?(o.push(`k_TP = ${f(s.kTP)}; k_elec = ${f(s.kelec)}; k_pol = ${f(s.kpol)}; k_s = ${f(s.ks)}; k_leak = ${f(s.kleak)}; k_vol = ${f(s.kvol)}`),o.push(`TPR20,10 = ${f(s.tpr)}; k_Q = ${f(s.kQ)} (${s.kQSource||"\u2014"})`)):(o.push(`P_TP = ${f(s.PTP)}; P_elec = ${f(s.Pelec)}; P_pol = ${f(s.Ppol)}; P_ion = ${f(s.Pion)}; P_leak = ${f(s.Pleak)}; P_rp = ${f(s.Prp)}`),o.push(`%dd(10)x = ${f(s.pdd10x,2)} (${s.pdd10xEquation||"\u2014"}); k_Q = ${f(s.kQ)} (${s.kQSource||"\u2014"})`)),o.push(`M = ${f(s.M)} \u043D\u041A\u043B; D_w(10 \u0441\u043C) = ${f(s.D)} \u0413\u0440; ${f(s.DperMU)} \u0441\u0413\u0440/\u041C\u0415`),t.depth.on&&o.push(`${t.depth.label} = ${f(t.depth.factor)}; D \u043D\u0430 d_max = ${f(s.DmaxPerMU)} \u0441\u0413\u0440/\u041C\u0415; \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0438\u0435 \u043E\u0442 \u043D\u043E\u043C\u0438\u043D\u0430\u043B\u0430 ${U(s.deviation,2)} %`),s.blocked&&o.push("\u0412\u041D\u0418\u041C\u0410\u041D\u0418\u0415: \u0435\u0441\u0442\u044C \u043E\u0448\u0438\u0431\u043A\u0438 \u0432\u0432\u043E\u0434\u0430, \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u043D\u0435\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043B\u0435\u043D."),o.push("")}t.comparison&&o.push(`TG-51 \u043E\u0442\u043D\u043E\u0441\u0438\u0442\u0435\u043B\u044C\u043D\u043E TRS-398: ${U(t.comparison.dRel,2)} %`,"");let u=t.messages.filter(l=>l.level!=="info");return u.length&&(o.push("\u0417\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u044F:"),u.forEach(l=>o.push(`- ${l.text}${l.ref?` [${l.ref}]`:""}`)),o.push("")),e.meta_notes&&o.push(`\u041F\u0440\u0438\u043C\u0435\u0447\u0430\u043D\u0438\u044F: ${e.meta_notes}`),o.join(`
+`)}function ht(e){try{localStorage.setItem(Ke,JSON.stringify(e))}catch{}}function vt(){try{let e=localStorage.getItem(Ke);return e?JSON.parse(e):null}catch{return null}}function M(e){let t=h("#status");t.textContent=e,clearTimeout(M.t),M.t=setTimeout(()=>t.textContent="",6e3)}async function je(e,t){try{await navigator.clipboard.writeText(e),M(t)}catch{let o=document.createElement("textarea");o.value=e,o.setAttribute("readonly",""),o.style.position="fixed",o.style.opacity="0",document.body.appendChild(o),o.select();let r=!1;try{r=document.execCommand("copy")}catch{r=!1}o.remove(),M(r?t:"\u0411\u0440\u0430\u0443\u0437\u0435\u0440 \u043D\u0435 \u0434\u0430\u043B \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C: \u0432\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0432\u0440\u0443\u0447\u043D\u0443\u044E.")}}function He(e){if(!e||e.app!==be.app||e.module!==be.module||typeof e.form!="object")throw new Error("\u042D\u0442\u043E \u043D\u0435 \u0444\u0430\u0439\u043B \u043A\u0430\u043B\u044C\u043A\u0443\u043B\u044F\u0442\u043E\u0440\u0430 \u041C\u0412 \u0444\u043E\u0442\u043E\u043D\u043E\u0432.");ae(e.form),L()}var A={data:null,result:null};function L(){let e=dt(),t=Oe(e);A={data:e,result:t},ut(e),pt(t,e),bt(t,e),h("#demo-flag").hidden=!(e.meta_institution===X.meta_institution&&e.meta_machine===X.meta_machine),ht(e)}function Tt(){mt();let e=vt();ae(e?{...E,...e}:X),L(),e||M("\u0417\u0430\u0433\u0440\u0443\u0436\u0435\u043D \u0434\u0435\u043C\u043E\u043D\u0441\u0442\u0440\u0430\u0446\u0438\u043E\u043D\u043D\u044B\u0439 \u043F\u0440\u0438\u043C\u0435\u0440. \u041D\u0430\u0436\u043C\u0438\u0442\u0435 \xAB\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C\xBB, \u0447\u0442\u043E\u0431\u044B \u0432\u0432\u0435\u0441\u0442\u0438 \u0441\u0432\u043E\u0438 \u0434\u0430\u043D\u043D\u044B\u0435."),document.addEventListener("input",r=>{r.target.closest("#sheet, .protocol-switch")&&L()}),document.addEventListener("change",r=>{r.target.closest("#sheet, .protocol-switch")&&L()});for(let r of Q("[data-preset-ref]"))r.addEventListener("click",()=>{let[n,c]=r.dataset.presetRef.split("|");h("#ch_T0").value=n,h("#ch_P0").value=c,L()});h("#btn-sample").addEventListener("click",()=>{ae(X),L(),M("\u0417\u0430\u0433\u0440\u0443\u0436\u0435\u043D \u0434\u0435\u043C\u043E\u043D\u0441\u0442\u0440\u0430\u0446\u0438\u043E\u043D\u043D\u044B\u0439 \u043F\u0440\u0438\u043C\u0435\u0440 (\u0432\u044B\u043C\u044B\u0448\u043B\u0435\u043D\u043D\u044B\u0435 \u0434\u0430\u043D\u043D\u044B\u0435).")});let t=h("#btn-clear");t.addEventListener("click",()=>{if(t.dataset.armed){delete t.dataset.armed,t.classList.remove("danger-armed"),t.textContent="\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C";let r=A.data?.protocol??"trs";ae({...E,protocol:r}),L(),M("\u0424\u043E\u0440\u043C\u0430 \u043E\u0447\u0438\u0449\u0435\u043D\u0430.");return}t.dataset.armed="1",t.classList.add("danger-armed"),t.textContent="\u0422\u043E\u0447\u043D\u043E \u043E\u0447\u0438\u0441\u0442\u0438\u0442\u044C?",setTimeout(()=>{t.dataset.armed&&(delete t.dataset.armed,t.classList.remove("danger-armed"),t.textContent="\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C")},4e3)});let o=()=>JSON.stringify({...be,savedAt:new Date().toISOString(),form:A.data},null,2);h("#btn-save").addEventListener("click",()=>{let r=new Blob([o()],{type:"application/json"}),n=document.createElement("a"),c=[A.data.meta_machine,A.data.meta_beam,A.data.meta_date].filter(Boolean).join("_").replace(/[^\p{L}\p{N}_.-]+/gu,"-")||"photons";n.href=URL.createObjectURL(r),n.download=`dosimetry_${c}.json`,document.body.appendChild(n),n.click(),setTimeout(()=>{URL.revokeObjectURL(n.href),n.remove()},0),M("\u0424\u0430\u0439\u043B \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D.")}),h("#btn-load").addEventListener("click",()=>h("#file-input").click()),h("#file-input").addEventListener("change",async r=>{let n=r.target.files?.[0];if(n){try{He(JSON.parse(await n.text())),M(`\u041E\u0442\u043A\u0440\u044B\u0442 \u0444\u0430\u0439\u043B ${n.name}.`)}catch(c){M(c instanceof SyntaxError?"\u0424\u0430\u0439\u043B \u043F\u043E\u0432\u0440\u0435\u0436\u0434\u0451\u043D: \u044D\u0442\u043E \u043D\u0435 JSON.":c.message)}r.target.value=""}}),document.addEventListener("paste",r=>{if(r.target.closest("input, textarea, select"))return;let n=r.clipboardData?.getData("text");if(!(!n||!n.includes('"reference-dosimetry"')))try{He(JSON.parse(n)),M("\u0414\u0430\u043D\u043D\u044B\u0435 \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u044B \u0438\u0437 \u0431\u0443\u0444\u0435\u0440\u0430 \u043E\u0431\u043C\u0435\u043D\u0430.")}catch(c){M(c.message)}}),h("#btn-copy-json").addEventListener("click",()=>je(o(),"\u0414\u0430\u043D\u043D\u044B\u0435 \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D\u044B. \u0427\u0442\u043E\u0431\u044B \u0432\u0441\u0442\u0430\u0432\u0438\u0442\u044C \u0438\u0445 \u043E\u0431\u0440\u0430\u0442\u043D\u043E, \u043D\u0430\u0436\u043C\u0438\u0442\u0435 Ctrl+V \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0432\u043D\u0435 \u043F\u043E\u043B\u0435\u0439 \u0432\u0432\u043E\u0434\u0430.")),h("#btn-copy-report").addEventListener("click",()=>je(kt(A.data,A.result),"\u041F\u0440\u043E\u0442\u043E\u043A\u043E\u043B \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D \u0432 \u0431\u0443\u0444\u0435\u0440 \u043E\u0431\u043C\u0435\u043D\u0430.")),h("#btn-print").addEventListener("click",()=>window.print())}Tt();})();
+</script>
+</body>
+</html>

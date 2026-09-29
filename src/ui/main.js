@@ -1,0 +1,462 @@
+// Интерфейс калькулятора МВ фотонов: связывает форму с расчётным ядром.
+import { computePhotons, FORM_DEFAULTS } from '../core/photons.js';
+import { SAMPLE_FORM } from '../core/sample.js';
+import { CHAMBERS, findChamber, chamberLabel } from '../core/chambers.js';
+import { PRESSURE_UNITS, NDW_UNITS } from '../core/units.js';
+
+const STORAGE_KEY = 'reference-dosimetry.photons.v1';
+const FILE_TAG = { app: 'reference-dosimetry', module: 'photons', version: 1 };
+const framed = (() => {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+})();
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+const numberFormats = new Map();
+function fmt(value, digits = 4) {
+  if (!Number.isFinite(value)) return '—';
+  if (!numberFormats.has(digits)) {
+    numberFormats.set(digits, new Intl.NumberFormat('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false }));
+  }
+  return numberFormats.get(digits).format(value).replace('-', '−');
+}
+function fmtSigned(value, digits = 2) {
+  if (!Number.isFinite(value)) return '—';
+  return (value > 0 ? '+' : value < 0 ? '−' : '±') + fmt(Math.abs(value), digits);
+}
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+function get(obj, path) {
+  return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+
+// ------------------------------------------------------------ списки
+function fillSelects() {
+  const sel = $('#ch_model');
+  const groups = new Map();
+  for (const c of CHAMBERS) {
+    if (!groups.has(c.maker)) groups.set(c.maker, []);
+    groups.get(c.maker).push(c);
+  }
+  const parts = ['<option value="">— выберите камеру —</option>'];
+  for (const [maker, list] of groups) {
+    parts.push(`<optgroup label="${esc(maker)}">`);
+    for (const c of list) {
+      const tags = [c.tg51 || c.tg51Legacy ? 'TG-51' : null, c.trs ? 'TRS-398' : null].filter(Boolean).join(', ');
+      parts.push(`<option value="${c.id}">${esc(c.model)}${c.note ? ' — ' + esc(c.note) : ''} [${tags}]</option>`);
+    }
+    parts.push('</optgroup>');
+  }
+  parts.push('<option value="OTHER">Другая камера (k_Q вручную)</option>');
+  sel.innerHTML = parts.join('');
+
+  $('#ch_ndw_unit').innerHTML = Object.entries(NDW_UNITS).map(([k, u]) => `<option value="${k}">${u.label}</option>`).join('');
+  $('#env_P_unit').innerHTML = Object.entries(PRESSURE_UNITS).map(([k, u]) => `<option value="${k}">${u.label}</option>`).join('');
+}
+
+// ------------------------------------------------------------ форма ↔ данные
+function readForm() {
+  const data = {};
+  for (const key of Object.keys(FORM_DEFAULTS)) {
+    if (key === 'protocol') {
+      data.protocol = $('input[name="protocol"]:checked')?.value ?? 'trs';
+      continue;
+    }
+    const el = document.getElementById(key);
+    if (!el) continue;
+    data[key] = el.type === 'checkbox' ? el.checked : el.value;
+  }
+  return data;
+}
+
+function writeForm(values) {
+  const data = { ...FORM_DEFAULTS, ...values };
+  for (const [key, value] of Object.entries(data)) {
+    if (key === 'protocol') {
+      const r = document.getElementById(`protocol_${value}`);
+      if (r) r.checked = true;
+      continue;
+    }
+    const el = document.getElementById(key);
+    if (!el) continue;
+    if (el.type === 'checkbox') el.checked = !!value;
+    else el.value = value ?? '';
+  }
+}
+
+// ------------------------------------------------------------ видимость
+function applyVisibility(data) {
+  const p = data.protocol;
+  for (const el of $$('[data-protocol]')) {
+    const want = el.dataset.protocol;
+    el.hidden = !(p === 'both' || p === want);
+  }
+  for (const el of $$('[data-show]')) {
+    const ok = el.dataset.show.split(';').every((cond) => {
+      const [key, vals] = cond.split(':');
+      const v = data[key];
+      const s = typeof v === 'boolean' ? String(v) : v;
+      return vals.split(',').includes(s);
+    });
+    el.hidden = !ok;
+  }
+  for (const el of $$('[data-standalone]')) el.hidden = framed;
+}
+
+// ------------------------------------------------------------ вывод
+function renderInline(result, data) {
+  const ctx = { ...result, crossText: crossText(result) };
+  for (const el of $$('[data-out]')) {
+    let v = get(ctx, el.dataset.out);
+    if (el.dataset.abs && Number.isFinite(v)) v = Math.abs(v);
+    el.textContent = fmt(v, Number(el.dataset.digits ?? 4));
+  }
+  for (const el of $$('[data-out-text]')) {
+    const v = get(ctx, el.dataset.outText);
+    el.textContent = v ? String(v) : '';
+  }
+  for (const el of $$('[data-out-sd]')) {
+    const s = get(ctx, el.dataset.outSd);
+    el.textContent = s && s.n > 1 ? `(n = ${s.n}, s = ${fmt((s.relSd || 0) * 100, 3)} %)` : s && s.n === 1 ? '(n = 1)' : '';
+  }
+
+  const c = findChamber(data.ch_model);
+  const info = $('#chamber-info');
+  if (c) {
+    const bits = [];
+    if (c.rCavMm) bits.push(`радиус полости ${fmt(c.rCavMm, 2)} мм`);
+    if (c.lengthMm) bits.push(`длина полости ${fmt(c.lengthMm, 1)} мм`);
+    const src = [c.tg51 ? 'аддендум TG-51' : c.tg51Legacy ? 'TG-51 (1999)' : null, c.trs ? 'TRS-398 Rev.1' : null].filter(Boolean);
+    bits.push(`данные k_Q: ${src.join(', ')}`);
+    info.textContent = bits.join(' · ');
+  } else if (data.ch_model === 'OTHER') {
+    info.textContent = 'Для камеры не из списка k_Q вводится вручную в разделе 5.';
+  } else {
+    info.textContent = '';
+  }
+  const shift = $('#shift-hint');
+  shift.textContent = c?.rCavMm
+    ? `Качество пучка измеряют при каждой референсной дозиметрии. Кривую ионизации цилиндрической камеры сдвигают к поверхности на 0,6·r = ${fmt(0.6 * c.rCavMm, 1)} мм.`
+    : 'Качество пучка измеряют при каждой референсной дозиметрии.';
+  const lh = $('#length-hint');
+  lh.textContent = c?.lengthMm ? `Если оставить пустым, возьмётся ${fmt(c.lengthMm, 1)} мм из табл. 4 TRS-398.` : 'Длина полости по данным производителя.';
+}
+
+function crossText(r) {
+  if (!r.cross) return '';
+  return `Контроль: оценка TPR20,10 по PDD(10) = ${fmt(r.cross.pdd10, 1)} % даёт ${fmt(r.cross.tprEstimate, 3)} (расхождение ${fmtSigned(r.cross.diff, 1)} %, формула сноски 36 только для оценки).`;
+}
+
+const PROTO = {
+  trs: { name: 'TRS-398 Rev.1' },
+  tg51: { name: 'TG-51 + аддендум 2014' },
+};
+
+function doseRow(key, x, result) {
+  const depthOn = result.depth.on && Number.isFinite(x.DmaxPerMU);
+  const main = depthOn ? x.DmaxPerMU : x.DperMU;
+  const unitLabel = depthOn ? 'сГр/МЕ на d<sub>max</sub>' : 'сГр/МЕ на 10 см';
+  let chip = '';
+  if (depthOn && Number.isFinite(x.deviation) && !x.blocked) {
+    const cls = Math.abs(x.deviation) <= 1 ? 'good' : Math.abs(x.deviation) > 2 ? 'bad' : '';
+    chip = `<span class="chip ${cls}" title="Отклонение от номинального выхода">${fmtSigned(x.deviation, 2)} %</span>`;
+  }
+  const mu = result.inputs.mu;
+  const secondary = [
+    `D<sub>w</sub>(10 см) = ${fmt(x.D, 4)} Гр${Number.isFinite(mu) ? ` за ${fmt(mu, 0)} МЕ` : ''}`,
+    depthOn ? `${fmt(x.DperMU, 4)} сГр/МЕ на 10 см` : null,
+  ].filter(Boolean).join(' · ');
+  return `<div class="dose-row ${x.blocked ? 'blocked' : ''}">
+    <div class="proto"><span>${PROTO[key].name}</span>${chip}</div>
+    <div class="dose-big">${x.blocked ? '—' : fmt(main, 4)}<small>${unitLabel}</small></div>
+    <div class="secondary">${x.blocked ? 'Исправьте ошибки в замечаниях' : secondary}</div>
+  </div>`;
+}
+
+function renderReadout(result, data) {
+  const keys = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
+  $('#dose-rows').innerHTML = keys.map((k) => doseRow(k, k === 'trs' ? result.trs : result.tg51, result)).join('');
+
+  const delta = $('#delta');
+  if (result.comparison && !result.trs.blocked && !result.tg51.blocked) {
+    delta.hidden = false;
+    delta.innerHTML = `TG-51 относительно TRS-398: <b>${fmtSigned(result.comparison.dRel, 2)} %</b>`;
+  } else {
+    delta.hidden = true;
+  }
+
+  // мобильная строка
+  const first = keys.map((k) => ({ k, x: k === 'trs' ? result.trs : result.tg51 })).find((o) => !o.x.blocked && o.x.ok);
+  const mv = $('#mobile-value');
+  if (first) {
+    const val = result.depth.on && Number.isFinite(first.x.DmaxPerMU) ? first.x.DmaxPerMU : first.x.DperMU;
+    mv.innerHTML = `${first.k === 'trs' ? 'TRS' : 'TG-51'}: <b>${fmt(val, 4)}</b> сГр/МЕ${Number.isFinite(first.x.deviation) ? ` (${fmtSigned(first.x.deviation, 2)} %)` : ''}`;
+  } else {
+    const n = result.messages.filter((m) => m.level === 'error').length;
+    mv.textContent = n ? `Ошибок: ${n}` : '—';
+  }
+
+  // замечания
+  const lvlName = { error: 'Ошибка', warn: 'Внимание', info: 'Справка' };
+  const scopeName = { common: '', trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
+  const list = result.messages.filter((m) => m.scope === 'common' || keys.includes(m.scope));
+  $('#messages').innerHTML = list.length
+    ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(m.ref)}</span>` : ''}</li>`).join('')
+    : '<li class="info"><span class="lvl">Всё в порядке</span><span>Замечаний к введённым данным нет.</span></li>';
+
+  // таблица поправок
+  const t = result.trs;
+  const g = result.tg51;
+  const showT = keys.includes('trs');
+  const showG = keys.includes('tg51');
+  const rows = [
+    ['Температура и давление', ['k<sub>TP</sub>', t.kTP, 4], ['P<sub>TP</sub>', g.PTP, 4]],
+    ['Электрометр', ['k<sub>elec</sub>', t.kelec, 4], ['P<sub>elec</sub>', g.Pelec, 4]],
+    ['Полярность', ['k<sub>pol</sub>', t.kpol, 4], ['P<sub>pol</sub>', g.Ppol, 4]],
+    ['Рекомбинация', ['k<sub>s</sub>', t.ks, 4], ['P<sub>ion</sub>', g.Pion, 4]],
+    ['Утечка', ['k<sub>leak</sub>', t.kleak, 4], ['P<sub>leak</sub>', g.Pleak, 4]],
+    ['Профиль пучка', ['k<sub>vol</sub>', t.kvol, 4], ['P<sub>rp</sub>', g.Prp, 4]],
+    ['Исправленное показание, нКл', ['M<sub>Q</sub>', t.M, 4], ['M', g.M, 4]],
+    ['Качество пучка', ['TPR<sub>20,10</sub>', t.tpr, 4], ['%dd(10)<sub>x</sub>', g.pdd10x, 2]],
+    ['Поправка на качество', ['k<sub>Q</sub>', t.kQ, 4], ['k<sub>Q</sub>', g.kQ, 4]],
+    ['N<sub>D,w</sub>, Гр/нКл', ['', result.inputs.ndw, 5], ['', result.inputs.ndw, 5]],
+    ['D<sub>w</sub>(10 см), Гр', ['', t.D, 4], ['', g.D, 4], 'total'],
+    ['На 10 см, сГр/МЕ', ['', t.DperMU, 4], ['', g.DperMU, 4]],
+  ];
+  if (result.depth.on) {
+    rows.push([`${result.depth.label}`, ['', result.depth.factor, 4], ['', result.depth.factor, 4]]);
+    rows.push(['На d<sub>max</sub>, сГр/МЕ', ['', t.DmaxPerMU, 4], ['', g.DmaxPerMU, 4], 'total']);
+  }
+  const cell = ([sym, v, d]) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${fmt(v, d)}</td>`;
+  $('#factors').innerHTML =
+    `<thead><tr><th>Величина</th>${showT ? '<th>TRS-398</th>' : ''}${showG ? '<th>TG-51</th>' : ''}</tr></thead><tbody>` +
+    rows.map((r) => `<tr class="${r[3] || ''}"><td>${r[0]}</td>${showT ? cell(r[1]) : ''}${showG ? cell(r[2]) : ''}</tr>`).join('') +
+    '</tbody>';
+}
+
+// ------------------------------------------------------------ протокол текстом
+function reportText(data, r) {
+  const L = [];
+  const c = findChamber(data.ch_model);
+  const line = (k, v) => L.push(`${k}: ${v}`);
+  L.push('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — МВ ФОТОНЫ');
+  line('Протокол', data.protocol === 'both' ? 'TRS-398 Rev.1 и TG-51 (+ аддендум 2014)' : PROTO[data.protocol].name);
+  line('Учреждение', data.meta_institution || '—');
+  line('Аппарат', data.meta_machine || '—');
+  line('Пучок', `${data.meta_beam || '—'}${data.meta_fff ? ', БВФ' : ''}`);
+  line('Дата', data.meta_date || '—');
+  line('Физик', data.meta_physicist || '—');
+  line('Геометрия', data.setup_geometry === 'SAD' ? 'РИО, камера в изоцентре на 10 см' : 'РИП 100 см, поле 10×10 на поверхности');
+  L.push('');
+  line('Камера', c ? `${chamberLabel(c)}, № ${data.ch_serial || '—'}` : data.ch_model === 'OTHER' ? 'другая' : '—');
+  line('N_D,w', `${data.ch_ndw} ${NDW_UNITS[data.ch_ndw_unit]?.label ?? ''} (= ${fmt(r.inputs.ndw, 6)} Гр/нКл); T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} кПа`);
+  line('Электрометр', `${data.el_model || '—'}, № ${data.el_serial || '—'}, k_elec = ${data.el_kelec}`);
+  line('Условия', `T = ${data.env_T} °C, P = ${data.env_P} ${PRESSURE_UNITS[data.env_P_unit]?.label ?? ''}`);
+  line('Облучение', `${data.rd_mu} МЕ, V1 = ${data.rd_V1} В, V2 = ${data.rd_V2} В, обычная полярность ${data.rd_polarity}`);
+  line('M(V1, обычная)', data.rd_M1);
+  line('M(V1, обратная)', data.rd_Mopp);
+  line('M(V2)', data.rd_M2);
+  L.push('');
+  const blocks = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
+  for (const k of blocks) {
+    const x = k === 'trs' ? r.trs : r.tg51;
+    L.push(`— ${PROTO[k].name} —`);
+    if (k === 'trs') {
+      L.push(`k_TP = ${fmt(x.kTP)}; k_elec = ${fmt(x.kelec)}; k_pol = ${fmt(x.kpol)}; k_s = ${fmt(x.ks)}; k_leak = ${fmt(x.kleak)}; k_vol = ${fmt(x.kvol)}`);
+      L.push(`TPR20,10 = ${fmt(x.tpr)}; k_Q = ${fmt(x.kQ)} (${x.kQSource || '—'})`);
+    } else {
+      L.push(`P_TP = ${fmt(x.PTP)}; P_elec = ${fmt(x.Pelec)}; P_pol = ${fmt(x.Ppol)}; P_ion = ${fmt(x.Pion)}; P_leak = ${fmt(x.Pleak)}; P_rp = ${fmt(x.Prp)}`);
+      L.push(`%dd(10)x = ${fmt(x.pdd10x, 2)} (${x.pdd10xEquation || '—'}); k_Q = ${fmt(x.kQ)} (${x.kQSource || '—'})`);
+    }
+    L.push(`M = ${fmt(x.M)} нКл; D_w(10 см) = ${fmt(x.D)} Гр; ${fmt(x.DperMU)} сГр/МЕ`);
+    if (r.depth.on) L.push(`${r.depth.label} = ${fmt(r.depth.factor)}; D на d_max = ${fmt(x.DmaxPerMU)} сГр/МЕ; отклонение от номинала ${fmtSigned(x.deviation, 2)} %`);
+    if (x.blocked) L.push('ВНИМАНИЕ: есть ошибки ввода, результат недействителен.');
+    L.push('');
+  }
+  if (r.comparison) L.push(`TG-51 относительно TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`, '');
+  const msgs = r.messages.filter((m) => m.level !== 'info');
+  if (msgs.length) {
+    L.push('Замечания:');
+    msgs.forEach((m) => L.push(`- ${m.text}${m.ref ? ` [${m.ref}]` : ''}`));
+    L.push('');
+  }
+  if (data.meta_notes) L.push(`Примечания: ${data.meta_notes}`);
+  return L.join('\n');
+}
+
+// ------------------------------------------------------------ сохранение
+function saveDraft(data) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch {
+    /* хранилище недоступно — черновик не сохраняется */
+  }
+}
+function loadDraft() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setStatus(text) {
+  const s = $('#status');
+  s.textContent = text;
+  clearTimeout(setStatus.t);
+  setStatus.t = setTimeout(() => (s.textContent = ''), 6000);
+}
+
+async function copyText(text, okMsg) {
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus(okMsg);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch {
+      ok = false;
+    }
+    ta.remove();
+    setStatus(ok ? okMsg : 'Браузер не дал скопировать: выделите текст вручную.');
+  }
+}
+
+function importData(obj) {
+  if (!obj || obj.app !== FILE_TAG.app || obj.module !== FILE_TAG.module || typeof obj.form !== 'object') {
+    throw new Error('Это не файл калькулятора МВ фотонов.');
+  }
+  writeForm(obj.form);
+  update();
+}
+
+// ------------------------------------------------------------ цикл
+let current = { data: null, result: null };
+function update() {
+  const data = readForm();
+  const result = computePhotons(data);
+  current = { data, result };
+  applyVisibility(data);
+  renderInline(result, data);
+  renderReadout(result, data);
+  $('#demo-flag').hidden = !(data.meta_institution === SAMPLE_FORM.meta_institution && data.meta_machine === SAMPLE_FORM.meta_machine);
+  saveDraft(data);
+}
+
+function init() {
+  fillSelects();
+  const draft = loadDraft();
+  writeForm(draft ? { ...FORM_DEFAULTS, ...draft } : SAMPLE_FORM);
+  update();
+  if (!draft) setStatus('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.');
+
+  document.addEventListener('input', (e) => {
+    if (e.target.closest('#sheet, .protocol-switch')) update();
+  });
+  document.addEventListener('change', (e) => {
+    if (e.target.closest('#sheet, .protocol-switch')) update();
+  });
+
+  for (const b of $$('[data-preset-ref]')) {
+    b.addEventListener('click', () => {
+      const [t0, p0] = b.dataset.presetRef.split('|');
+      $('#ch_T0').value = t0;
+      $('#ch_P0').value = p0;
+      update();
+    });
+  }
+
+  $('#btn-sample').addEventListener('click', () => {
+    writeForm(SAMPLE_FORM);
+    update();
+    setStatus('Загружен демонстрационный пример (вымышленные данные).');
+  });
+
+  const clearBtn = $('#btn-clear');
+  clearBtn.addEventListener('click', () => {
+    if (clearBtn.dataset.armed) {
+      delete clearBtn.dataset.armed;
+      clearBtn.classList.remove('danger-armed');
+      clearBtn.textContent = 'Очистить';
+      const keepProtocol = current.data?.protocol ?? 'trs';
+      writeForm({ ...FORM_DEFAULTS, protocol: keepProtocol });
+      update();
+      setStatus('Форма очищена.');
+      return;
+    }
+    clearBtn.dataset.armed = '1';
+    clearBtn.classList.add('danger-armed');
+    clearBtn.textContent = 'Точно очистить?';
+    setTimeout(() => {
+      if (clearBtn.dataset.armed) {
+        delete clearBtn.dataset.armed;
+        clearBtn.classList.remove('danger-armed');
+        clearBtn.textContent = 'Очистить';
+      }
+    }, 4000);
+  });
+
+  const payload = () => JSON.stringify({ ...FILE_TAG, savedAt: new Date().toISOString(), form: current.data }, null, 2);
+
+  $('#btn-save').addEventListener('click', () => {
+    const blob = new Blob([payload()], { type: 'application/json' });
+    const a = document.createElement('a');
+    const name = [current.data.meta_machine, current.data.meta_beam, current.data.meta_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-') || 'photons';
+    a.href = URL.createObjectURL(blob);
+    a.download = `dosimetry_${name}.json`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }, 0);
+    setStatus('Файл сохранён.');
+  });
+
+  $('#btn-load').addEventListener('click', () => $('#file-input').click());
+  $('#file-input').addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      importData(JSON.parse(await file.text()));
+      setStatus(`Открыт файл ${file.name}.`);
+    } catch (err) {
+      setStatus(err instanceof SyntaxError ? 'Файл повреждён: это не JSON.' : err.message);
+    }
+    e.target.value = '';
+  });
+
+  // Вставка сохранённых данных из буфера: Ctrl+V вне полей ввода
+  document.addEventListener('paste', (e) => {
+    if (e.target.closest('input, textarea, select')) return;
+    const text = e.clipboardData?.getData('text');
+    if (!text || !text.includes('"reference-dosimetry"')) return;
+    try {
+      importData(JSON.parse(text));
+      setStatus('Данные вставлены из буфера обмена.');
+    } catch (err) {
+      setStatus(err.message);
+    }
+  });
+
+  $('#btn-copy-json').addEventListener('click', () => copyText(payload(), 'Данные скопированы. Чтобы вставить их обратно, нажмите Ctrl+V на странице вне полей ввода.'));
+  $('#btn-copy-report').addEventListener('click', () => copyText(reportText(current.data, current.result), 'Протокол скопирован в буфер обмена.'));
+  $('#btn-print').addEventListener('click', () => window.print());
+}
+
+init();
