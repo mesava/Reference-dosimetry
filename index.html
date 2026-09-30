@@ -948,48 +948,77 @@
       </div>
 
       <div class="series">
-        <div class="cells" data-series="e_M1" data-label="M при V₁, обычная полярность">
-          <span class="label" id="e-lbl-m1">M при V₁, обычная полярность, нКл</span>
-          <div class="cells-row">
-            <div class="cells-list"></div>
-            <div class="cells-tools">
-              <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
-              <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+        <div class="series-group" id="e-grp-main">
+          <h4 class="series-head" id="e-grp-main-head" hidden>Положение по TRS-398 — для расчёта по TRS-398</h4>
+          <div class="cells" data-series="e_M1" data-label="M при V₁, обычная полярность">
+            <span class="label">M при V₁, обычная полярность, нКл</span>
+            <div class="cells-row">
+              <div class="cells-list"></div>
+              <div class="cells-tools">
+                <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+                <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+              </div>
+              <div class="cell-mean"><span>Среднее</span><output data-out="inputs.M1.mean" data-digits="4" data-abs="1"></output></div>
             </div>
-            <div class="cell-mean"><span>Среднее</span><output data-out="inputs.M1.mean" data-digits="4" data-abs="1"></output></div>
+          </div>
+          <div class="cells" data-series="e_Mopp" data-label="M при V₁, обратная полярность">
+            <span class="label">M при V₁, обратная полярность, нКл</span>
+            <div class="cells-row">
+              <div class="cells-list"></div>
+              <div class="cells-tools">
+                <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+                <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+              </div>
+              <div class="cell-mean"><span>Среднее</span><output data-out="inputs.Mopp.mean" data-digits="4" data-abs="1"></output></div>
+            </div>
+          </div>
+          <div class="cells" data-series="e_M2" data-label="M при V₂, обычная полярность">
+            <span class="label">M при V₂, обычная полярность, нКл</span>
+            <div class="cells-row">
+              <div class="cells-list"></div>
+              <div class="cells-tools">
+                <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+                <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+              </div>
+              <div class="cell-mean"><span>Среднее</span><output data-out="inputs.M2.mean" data-digits="4" data-abs="1"></output></div>
+            </div>
           </div>
         </div>
-        <div class="cells" data-series="e_Mopp" data-label="M при V₁, обратная полярность">
-          <span class="label">M при V₁, обратная полярность, нКл</span>
-          <div class="cells-row">
-            <div class="cells-list"></div>
-            <div class="cells-tools">
-              <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
-              <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+        <div class="series-group" id="e-grp51" hidden>
+          <h4 class="series-head">Положение по Report 385 — для расчёта по TG-51</h4>
+          <p class="eq" id="e-grp51-hint"></p>
+          <div class="cells" data-series="e_M51" data-label="M при V₁, обычная полярность, положение по Report 385">
+            <span class="label">M при V₁, обычная полярность, нКл</span>
+            <div class="cells-row">
+              <div class="cells-list"></div>
+              <div class="cells-tools">
+                <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+                <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+              </div>
+              <div class="cell-mean"><span>Среднее</span><output data-out="inputs.M51.mean" data-digits="4" data-abs="1"></output></div>
             </div>
-            <div class="cell-mean"><span>Среднее</span><output data-out="inputs.Mopp.mean" data-digits="4" data-abs="1"></output></div>
           </div>
-        </div>
-        <div class="cells" data-series="e_M2" data-label="M при V₂, обычная полярность">
-          <span class="label">M при V₂, обычная полярность, нКл</span>
-          <div class="cells-row">
-            <div class="cells-list"></div>
-            <div class="cells-tools">
-              <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
-              <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+          <div class="cells" data-series="e_Mopp51" data-label="M при V₁, обратная полярность, положение по Report 385">
+            <span class="label">M при V₁, обратная полярность, нКл</span>
+            <div class="cells-row">
+              <div class="cells-list"></div>
+              <div class="cells-tools">
+                <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+                <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+              </div>
+              <div class="cell-mean"><span>Среднее</span><output data-out="inputs.Mopp51.mean" data-digits="4" data-abs="1"></output></div>
             </div>
-            <div class="cell-mean"><span>Среднее</span><output data-out="inputs.M2.mean" data-digits="4" data-abs="1"></output></div>
           </div>
-        </div>
-        <div class="cells" id="e-m51" data-series="e_M51" data-label="M при V₁ в положении по Report 385 (TG-51)" hidden>
-          <span class="label">M при V₁, обычная полярность, положение по Report 385 — для TG-51, нКл</span>
-          <div class="cells-row">
-            <div class="cells-list"></div>
-            <div class="cells-tools">
-              <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
-              <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+          <div class="cells" data-series="e_M251" data-label="M при V₂, обычная полярность, положение по Report 385">
+            <span class="label">M при V₂, обычная полярность, нКл</span>
+            <div class="cells-row">
+              <div class="cells-list"></div>
+              <div class="cells-tools">
+                <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+                <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+              </div>
+              <div class="cell-mean"><span>Среднее</span><output data-out="inputs.M251.mean" data-digits="4" data-abs="1"></output></div>
             </div>
-            <div class="cell-mean"><span>Среднее</span><output data-out="inputs.M51.mean" data-digits="4" data-abs="1"></output></div>
           </div>
         </div>
       </div>
@@ -1012,7 +1041,7 @@
         </div>
         <div class="field out-cell" data-protocol="tg51">
           <span class="label"><button type="button" class="term" data-term="kpol">P<sub>pol</sub></button></span>
-          <output data-out="tg51.Ppol" data-digits="4" data-flag="kpol"></output>
+          <output data-out="tg51.Ppol" data-digits="4" data-flag="Ppol"></output>
           <span class="sub">в электронах бывает до 1 ± 0,02</span>
         </div>
         <div class="field out-cell" data-protocol="tg51">
@@ -1021,7 +1050,8 @@
           <span class="sub">не может быть меньше 1; больше 1,05 — недопустимо</span>
         </div>
         <div class="field out-cell"><span class="label">V₁/V₂</span><output data-out="inputs.nV" data-digits="2"></output></div>
-        <div class="field out-cell"><span class="label">M₁/M₂</span><output data-out="inputs.ratio12" data-digits="5"></output></div>
+        <div class="field out-cell"><span class="label" id="e-lbl-ratio12">M₁/M₂</span><output data-out="inputs.ratio12" data-digits="5"></output></div>
+        <div class="field out-cell" id="e-ratio51" hidden><span class="label">M₁/M₂ (TG-51)</span><output data-out="inputs.ratio51" data-digits="5"></output></div>
       </div>
       <p class="eq" data-protocol="trs">k<sub>s</sub>: <span data-out-text="trs.ksEquation"></span>. P<sub>ion</sub> по TG-51 — ур. (12) для импульсного пучка.</p>
     </section>

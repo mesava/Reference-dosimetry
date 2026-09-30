@@ -11,7 +11,7 @@ import {
 
 const DRAFT_KEY = 'reference-dosimetry.electrons.v1';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'electrons', version: 1 };
-const SERIES_KEYS = ['e_M1', 'e_Mopp', 'e_M2', 'e_M51'];
+const SERIES_KEYS = ['e_M1', 'e_Mopp', 'e_M2', 'e_M51', 'e_Mopp51', 'e_M251'];
 const ROOT = () => document.getElementById('module-electrons');
 let setStatus = () => {};
 export const electronsStatus = (text) => setStatus(text);
@@ -82,10 +82,17 @@ function applyVisibility(data, r) {
   applyShowRules(ROOT(), data, data.protocol);
   const c = r.chamber;
   const cross = data.e_cal_route === 'cross';
-  $('#e-m51').hidden = !r.inputs.separate51;
-  $('#e-lbl-m1').textContent = r.inputs.separate51
-    ? 'M при V₁, обычная полярность, положение по TRS-398, нКл'
-    : 'M при V₁, обычная полярность, нКл';
+  const sep = r.inputs.separate51;
+  $('#e-grp51').hidden = !sep;
+  $('#e-grp-main-head').hidden = !sep;
+  $('#e-ratio51').hidden = !sep;
+  $('#e-lbl-ratio12').textContent = sep ? 'M₁/M₂ (TRS-398)' : 'M₁/M₂';
+  const p = r.positions;
+  $('#e-grp51-hint').textContent = !sep
+    ? ''
+    : c?.type === 'cyl'
+      ? `Центр камеры на глубине d_ref${p && Number.isFinite(p.tg51?.depth) ? ` = ${fmt(p.tg51.depth, 2)} см` : ''}, без сдвига. Те же МЕ и напряжения; P_pol и P_ion для TG-51 считаются по этим сериям.`
+      : 'Камера в положении по Report 385 (см. «Положение камеры» в разделе 3). Те же МЕ и напряжения; P_pol и P_ion для TG-51 считаются по этим сериям.';
   $('#e-opt-trs-table').textContent = cross ? 'по табл. 21: k_Q,Qint / k_Qcross,Qint (ур. 44)' : 'по табл. 20 с интерполяцией по R50';
   $('#e-opt-trs-formula').textContent = cross ? 'по аппроксимации прил. II (табл. 48), ур. (44)' : 'по аппроксимации прил. II (табл. 47)';
   $('#e-lbl-kqtrs').innerHTML = cross ? 'k<sub>Q,Qcross</sub>' : 'k<sub>Q,Q₀</sub>';
@@ -256,10 +263,15 @@ function reportText(data, r) {
   line('Электрометр', `${data.e_el_model || '—'}, № ${data.e_el_serial || '—'}, k_elec = ${data.e_kelec}`);
   line('Условия', `T = ${data.e_env_T} °C, P = ${data.e_env_P} ${PRESSURE_UNITS[data.e_env_P_unit]?.label ?? ''}`);
   line('Облучение', `${data.e_mu} МЕ, V1 = ${data.e_V1} В, V2 = ${data.e_V2} В, обычная полярность ${data.e_polarity}`);
-  line('M(V1, обычная), нКл', `${cells(data.e_M1)} → среднее ${fmt(Math.abs(i.M1.mean), 4)}`);
-  line('M(V1, обратная), нКл', `${cells(data.e_Mopp)} → среднее ${fmt(Math.abs(i.Mopp.mean), 4)}`);
-  line('M(V2), нКл', `${cells(data.e_M2)} → среднее ${fmt(Math.abs(i.M2.mean), 4)}`);
-  if (i.separate51 && i.M51) line('M(V1) на d_ref для TG-51, нКл', `${cells(data.e_M51)} → среднее ${fmt(Math.abs(i.M51.mean), 4)}`);
+  const at = i.separate51 ? ', положение по TRS-398' : '';
+  line(`M(V1, обычная${at}), нКл`, `${cells(data.e_M1)} → среднее ${fmt(Math.abs(i.M1.mean), 4)}`);
+  line(`M(V1, обратная${at}), нКл`, `${cells(data.e_Mopp)} → среднее ${fmt(Math.abs(i.Mopp.mean), 4)}`);
+  line(`M(V2${at}), нКл`, `${cells(data.e_M2)} → среднее ${fmt(Math.abs(i.M2.mean), 4)}`);
+  if (i.separate51) {
+    line('M(V1, обычная, положение по Report 385), нКл', `${cells(data.e_M51)} → среднее ${fmt(Math.abs(i.M51?.mean), 4)}`);
+    line('M(V1, обратная, положение по Report 385), нКл', `${cells(data.e_Mopp51)} → среднее ${fmt(Math.abs(i.Mopp51?.mean), 4)}`);
+    line('M(V2, положение по Report 385), нКл', `${cells(data.e_M251)} → среднее ${fmt(Math.abs(i.M251?.mean), 4)}`);
+  }
   L.push('');
   const blocks = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
   for (const k of blocks) {

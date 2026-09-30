@@ -97,12 +97,32 @@ test('TG-51 + Report 385 совпадает с ручным расчётом', (
   near(r.tg51.D, M1 * PTP * Pion * Ppol * kQp * 0.901 * 0.05335, 1e-12);
 });
 
-test('Оба протокола, цилиндрическая камера: для TG-51 берётся показание на d_ref', () => {
+test('Оба протокола, цилиндрическая камера: у TG-51 свой полный набор показаний на d_ref', () => {
   const r = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'both' });
   assert.ok(r.inputs.separate51);
-  const trsOnly = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'tg51' });
-  near(r.tg51.D / trsOnly.tg51.D, mean([19.88, 19.87, 19.89]) / mean([19.86, 19.85, 19.87]), 1e-12);
+  assert.deepEqual(errorsOf(r), []);
+  const R50 = 1.029 * 4.8 - 0.06;
+  const kQ = (0.978 + 0.112 * Math.pow(R50, -0.816)) * 0.901;
+  const PTP = ((273.2 + 21.4) / 293.2) * (101.325 / 99.62);
+  const M = mean([19.88, 19.87, 19.89]);
+  const Mopp = mean([19.96, 19.95, 19.97]);
+  const M2 = mean([19.79, 19.78, 19.8]);
+  const Ppol = (M + Mopp) / (2 * M);
+  const Pion = (1 - 3) / (M / M2 - 3);
+  near(r.tg51.Ppol, Ppol, 1e-12, 'P_pol по набору TG-51');
+  near(r.tg51.Pion, Pion, 1e-12, 'P_ion по набору TG-51');
+  near(r.tg51.D, M * PTP * Ppol * Pion * kQ * 0.05335, 1e-12, 'D по TG-51');
+  // TRS-398 считается только по своему набору
+  const trsOnly = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'trs' });
+  near(r.trs.D, trsOnly.trs.D, 1e-15);
   assert.ok(r.comparison);
+  // ошибка в наборе TG-51 не блокирует TRS-398, и наоборот
+  const bad51 = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'both', e_Mopp51: ['', '', ''] });
+  assert.ok(bad51.tg51.blocked && !bad51.trs.blocked);
+  const badTrs = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'both', e_M2: ['19,90', '19,90', '19,90'] });
+  assert.ok(badTrs.trs.blocked && !badTrs.tg51.blocked);
+  assert.equal(badTrs.flags.Pion, undefined, 'P_ion TG-51 не подсвечивается из-за набора TRS-398');
+  // плоскопараллельная Roos: положения совпадают, набор один
   const pp = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'both', e_ch_model: 'ROOS' });
   assert.ok(!pp.inputs.separate51);
 });

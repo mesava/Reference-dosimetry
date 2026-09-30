@@ -417,6 +417,10 @@ footer.page-foot p { max-width: 90ch; }
 
 /* ------------------------------------------------------------ ячейки показаний */
 .series { display: grid; gap: 14px; margin-block: 14px; }
+.series-group { display: grid; gap: 14px; min-width: 0; }
+#e-grp51 { border-top: 1px dashed var(--rule); padding-top: 14px; }
+.series-head { margin: 0; font: 600 13px var(--font-display); color: var(--accent); }
+.series-group > .eq { margin: -8px 0 0; }
 .cells { display: grid; gap: 4px; min-width: 0; }
 .cells > .label { font: 500 13px var(--font-display); }
 .cells-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; }

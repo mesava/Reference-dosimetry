@@ -62,7 +62,10 @@ export const E_DEFAULTS = {
   e_M1: ['', '', ''],
   e_Mopp: ['', '', ''],
   e_M2: ['', '', ''],
-  e_M51: ['', '', ''], // цилиндрическая камера, «оба протокола»: M при V₁ с центром камеры на d_ref (для TG-51)
+  // «оба протокола», если положения камеры по протоколам различаются: полный набор показаний в положении по Report 385 (для TG-51)
+  e_M51: ['', '', ''], // M при V₁, обычная полярность
+  e_Mopp51: ['', '', ''], // M при V₁, обратная полярность
+  e_M251: ['', '', ''], // M при V₂, обычная полярность
   e_kleak: '1,000',
 
   e_kqtrs_mode: 'table', // 'table' (табл. 20 или 21) | 'formula' (прил. II, табл. 47 или 48) | 'manual'
@@ -106,7 +109,7 @@ export const zrefFromR50 = (r50) => 0.6 * r50 - 0.1;
 
 export function normalizeElectrons(input) {
   const f = { ...E_DEFAULTS, ...input };
-  for (const k of ['e_M1', 'e_Mopp', 'e_M2', 'e_M51']) {
+  for (const k of ['e_M1', 'e_Mopp', 'e_M2', 'e_M51', 'e_Mopp51', 'e_M251']) {
     if (!Array.isArray(f[k])) f[k] = isBlank(f[k]) ? ['', '', ''] : String(f[k]).trim().split(/[\s;]+/);
   }
   if (!Array.isArray(f.e_staff) || f.e_staff.length === 0) f.e_staff = [''];
@@ -295,35 +298,55 @@ export function computeElectrons(form) {
   const V1 = read('e_V1', 'Рабочее напряжение V₁');
   const V2 = read('e_V2', 'Пониженное напряжение V₂');
   if (Number.isFinite(V1) && Number.isFinite(V2) && Math.abs(V1) <= Math.abs(V2)) add('error', 'common', 'Рабочее напряжение V₁ должно быть больше пониженного V₂.', null, ['e_V1', 'e_V2']);
-  const M1 = readCells('e_M1', 'M при V₁, обычная полярность');
-  const Mopp = readCells('e_Mopp', 'M при V₁, обратная полярность');
-  const M2 = readCells('e_M2', 'M при V₂');
   // Положения камеры по протоколам: у цилиндрической всегда различаются (0,5·r_cyl),
   // у плоскопараллельной — на разницу водоэквивалентной толщины окна (TRS-398) и сдвига Report 385.
+  // Если различаются, при расчёте по обоим протоколам каждый протокол получает свой полный набор показаний
+  // (обычная и обратная полярность, пониженное напряжение) и свои P_pol, P_ion.
   let posDiffMm = NaN;
   if (pos && !isCyl && Number.isFinite(pos.trs.front) && Number.isFinite(pos.tg51.front)) posDiffMm = Math.abs(pos.trs.front - pos.tg51.front) * 10;
   const separate51 = f.protocol === 'both' && !!chamber && (isCyl || (!!pos && !(posDiffMm <= 0.5)));
-  const M51 = separate51 ? readCells('e_M51', 'M при V₁ в положении по Report 385 (TG-51)', 'tg51') : null;
-  const series = [[M1, 'при V₁', 'e_M1'], [Mopp, 'обратной полярности', 'e_Mopp'], [M2, 'при V₂', 'e_M2']];
-  if (M51) series.push([M51, 'на d_ref для TG-51', 'e_M51']);
-  for (const [s, label, key] of series) {
+  const mainScope = separate51 ? 'trs' : 'common';
+  const at = separate51 ? ', положение по TRS-398' : '';
+  const M1 = readCells('e_M1', `M при V₁, обычная полярность${at}`, mainScope);
+  const Mopp = readCells('e_Mopp', `M при V₁, обратная полярность${at}`, mainScope);
+  const M2 = readCells('e_M2', `M при V₂${at}`, mainScope);
+  const set51 = separate51
+    ? {
+        M1: readCells('e_M51', 'M при V₁, обычная полярность, положение по Report 385', 'tg51'),
+        Mopp: readCells('e_Mopp51', 'M при V₁, обратная полярность, положение по Report 385', 'tg51'),
+        M2: readCells('e_M251', 'M при V₂, положение по Report 385', 'tg51'),
+      }
+    : null;
+  const series = [
+    [M1, `при V₁${at ? ' (TRS-398)' : ''}`, 'e_M1', mainScope],
+    [Mopp, `обратной полярности${at ? ' (TRS-398)' : ''}`, 'e_Mopp', mainScope],
+    [M2, `при V₂${at ? ' (TRS-398)' : ''}`, 'e_M2', mainScope],
+  ];
+  if (set51) {
+    series.push([set51.M1, 'при V₁ (Report 385)', 'e_M51', 'tg51'], [set51.Mopp, 'обратной полярности (Report 385)', 'e_Mopp51', 'tg51'], [set51.M2, 'при V₂ (Report 385)', 'e_M251', 'tg51']);
+  }
+  for (const [s, label, key, scope] of series) {
     const d = maxRelDeviation(s);
     const pct = ru(d * 100, 2);
-    if (d > 0.05) add('error', 'common', `Показания ${label} расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, null, key);
-    else if (d > 0.005) add('warn', 'common', `Разброс показаний ${label} до ${pct} % от среднего: повторите облучения.`, `${REF.r374}, разд. 4.4.2`, key);
-    else if (d > 0.001) add('info', 'common', `Разброс показаний ${label} до ${pct} % от среднего: Report 374 советует повторять облучения, пока отклонение не станет меньше ±0,1 % без тренда.`, `${REF.r374}, разд. 4.4.2`, key);
+    if (d > 0.05) add('error', scope, `Показания ${label} расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, null, key);
+    else if (d > 0.005) add('warn', scope, `Разброс показаний ${label} до ${pct} % от среднего: повторите облучения.`, `${REF.r374}, разд. 4.4.2`, key);
+    else if (d > 0.001) add('info', scope, `Разброс показаний ${label} до ${pct} % от среднего: Report 374 советует повторять облучения, пока отклонение не станет меньше ±0,1 % без тренда.`, `${REF.r374}, разд. 4.4.2`, key);
   }
   const kleak = read('e_kleak', 'Поправка на утечку');
   if (Number.isFinite(kleak) && Math.abs(kleak - 1) > 0.001) add('warn', 'common', 'Утечка больше 0,1 % показания: причину нужно выяснить.', `${REF.r385}, табл. A1; ${REF.trs}, табл. 3`, 'e_kleak');
 
-  const readingsOk = M1.n > 0 && !M1.error && M1.mean !== 0;
+  const seriesOk = (x) => x && x.n > 0 && !x.error && x.mean !== 0;
+  const checkPolarity = (value, name, scope, flagKey) => {
+    const d = Math.abs(value - 1);
+    if (d > 0.02) add('warn', scope, `${name} = ${ru(value, 4)}: эффект полярности больше 2 % — больше, чем допускает Report 385 для камеры эталонного класса. Проверьте камеру, кабель и время стабилизации.`, `${REF.r385}, табл. A1; ${REF.trs}, табл. 3`, flagKey);
+    else if (d > 0.004) add('info', scope, `${name} = ${ru(value, 4)}: в пучках электронов эффект полярности бывает больше, чем в фотонных, — до 2 % по Report 385; TRS-398 задаёт для камер эталонного класса менее 0,4 %. Поправку обязательно измерять.`, `${REF.r385}, прил. A; ${REF.trs}, табл. 3`, flagKey);
+  };
+  const readingsOk = seriesOk(M1);
   const m1 = readingsOk ? Math.abs(M1.mean) : NaN;
   let kpolRaw = NaN;
   if (readingsOk && Mopp.n > 0 && !Mopp.error) {
     kpolRaw = polarity(M1.mean, Mopp.mean);
-    const d = Math.abs(kpolRaw - 1);
-    if (d > 0.02) add('warn', 'common', `k_pol = ${ru(kpolRaw, 4)}: эффект полярности больше 2 % — больше, чем допускает Report 385 для камеры эталонного класса. Проверьте камеру, кабель и время стабилизации.`, `${REF.r385}, табл. A1; ${REF.trs}, табл. 3`, 'kpol');
-    else if (d > 0.004) add('info', 'common', `k_pol = ${ru(kpolRaw, 4)}: в пучках электронов эффект полярности бывает больше, чем в фотонных, — до 2 % по Report 385; TRS-398 задаёт для камер эталонного класса менее 0,4 %. Поправку обязательно измерять.`, `${REF.r385}, прил. A; ${REF.trs}, табл. 3`, 'kpol');
+    checkPolarity(kpolRaw, 'k_pol', mainScope, 'kpol');
   }
   // поправки лаборатории относятся к калибровке в ⁶⁰Co; при перекрёстной калибровке показания уже полностью исправлены (TRS-398 ур. 41; Report 385 ур. 5)
   let kpolQ0 = 1;
@@ -331,10 +354,26 @@ export function computeElectrons(form) {
   const kpol = kpolRaw / kpolQ0;
 
   const nV = Math.abs(V1) / Math.abs(V2);
-  const recOk = readingsOk && M2.n > 0 && !M2.error && M2.mean !== 0 && Number.isFinite(nV) && nV > 1;
-  if (readingsOk && M2.n > 0 && Math.sign(M1.mean) !== Math.sign(M2.mean)) add('error', 'common', 'Показания при V₁ и V₂ должны быть сняты при одной и той же (обычной) полярности.', null, 'e_M2');
+  const recOk = readingsOk && seriesOk(M2) && Number.isFinite(nV) && nV > 1;
+  if (readingsOk && M2.n > 0 && Math.sign(M1.mean) !== Math.sign(M2.mean)) add('error', mainScope, 'Показания при V₁ и V₂ должны быть сняты при одной и той же (обычной) полярности.', null, 'e_M2');
   const ratio12 = recOk ? Math.abs(M1.mean) / Math.abs(M2.mean) : NaN;
-  if (recOk && ratio12 < 1) add('error', 'common', 'k_s (P_ion) не может быть меньше 1: при пониженном напряжении собирается меньше заряда. Проверьте показания и напряжения.', `${REF.trs}, разд. 4.4.3.4`, ['ks', 'Pion', 'e_M2']);
+  if (recOk && ratio12 < 1) {
+    add('error', mainScope, `${separate51 ? 'k_s' : 'k_s (P_ion)'} не может быть меньше 1: при пониженном напряжении собирается меньше заряда. Проверьте показания и напряжения.`, `${REF.trs}, разд. 4.4.3.4`, separate51 ? ['ks', 'e_M2'] : ['ks', 'Pion', 'e_M2']);
+  }
+
+  // полный набор показаний в положении по Report 385 (только «оба протокола», если положения различаются)
+  const r51 = { ok: false, kpolRaw: NaN, ratio: NaN, recOk: false };
+  if (set51) {
+    r51.ok = seriesOk(set51.M1);
+    if (r51.ok && set51.Mopp.n > 0 && !set51.Mopp.error) {
+      r51.kpolRaw = polarity(set51.M1.mean, set51.Mopp.mean);
+      checkPolarity(r51.kpolRaw, 'P_pol (положение по Report 385)', 'tg51', 'Ppol');
+    }
+    r51.recOk = r51.ok && seriesOk(set51.M2) && Number.isFinite(nV) && nV > 1;
+    if (r51.ok && set51.M2.n > 0 && Math.sign(set51.M1.mean) !== Math.sign(set51.M2.mean)) add('error', 'tg51', 'Показания при V₁ и V₂ в положении по Report 385 должны быть сняты при одной и той же (обычной) полярности.', null, 'e_M251');
+    r51.ratio = r51.recOk ? Math.abs(set51.M1.mean) / Math.abs(set51.M2.mean) : NaN;
+    if (r51.recOk && r51.ratio < 1) add('error', 'tg51', 'P_ion не может быть меньше 1: в положении по Report 385 при пониженном напряжении получилось больше заряда. Проверьте показания и напряжения.', `${REF.tg51}, разд. VII.D`, ['Pion', 'e_M251']);
+  }
   let ksQ0 = 1;
   if (!f.e_lab_ks_applied && !cross) ksQ0 = read('e_lab_ks', 'Поправка на рекомбинацию при калибровке');
 
@@ -421,14 +460,17 @@ export function computeElectrons(form) {
   if (want51) {
     tg.PTP = temperaturePressure({ T, P, T0, P0, abs0: TG51.TG51_ABS0 });
     tg.Pelec = kelec;
-    tg.Ppol = kpol;
+    tg.Ppol = separate51 ? r51.kpolRaw / kpolQ0 : kpol;
     tg.Pleak = kleak;
-    if (recOk) {
-      tg.PionRaw = TG51.pIon({ mH: M1.mean, mL: M2.mean, vH: Math.abs(V1), vL: Math.abs(V2), beam: 'pulsed' });
+    const rec51 = separate51 ? r51.recOk : recOk;
+    const ratio51 = separate51 ? r51.ratio : ratio12;
+    if (rec51) {
+      const src = separate51 ? set51 : { M1, M2 };
+      tg.PionRaw = TG51.pIon({ mH: src.M1.mean, mL: src.M2.mean, vH: Math.abs(V1), vL: Math.abs(V2), beam: 'pulsed' });
       if (nV < 2 - 1e-9) add('warn', 'tg51', 'TG-51: пониженное напряжение должно быть меньше рабочего как минимум вдвое.', `${REF.tg51}, разд. VII.D.2`, ['e_V1', 'e_V2']);
       tg.Pion = tg.PionRaw / ksQ0;
       if (tg.Pion > 1.05) add('error', 'tg51', `P_ion = ${ru(tg.Pion, 4)} > 1,05: нужна другая камера.`, `${REF.tg51}, разд. VII.D.1`, 'Pion');
-      if (ratio12 >= 1 && tg.Pion < 1) add('error', 'tg51', `P_ion = ${ru(tg.Pion, 4)} < 1: так быть не может, проверьте показания и поправку лаборатории.`, `${REF.tg51}, разд. VII.D`, 'Pion');
+      if (ratio51 >= 1 && tg.Pion < 1) add('error', 'tg51', `P_ion = ${ru(tg.Pion, 4)} < 1: так быть не может, проверьте показания и поправку лаборатории.`, `${REF.tg51}, разд. VII.D`, 'Pion');
     } else tg.Pion = NaN;
 
     if (f.e_kq51_mode === 'manual') {
@@ -451,8 +493,8 @@ export function computeElectrons(form) {
         : `Report 385: k′_Q = ${ru(chamber.r385.a, 3)} + ${ru(chamber.r385.b, 3)}·exp(−R50/${ru(chamber.r385.c, 3)}) (ур. 8, табл. 7)${cross ? '' : `, k_Qecal = ${ru(tg.kQecal, 3)} (табл. 6)`}`;
     } else tg.kQ = NaN;
     tg.coefficient = cross ? crossKN : ndw;
-    if (separate51) {
-      add('info', 'tg51', 'Для TG-51 используется отдельная серия показаний в положении по Report 385. P_pol и P_ion для неё взяты из основных серий (положение по TRS-398) — это допущение калькулятора: на таком расстоянии они практически не меняются.');
+    if (separate51 && isCyl) {
+      add('info', 'common', 'Положения камеры по протоколам различаются, поэтому для каждого протокола нужен свой полный набор показаний: TRS-398 — со сдвигом центра на 0,5·r_cyl, TG-51 — с центром на d_ref. P_pol и P_ion для TG-51 рассчитываются по его набору.', `${REF.trs}, табл. 19; ${REF.r385}, разд. 4`);
     }
     if (cross && Number.isFinite(kelec) && Math.abs(kelec - 1) > 1e-9) {
       add('info', 'tg51', 'Для перекрёстно откалиброванной плоскопараллельной камеры TG-51 принимает P_elec = 1: он сокращается. Оставьте другое значение, только если оно применялось и к показаниям рабочей камеры при перекрёстной калибровке.', `${REF.tg51}, разд. VII.B`, 'e_kelec');
@@ -464,7 +506,7 @@ export function computeElectrons(form) {
   if (!isCyl && chamber && f.protocol === 'both') {
     const how = 'Плоскопараллельную камеру по TRS-398 устанавливают по внутренней поверхности входного окна с учётом его водоэквивалентной толщины, а по Report 385 — со сдвигом из табл. 3';
     if (separate51) {
-      add('info', 'common', `${how}; ${Number.isFinite(posDiffMm) ? `положения различаются на ${ru(posDiffMm, 1)} мм` : 'разницу положений по имеющимся данным оценить нельзя'}, поэтому для TG-51 нужна отдельная серия показаний.`, `${REF.trs}, табл. 5, 19; ${REF.r385}, табл. 3`, 'e_M51');
+      add('info', 'common', `${how}; ${Number.isFinite(posDiffMm) ? `положения различаются на ${ru(posDiffMm, 1)} мм` : 'разницу положений по имеющимся данным оценить нельзя'}, поэтому для TG-51 нужен свой полный набор показаний; P_pol и P_ion для TG-51 рассчитываются по нему.`, `${REF.trs}, табл. 5, 19; ${REF.r385}, табл. 3`);
     } else {
       add('info', 'common', `${how}; положения различаются на ${ru(posDiffMm, 2)} мм, поэтому одни и те же показания используются для обоих протоколов.`, `${REF.trs}, табл. 5, 19; ${REF.r385}, табл. 3`);
     }
@@ -503,7 +545,7 @@ export function computeElectrons(form) {
   };
   if (wantTRS) finish(trs, m1 * trs.kTP * trs.kelec * trs.kpol * trs.ks * trs.kleak, trs.kQ, trs.coefficient);
   if (want51) {
-    const m51 = separate51 ? (M51 && M51.n > 0 && !M51.error ? Math.abs(M51.mean) : NaN) : m1;
+    const m51 = separate51 ? (r51.ok ? Math.abs(set51.M1.mean) : NaN) : m1;
     finish(tg, m51 * tg.PTP * tg.Pelec * tg.Ppol * tg.Pion * tg.Pleak, tg.kQ, tg.coefficient);
   }
   const devs = [trs.deviation, tg.deviation].filter(Number.isFinite);
@@ -512,6 +554,8 @@ export function computeElectrons(form) {
   const hasError = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
   if (wantTRS && !trs.ok && !hasError('trs')) add('error', 'trs', 'Не удалось вычислить дозу: проверьте R50 и k_Q.');
   if (want51 && !tg.ok && !hasError('tg51')) add('error', 'tg51', 'Не удалось вычислить дозу: проверьте R50 и k_Q.');
+  // один набор показаний на оба протокола: подсветка k_pol относится и к P_pol
+  if (!separate51 && flags.kpol) flags.Ppol = flags.kpol;
   const order = { error: 0, warn: 1, info: 2 };
   messages.sort((a, b) => order[a.level] - order[b.level]);
   trs.blocked = wantTRS && hasError('trs');
@@ -526,7 +570,11 @@ export function computeElectrons(form) {
     chamber,
     positions: pos,
     quality,
-    inputs: { T, P, T0, P0, mu, V1, V2, nV, ndw, ndwRaw, crossNdw, crossR50, crossKN, kelec, kleak, energy, ssd, field, M1, Mopp, M2, M51, ratio12, separate51, cross },
+    inputs: {
+      T, P, T0, P0, mu, V1, V2, nV, ndw, ndwRaw, crossNdw, crossR50, crossKN, kelec, kleak, energy, ssd, field,
+      M1, Mopp, M2, ratio12, separate51, cross,
+      M51: set51?.M1 ?? null, Mopp51: set51?.Mopp ?? null, M251: set51?.M2 ?? null, ratio51: r51.ratio,
+    },
     depth,
     trs,
     tg51: tg,
