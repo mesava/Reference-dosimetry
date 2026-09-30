@@ -371,7 +371,7 @@ function loadDraft() {
 /** Загрузка данных из файла или буфера обмена. Бросает ошибку, если файл не от этого модуля. */
 export function importPhotons(obj) {
   if (!obj || obj.app !== FILE_TAG.app || typeof obj.form !== 'object') throw new Error('Это не файл калькулятора референсной дозиметрии.');
-  if (obj.module !== FILE_TAG.module) throw new Error('Это файл другого раздела: откройте его на вкладке ⁶⁰Co.');
+  if (obj.module !== FILE_TAG.module) throw new Error('Это файл другого раздела: откройте его на соответствующей вкладке или вставьте данные через Ctrl+V — нужная вкладка откроется сама.');
   writeForm(obj.form);
   update();
 }

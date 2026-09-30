@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Референсная дозиметрия</title>
-<meta name="description" content="Расчёт поглощённой дозы в воде для пучков ⁶⁰Co и МВ фотонов по AAPM TG-51 (с аддендумом 2014) и МАГАТЭ TRS-398 Rev.1 (2024).">
+<meta name="description" content="Расчёт поглощённой дозы в воде для пучков ⁶⁰Co, МВ фотонов и электронов по AAPM TG-51 (с аддендумами 2014 и 2024) и МАГАТЭ TRS-398 Rev.1 (2024).">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -20,7 +20,7 @@
     <nav class="modules" aria-label="Разделы">
       <a href="#co60" id="tab-co60" data-module="co60" aria-controls="module-co60">⁶⁰Co</a>
       <a href="#photons" id="tab-photons" data-module="photons" aria-controls="module-photons">МВ фотоны</a>
-      <span title="Следующий этап">Электроны <small>скоро</small></span>
+      <a href="#electrons" id="tab-electrons" data-module="electrons" aria-controls="module-electrons">Электроны</a>
     </nav>
     <div class="protocol-switch">
       <span id="protocol-label">Протокол</span>
@@ -762,8 +762,372 @@
 <div class="mobile-result"><span id="mobile-value">—</span><a href="#readout">к результату</a></div>
 </div>
 
+<div class="module" id="module-electrons" role="tabpanel" aria-labelledby="tab-electrons" hidden>
+<main class="layout">
+  <form id="e-sheet" class="sheet" autocomplete="off" novalidate>
+    <p class="intro">Рабочий лист калибровки пучка электронов: поглощённая доза в воде на опорной глубине z<sub>ref</sub> = 0,6·R50 − 0,1 и на z<sub>max</sub>. TRS-398 Rev.1 — глава 7; TG-51 — с аддендумом для электронов WGTG51 Report 385 (2024). Числа можно вводить с запятой или точкой; обозначения с пунктирным подчёркиванием открывают справку.</p>
+
+    <!-- 1 -->
+    <section class="step" aria-labelledby="e-s1">
+      <header><span class="step-no">1</span><h2 id="e-s1">Аппарат и пучок</h2>
+        <p class="hint">Поле на поверхности воды — не меньше 10 × 10 см. РИП: TRS-398 — 100 см; Report 385 — от 90 до 110 см, как при вводе в эксплуатацию системы планирования.</p></header>
+      <div class="grid">
+        <div class="field"><label for="e_institution">Учреждение</label><div class="combo" data-list="institutions"><input type="text" id="e_institution"></div></div>
+        <div class="field"><label for="e_machine">Аппарат</label><div class="combo" data-list="machines"><input type="text" id="e_machine" placeholder="Модель, заводской №"></div></div>
+        <div class="field"><label for="e_beam">Пучок</label><div class="combo" data-list="ebeams"><input type="text" id="e_beam" placeholder="12 МэВ"></div></div>
+        <div class="field">
+          <label for="e_energy">Номинальная энергия, МэВ</label>
+          <input type="text" id="e_energy" class="num" inputmode="decimal">
+          <span class="sub">заполняется по названию пучка</span>
+        </div>
+        <div class="field"><label for="e_date">Дата измерения</label><input type="date" id="e_date"></div>
+        <div class="field span-2">
+          <span class="label" id="e-staff-label">Сотрудник, выполняющий измерения</span>
+          <div id="e-staff-list" class="staff-list" data-prefix="e_staff" role="group" aria-labelledby="e-staff-label"></div>
+          <button type="button" class="link-btn" id="e-btn-add-staff"><span aria-hidden="true">+</span> Добавить сотрудника</button>
+        </div>
+        <div class="field"><label for="e_ssd">РИП, см</label><input type="text" id="e_ssd" class="num" inputmode="decimal"></div>
+        <div class="field">
+          <label for="e_field">Размер поля (аппликатор), см</label>
+          <div class="inline"><input type="text" id="e_field" class="num" inputmode="decimal"><output class="unit-note" id="e-field-view" for="e_field"></output></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section class="step" aria-labelledby="e-s2">
+      <header><span class="step-no">2</span><h2 id="e-s2">Качество пучка: <button type="button" class="term" data-term="r50">R<sub>50</sub></button> и опорная глубина</h2>
+        <p class="hint" id="e-epom-hint">Кривую ионизации измеряют при РИП 100 см и поле не меньше 10 × 10 см.</p></header>
+      <div class="grid">
+        <div class="field span-2">
+          <label for="e_r50_method">Как получен R<sub>50</sub></label>
+          <select id="e_r50_method">
+            <option value="i50">по глубине 50 % ионизации R50,ion (I50)</option>
+            <option value="r50">R50 известен (детектор, отвечающий дозе)</option>
+          </select>
+        </div>
+        <div class="field" data-show="e_r50_method:i50"><label for="e_i50">R<sub>50,ion</sub> (I<sub>50</sub>), г/см²</label><input type="text" id="e_i50" class="num" inputmode="decimal" placeholder="4,80"></div>
+        <div class="field" data-show="e_r50_method:r50"><label for="e_r50">R<sub>50</sub>, г/см²</label><input type="text" id="e_r50" class="num" inputmode="decimal"></div>
+      </div>
+      <div class="grid four">
+        <div class="field out-cell"><span class="label">R<sub>50</sub>, г/см²</span><output data-out="quality.r50" data-digits="3"></output></div>
+        <div class="field out-cell used"><span class="label">z<sub>ref</sub> = d<sub>ref</sub>, г/см²</span><output data-out="quality.zref" data-digits="3"></output></div>
+        <div class="field out-cell"><span class="label">E₀ ≈ 2,33·R<sub>50</sub>, МэВ</span><output data-out="quality.E0" data-digits="1"></output></div>
+      </div>
+      <p class="eq"><span data-out-text="quality.equation"></span>. z<sub>ref</sub> = 0,6·R<sub>50</sub> − 0,1 г/см²: TRS-398, ур. (39); Report 385, ур. (2).</p>
+    </section>
+
+    <!-- 3 -->
+    <section class="step" aria-labelledby="e-s3">
+      <header><span class="step-no">3</span><h2 id="e-s3">Камера и электрометр</h2>
+        <p class="hint">TRS-398 рекомендует плоскопараллельные камеры для всех пучков и обязательно — при R<sub>50</sub> &lt; 3 г/см². Report 385 допускает цилиндрические камеры во всех пучках от 4 до 22 МэВ.</p></header>
+      <div class="grid two">
+        <div class="field span-all">
+          <label for="e_ch_model">Ионизационная камера</label>
+          <select id="e_ch_model"></select>
+          <span class="sub" id="e-chamber-info"></span>
+        </div>
+      </div>
+      <div class="grid subgrid" data-show="e_ch_model:OTHER">
+        <div class="field"><label for="e_other_name">Модель</label><input type="text" id="e_other_name"></div>
+        <div class="field"><label for="e_other_type">Тип</label><select id="e_other_type"><option value="pp">плоскопараллельная</option><option value="cyl">цилиндрическая</option></select></div>
+        <div class="field" data-show="e_other_type:cyl"><label for="e_other_r">Радиус полости, мм</label><input type="text" id="e_other_r" class="num" inputmode="decimal"></div>
+      </div>
+      <div class="positions" id="e-positions" aria-live="polite"></div>
+      <div class="grid two">
+        <div class="field"><label for="e_ch_serial">Серийный № камеры</label><input type="text" id="e_ch_serial"></div>
+        <div class="field">
+          <label for="e_cal_route">Калибровка камеры</label>
+          <select id="e_cal_route">
+            <option value="co60">N_D,w в пучке ⁶⁰Co</option>
+            <option value="cross">перекрёстная калибровка в пучке электронов</option>
+          </select>
+        </div>
+        <div class="field" data-show="e_cal_route:co60">
+          <span class="label"><button type="button" class="term" data-term="ndw">N<sub>D,w</sub></button> (⁶⁰Co)</span>
+          <div class="inline">
+            <input type="text" id="e_ndw" class="num" inputmode="decimal" aria-label="Калибровочный коэффициент N_D,w">
+            <select id="e_ndw_unit" aria-label="Единица N_D,w"></select>
+          </div>
+        </div>
+        <div class="field" data-show="e_cal_route:cross" data-protocol="trs">
+          <span class="label">N<sub>D,w,Qcross</sub> рабочей камеры (TRS-398, ур. 41)</span>
+          <div class="inline">
+            <input type="text" id="e_cross_ndw" class="num" inputmode="decimal" aria-label="N_D,w,Qcross">
+            <select id="e_cross_ndw_unit" aria-label="Единица N_D,w,Qcross"></select>
+          </div>
+        </div>
+        <div class="field" data-show="e_cal_route:cross" data-protocol="trs">
+          <label for="e_cross_r50">R<sub>50</sub> пучка перекрёстной калибровки, г/см²</label>
+          <input type="text" id="e_cross_r50" class="num" inputmode="decimal">
+          <span class="sub">TRS-398 рекомендует пучок с R<sub>50</sub> &gt; 7 г/см²</span>
+        </div>
+        <div class="field" data-show="e_cal_route:cross" data-protocol="tg51">
+          <span class="label">(k<sub>Qecal</sub>·N<sub>D,w</sub>)<sub>pp</sub> (Report 385, ур. 5)</span>
+          <div class="inline">
+            <input type="text" id="e_cross_kn" class="num" inputmode="decimal" aria-label="(k_Qecal·N_D,w)pp">
+            <select id="e_cross_kn_unit" aria-label="Единица (k_Qecal·N_D,w)pp"></select>
+          </div>
+        </div>
+        <div class="field">
+          <span class="label">Стандартные условия из сертификата</span>
+          <div class="inline">
+            <input type="text" id="e_T0" class="num" inputmode="decimal" aria-label="T₀, °C">
+            <span class="unit-note">°C</span>
+            <input type="text" id="e_P0" class="num" inputmode="decimal" aria-label="P₀, кПа">
+            <span class="unit-note">кПа</span>
+          </div>
+          <div class="presets">
+            <button type="button" data-e-preset="20|101,325">20 °C · 101,325 кПа</button>
+            <button type="button" data-e-preset="22|101,33">22 °C · 101,33 кПа</button>
+          </div>
+        </div>
+        <div class="field"><label for="e_el_model">Электрометр</label><input type="text" id="e_el_model"></div>
+        <div class="field"><label for="e_el_serial">Серийный № электрометра</label><input type="text" id="e_el_serial"></div>
+        <div class="field">
+          <span class="label"><button type="button" class="term" data-term="kelec">k<sub>elec</sub></button> (P<sub>elec</sub>)</span>
+          <input type="text" id="e_kelec" class="num" inputmode="decimal" aria-label="k_elec">
+          <span class="sub">1,000, если камера и электрометр калиброваны вместе</span>
+        </div>
+      </div>
+      <details class="more" data-show="e_cal_route:co60">
+        <summary>Поправки, которые лаборатория могла не внести</summary>
+        <div class="grid two">
+          <div class="field">
+            <label class="check"><input type="checkbox" id="e_lab_pol_applied" checked> <span>Лаборатория внесла поправку на полярность</span></label>
+            <div class="field" data-show="e_lab_pol_applied:false">
+              <label for="e_lab_kpol">k<sub>pol</sub> в пучке лаборатории</label>
+              <input type="text" id="e_lab_kpol" class="num" inputmode="decimal">
+            </div>
+          </div>
+          <div class="field">
+            <label class="check"><input type="checkbox" id="e_lab_ks_applied" checked> <span>Лаборатория внесла поправку на рекомбинацию</span></label>
+            <div class="field" data-show="e_lab_ks_applied:false">
+              <label for="e_lab_ks">k<sub>s</sub> при калибровке</label>
+              <input type="text" id="e_lab_ks" class="num" inputmode="decimal">
+            </div>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- 4 -->
+    <section class="step" aria-labelledby="e-s4">
+      <header><span class="step-no">4</span><h2 id="e-s4">Температура и давление</h2>
+        <p class="hint">Температура воды у камеры и давление по поверенному барометру в помещении, без приведения к уровню моря.</p></header>
+      <div class="grid">
+        <div class="field"><label for="e_env_T">Температура воды, °C</label><input type="text" id="e_env_T" class="num" inputmode="decimal"></div>
+        <div class="field">
+          <label for="e_env_P">Давление</label>
+          <div class="inline">
+            <input type="text" id="e_env_P" class="num" inputmode="decimal">
+            <select id="e_env_P_unit" aria-label="Единица давления"></select>
+          </div>
+        </div>
+        <div class="field out-cell" data-protocol="trs"><span class="label"><button type="button" class="term" data-term="kTP">k<sub>TP</sub></button></span><output data-out="trs.kTP" data-digits="4"></output></div>
+        <div class="field out-cell" data-protocol="tg51"><span class="label"><button type="button" class="term" data-term="kTP">P<sub>TP</sub></button></span><output data-out="tg51.PTP" data-digits="4"></output></div>
+      </div>
+    </section>
+
+    <!-- 5 -->
+    <section class="step" aria-labelledby="e-s5">
+      <header><span class="step-no">5</span><h2 id="e-s5">Показания электрометра</h2>
+        <p class="hint" id="e-readings-hint">Камера на опорной глубине. Все серии — при одном и том же числе МЕ; значения можно вводить со знаком или без. Кнопка «+» добавляет ячейку.</p></header>
+      <div class="grid">
+        <div class="field"><label for="e_mu">Облучение, МЕ</label><input type="text" id="e_mu" class="num" inputmode="decimal"></div>
+        <div class="field">
+          <label for="e_polarity">Обычная полярность</label>
+          <select id="e_polarity"><option value="+">положительная (+)</option><option value="-">отрицательная (−)</option></select>
+        </div>
+        <div class="field"><label for="e_V1">V₁ рабочее, В</label><input type="text" id="e_V1" class="num" inputmode="decimal"></div>
+        <div class="field"><label for="e_V2">V₂ пониженное, В</label><input type="text" id="e_V2" class="num" inputmode="decimal"></div>
+        <div class="field">
+          <label for="e_beam_mode">Режим пучка</label>
+          <select id="e_beam_mode"><option value="pulsed">импульсный</option><option value="scanned">импульсно-сканирующий</option></select>
+        </div>
+      </div>
+
+      <div class="series">
+        <div class="cells" data-series="e_M1" data-label="M при V₁, обычная полярность">
+          <span class="label" id="e-lbl-m1">M при V₁, обычная полярность, нКл</span>
+          <div class="cells-row">
+            <div class="cells-list"></div>
+            <div class="cells-tools">
+              <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+              <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+            </div>
+            <div class="cell-mean"><span>Среднее</span><output data-out="inputs.M1.mean" data-digits="4" data-abs="1"></output></div>
+          </div>
+        </div>
+        <div class="cells" data-series="e_Mopp" data-label="M при V₁, обратная полярность">
+          <span class="label">M при V₁, обратная полярность, нКл</span>
+          <div class="cells-row">
+            <div class="cells-list"></div>
+            <div class="cells-tools">
+              <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+              <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+            </div>
+            <div class="cell-mean"><span>Среднее</span><output data-out="inputs.Mopp.mean" data-digits="4" data-abs="1"></output></div>
+          </div>
+        </div>
+        <div class="cells" data-series="e_M2" data-label="M при V₂, обычная полярность">
+          <span class="label">M при V₂, обычная полярность, нКл</span>
+          <div class="cells-row">
+            <div class="cells-list"></div>
+            <div class="cells-tools">
+              <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+              <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+            </div>
+            <div class="cell-mean"><span>Среднее</span><output data-out="inputs.M2.mean" data-digits="4" data-abs="1"></output></div>
+          </div>
+        </div>
+        <div class="cells" id="e-m51" data-series="e_M51" data-label="M при V₁ в положении по Report 385 (TG-51)" hidden>
+          <span class="label">M при V₁, обычная полярность, положение по Report 385 — для TG-51, нКл</span>
+          <div class="cells-row">
+            <div class="cells-list"></div>
+            <div class="cells-tools">
+              <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+              <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+            </div>
+            <div class="cell-mean"><span>Среднее</span><output data-out="inputs.M51.mean" data-digits="4" data-abs="1"></output></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="field">
+          <span class="label"><button type="button" class="term" data-term="kleak">Поправка на утечку</button></span>
+          <input type="text" id="e_kleak" class="num" inputmode="decimal" aria-label="Поправка на утечку">
+          <span class="sub">1,000, если утечка меньше 0,1 % показания</span>
+        </div>
+        <div class="field out-cell" data-protocol="trs">
+          <span class="label"><button type="button" class="term" data-term="kpol">k<sub>pol</sub></button></span>
+          <output data-out="trs.kpol" data-digits="4" data-flag="kpol"></output>
+          <span class="sub">в электронах бывает до 1 ± 0,02</span>
+        </div>
+        <div class="field out-cell" data-protocol="trs">
+          <span class="label"><button type="button" class="term" data-term="ks">k<sub>s</sub></button></span>
+          <output data-out="trs.ks" data-digits="4" data-flag="ks"></output>
+          <span class="sub">не может быть меньше 1; больше 1,05 — недопустимо</span>
+        </div>
+        <div class="field out-cell" data-protocol="tg51">
+          <span class="label"><button type="button" class="term" data-term="kpol">P<sub>pol</sub></button></span>
+          <output data-out="tg51.Ppol" data-digits="4" data-flag="kpol"></output>
+          <span class="sub">в электронах бывает до 1 ± 0,02</span>
+        </div>
+        <div class="field out-cell" data-protocol="tg51">
+          <span class="label"><button type="button" class="term" data-term="ks">P<sub>ion</sub></button></span>
+          <output data-out="tg51.Pion" data-digits="4" data-flag="Pion"></output>
+          <span class="sub">не может быть меньше 1; больше 1,05 — недопустимо</span>
+        </div>
+        <div class="field out-cell"><span class="label">V₁/V₂</span><output data-out="inputs.nV" data-digits="2"></output></div>
+        <div class="field out-cell"><span class="label">M₁/M₂</span><output data-out="inputs.ratio12" data-digits="5"></output></div>
+      </div>
+      <p class="eq" data-protocol="trs">k<sub>s</sub>: <span data-out-text="trs.ksEquation"></span>. P<sub>ion</sub> по TG-51 — ур. (12) для импульсного пучка.</p>
+    </section>
+
+    <!-- 6 -->
+    <section class="step" aria-labelledby="e-s6">
+      <header><span class="step-no">6</span><h2 id="e-s6"><button type="button" class="term" data-term="kQe">k<sub>Q</sub></button> для пучка электронов</h2></header>
+      <div class="duo">
+        <div class="proto-card" data-protocol="trs">
+          <h3>TRS-398 Rev.1</h3>
+          <div class="field">
+            <label for="e_kqtrs_mode">Как определить k<sub>Q,Q₀</sub></label>
+            <select id="e_kqtrs_mode">
+              <option value="table" id="e-opt-trs-table">по табл. 20 с интерполяцией по R50</option>
+              <option value="formula" id="e-opt-trs-formula">по аппроксимации прил. II (табл. 47)</option>
+              <option value="manual">ввести вручную (например, измерен в лаборатории)</option>
+            </select>
+          </div>
+          <div class="field" data-show="e_kqtrs_mode:manual"><label for="e_kqtrs_manual" id="e-lbl-kqtrs">k<sub>Q,Q₀</sub></label><input type="text" id="e_kqtrs_manual" class="num" inputmode="decimal"></div>
+          <div class="grid three" data-show="e_cal_route:cross">
+            <div class="field out-cell"><span class="label">k<sub>Q,Qint</sub></span><output data-out="trs.kQint" data-digits="4"></output></div>
+            <div class="field out-cell"><span class="label">k<sub>Qcross,Qint</sub></span><output data-out="trs.kQcrossInt" data-digits="4"></output></div>
+          </div>
+          <div class="grid four">
+            <div class="field out-cell"><span class="label">по таблице</span><output data-out="trs.kQTable" data-digits="4"></output></div>
+            <div class="field out-cell"><span class="label">по аппроксимации</span><output data-out="trs.kQFormula" data-digits="4"></output></div>
+            <div class="field out-cell"><span class="label">таблица − аппрокс.</span><output data-out="trs.kQDiff" data-digits="3" data-signed="1" data-suffix=" %"></output></div>
+            <div class="field out-cell used"><span class="label">k<sub>Q</sub> в расчёте</span><output data-out="trs.kQ" data-digits="4" data-flag="kQtrs"></output></div>
+          </div>
+          <p class="eq" data-out-text="trs.kQSource"></p>
+        </div>
+        <div class="proto-card" data-protocol="tg51">
+          <h3>TG-51 + Report 385</h3>
+          <div class="field">
+            <label for="e_kq51_mode">Как определить k<sub>Q</sub></label>
+            <select id="e_kq51_mode">
+              <option value="fit">k′Q·kQecal по Report 385 (табл. 4–7)</option>
+              <option value="manual">ввести вручную</option>
+            </select>
+          </div>
+          <div class="field" data-show="e_kq51_mode:manual"><label for="e_kq51_manual" id="e-lbl-kq51">k<sub>Q</sub></label><input type="text" id="e_kq51_manual" class="num" inputmode="decimal"></div>
+          <div class="grid three">
+            <div class="field out-cell"><span class="label">k′<sub>Q</sub></span><output data-out="tg51.kQprime" data-digits="4"></output></div>
+            <div class="field out-cell" data-show="e_cal_route:co60"><span class="label">k<sub>Qecal</sub></span><output data-out="tg51.kQecal" data-digits="3"></output></div>
+            <div class="field out-cell used"><span class="label" id="e-lbl-kq51-used">k<sub>Q</sub> в расчёте</span><output data-out="tg51.kQ" data-digits="4" data-flag="kQ51"></output></div>
+          </div>
+          <p class="eq" data-out-text="tg51.kQSource"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7 -->
+    <section class="step" aria-labelledby="e-s7">
+      <header><span class="step-no">7</span><h2 id="e-s7"><button type="button" class="term" data-term="pddE">Пересчёт на z<sub>max</sub></button></h2>
+        <p class="hint">D(z<sub>max</sub>) = D(z<sub>ref</sub>) / PDD(z<sub>ref</sub>) · 100. PDD берут клиническую — ту, что заложена в систему планирования. Отсутствие этого пересчёта — одна из самых частых ошибок калибровки электронов.</p></header>
+      <label class="check"><input type="checkbox" id="e_dd_on" checked> <span>Пересчитать дозу на глубину максимума</span></label>
+      <div class="grid subgrid" data-show="e_dd_on:true">
+        <div class="field"><label for="e_pdd" id="e-lbl-pdd">PDD(z<sub>ref</sub>), %</label><input type="text" id="e_pdd" class="num" inputmode="decimal"></div>
+        <div class="field"><label for="e_zmax">Глубина z<sub>max</sub>, см</label><input type="text" id="e_zmax" class="num" inputmode="decimal"><span class="sub">для протокола; можно не заполнять</span></div>
+        <div class="field"><label for="e_nominal">Номинальный выход</label><input type="text" id="e_nominal" class="num" inputmode="decimal"><span class="sub">сГр/МЕ на z<sub>max</sub>, для отклонения</span></div>
+      </div>
+    </section>
+
+    <!-- 8 -->
+    <section class="step" aria-labelledby="e-s8">
+      <header><span class="step-no">8</span><h2 id="e-s8">Примечания</h2></header>
+      <div class="field"><label for="e_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="e_notes"></textarea></div>
+    </section>
+  </form>
+
+  <aside class="readout" id="e-readout" aria-label="Результат расчёта для электронов">
+    <section class="display" aria-live="polite">
+      <h2>Поглощённая доза в воде</h2>
+      <p class="demo-flag" id="e-demo-flag" hidden>Сейчас загружен демонстрационный пример: значения вымышленные.</p>
+      <div class="dose-rows" id="e-dose-rows"></div>
+      <div class="delta" id="e-delta" hidden></div>
+    </section>
+    <section class="panel">
+      <h2>Замечания</h2>
+      <ul class="messages" id="e-messages"></ul>
+    </section>
+    <section class="panel">
+      <h2>Поправки и промежуточные величины</h2>
+      <div class="table-wrap"><table class="factors" id="e-factors"></table></div>
+    </section>
+    <section class="panel no-print">
+      <h2>Данные</h2>
+      <div class="actions">
+        <button type="button" class="primary" id="e-btn-sample">Загрузить пример</button>
+        <button type="button" id="e-btn-clear">Очистить</button>
+        <button type="button" id="e-btn-save" data-standalone>Сохранить в файл</button>
+        <button type="button" id="e-btn-load">Открыть файл</button>
+        <button type="button" id="e-btn-copy-json">Копировать данные</button>
+        <button type="button" id="e-btn-copy-report">Копировать протокол</button>
+        <button type="button" id="e-btn-print" data-standalone>Печать</button>
+      </div>
+      <input type="file" id="e-file-input" accept="application/json,.json" hidden>
+      <p class="status-line" id="e-status" role="status"></p>
+    </section>
+  </aside>
+</main>
+<div class="mobile-result"><span id="e-mobile-value">—</span><a href="#e-readout">к результату</a></div>
+</div>
+
 <footer class="page-foot">
-  <p>Инструмент помогает считать, но не заменяет независимую проверку медицинским физиком. Источники: AAPM TG-51 (Almond et al., Med. Phys. 26, 1999), аддендум для фотонов (McEwen et al., Med. Phys. 41, 2014), WGTG51 Report 374 (Muir et al., 2022), МАГАТЭ TRS-398 Rev.1 (2024). Подробности расчёта — в файлах docs/cobalt.md и docs/photons.md репозитория.</p>
+  <p>Инструмент помогает считать, но не заменяет независимую проверку медицинским физиком. Источники: AAPM TG-51 (Almond et al., Med. Phys. 26, 1999), аддендум для фотонов (McEwen et al., Med. Phys. 41, 2014), WGTG51 Report 374 (Muir et al., 2022), аддендум для электронов WGTG51 Report 385 (Muir et al., 2024), МАГАТЭ TRS-398 Rev.1 (2024). Подробности расчёта — в папке docs репозитория.</p>
 </footer>
 
 

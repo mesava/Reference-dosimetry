@@ -487,3 +487,8 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; }
 .pairs .eq { margin: 0; }
 .pairs.flag-warn .pair-row input { border-color: var(--warn); background: var(--warn-soft); }
 .pairs.flag-error .pair-row input { border-color: var(--err); background: var(--err-soft); }
+
+/* ------------------------------------------------------------ положение камеры (электроны) */
+.positions { margin: 12px 0; padding: 10px 12px; border: 1px dashed var(--accent); border-radius: var(--radius); font-size: 13px; background: var(--accent-soft); }
+.positions h4 { margin: 0 0 4px; font: 600 13px var(--font-display); }
+.positions ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; }

@@ -3,11 +3,13 @@ import { TERMS } from './terms.js';
 import { $, $$, setActiveModule, getActiveModule, PROTOCOL_KEY, applyProtocol } from './common.js';
 import { initCobalt, importCobalt, cobaltStatus } from './cobalt-ui.js';
 import { initPhotons, importPhotons, photonsStatus } from './photons-ui.js';
+import { initElectrons, importElectrons, electronsStatus } from './electrons-ui.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
 const MODULES = {
   co60: { title: '⁶⁰Co — референсная дозиметрия', file: 'cobalt', importData: importCobalt, status: cobaltStatus },
   photons: { title: 'МВ фотоны — референсная дозиметрия', file: 'photons', importData: importPhotons, status: photonsStatus },
+  electrons: { title: 'Электроны — референсная дозиметрия', file: 'electrons', importData: importElectrons, status: electronsStatus },
 };
 
 const store = {
@@ -135,6 +137,7 @@ function init() {
   initTerms();
   initCobalt();
   initPhotons();
+  initElectrons();
   initPaste();
   showModule(moduleFromHash() ?? store.get(TAB_KEY) ?? 'co60');
   window.addEventListener('hashchange', () => {
