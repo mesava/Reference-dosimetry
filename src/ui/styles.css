@@ -125,6 +125,7 @@ a { color: var(--accent); }
   text-decoration: none;
   color: var(--muted);
 }
+.modules a:hover { color: var(--accent); }
 .modules a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
 .modules span { opacity: 0.7; }
 .modules small { font: 11px var(--font-body); }
@@ -223,7 +224,7 @@ input[type="date"]::-webkit-datetime-edit { padding: 0; }
 input:disabled, select:disabled, textarea:disabled { opacity: 0.55; cursor: not-allowed; }
 input.num, textarea.num { font-family: var(--font-mono); font-size: 14px; font-variant-numeric: tabular-nums; }
 textarea { resize: vertical; min-height: 64px; }
-textarea.profile { min-height: 120px; }
+textarea.mono { font: 13px/1.5 var(--font-mono); min-height: 140px; }
 select { cursor: pointer; }
 .inline { display: flex; gap: 6px; min-width: 0; }
 .inline > input { flex: 1 1 auto; }
@@ -288,7 +289,7 @@ details.more[open] summary { margin-bottom: 10px; }
   gap: 14px;
 }
 .display h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--display-dim); font-weight: 500; }
-#dose-rows { display: grid; gap: 16px; }
+.dose-rows { display: grid; gap: 16px; }
 .demo-flag { margin: 0; font-size: 12px; color: var(--amber); border: 1px dashed currentColor; border-radius: var(--radius); padding: 4px 8px; }
 .dose-row { display: grid; gap: 4px; }
 .dose-row .proto { font: 500 13px var(--font-display); color: var(--display-dim); display: flex; justify-content: space-between; gap: 8px; }
@@ -366,7 +367,7 @@ footer.page-foot p { max-width: 90ch; }
 /* ------------------------------------------------------------ печать */
 @media print {
   body { background: #fff; color: #000; font-size: 11px; padding-bottom: 0; }
-  .topbar .protocol-switch, .actions, .mobile-result, .presets, .no-print { display: none !important; }
+  .topbar .protocol-switch, .modules, .actions, .mobile-result, .presets, .no-print, .pairs .cells-tools { display: none !important; }
   .layout { display: block; padding: 0; }
   .readout { position: static; max-height: none; overflow: visible; margin-top: 12px; }
   .step, .panel { break-inside: avoid; border-color: #999; }
@@ -476,3 +477,13 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; }
 .dlg-body ul, .dlg-body ol { margin: 6px 0; padding-left: 20px; display: grid; gap: 4px; }
 .dlg-body .formula { font-family: var(--font-mono); background: var(--calc); padding: 6px 10px; border-radius: var(--radius); overflow-x: auto; }
 .dlg-body .src { color: var(--muted); font-size: 12px; border-top: 1px solid var(--rule); padding-top: 8px; margin-top: 12px; }
+
+/* ------------------------------------------------------------ таблица облучений для ошибки таймера */
+.pairs { display: grid; gap: 6px; margin-block: 12px; max-width: 460px; }
+.pairs-head, .pair-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr); gap: 6px; align-items: center; }
+.pairs-head { font: 500 13px var(--font-display); }
+.pairs-list { display: grid; gap: 6px; }
+.pair-no { font: 12px var(--font-mono); color: var(--muted); text-align: center; }
+.pairs .eq { margin: 0; }
+.pairs.flag-warn .pair-row input { border-color: var(--warn); background: var(--warn-soft); }
+.pairs.flag-error .pair-row input { border-color: var(--err); background: var(--err-soft); }

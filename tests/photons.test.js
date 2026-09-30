@@ -181,6 +181,20 @@ test('k_vol: только для БВФ; формула (22), табл. 11, св
   near(flat.trs.D, r0.trs.D, 1e-15);
 });
 
+test('k_vol по измеренному профилю (ур. 21 TRS-398)', () => {
+  const text = 'y, мм\tдоза\n' + Array.from({ length: 31 }, (_, i) => `${i - 15} ${(100 * (1 - 1e-5 * (i - 15) ** 2)).toFixed(6).replace('.', ',')}`).join('\n');
+  const base = { ...SAMPLE_FORM, meta_fff: true, q51_method: 'foil30', q51_pdd10pb: '66,4', prof_mode: 'profile', prof_text: text };
+  const r = computePhotons(base);
+  // парабола OAR = 1 − c·y²: среднее по [−L/2, L/2] = 1 − c·L²/12, L = 23 мм (табл. 4 для PTW 30013)
+  near(r.profile.value, 1 / (1 - (1e-5 * 23 * 23) / 12), 2e-6);
+  const tg = computePhotons({ ...base, protocol: 'tg51' });
+  near(tg.tg51.Prp, r.profile.value, 1e-15, 'по профилю — доступно и в режиме TG-51');
+  const empty = computePhotons({ ...base, prof_text: '' });
+  assert.equal(empty.flags.prof_text, 'error');
+  const short = computePhotons({ ...base, prof_length: '40' });
+  assert.equal(short.flags.prof_text, 'error', 'профиль короче камеры');
+});
+
 test('Оценка TPR20,10 для БВФ по PDD(10) — только для сравнения', () => {
   const r = computePhotons({ ...SAMPLE_FORM, meta_fff: true, q51_method: 'foil30', q51_pdd10pb: '66,4', qtrs_fff_pdd10: '63,0' });
   near(r.trs.fffEstimate.value, -0.7898 + 0.0329 * 63 - 0.000166 * 63 * 63, 1e-12);
@@ -293,7 +307,7 @@ test('Старые файлы: показания строкой, медицин
   const none = normalizeForm({ prof_mode: 'none' });
   assert.equal(none.prof_mode, 'manual');
   assert.equal(none.prof_value, '1,000');
-  assert.equal(normalizeForm({ prof_mode: 'profile' }).prof_mode, 'manual');
+  assert.equal(normalizeForm({ prof_mode: 'profile' }).prof_mode, 'profile');
   const r = computePhotons({ ...SAMPLE_FORM, qtrs_method: 'direct', qtrs_tpr: '0,668', qtrs_v20: undefined, qtrs_v10: undefined });
   near(r.trs.tpr, 0.668, 1e-12);
 });

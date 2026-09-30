@@ -168,12 +168,14 @@ export function setupCells(container, onChange) {
 
 // ------------------------------------------------------------ сотрудники
 
+/** Список сотрудников; префикс id полей задаётся атрибутом data-prefix контейнера. */
 export function renderStaff(container, values, onChange) {
   const vals = Array.isArray(values) && values.length ? values : [''];
+  const prefix = container.dataset.prefix || 'meta_staff';
   container.innerHTML = vals
     .map(
       (v, i) => `<div class="staff-row">
-        <div class="combo" data-list="staff"><input type="text" class="staff-input" id="meta_staff_${i}" aria-label="Сотрудник ${i + 1}" value="${esc(v)}"></div>
+        <div class="combo" data-list="staff"><input type="text" class="staff-input" id="${prefix}_${i}" aria-label="Сотрудник ${i + 1}" value="${esc(v)}"></div>
         ${i > 0 ? `<button type="button" class="icon-btn staff-remove" data-i="${i}" aria-label="Убрать сотрудника ${i + 1}" title="Убрать строку">−</button>` : ''}
       </div>`,
     )
@@ -191,4 +193,52 @@ export function renderStaff(container, values, onChange) {
 
 export function readStaff(container) {
   return Array.from(container.querySelectorAll('.staff-input')).map((i) => i.value);
+}
+
+// ------------------------------------------------------------ таблица пар (время — показание)
+
+/**
+ * Таблица строк из двух чисел. Контейнер: .pairs[data-a][data-b] с .pairs-list внутри
+ * и кнопками .pair-add / .pair-remove.
+ */
+export function renderPairs(container, a, b) {
+  const n = Math.max(2, a?.length || 0, b?.length || 0);
+  const ka = container.dataset.a;
+  const kb = container.dataset.b;
+  const la = container.dataset.labelA;
+  const lb = container.dataset.labelB;
+  const rows = [];
+  for (let i = 0; i < n; i++) {
+    rows.push(`<div class="pair-row"><span class="pair-no">${i + 1}</span>
+      <input type="text" class="num pair-a" inputmode="decimal" id="${ka}_${i}" aria-label="${esc(la)}, облучение ${i + 1}" value="${esc(a?.[i] ?? '')}">
+      <input type="text" class="num pair-b" inputmode="decimal" id="${kb}_${i}" aria-label="${esc(lb)}, облучение ${i + 1}" value="${esc(b?.[i] ?? '')}"></div>`);
+  }
+  container.querySelector('.pairs-list').innerHTML = rows.join('');
+  container.querySelector('.pair-remove').disabled = n <= 2;
+}
+
+export function readPairs(container) {
+  return {
+    a: Array.from(container.querySelectorAll('.pair-a')).map((i) => i.value),
+    b: Array.from(container.querySelectorAll('.pair-b')).map((i) => i.value),
+  };
+}
+
+export function setupPairs(container, onChange) {
+  container.querySelector('.pair-add').addEventListener('click', () => {
+    const { a, b } = readPairs(container);
+    a.push('');
+    b.push('');
+    renderPairs(container, a, b);
+    container.querySelectorAll('.pair-a')[a.length - 1].focus();
+    onChange();
+  });
+  container.querySelector('.pair-remove').addEventListener('click', () => {
+    const { a, b } = readPairs(container);
+    if (a.length <= 2) return;
+    a.pop();
+    b.pop();
+    renderPairs(container, a, b);
+    onChange();
+  });
 }

@@ -84,7 +84,7 @@ export const FORM_DEFAULTS = {
   kq51_manual_on: false,
   kq51_manual: '',
 
-  prof_mode: 'formula22', // 'formula22' | 'table11' | 'manual' (только для БВФ)
+  prof_mode: 'formula22', // 'formula22' | 'table11' | 'manual' | 'profile' (только для БВФ)
   prof_value: '',
   prof_length: '',
   prof_sdd: '',
@@ -133,7 +133,6 @@ export function normalizeForm(input) {
     f.prof_mode = 'manual';
     if (isBlank(f.prof_value)) f.prof_value = '1,000';
   }
-  if (f.prof_mode === 'profile') f.prof_mode = 'manual'; // расчёт по профилю из интерфейса убран
   return f;
 }
 
@@ -555,12 +554,14 @@ export function computePhotons(form) {
       }
     } else if (f.prof_mode === 'profile') {
       const parsed = parseProfile(f.prof_text);
-      if (parsed.error) add('error', 'common', `Профиль: ${parsed.error}.`);
+      if (parsed.error) add('error', 'common', `Профиль: ${parsed.error}.`, null, 'prof_text');
+      else if (parsed.points.length === 0) add('error', 'common', 'Вставьте измеренный профиль: в каждой строке положение (мм) и значение.', null, 'prof_text');
       else if (!Number.isFinite(lengthMm)) add('error', 'common', 'Укажите длину полости камеры (мм).', null, 'prof_length');
       else {
         const r = kvolFromProfile(parsed.points, lengthMm);
-        if (r.error) add('error', 'common', `Профиль: ${r.error}.`);
-        prof = { value: r.value, method: `по профилю, L = ${ru(lengthMm, 1)} мм`, active: true };
+        if (r.error) add('error', 'common', `Профиль: ${r.error}.`, null, 'prof_text');
+        prof = { value: r.value, method: `ур. (21) TRS-398 по измеренному профилю (точек: ${parsed.points.length}), L = ${ru(lengthMm, 1)} мм`, active: true };
+        if (want51) add('info', 'tg51', 'Для пучков БВФ аддендум TG-51 допускает, что может понадобиться двумерный профиль; здесь используется одномерное усреднение вдоль оси камеры (ур. 20–21 TRS-398).', `${REF.add}, разд. 5.C.7`);
       }
     }
     if (Number.isFinite(prof.value) && (prof.value < 0.99 || prof.value > 1.03)) {

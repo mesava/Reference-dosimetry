@@ -1,50 +1,24 @@
-// Интерфейс калькулятора МВ фотонов: связывает форму с расчётным ядром.
+// Модуль «МВ фотоны»: связывает форму с расчётным ядром.
 import { computePhotons, FORM_DEFAULTS, normalizeForm } from '../core/photons.js';
 import { SAMPLE_FORM } from '../core/sample.js';
-import { CHAMBERS, findChamber, chamberLabel } from '../core/chambers.js';
+import { CHAMBERS, chamberLabel } from '../core/chambers.js';
 import { PRESSURE_UNITS, NDW_UNITS, parseBeamName, parseNumber } from '../core/units.js';
-import { TERMS } from './terms.js';
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
+import {
+  $, $$, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
+  currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton,
+} from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.photons.v2';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'photons', version: 2 };
 const SERIES_KEYS = ['rd_M1', 'rd_Mopp', 'rd_M2'];
 const CC_KEYS = ['cc_maker', 'cc_model', 'cc_volume', 'cc_length', 'cc_radius', 'cc_wall', 'cc_wall_thickness', 'cc_electrode', 'cc_waterproof', 'cc_analog', 'cc_a', 'cc_b'];
-const framed = (() => {
-  try {
-    return window.self !== window.top;
-  } catch {
-    return true;
-  }
-})();
+const ROOT = () => document.getElementById('module-photons');
+let setStatus = () => {};
+export const photonsStatus = (text) => setStatus(text);
 
-const $ = (sel, root = document) => root.querySelector(sel);
-const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-
-const numberFormats = new Map();
-function fmt(value, digits = 4) {
-  if (!Number.isFinite(value)) return '—';
-  if (!numberFormats.has(digits)) {
-    numberFormats.set(digits, new Intl.NumberFormat('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false }));
-  }
-  return numberFormats.get(digits).format(value).replace('-', '−');
-}
-function fmtSigned(value, digits = 2) {
-  if (!Number.isFinite(value)) return '—';
-  return (value > 0 ? '+' : value < 0 ? '−' : '±') + fmt(Math.abs(value), digits);
-}
-function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-}
-function get(obj, path) {
-  return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
-}
 const isCustom = (id) => id === 'CUSTOM' || String(id).startsWith('MY:');
-const today = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
 
 // ------------------------------------------------------------ списки
 function chamberOptions() {
@@ -93,12 +67,12 @@ function fillSelects() {
 }
 
 // ------------------------------------------------------------ форма ↔ данные
-const seriesBox = (key) => $(`.cells[data-series="${key}"]`);
+const seriesBox = (key) => $(`#sheet .cells[data-series="${key}"]`);
 
 function readForm() {
   const data = {};
   for (const key of Object.keys(FORM_DEFAULTS)) {
-    if (key === 'protocol') data.protocol = $('input[name="protocol"]:checked')?.value ?? 'trs';
+    if (key === 'protocol') data.protocol = currentProtocol();
     else if (key === 'meta_staff') data.meta_staff = readStaff($('#staff-list'));
     else if (SERIES_KEYS.includes(key)) data[key] = readCells(seriesBox(key));
     else {
@@ -110,15 +84,14 @@ function readForm() {
   return data;
 }
 
-function writeForm(values) {
+function writeForm(values, { withProtocol = false } = {}) {
   const data = normalizeForm(values);
   if (isCustom(data.ch_model) && data.ch_model !== 'CUSTOM' && !getMyChambers().some((c) => c.id === data.ch_model)) {
     data.ch_model = 'CUSTOM';
   }
   for (const [key, value] of Object.entries(data)) {
     if (key === 'protocol') {
-      const r = document.getElementById(`protocol_${value}`);
-      if (r) r.checked = true;
+      if (withProtocol) applyProtocol(value);
     } else if (key === 'meta_staff') {
       renderStaff($('#staff-list'), value, update);
     } else if (SERIES_KEYS.includes(key)) {
@@ -144,17 +117,7 @@ function fillCustomFields(saved) {
 // ------------------------------------------------------------ видимость и подписи
 function applyVisibility(data, result) {
   const p = data.protocol;
-  for (const el of $$('[data-protocol]')) {
-    el.hidden = !(p === 'both' || p === el.dataset.protocol);
-  }
-  for (const el of $$('[data-show]')) {
-    el.hidden = !el.dataset.show.split(';').every((cond) => {
-      const [key, vals] = cond.split(':');
-      const v = data[key];
-      return vals.split(',').includes(typeof v === 'boolean' ? String(v) : v);
-    });
-  }
-  for (const el of $$('[data-standalone]')) el.hidden = framed;
+  applyShowRules(ROOT(), data, p);
 
   $('#custom-chamber').hidden = !isCustom(data.ch_model);
   $('#btn-del-chamber').hidden = !String(data.ch_model).startsWith('MY:');
@@ -172,7 +135,7 @@ function applyVisibility(data, result) {
     ? 'Недоступно: в калькуляторе для пучков с выравнивающим фильтром принимается k_vol = P_rp = 1. Протоколы допускают эту поправку и для таких пучков при неоднородном профиле (TRS-398, табл. 15, прим. c; аддендум TG-51, разд. 5.C.7). Отметьте БВФ в разделе 1, если это ваш случай.'
     : trsOn
       ? 'Пучок без выравнивающего фильтра: поправка обязательна, если камера не короткая. Одна и та же поправка применяется в обоих протоколах.'
-      : 'Формула (22) и табл. 11 взяты из TRS-398 и требуют TPR20,10: в режиме «только TG-51» введите P_rp по измеренному профилю.';
+      : 'Формула (22) и табл. 11 взяты из TRS-398 и требуют TPR20,10: в режиме «только TG-51» рассчитайте P_rp по измеренному профилю или введите своё значение.';
 
   // подписи, зависящие от выбора
   const pdd = data.qtrs_method === 'pdd2010';
@@ -195,29 +158,8 @@ function applyVisibility(data, result) {
 
 // ------------------------------------------------------------ вывод
 function renderInline(result, data) {
-  const ctx = result;
-  for (const el of $$('[data-out]')) {
-    let v = get(ctx, el.dataset.out);
-    if (el.dataset.abs && Number.isFinite(v)) v = Math.abs(v);
-    const d = Number(el.dataset.digits ?? 4);
-    el.textContent = Number.isFinite(v) ? (el.dataset.signed ? fmtSigned(v, d) : fmt(v, d)) + (el.dataset.suffix || '') : '—';
-  }
-  for (const el of $$('[data-out-text]')) {
-    const v = get(ctx, el.dataset.outText);
-    el.textContent = v ? String(v) : '';
-  }
-
-  // подсветка полей по флагам расчёта
-  for (const el of $$('.flag-error, .flag-warn')) el.classList.remove('flag-error', 'flag-warn');
-  for (const [key, level] of Object.entries(result.flags)) {
-    if (level === 'info') continue;
-    const cls = level === 'error' ? 'flag-error' : 'flag-warn';
-    $$(`[data-flag="${key}"]`).forEach((el) => el.classList.add(cls));
-    const input = document.getElementById(key);
-    if (input) input.classList.add(cls);
-    const box = seriesBox(key);
-    if (box) box.classList.add(cls);
-  }
+  renderOutputs(ROOT(), result);
+  renderFlags(ROOT(), result.flags, seriesBox);
 
   const c = result.chamber;
   const info = $('#chamber-info');
@@ -426,60 +368,19 @@ function loadDraft() {
   }
 }
 
-function setStatus(text) {
-  const s = $('#status');
-  s.textContent = text;
-  clearTimeout(setStatus.t);
-  setStatus.t = setTimeout(() => (s.textContent = ''), 6000);
-}
-
-async function copyText(text, okMsg) {
-  try {
-    await navigator.clipboard.writeText(text);
-    setStatus(okMsg);
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.setAttribute('readonly', '');
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    let ok = false;
-    try {
-      ok = document.execCommand('copy');
-    } catch {
-      ok = false;
-    }
-    ta.remove();
-    setStatus(ok ? okMsg : 'Браузер не дал скопировать: выделите текст вручную.');
-  }
-}
-
-function importData(obj) {
-  if (!obj || obj.app !== FILE_TAG.app || obj.module !== FILE_TAG.module || typeof obj.form !== 'object') {
-    throw new Error('Это не файл калькулятора МВ фотонов.');
-  }
+/** Загрузка данных из файла или буфера обмена. Бросает ошибку, если файл не от этого модуля. */
+export function importPhotons(obj) {
+  if (!obj || obj.app !== FILE_TAG.app || typeof obj.form !== 'object') throw new Error('Это не файл калькулятора референсной дозиметрии.');
+  if (obj.module !== FILE_TAG.module) throw new Error('Это файл другого раздела: откройте его на вкладке ⁶⁰Co.');
   writeForm(obj.form);
   update();
-}
-
-// ------------------------------------------------------------ справки
-function openTerm(key) {
-  const t = TERMS[key];
-  if (!t) return;
-  $('#term-title').innerHTML = t.title;
-  $('#term-body').innerHTML = t.html;
-  const dlg = $('#term-dialog');
-  if (typeof dlg.showModal === 'function') dlg.showModal();
-  else dlg.setAttribute('open', '');
-  $('#term-body').scrollTop = 0;
 }
 
 // ------------------------------------------------------------ цикл
 let current = { data: null, result: null };
 function update() {
-  if ($('input[name="protocol"]:checked')?.value === 'tg51' && $('#meta_fff').checked && $('#prof_mode').value !== 'manual') {
+  // формула (22) и табл. 11 требуют TPR20,10, то есть протокол TRS-398
+  if (currentProtocol() === 'tg51' && ['formula22', 'table11'].includes($('#prof_mode').value)) {
     $('#prof_mode').value = 'manual';
   }
   const data = readForm();
@@ -504,9 +405,10 @@ function onBeamInput() {
   lastBeamFff = fff;
 }
 
-function init() {
+export function initPhotons() {
+  setStatus = makeStatus($('#status'));
   fillSelects();
-  $$('.cells').forEach((box) => setupCells(box, update));
+  $$('#sheet .cells').forEach((box) => setupCells(box, update));
   $$('#sheet > section .combo').forEach((c) => makeCombo(c));
 
   const draft = loadDraft();
@@ -515,17 +417,21 @@ function init() {
   update();
   if (!draft) setStatus('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.');
 
-  document.addEventListener('input', (e) => {
+  const sheet = $('#sheet');
+  sheet.addEventListener('input', (e) => {
     if (e.target.id === 'meta_beam') onBeamInput();
-    if (e.target.closest('#sheet, .protocol-switch')) update();
+    update();
   });
-  document.addEventListener('change', (e) => {
+  sheet.addEventListener('change', (e) => {
     if (e.target.id === 'ch_model') {
       const id = e.target.value;
       if (id.startsWith('MY:')) fillCustomFields(getMyChambers().find((c) => c.id === id));
       else if (id === 'CUSTOM') fillCustomFields(null);
     }
-    if (e.target.closest('#sheet, .protocol-switch')) update();
+    update();
+  });
+  document.addEventListener('change', (e) => {
+    if (e.target.name === 'protocol') update();
   });
 
   $('#btn-add-staff').addEventListener('click', () => {
@@ -565,41 +471,12 @@ function init() {
     update();
     setStatus(`Камера «${[data.cc_maker, data.cc_model].filter(Boolean).join(' ')}» сохранена в «Мои камеры».`);
   });
-  const delBtn = $('#btn-del-chamber');
-  delBtn.addEventListener('click', () => {
-    if (!delBtn.dataset.armed) {
-      delBtn.dataset.armed = '1';
-      delBtn.classList.add('danger-armed');
-      delBtn.textContent = 'Точно удалить?';
-      setTimeout(() => {
-        delete delBtn.dataset.armed;
-        delBtn.classList.remove('danger-armed');
-        delBtn.textContent = 'Удалить из «Моих камер»';
-      }, 4000);
-      return;
-    }
-    delete delBtn.dataset.armed;
-    delBtn.classList.remove('danger-armed');
-    delBtn.textContent = 'Удалить из «Моих камер»';
+  armButton($('#btn-del-chamber'), 'Удалить из «Моих камер»', 'Точно удалить?', () => {
     deleteMyChamber($('#ch_model').value);
     fillChamberSelect();
     $('#ch_model').value = 'CUSTOM';
     update();
     setStatus('Камера удалена из списка; её данные остались в форме.');
-  });
-
-  // справки по коэффициентам
-  document.addEventListener('click', (e) => {
-    const term = e.target.closest('.term');
-    if (term) {
-      e.preventDefault();
-      openTerm(term.dataset.term);
-    }
-  });
-  const dlg = $('#term-dialog');
-  $('#term-close').addEventListener('click', () => dlg.close());
-  dlg.addEventListener('click', (e) => {
-    if (e.target === dlg) dlg.close();
   });
 
   $('#btn-sample').addEventListener('click', () => {
@@ -608,43 +485,18 @@ function init() {
     setStatus('Загружен демонстрационный пример (вымышленные данные).');
   });
 
-  const clearBtn = $('#btn-clear');
-  clearBtn.addEventListener('click', () => {
-    if (clearBtn.dataset.armed) {
-      delete clearBtn.dataset.armed;
-      clearBtn.classList.remove('danger-armed');
-      clearBtn.textContent = 'Очистить';
-      writeForm({ ...FORM_DEFAULTS, protocol: current.data?.protocol ?? 'trs', meta_date: today() });
-      update();
-      setStatus('Форма очищена.');
-      return;
-    }
-    clearBtn.dataset.armed = '1';
-    clearBtn.classList.add('danger-armed');
-    clearBtn.textContent = 'Точно очистить?';
-    setTimeout(() => {
-      if (clearBtn.dataset.armed) {
-        delete clearBtn.dataset.armed;
-        clearBtn.classList.remove('danger-armed');
-        clearBtn.textContent = 'Очистить';
-      }
-    }, 4000);
+  armButton($('#btn-clear'), 'Очистить', 'Точно очистить?', () => {
+    writeForm({ ...FORM_DEFAULTS, meta_date: today() });
+    lastBeamFff = null;
+    update();
+    setStatus('Форма очищена.');
   });
 
   const payload = () => JSON.stringify({ ...FILE_TAG, savedAt: new Date().toISOString(), form: current.data }, null, 2);
 
   $('#btn-save').addEventListener('click', () => {
-    const blob = new Blob([payload()], { type: 'application/json' });
-    const a = document.createElement('a');
     const name = [current.data.meta_machine, current.data.meta_beam, current.data.meta_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-') || 'photons';
-    a.href = URL.createObjectURL(blob);
-    a.download = `dosimetry_${name}.json`;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      URL.revokeObjectURL(a.href);
-      a.remove();
-    }, 0);
+    downloadText(payload(), `dosimetry_${name}.json`);
     setStatus('Файл сохранён.');
   });
 
@@ -653,7 +505,7 @@ function init() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      importData(JSON.parse(await file.text()));
+      importPhotons(JSON.parse(await file.text()));
       setStatus(`Открыт файл ${file.name}.`);
     } catch (err) {
       setStatus(err instanceof SyntaxError ? 'Файл повреждён: это не JSON.' : err.message);
@@ -661,21 +513,7 @@ function init() {
     e.target.value = '';
   });
 
-  document.addEventListener('paste', (e) => {
-    if (e.target.closest('input, textarea, select')) return;
-    const text = e.clipboardData?.getData('text');
-    if (!text || !text.includes('"reference-dosimetry"')) return;
-    try {
-      importData(JSON.parse(text));
-      setStatus('Данные вставлены из буфера обмена.');
-    } catch (err) {
-      setStatus(err.message);
-    }
-  });
-
-  $('#btn-copy-json').addEventListener('click', () => copyText(payload(), 'Данные скопированы. Чтобы вставить их обратно, нажмите Ctrl+V на странице вне полей ввода.'));
-  $('#btn-copy-report').addEventListener('click', () => copyText(reportText(current.data, current.result), 'Протокол скопирован в буфер обмена.'));
+  $('#btn-copy-json').addEventListener('click', () => copyText(payload(), 'Данные скопированы. Чтобы вставить их обратно, нажмите Ctrl+V на странице вне полей ввода.', setStatus));
+  $('#btn-copy-report').addEventListener('click', () => copyText(reportText(current.data, current.result), 'Протокол скопирован в буфер обмена.', setStatus));
   $('#btn-print').addEventListener('click', () => window.print());
 }
-
-init();

@@ -11,7 +11,7 @@ const read = (p) => readFile(new URL(p, root), 'utf8');
 const html = await read('index.html');
 const css = await read('src/ui/styles.css');
 const bundle = await build({
-  entryPoints: [new URL('src/ui/main.js', root).pathname],
+  entryPoints: [new URL('src/ui/app.js', root).pathname],
   bundle: true,
   format: 'iife',
   target: 'es2020',
@@ -23,7 +23,7 @@ const bundle = await build({
 const js = bundle.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 
 const cssTag = '<link rel="stylesheet" href="src/ui/styles.css">';
-const jsTag = '<script type="module" src="src/ui/main.js"></script>';
+const jsTag = '<script type="module" src="src/ui/app.js"></script>';
 if (!html.includes(cssTag) || !html.includes(jsTag)) throw new Error('index.html: не найдены теги стилей или скрипта');
 
 const full = html.replace(cssTag, () => `<style>\n${css}</style>`).replace(jsTag, () => `<script>${js}</script>`);
