@@ -1,16 +1,19 @@
 // Модуль «⁶⁰Co»: связывает форму с расчётным ядром cobalt.js.
-import { computeCobalt, CO_DEFAULTS, normalizeCobalt } from '../core/cobalt.js';
+import { computeCobalt, CO_DEFAULTS, normalizeCobalt, ACTIVITY_UNITS } from '../core/cobalt.js';
 import { SAMPLE_COBALT } from '../core/sample-cobalt.js';
+import { coChamberGroups } from '../core/co60-chambers.js';
 import { PRESSURE_UNITS, NDW_UNITS } from '../core/units.js';
+import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, renderPairs, readPairs, setupPairs } from './widgets.js';
 import {
   $, $$, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
-  currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton,
+  currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.cobalt.v1';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'cobalt', version: 1 };
-const SERIES_KEYS = ['co_M1', 'co_Mopp', 'co_M2'];
+const SERIES_KEYS = ['co_M1', 'co_Mopp', 'co_M2', 'co_nx_M1', 'co_nx_Mn', 'co_Mc'];
+const CC_KEYS = ['co_cc_maker', 'co_cc_model', 'co_cc_type'];
 const PAIR_KEYS = ['co_tt', 'co_tm'];
 const ROOT = () => document.getElementById('module-co60');
 let setStatus = () => {};
@@ -20,6 +23,36 @@ const PROTO = {
   trs: { name: 'TRS-398 Rev.1' },
   tg51: { name: 'TG-51' },
 };
+
+// ------------------------------------------------------------ список камер
+function fillChamberSelect() {
+  const sel = $('#co_ch_model');
+  const keep = sel.value;
+  const parts = ['<option value="">— выберите камеру —</option>'];
+  for (const g of coChamberGroups()) {
+    parts.push(`<optgroup label="${esc(g.label)}">`);
+    for (const c of g.items) parts.push(`<option value="${esc(c.id)}">${esc(c.label)}</option>`);
+    parts.push('</optgroup>');
+  }
+  const mine = getMyChambers();
+  if (mine.length) {
+    parts.push('<optgroup label="Мои камеры">');
+    for (const c of mine) {
+      const name = [c.cc_maker, c.cc_model].filter(Boolean).join(' ') || 'без названия';
+      parts.push(`<option value="${esc(c.id)}">${esc(name)}${c.cc_type === 'pp' ? ' (плоскопараллельная)' : ''}</option>`);
+    }
+    parts.push('</optgroup>');
+  }
+  parts.push('<option value="CUSTOM">Ввести свою камеру…</option>');
+  sel.innerHTML = parts.join('');
+  if (keep && sel.querySelector(`option[value="${CSS.escape(keep)}"]`)) sel.value = keep;
+}
+
+function fillCustomFields(saved) {
+  $('#co_cc_maker').value = saved?.cc_maker ?? '';
+  $('#co_cc_model').value = saved?.cc_model ?? '';
+  $('#co_cc_type').value = saved?.cc_type === 'pp' ? 'pp' : 'cyl';
+}
 
 // ------------------------------------------------------------ форма ↔ данные
 const seriesBox = (key) => (key === 'co_timer' ? null : $(`#co-sheet .cells[data-series="${key}"]`));
@@ -46,6 +79,7 @@ function readForm() {
 
 function writeForm(values) {
   const data = normalizeCobalt(values);
+  if (String(data.co_ch_model).startsWith('MY:') && !getMyChambers().some((c) => c.id === data.co_ch_model)) data.co_ch_model = 'CUSTOM';
   for (const [key, value] of Object.entries(data)) {
     if (key === 'protocol' || PAIR_KEYS.includes(key)) continue;
     if (key === 'co_staff') renderStaff($('#co-staff-list'), value, update);
@@ -69,45 +103,94 @@ function applyVisibility(data, result) {
   const z = zText(result.inputs.zref);
   const unit = result.inputs.unitLabel;
   $('#co-lbl-distance').textContent = sad ? 'РИК, см' : 'РИП, см';
-  $('#co-refpoint').textContent =
-    data.co_ch_type === 'pp'
+  const c = result.chamber;
+  const custom = String(data.co_ch_model) === 'CUSTOM' || String(data.co_ch_model).startsWith('MY:');
+  $('#co-custom-chamber').hidden = !custom;
+  $('#co-btn-del-chamber').hidden = !String(data.co_ch_model).startsWith('MY:');
+  $('#co-refpoint').textContent = !c
+    ? ''
+    : c.type === 'pp'
       ? 'Опорная точка — внутренняя поверхность входного окна, в центре окна (TRS-398, табл. 12).'
       : 'Опорная точка — на оси камеры в центре объёма полости (TRS-398, табл. 12).';
-  $('#co-lbl-pdd').textContent = `PDD(${z}), %`;
+  const info = [];
+  if (c && !c.custom) {
+    info.push(c.type === 'pp' ? 'плоскопараллельная' : 'цилиндрическая');
+    if (Number.isFinite(c.rCavMm)) info.push(`радиус полости ${fmt(c.rCavMm, 2)} мм`);
+    if (Number.isFinite(c.lengthMm)) info.push(`длина полости ${fmt(c.lengthMm, 1)} мм`);
+    if (Number.isFinite(c.windowMgCm2)) info.push(`входное окно ${fmt(c.windowMgCm2, c.windowMgCm2 < 10 ? 2 : 0)} мг/см²`);
+    else if (Number.isFinite(c.windowMm)) info.push(`входное окно ${fmt(c.windowMm, 1)} мм`);
+    if (c.type === 'cyl') info.push(c.sleeve ? 'не водонепроницаемая — нужен чехол' : 'водонепроницаемая');
+  }
+  $('#co-chamber-info').textContent = info.join(' · ');
+
+  const pddVisible = !sad || data.co_dd_sad === 'pdd';
+  $('#co-pdd-field').hidden = !data.co_dd_on || !pddVisible;
+  const pddSsd = result.depth.pddSsd;
+  $('#co-lbl-pdd').textContent = sad && Number.isFinite(pddSsd) ? `PDD(${z}) при РИП ${fmt(pddSsd, 0)} см, %` : `PDD(${z}), %`;
+  $('#co-pdd-sub').textContent = sad ? `измеренная при РИП ${Number.isFinite(pddSsd) ? fmt(pddSsd, 0) : 'РИК − z_ref'} см` : '';
   $('#co-lbl-tmr').textContent = `TMR(${z})`;
+  const windowMode = data.co_timer_mode === 'window';
+  $('#co-lbl-time').textContent = windowMode ? 'Время накопления заряда' : 'Заданное время облучения';
+  $('#co-time-sub').textContent = windowMode ? 'интервал, на котором электрометр накапливал заряд' : 'время для всех серий показаний в разделе 5';
   $('#co-lbl-tau').textContent = `τ, ${unit}`;
   $('#co-lbl-tt').textContent = `Заданное время, ${unit}`;
-  $('#co-dd-hint').textContent = sad
-    ? `Установка по РИК: мощность дозы переносится на z_max через TMR(${z}) из данных ввода в эксплуатацию (TRS-398, разд. 5.4.3).`
-    : `D(z_max) = D(${z} см) / PDD(${z}) · 100. Для ⁶⁰Co z_max ≈ 0,5 см. PDD — клиническая, для того же РИП и поля 10 × 10 см (TRS-398, разд. 5.4.3).`;
+  $('#co-lbl-nxt').textContent = `Время одиночного облучения t, ${unit}`;
+  $('#co-lbl-ctrl-time').textContent = `${windowMode ? 'Время накопления заряда' : 'Время облучения'}, ${unit}`;
+  $('#co-dd-hint').textContent = !sad
+    ? `D(z_max) = D(${z} см) / PDD(${z}) · 100. Для ⁶⁰Co z_max ≈ 0,5 см. PDD — клиническая, для того же РИП и поля 10 × 10 см (TRS-398, разд. 5.4.3).`
+    : data.co_dd_sad === 'pdd'
+      ? `Установка по РИК через PDD: D(z_max) = D(${z} см) / PDD(${z}) · 100 при РИП ${Number.isFinite(pddSsd) ? fmt(pddSsd, 0) : '—'} см. Это мощность дозы на z_max при той же установке, а не в изоцентре; PDD нужна для этого РИП.`
+      : `Установка по РИК: мощность дозы переносится на z_max в изоцентре через TMR(${z}) из данных ввода в эксплуатацию (TRS-398, разд. 5.4.3).`;
   const d = result.depth;
   $('#co-decay-note').textContent = Number.isFinite(d.decay)
-    ? `распад за ${fmt(d.days, 0)} сут: × ${fmt(d.decay, 4)}`
+    ? `${d.refDateFromSource ? 'от даты установки источника, ' : ''}распад за ${fmt(d.days, 0)} сут: × ${fmt(d.decay, 4)}`
     : Number.isFinite(d.refRate)
       ? 'без поправки на распад'
       : '';
+  const src = result.source;
+  if (Number.isFinite(src.A)) {
+    $('#co-act-now').textContent = `${fmt(src.ACi, 0)} Ки = ${fmt(src.ATBq, 1)} ТБк`;
+    $('#co-act-sub').textContent = `прошло ${fmt(src.years, 2)} года (${fmt(src.days, 0)} сут), множитель распада ${fmt(src.decay, 4)}`;
+  } else {
+    $('#co-act-now').textContent = '—';
+    $('#co-act-sub').textContent = src.on ? 'нужны активность, дата установки и дата измерения' : '';
+  }
 }
 
 // ------------------------------------------------------------ вывод
+/** Итог: по контрольным измерениям, если они введены и без ошибок, иначе по основным показаниям. */
+const primaryOf = (x) => (x.ctrl && !x.ctrl.blocked && !x.blocked ? x.ctrl : x);
+const rateAt = (x, depth) => (depth.on && Number.isFinite(x.rateMax) ? x.rateMax : x.rate);
+
 function doseRow(key, x, result) {
-  const depthOn = result.depth.on && Number.isFinite(x.rateMax);
-  const main = depthOn ? x.rateMax : x.rate;
-  const mainGy = depthOn ? x.rateMaxGy : x.rateGy;
+  const p = primaryOf(x);
+  const fromCtrl = p !== x;
+  const depthOn = result.depth.on && Number.isFinite(p.rateMax);
+  const main = depthOn ? p.rateMax : p.rate;
+  const mainGy = depthOn ? p.rateMaxGy : p.rateGy;
   const z = zText(result.inputs.zref);
   const where = depthOn ? 'на z<sub>max</sub>' : `на ${z} г/см²`;
   let chip = '';
-  if (depthOn && Number.isFinite(x.deviation) && !x.blocked) {
-    const cls = Math.abs(x.deviation) <= 1 ? 'good' : Math.abs(x.deviation) > 2 ? 'bad' : '';
-    chip = `<span class="chip ${cls}" title="Отклонение от ожидаемой мощности дозы">${fmtSigned(x.deviation, 2)} %</span>`;
+  if (depthOn && Number.isFinite(p.deviation) && !x.blocked) {
+    const cls = Math.abs(p.deviation) <= 1 ? 'good' : Math.abs(p.deviation) > 2 ? 'bad' : '';
+    chip = `<span class="chip ${cls}" title="Отклонение от ожидаемой мощности дозы">${fmtSigned(p.deviation, 2)} %</span>`;
   }
   const i = result.inputs;
+  const c = result.ctrl;
+  const t = fromCtrl ? c.t : i.tSet;
+  const tEff = fromCtrl ? c.tEff : i.tEff;
   const secondary = [
     `${fmt(mainGy, 4)} Гр/мин ${where}`,
-    `D<sub>w</sub>(${z} г/см²) = ${fmt(x.D, 4)} Гр за ${fmt(i.tSet, i.tSet % 1 ? 2 : 0)} ${i.unitLabel} (t + τ = ${fmt(i.tEff, 3)})`,
-    depthOn ? `${fmt(x.rate, 2)} сГр/мин на ${z} г/см²` : null,
+    `D<sub>w</sub>(${z} г/см²) = ${fmt(p.D, 4)} Гр за ${fmt(t, t % 1 ? 2 : 0)} ${i.unitLabel}${result.timer.mode === 'window' ? '' : ` (t + τ = ${fmt(tEff, 3)})`}`,
+    depthOn ? `${fmt(p.rate, 2)} сГр/мин на ${z} г/см²` : null,
+    fromCtrl
+      ? `По основным показаниям (раздел 5): ${fmt(rateAt(x, result.depth), 2)} сГр/мин${Number.isFinite(x.deviation) ? ` (${fmtSigned(x.deviation, 2)} %)` : ''}`
+      : c.on
+        ? 'Контрольные измерения содержат ошибки — итог по разделу 5'
+        : 'Контрольные измерения не введены — итог по разделу 5',
   ].filter(Boolean).join('<br>');
   return `<div class="dose-row ${x.blocked ? 'blocked' : ''}">
-    <div class="proto"><span>${PROTO[key].name}</span>${chip}</div>
+    <div class="proto"><span>${PROTO[key].name}${fromCtrl ? ' · контрольные измерения' : ''}</span>${chip}</div>
     <div class="dose-big">${x.blocked || !Number.isFinite(main) ? '—' : fmt(main, 2)}<small>сГр/мин ${where}</small></div>
     <div class="secondary">${x.blocked ? 'Исправьте ошибки из списка замечаний' : secondary}</div>
   </div>`;
@@ -127,16 +210,16 @@ function renderReadout(result, data) {
   const first = keys.map((k) => ({ k, x: pick(k) })).find((o) => !o.x.blocked && o.x.ok);
   const mv = $('#co-mobile-value');
   if (first) {
-    const val = result.depth.on && Number.isFinite(first.x.rateMax) ? first.x.rateMax : first.x.rate;
-    mv.innerHTML = `${first.k === 'trs' ? 'TRS' : 'TG-51'}: <b>${fmt(val, 2)}</b> сГр/мин${Number.isFinite(first.x.deviation) ? ` (${fmtSigned(first.x.deviation, 2)} %)` : ''}`;
+    const p = primaryOf(first.x);
+    mv.innerHTML = `${first.k === 'trs' ? 'TRS' : 'TG-51'}: <b>${fmt(rateAt(p, result.depth), 2)}</b> сГр/мин${Number.isFinite(p.deviation) ? ` (${fmtSigned(p.deviation, 2)} %)` : ''}`;
   } else {
     const n = result.messages.filter((m) => m.level === 'error').length;
     mv.textContent = n ? `Ошибок: ${n}` : '—';
   }
 
   const lvlName = { error: 'Ошибка', warn: 'Внимание', info: 'Справка' };
-  const scopeName = { common: '', depth: 'Пересчёт на z_max · ', trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
-  const list = result.messages.filter((m) => m.scope === 'common' || m.scope === 'depth' || keys.includes(m.scope));
+  const scopeName = { common: '', depth: 'Пересчёт на z_max · ', ctrl: 'Контрольные измерения · ', source: 'Источник · ', trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
+  const list = result.messages.filter((m) => ['common', 'depth', 'ctrl', 'source'].includes(m.scope) || keys.includes(m.scope));
   $('#co-messages').innerHTML = list.length
     ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(m.ref)}</span>` : ''}</li>`).join('')
     : '<li class="info"><span class="lvl">Всё в порядке</span><span>Замечаний к введённым данным нет.</span></li>';
@@ -163,13 +246,26 @@ function renderReadout(result, data) {
   ];
   if (result.depth.on) {
     rows.push([result.depth.label || 'PDD/TMR', ['', result.depth.factor, 4], ['', result.depth.factor, 4]]);
-    rows.push(['На z<sub>max</sub>, сГр/мин', ['', t.rateMax, 2, true], ['', g.rateMax, 2, true], 'total']);
+    rows.push(['На z<sub>max</sub>, сГр/мин', ['', t.rateMax, 2, true], ['', g.rateMax, 2, true], result.ctrl.on ? '' : 'total']);
     rows.push(['На z<sub>max</sub>, Гр/мин', ['', t.rateMaxGy, 4, true], ['', g.rateMaxGy, 4, true]]);
   }
-  const cell = ([sym, v, d, dose], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && blocked ? '—' : fmt(v, d)}</td>`;
+  if (result.ctrl.on) {
+    const tc = t.ctrl || {};
+    const gc = g.ctrl || {};
+    const bT = t.blocked || tc.blocked;
+    const bG = g.blocked || gc.blocked;
+    rows.push(['<b>Контрольные измерения</b>', ['', NaN, 0], ['', NaN, 0], 'group']);
+    rows.push(['Исправленное показание, нКл', ['M', tc.M, 4, true, bT], ['M', gc.M, 4, true, bG]]);
+    rows.push([`На ${z} г/см², сГр/мин`, ['', tc.rate, 2, true, bT], ['', gc.rate, 2, true, bG], result.depth.on ? '' : 'total']);
+    if (result.depth.on) {
+      rows.push(['На z<sub>max</sub>, сГр/мин', ['', tc.rateMax, 2, true, bT], ['', gc.rateMax, 2, true, bG], 'total']);
+      rows.push(['На z<sub>max</sub>, Гр/мин', ['', tc.rateMaxGy, 4, true, bT], ['', gc.rateMaxGy, 4, true, bG]]);
+    }
+  }
+  const cell = ([sym, v, d, dose, own], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && (blocked || own) ? '—' : fmt(v, d)}</td>`;
   $('#co-factors').innerHTML =
     `<thead><tr><th>Величина</th>${showT ? '<th>TRS-398</th>' : ''}${showG ? '<th>TG-51</th>' : ''}</tr></thead><tbody>` +
-    rows.map((r) => `<tr class="${r[3] || ''}"><td>${r[0]}</td>${showT ? cell(r[1], t.blocked) : ''}${showG ? cell(r[2], g.blocked) : ''}</tr>`).join('') +
+    rows.map((r) => (r[3] === 'group' ? `<tr class="group"><td colspan="${1 + showT + showG}">${r[0]}</td></tr>` : `<tr class="${r[3] || ''}"><td>${r[0]}</td>${showT ? cell(r[1], t.blocked) : ''}${showG ? cell(r[2], g.blocked) : ''}</tr>`)).join('') +
     '</tbody>';
 }
 
@@ -188,10 +284,10 @@ function reportText(data, r) {
   line('Измерения выполнили', data.co_staff.filter((s) => s.trim()).join(', ') || '—');
   line('Геометрия', `${data.co_geometry === 'SAD' ? 'РИК' : 'РИП'} = ${data.co_distance} см, поле 10×10 см ${data.co_geometry === 'SAD' ? 'в плоскости камеры' : 'на поверхности воды'}, z_ref = ${z} г/см²`);
   L.push('');
-  line('Камера', `${data.co_ch_model || '—'} (${data.co_ch_type === 'pp' ? 'плоскопараллельная' : 'цилиндрическая'}), № ${data.co_ch_serial || '—'}`);
+  line('Камера', `${r.chamber ? `${r.chamber.label} (${r.chamber.type === 'pp' ? 'плоскопараллельная' : 'цилиндрическая'})` : '—'}, № ${data.co_ch_serial || '—'}`);
   line('N_D,w', `${data.co_ndw} ${NDW_UNITS[data.co_ndw_unit]?.label ?? ''} (= ${fmt(i.ndw, 6)} Гр/нКл); T0 = ${data.co_T0} °C, P0 = ${data.co_P0} кПа`);
   line('Электрометр', `${data.co_el_model || '—'}, № ${data.co_el_serial || '—'}, k_elec = ${data.co_kelec}`);
-  line('Условия', `T = ${data.co_env_T} °C, P = ${data.co_env_P} ${PRESSURE_UNITS[data.co_env_P_unit]?.label ?? ''}`);
+  line('Условия', `T = ${data.co_env_T} °C, P = ${data.co_env_P} ${PRESSURE_UNITS[data.co_env_P_unit]?.label ?? ''}${String(data.co_env_H ?? '').trim() ? `, относительная влажность ${data.co_env_H} %` : ''}`);
   const tm = r.timer;
   const timerTxt =
     data.co_timer_mode === 'measured'
@@ -200,14 +296,19 @@ function reportText(data, r) {
           .filter(([a, b]) => String(a ?? '').trim() && String(b ?? '').trim())
           .map(([a, b]) => `${a} ${i.unitLabel} → ${b} нКл`)
           .join('; ')}`
-      : data.co_timer_mode === 'manual'
-        ? 'введено'
-        : 'не учитывалась';
-  line('Время облучения', `t = ${data.co_time} ${i.unitLabel}; τ = ${fmt(tm.tau, 4)} ${i.unitLabel} (${timerTxt}); t + τ = ${fmt(i.tEff, 4)} ${i.unitLabel}`);
+      : data.co_timer_mode === 'nexp'
+        ? `одно облучение ${data.co_nx_t} ${i.unitLabel} (${cells(data.co_nx_M1)} нКл) против ${data.co_nx_n} облучений по t/n (${cells(data.co_nx_Mn)} нКл)`
+        : data.co_timer_mode === 'manual'
+          ? 'введено'
+          : 'не учитывалась';
+  if (data.co_timer_mode === 'window') line('Время', `заряд накоплен электрометром за ${data.co_time} ${i.unitLabel} при выдвинутом источнике; ошибка таймера в мощность дозы не входит`);
+  else line('Время облучения', `t = ${data.co_time} ${i.unitLabel}; τ = ${fmt(tm.tau, 4)} ${i.unitLabel} (${timerTxt}); t + τ = ${fmt(i.tEff, 4)} ${i.unitLabel}`);
   line('Напряжения', `V1 = ${data.co_V1} В, V2 = ${data.co_V2} В, обычная полярность ${data.co_polarity}`);
   line('M(V1, обычная), нКл', `${cells(data.co_M1)} → среднее ${fmt(Math.abs(i.M1.mean), 4)}`);
   line('M(V1, обратная), нКл', `${cells(data.co_Mopp)} → среднее ${fmt(Math.abs(i.Mopp.mean), 4)}`);
   line('M(V2), нКл', `${cells(data.co_M2)} → среднее ${fmt(Math.abs(i.M2.mean), 4)}`);
+  if (r.ctrl.on) line('Контрольные измерения M(V1), нКл', `${cells(data.co_Mc)} → среднее ${fmt(r.ctrl.mean, 4)} за ${fmt(r.ctrl.t, 2)} ${i.unitLabel}`);
+  if (Number.isFinite(r.source.A)) line('Источник', `${data.co_act0} ${ACTIVITY_UNITS[data.co_act_unit]?.label ?? ''} на ${data.co_act_date}; на дату измерения ${fmt(r.source.ACi, 0)} Ки = ${fmt(r.source.ATBq, 1)} ТБк`);
   L.push('');
   const blocks = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
   for (const k of blocks) {
@@ -218,17 +319,21 @@ function reportText(data, r) {
     if (x.blocked) {
       L.push('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: есть ошибки ввода (см. замечания).');
     } else {
-      L.push(`M = ${fmt(x.M)} нКл; D_w(${z}) = ${fmt(x.D)} Гр за облучение; ${fmt(x.rate, 2)} сГр/мин = ${fmt(x.rateGy, 4)} Гр/мин на z_ref`);
-      if (r.depth.on && r.depth.ok && Number.isFinite(x.rateMax)) {
-        let s = `z_max = ${data.co_zmax} см; ${r.depth.label} = ${fmt(r.depth.factor)}; на z_max ${fmt(x.rateMax, 2)} сГр/мин = ${fmt(x.rateMaxGy, 4)} Гр/мин`;
-        if (Number.isFinite(x.deviation)) {
-          const dec = Number.isFinite(r.depth.decay) ? ` (${data.co_ref_rate} сГр/мин на ${data.co_ref_date}, распад × ${fmt(r.depth.decay, 4)})` : '';
-          s += `; ожидалось ${fmt(r.depth.expected, 2)} сГр/мин${dec}, отклонение ${fmtSigned(x.deviation, 2)} %`;
+      const describe = (y, title) => {
+        L.push(`${title}: M = ${fmt(y.M)} нКл; D_w(${z}) = ${fmt(y.D)} Гр за облучение; ${fmt(y.rate, 2)} сГр/мин = ${fmt(y.rateGy, 4)} Гр/мин на z_ref`);
+        if (r.depth.on && r.depth.ok && Number.isFinite(y.rateMax)) {
+          let s = `  z_max = ${data.co_zmax} см; ${r.depth.label} = ${fmt(r.depth.factor)}; на z_max ${fmt(y.rateMax, 2)} сГр/мин = ${fmt(y.rateMaxGy, 4)} Гр/мин`;
+          if (Number.isFinite(y.deviation)) {
+            const dec = Number.isFinite(r.depth.decay) ? ` (${data.co_ref_rate} сГр/мин на ${r.depth.refDate}, распад × ${fmt(r.depth.decay, 4)})` : '';
+            s += `; ожидалось ${fmt(r.depth.expected, 2)} сГр/мин${dec}, отклонение ${fmtSigned(y.deviation, 2)} %`;
+          }
+          L.push(s);
+        } else if (r.depth.on) {
+          L.push('  Пересчёт на z_max не выполнен: исправьте данные раздела 7.');
         }
-        L.push(s);
-      } else if (r.depth.on) {
-        L.push('Пересчёт на z_max не выполнен: исправьте данные раздела 6.');
-      }
+      };
+      describe(x, 'По основным показаниям (раздел 5)');
+      if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, 'По контрольным измерениям (итог)');
     }
     L.push('');
   }
@@ -280,12 +385,14 @@ function update() {
   renderReadout(result, result.form);
   $('#co-demo-flag').hidden = !(data.co_institution === SAMPLE_COBALT.co_institution && data.co_machine === SAMPLE_COBALT.co_machine);
   saveDraft(result.form);
+  renderSignBlock($('#co-sign'), result.form.co_staff);
 }
 
 export function initCobalt() {
   setStatus = makeStatus($('#co-status'));
   $('#co_ndw_unit').innerHTML = Object.entries(NDW_UNITS).map(([k, u]) => `<option value="${k}">${u.label}</option>`).join('');
   $('#co_env_P_unit').innerHTML = Object.entries(PRESSURE_UNITS).map(([k, u]) => `<option value="${k}">${u.label}</option>`).join('');
+  fillChamberSelect();
   $$('#co-sheet .cells').forEach((box) => setupCells(box, update));
   setupPairs(pairsBox(), update);
   $$('#co-sheet > section .combo').forEach((c) => makeCombo(c));
@@ -297,7 +404,41 @@ export function initCobalt() {
 
   const sheet = $('#co-sheet');
   sheet.addEventListener('input', update);
-  sheet.addEventListener('change', update);
+  sheet.addEventListener('change', (e) => {
+    if (e.target.id === 'co_ch_model') {
+      const id = e.target.value;
+      if (id.startsWith('MY:')) fillCustomFields(getMyChambers().find((c) => c.id === id));
+      else if (id === 'CUSTOM') fillCustomFields(null);
+    }
+    update();
+  });
+  $('#co-btn-save-chamber').addEventListener('click', () => {
+    const model = $('#co_cc_model').value.trim();
+    if (!model) {
+      setStatus('Укажите модель камеры, чтобы сохранить её.');
+      $('#co_cc_model').focus();
+      return;
+    }
+    const cur = $('#co_ch_model').value;
+    const id = cur.startsWith('MY:') ? cur : `MY:${Date.now().toString(36)}`;
+    const old = getMyChambers().find((c) => c.id === id) || {};
+    const entry = { ...old, id, cc_maker: $('#co_cc_maker').value.trim(), cc_model: model, cc_type: $('#co_cc_type').value };
+    if (!saveMyChamber(entry)) {
+      setStatus('Браузер не дал сохранить камеру: хранилище недоступно.');
+      return;
+    }
+    fillChamberSelect();
+    $('#co_ch_model').value = id;
+    update();
+    setStatus(`Камера «${[entry.cc_maker, entry.cc_model].filter(Boolean).join(' ')}» сохранена в «Мои камеры».`);
+  });
+  armButton($('#co-btn-del-chamber'), 'Удалить из «Моих камер»', 'Точно удалить?', () => {
+    deleteMyChamber($('#co_ch_model').value);
+    fillChamberSelect();
+    $('#co_ch_model').value = 'CUSTOM';
+    update();
+    setStatus('Камера удалена из списка; её данные остались в форме.');
+  });
   document.addEventListener('change', (e) => {
     if (e.target.name === 'protocol') update();
   });
@@ -355,5 +496,6 @@ export function initCobalt() {
   });
   $('#co-btn-copy-json').addEventListener('click', () => copyText(payload(), 'Данные скопированы. Чтобы вставить их обратно, нажмите Ctrl+V на странице вне полей ввода.', setStatus));
   $('#co-btn-copy-report').addEventListener('click', () => copyText(reportText(current.data, current.result), 'Протокол скопирован в буфер обмена.', setStatus));
+  $('#co-btn-pdf').addEventListener('click', () => printToPdf(['Дозиметрия', '⁶⁰Co', current.data.co_machine, current.data.co_date].filter(Boolean).join('_'), setStatus));
   $('#co-btn-print').addEventListener('click', () => window.print());
 }

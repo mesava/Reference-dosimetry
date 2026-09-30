@@ -3,7 +3,7 @@
 // все промежуточные поправки, итоговую дозу, замечания с источниками и флаги для подсветки полей.
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru } from './units.js';
-import { temperaturePressure, polarity } from './common.js';
+import { temperaturePressure, polarity, environmentChecks } from './common.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
 import { findChamber, chamberLabel } from './chambers.js';
@@ -56,6 +56,7 @@ export const FORM_DEFAULTS = {
   lab_ks: '',
 
   env_T: '',
+  env_H: '', // относительная влажность, % — для записи и проверки 20–80 %
   env_P: '',
   env_P_unit: 'kPa',
 
@@ -90,7 +91,12 @@ export const FORM_DEFAULTS = {
   prof_sdd: '',
   prof_text: '',
 
+  // контрольные измерения: обычная полярность, V₁; поправки — из раздела 4
+  ctrl_M: ['', '', ''],
+  ctrl_mu: '', // пусто — столько же МЕ, сколько в разделе 4
+
   dd_on: true,
+  dd_sad: 'tmr', // установка по РИО: 'tmr' | 'pdd' (PDD при РИП = 100 − z_ref)
   dd_zmax: '',
   dd_pdd: '',
   dd_tmr: '',
@@ -111,6 +117,7 @@ export function normalizeForm(input) {
   f.rd_M1 = cells(f.rd_M1);
   f.rd_Mopp = cells(f.rd_Mopp);
   f.rd_M2 = cells(f.rd_M2);
+  f.ctrl_M = cells(f.ctrl_M);
   if (!Array.isArray(f.meta_staff)) f.meta_staff = [String(f.meta_staff ?? '')];
   if (input && 'meta_physicist' in input && !('meta_staff' in input)) f.meta_staff = [String(input.meta_physicist ?? '')];
   if (f.meta_staff.length === 0) f.meta_staff = [''];
@@ -270,12 +277,8 @@ export function computePhotons(form) {
   if (Number.isFinite(P) && (P < 50 || P > 110)) {
     add('error', 'common', `Давление ${ru(P, 2)} кПа вне правдоподобного диапазона: проверьте единицы.`, null, 'env_P');
   }
-  if (Number.isFinite(T)) {
-    if (T < 5 || T > 40) add('error', 'common', `Температура воды ${T} °C неправдоподобна.`, null, 'env_T');
-    else if (T < 15 || T > 25) {
-      add('info', 'common', 'Температура воды вне 15–25 °C: тепловое расширение полости может стать заметным.', `${REF.add}, разд. 5.A.5`, 'env_T');
-    }
-  }
+  const env = environmentChecks({ T, Hraw: f.env_H, keyT: 'env_T', keyH: 'env_H', parseNumber, isBlank, ru });
+  env.items.forEach(([level, text, ref, key]) => add(level, 'common', text, ref, key));
 
   // ------------------------------------------------------------- показания
   const mu = read('rd_mu', 'Мониторные единицы');
@@ -286,7 +289,7 @@ export function computePhotons(form) {
     add('error', 'common', 'Рабочее напряжение V₁ должно быть больше пониженного V₂.', null, ['rd_V1', 'rd_V2']);
   }
   if (Number.isFinite(V1) && Math.abs(V1) > 300) {
-    add('warn', 'common', 'Аддендум TG-51 рекомендует для цилиндрических камер не более 300 В.', `${REF.add}, разд. 4.E`, 'rd_V1');
+    if (want51) add('warn', 'tg51', 'Аддендум TG-51 рекомендует для цилиндрических камер не более 300 В.', `${REF.add}, разд. 4.E`, 'rd_V1');
   }
   const M1 = readCells('rd_M1', 'M при V₁, обычная полярность');
   const Mopp = readCells('rd_Mopp', 'M при V₁, обратная полярность');
@@ -401,7 +404,7 @@ export function computePhotons(form) {
         src = 'PDD(10) из определения TPR20,10';
       } else if (geo.kind === 'SSD' && Number.isFinite(parseNumber(f.dd_pdd))) {
         pdd10 = parseNumber(f.dd_pdd);
-        src = 'PDD(10) из раздела 7';
+        src = 'PDD(10) из раздела 8';
       }
       if (Number.isFinite(pdd10)) {
         if (pdd10 < 50 || pdd10 > 90) {
@@ -574,7 +577,7 @@ export function computePhotons(form) {
   // ------------------------------------------------------------- доза
   const depth = { on: !!f.dd_on, geometry: geo.kind, zref };
   if (depth.on) {
-    // замечания раздела 7 не блокируют дозу на опорной глубине, только пересчёт на d_max
+    // замечания раздела 8 не блокируют дозу на опорной глубине, только пересчёт на d_max
     const readD = (key, label) => {
       const v = parseNumber(f[key]);
       if (!Number.isFinite(v)) add('error', 'depth', isBlank(f[key]) ? `Не заполнено поле «${label}».` : `Не удалось прочитать число в поле «${label}».`, null, key);
@@ -584,7 +587,9 @@ export function computePhotons(form) {
     if (Number.isFinite(depth.zmax) && (depth.zmax <= 0 || depth.zmax >= zref)) {
       add('error', 'depth', `Глубина d_max задаётся в сантиметрах и должна быть меньше глубины измерения (${ru(zref, 1)} см).`, null, 'dd_zmax');
     }
-    if (geo.kind === 'SAD') {
+    depth.method = geo.kind === 'SAD' && f.dd_sad !== 'pdd' ? 'tmr' : 'pdd';
+    depth.pddSsd = geo.ssd;
+    if (depth.method === 'tmr') {
       const tmr = readD('dd_tmr', `TMR(${ru(zref, 0)}) для пересчёта на d_max`);
       if (Number.isFinite(tmr) && (tmr <= 0.2 || tmr > 1)) {
         add('error', 'depth', 'TMR вводится как отношение (например, 0,736), а не в процентах.', null, 'dd_tmr');
@@ -595,18 +600,47 @@ export function computePhotons(form) {
       const pdd = readD('dd_pdd', `PDD(${ru(zref, 0)}) для пересчёта на d_max`);
       if (Number.isFinite(pdd) && (pdd < 20 || pdd > 100)) add('error', 'depth', 'PDD вводится в процентах, от 20 до 100.', null, 'dd_pdd');
       depth.factor = pdd / 100;
-      depth.label = `PDD(${ru(zref, 0)} см)/100`;
+      depth.label = `PDD(${ru(zref, 0)} см)/100${geo.kind === 'SAD' ? ` при РИП ${ru(geo.ssd, 0)} см` : ''}`;
+      if (geo.kind === 'SAD') {
+        add('info', 'depth', `Установка по РИО, пересчёт через PDD: результат — доза на d_max при той же установке (РИП ${ru(geo.ssd, 0)} см), а не в изоцентре. PDD должна быть измерена при РИП ${ru(geo.ssd, 0)} см: PDD при РИП 100 см здесь даст ошибку порядка 1,5–2 %.`, `${REF.trs}, разд. 6.4.3`);
+      }
     }
     depth.nominal = parseNumber(f.dd_nominal);
     if (!isBlank(f.dd_nominal) && !(depth.nominal > 0)) add('warn', 'depth', 'Номинальный выход не распознан: отклонение от номинала не считается.', null, 'dd_nominal');
     depth.ok = !messages.some((m) => m.level === 'error' && m.scope === 'depth');
   }
 
-  const finish = (x, M, kQ) => {
+  // ------------------------------------------------------- контрольные измерения
+  // Показания при обычной полярности и V₁ после определения поправок (и, возможно, подстройки
+  // ускорителя): k_pol, k_s (P_pol, P_ion) и остальные поправки берутся из раздела 4.
+  const ctrlRaw = parseCells(f.ctrl_M);
+  const ctrl = { on: ctrlRaw.n > 0 || !!ctrlRaw.error };
+  if (ctrl.on) {
+    ctrl.M = parseCells(f.ctrl_M);
+    if (ctrl.M.error) add('error', 'ctrl', `«Контрольные измерения»: ${ctrl.M.error}.`, null, 'ctrl_M');
+    else if (ctrl.M.mean === 0) add('error', 'ctrl', '«Контрольные измерения»: среднее показание равно нулю.', null, 'ctrl_M');
+    if (ctrl.M.n >= 2 && ctrl.M.mean) {
+      const d = Math.max(...ctrl.M.values.map((v) => Math.abs(v - ctrl.M.mean) / Math.abs(ctrl.M.mean)));
+      const pct = ru(d * 100, 2);
+      if (d > 0.05) add('error', 'ctrl', `Контрольные показания расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, null, 'ctrl_M');
+      else if (d > 0.005) add('warn', 'ctrl', `Разброс контрольных показаний до ${pct} % от среднего: повторите облучения.`, `${REF.r374}, разд. 4.4.2`, 'ctrl_M');
+      else if (d > 0.001) add('info', 'ctrl', `Разброс контрольных показаний до ${pct} % от среднего: Report 374 советует добиваться ±0,1 % без тренда.`, `${REF.r374}, разд. 4.4.2`, 'ctrl_M');
+    }
+    if (readingsOk && ctrl.M.n > 0 && !ctrl.M.error && ctrl.M.mean !== 0 && Math.sign(ctrl.M.mean) !== Math.sign(M1.mean)) {
+      add('error', 'ctrl', 'Контрольные измерения снимают при той же (обычной) полярности, что и M при V₁.', null, 'ctrl_M');
+    }
+    ctrl.mu = isBlank(f.ctrl_mu) ? mu : parseNumber(f.ctrl_mu);
+    if (!isBlank(f.ctrl_mu) && !(ctrl.mu > 0)) add('error', 'ctrl', 'Число МЕ для контрольных измерений должно быть больше нуля.', null, 'ctrl_mu');
+    ctrl.mean = ctrl.M.n > 0 && !ctrl.M.error ? Math.abs(ctrl.M.mean) : NaN;
+    const ctrlErr = messages.some((m) => m.level === 'error' && m.scope === 'ctrl');
+    if (!ctrlErr && Number.isFinite(ctrl.mean) && Number.isFinite(m1) && ctrl.mu > 0 && mu > 0) ctrl.changePct = ((ctrl.mean / ctrl.mu) / (m1 / mu) - 1) * 100;
+  }
+
+  const finish = (x, M, kQ, units = mu) => {
     x.M = M;
     x.D = M * kQ * ndw; // Гр
-    x.DperMUGy = x.D / mu; // Гр/МЕ
-    x.DperMU = x.DperMUGy * 100; // сГр/МЕ
+    x.DperMUGy = x.D / units; // Гр/МЕ
+    x.DperMU = x.DperMUGy * 100; // сГр/МЕ (= Гр на 100 МЕ)
     if (depth.on && depth.ok && Number.isFinite(depth.factor)) {
       x.Dmax = x.D / depth.factor;
       x.DmaxPerMUGy = x.DperMUGy / depth.factor;
@@ -616,10 +650,21 @@ export function computePhotons(form) {
     x.ok = Number.isFinite(x.D) && x.D > 0;
   };
 
-  if (wantTRS) finish(trs, m1 * trs.kTP * trs.kelec * trs.kpol * trs.ks * trs.kleak * trs.kvol, trs.kQ);
-  if (want51) finish(tg, m1 * tg.PTP * tg.Pion * tg.Ppol * tg.Pelec * tg.Pleak * tg.Prp, tg.kQ);
+  const productTRS = wantTRS ? trs.kTP * trs.kelec * trs.kpol * trs.ks * trs.kleak * trs.kvol : NaN;
+  const product51 = want51 ? tg.PTP * tg.Pion * tg.Ppol * tg.Pelec * tg.Pleak * tg.Prp : NaN;
+  if (wantTRS) finish(trs, m1 * productTRS, trs.kQ);
+  if (want51) finish(tg, m1 * product51, tg.kQ);
+  const ctrlBlocked = messages.some((m) => m.level === 'error' && m.scope === 'ctrl');
+  if (ctrl.on) {
+    if (wantTRS) finish((trs.ctrl = {}), ctrl.mean * productTRS, trs.kQ, ctrl.mu);
+    if (want51) finish((tg.ctrl = {}), ctrl.mean * product51, tg.kQ, ctrl.mu);
+    for (const x of [trs.ctrl, tg.ctrl]) if (x) x.blocked = ctrlBlocked || !x.ok;
+  }
 
-  const devs = [trs.deviation, tg.deviation].filter(Number.isFinite);
+  // отклонение от номинала оценивается по итоговому результату: по контрольным измерениям, если они есть
+  const mainBlocked = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
+  const final = (x, scope) => (mainBlocked(scope) ? {} : x.ctrl && !x.ctrl.blocked ? x.ctrl : x);
+  const devs = [wantTRS ? final(trs, 'trs').deviation : NaN, want51 ? final(tg, 'tg51').deviation : NaN].filter(Number.isFinite);
   if (devs.some((d) => Math.abs(d) > 2)) {
     add('warn', 'common', 'Отклонение от номинального выхода больше 2 %: перед подстройкой ускорителя перепроверьте ввод и измерения.');
   }
@@ -632,6 +677,8 @@ export function computePhotons(form) {
   messages.sort((a, b) => order[a.level] - order[b.level]);
   trs.blocked = wantTRS && hasError('trs');
   tg.blocked = want51 && hasError('tg51');
+  if (trs.ctrl) trs.ctrl.blocked = trs.ctrl.blocked || trs.blocked;
+  if (tg.ctrl) tg.ctrl.blocked = tg.ctrl.blocked || tg.blocked;
 
   let comparison = null;
   if (want51 && wantTRS && tg.ok && trs.ok && !tg.blocked && !trs.blocked) comparison = { dRel: (tg.D / trs.D - 1) * 100 };
@@ -641,7 +688,8 @@ export function computePhotons(form) {
     form: f,
     chamber,
     geometry: geo,
-    inputs: {
+    ctrl,
+    inputs: { H: env.H,
       T, P, T0, P0, mu, V1, V2, nV, ndw, ndwRaw, kelec, kleak, energy, fff,
       M1, Mopp, M2, ratio12, lengthMm, sddCm,
     },

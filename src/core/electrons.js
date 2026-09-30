@@ -5,7 +5,7 @@
 //   d_ref = 0,6·R50 − 0,1 см (ур. 2), k′_Q и k_Qecal — табл. 4–7, перекрёстная калибровка — ур. (5)–(6).
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru } from './units.js';
-import { temperaturePressure, polarity } from './common.js';
+import { temperaturePressure, polarity, environmentChecks } from './common.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
 import { findEChamber, eChamberLabel, interpE, kQprime385, trsFit, R385_RANGE } from './electron-chambers.js';
@@ -51,6 +51,7 @@ export const E_DEFAULTS = {
   e_lab_ks: '',
 
   e_env_T: '',
+  e_env_H: '',
   e_env_P: '',
   e_env_P_unit: 'kPa',
 
@@ -287,10 +288,8 @@ export function computeElectrons(form) {
   const Pin = read('e_env_P', 'Давление');
   const P = Number.isFinite(Pin) ? pressureToKPa(Pin, f.e_env_P_unit) : NaN;
   if (Number.isFinite(P) && (P < 50 || P > 110)) add('error', 'common', `Давление ${ru(P, 2)} кПа вне правдоподобного диапазона: проверьте единицы.`, null, 'e_env_P');
-  if (Number.isFinite(T)) {
-    if (T < 5 || T > 40) add('error', 'common', `Температура воды ${T} °C неправдоподобна.`, null, 'e_env_T');
-    else if (T < 15 || T > 25) add('info', 'common', 'Температура воды вне 15–25 °C: тепловое расширение полости может стать заметным.', `${REF.add}, разд. 5.A.5`, 'e_env_T');
-  }
+  const env = environmentChecks({ T, Hraw: f.e_env_H, keyT: 'e_env_T', keyH: 'e_env_H', parseNumber, isBlank, ru });
+  env.items.forEach(([level, text, ref, key]) => add(level, 'common', text, ref, key));
 
   // ------------------------------------------------------------- показания
   const mu = read('e_mu', 'Мониторные единицы');
@@ -570,7 +569,7 @@ export function computeElectrons(form) {
     chamber,
     positions: pos,
     quality,
-    inputs: {
+    inputs: { H: env.H,
       T, P, T0, P0, mu, V1, V2, nV, ndw, ndwRaw, crossNdw, crossR50, crossKN, kelec, kleak, energy, ssd, field,
       M1, Mopp, M2, ratio12, separate51, cross,
       M51: set51?.M1 ?? null, Mopp51: set51?.Mopp ?? null, M251: set51?.M2 ?? null, ratio51: r51.ratio,

@@ -320,6 +320,9 @@ table.factors th { font: 500 12px var(--font-display); color: var(--muted); text
 table.factors td.v { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 table.factors td.v i { font-style: normal; color: var(--muted); font-family: var(--font-body); font-size: 12px; }
 table.factors tr.total td { font-weight: 600; border-bottom: 0; }
+table.factors tr.group td { padding-top: 12px; color: var(--accent); font: 600 12px var(--font-display); text-transform: uppercase; letter-spacing: 0.04em; }
+.timer-box { display: grid; gap: 10px; margin-block: 12px; }
+.co-source-head { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--rule); }
 
 .messages { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .messages li { border-radius: var(--radius); padding: 8px 10px; font-size: 13px; display: grid; gap: 2px; border-left: 3px solid; }
@@ -365,16 +368,68 @@ footer.page-foot p { max-width: 90ch; }
 }
 
 /* ------------------------------------------------------------ печать */
+.print-only { display: none; }
+
+/* ------------------------------------------------------------ печать и PDF */
 @media print {
-  body { background: #fff; color: #000; font-size: 11px; padding-bottom: 0; }
-  .topbar .protocol-switch, .modules, .actions, .mobile-result, .presets, .no-print, .pairs .cells-tools { display: none !important; }
-  .layout { display: block; padding: 0; }
+  /* поля страницы нулевые — браузер не печатает свои колонтитулы (адрес сайта, дату, номера страниц);
+     отступы от края листа даёт .layout, повторяясь на каждой странице */
+  @page { size: A4; margin: 0; }
+  html, body { background: #fff; color: #000; font-size: 11px; padding: 0; margin: 0; }
+  .topbar, .page-foot, .actions, .mobile-result, .presets, .no-print, .pairs .cells-tools, .cells-tools, .combo-toggle, .link-btn, .intro { display: none !important; }
+  .layout { display: block; max-width: none; padding: 12mm 14mm; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  .sheet, .readout { zoom: 0.8; }
   .readout { position: static; max-height: none; overflow: visible; margin-top: 12px; }
-  .step, .panel { break-inside: avoid; border-color: #999; }
+  .step, .panel { border-color: #999; }
+  .panel, .sign-block { break-inside: avoid; }
   .display { background: #fff; color: #000; border: 1px solid #999; }
+  .display h2, .dose-row .proto, .dose-row .secondary, .delta { color: #000 !important; }
   .dose-big, .display .chip, .delta b { color: #000 !important; }
-  input, select, textarea { border: 0; padding: 0; background: none; }
+  input, select, textarea { border: 0; padding: 0; background: none; height: auto; }
+  .print-only { display: block; }
+  .demo-flag { color: #000; }
+  /* компактная раскладка: меньше пустого места и страниц */
+  /* сетка мешает разрывам страниц внутри разделов — в печати блоки идут потоком */
+  .sheet, .readout { display: block; }
+  .sheet > * + *, .readout > * + * { margin-top: 8px; }
+  .step { padding: 8px 12px 10px; break-inside: auto; }
+  .step > header { margin-bottom: 6px; gap: 8px; }
+  .step h2 { font-size: 14px; }
+  .step .hint, .field .sub, .eq { font-size: 9.5px; }
+  .field > label, .field > .label, .cells > .label { font-size: 10.5px; }
+  .grid { gap: 5px 10px; }
+  .grid.subgrid { margin-top: 6px; padding-top: 6px; }
+  .field, .cells, .proto-card, .fff-box, .custom-chamber, .pairs, .dose-row { break-inside: avoid; }
+  input[type="text"], input[type="number"], input[type="date"], select, textarea { font-size: 11.5px; height: auto; line-height: 1.3; padding: 1px 0; }
+  textarea { min-height: 0; }
+  .out-cell output { height: auto; padding: 2px 6px; font-size: 11.5px; }
+  .series { gap: 5px; margin-block: 6px; }
+  .cells-list .cell { width: 70px; flex-basis: 70px; }
+  .cell-mean { padding: 1px 8px; min-width: 90px; }
+  .cell-mean output { font-size: 11.5px; }
+  .duo { gap: 8px; }
+  .proto-card { padding: 6px 10px 8px; gap: 5px; }
+  .panel { padding: 8px 12px; }
+  .panel h2 { font-size: 12px; margin-bottom: 4px; }
+  .messages { gap: 4px; }
+  .messages li { font-size: 10px; padding: 3px 8px; }
+  table.factors { font-size: 10.5px; }
+  table.factors th, table.factors td { padding: 2px 6px; }
+  .display { padding: 8px 12px; gap: 6px; }
+  .dose-big { font-size: 22px; }
+  .dose-row .secondary { font-size: 10.5px; }
 }
+.sign-block { margin-top: 12px; }
+.sign-block .disclaimer { font-size: 10px; color: #333; margin: 0 0 14px; }
+.sign-block table { width: 100%; border-collapse: collapse; }
+.sign-block td { padding: 16px 0 2px; vertical-align: bottom; font-size: 12px; }
+.sign-block td.sig-name { width: 55%; }
+.sign-block td.sig-name span { display: inline-block; min-width: 70%; border-bottom: 1px solid #000; padding-bottom: 2px; }
+.sign-block td.sig-line { text-align: right; }
+.sign-block td.sig-line span { display: inline-block; width: 60%; border-bottom: 1px solid #000; }
+.sign-block .sig-cap td { padding-top: 0; font-size: 9px; color: #555; }
+.sign-block .sig-cap td:last-child { text-align: right; }
+.sign-block .sig-cap td:last-child span { display: inline-block; width: 60%; text-align: center; }
 
 /* ------------------------------------------------------------ поле со списком */
 .combo { position: relative; min-width: 0; }
@@ -496,3 +551,18 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; }
 .positions { margin: 12px 0; padding: 10px 12px; border: 1px dashed var(--accent); border-radius: var(--radius); font-size: 13px; background: var(--accent-soft); }
 .positions h4 { margin: 0 0 4px; font: 600 13px var(--font-display); }
 .positions ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
+
+/* ------------------------------------------------------------ подсказка по наведению */
+.tip {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; margin-left: 4px;
+  border-radius: 50%; font: 600 11px/1 var(--font-display); color: var(--accent); border-color: var(--accent); vertical-align: 1px; cursor: help;
+}
+.field:has(> .label > .tip) { position: relative; }
+.tip::after {
+  content: attr(data-tip); position: absolute; left: 0; top: 24px; box-sizing: border-box; width: max(100%, min(380px, calc(100vw - 48px)));
+  padding: 10px 12px; border-radius: var(--radius); z-index: 30;
+  background: var(--display); color: var(--display-ink); font: 400 12.5px/1.45 var(--font-body); text-align: left; white-space: normal; letter-spacing: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2); opacity: 0; visibility: hidden; transition: opacity 0.15s; pointer-events: none;
+}
+.tip:hover::after, .tip:focus-visible::after, .tip:focus::after { opacity: 1; visibility: visible; }
+@media print { .tip { display: none; } }

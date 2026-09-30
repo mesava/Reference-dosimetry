@@ -311,3 +311,42 @@ test('Старые файлы: показания строкой, медицин
   const r = computePhotons({ ...SAMPLE_FORM, qtrs_method: 'direct', qtrs_tpr: '0,668', qtrs_v20: undefined, qtrs_v10: undefined });
   near(r.trs.tpr, 0.668, 1e-12);
 });
+
+test('Контрольные измерения (Versa HD): поправки раздела 4, итог по контрольным показаниям', () => {
+  // пример из рабочей таблицы: PTW 31010, 6 МВ БВФ, РИО 100 см, 500 МЕ, k_Q введён вручную
+  const f = {
+    ...FORM_DEFAULTS, protocol: 'trs', meta_beam: '6 FFF', meta_fff: true, setup_geometry: 'SAD',
+    ch_model: 'PTW31010', ch_ndw: '0,297', ch_T0: '20', ch_P0: '101,325', el_kelec: '1',
+    env_T: '21,8', env_P: '1014,42', env_P_unit: 'hPa', rd_mu: '500', rd_V1: '400', rd_V2: '200',
+    rd_M1: ['16,67', '16,67', '16,66'], rd_Mopp: ['16,65', '16,66', '16,66'], rd_M2: ['16,54', '16,55', '16,55'],
+    qtrs_method: 'ratio', qtrs_v20: '0,6785', qtrs_v10: '1', kqtrs_mode: 'manual', kqtrs_manual: '0,9892',
+    prof_mode: 'formula22', prof_length: '6,5', prof_sdd: '100', dd_on: false,
+    ctrl_M: ['16,83', '16,83', '16,81'],
+  };
+  const r = computePhotons(f);
+  assert.deepEqual(r.messages.filter((m) => m.level === 'error'), []);
+  // таблица пользователя (ячейки H10/500 и «до калибровки»), k_TP с 273,2 — разница 1e-6
+  const F = (16.67 + 16.67 + 16.66) / 3;
+  const kTP = ((273.2 + 21.8) * 1013.25) / ((273.2 + 20) * 1014.42);
+  const q = F / ((16.54 + 16.55 + 16.55) / 3);
+  const ks = 2.337 - 3.636 * q + 2.299 * q * q;
+  const kpol = (F + (16.65 + 16.66 + 16.66) / 3) / (2 * F);
+  const kvol = 1 + (0.0062 * 0.6785 - 0.0036) * 0.65 ** 2;
+  const k = kTP * ks * kpol * kvol * 0.9892 * 0.297;
+  near(r.trs.DperMU, (F * k) / 5, 2e-5, 'до калибровки, сГр/МЕ');
+  near(r.trs.ctrl.DperMU, (((16.83 + 16.83 + 16.81) / 3) * k) / 5, 2e-5, 'по контрольным, сГр/МЕ');
+  near(r.trs.ctrl.DperMU, 1.00044, 1e-4, 'совпадает с ячейкой G10 таблицы');
+  // контрольные при другом числе МЕ приводятся к той же величине на МЕ
+  const r200 = computePhotons({ ...f, ctrl_M: ['6,733', '6,733', '6,725'], ctrl_mu: '200' });
+  near(r200.trs.ctrl.DperMU, (((6.733 + 6.733 + 6.725) / 3) * k) / 2, 2e-5);
+});
+
+test('Установка по РИО: пересчёт на d_max через TMR или через PDD при РИП 90 см', () => {
+  const base = { ...SAMPLE_FORM, setup_geometry: 'SAD', dd_on: true, dd_zmax: '1,5', dd_tmr: '0,736' };
+  const t = computePhotons(base);
+  near(t.trs.DmaxPerMU, t.trs.DperMU / 0.736, 1e-12);
+  const p = computePhotons({ ...base, dd_sad: 'pdd', dd_pdd: '66,4' });
+  near(p.trs.DmaxPerMU, p.trs.DperMU / 0.664, 1e-12);
+  assert.equal(p.depth.pddSsd, 90);
+  assert.match(p.depth.label, /РИП 90 см/);
+});

@@ -5,7 +5,8 @@
 // Ошибка таймера — TRS-398 разд. 5.4.2; TG-51 разд. VII («shutter timing error»).
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru } from './units.js';
-import { temperaturePressure, polarity } from './common.js';
+import { temperaturePressure, polarity, environmentChecks } from './common.js';
+import { resolveCoChamber, matchCoChamberByName } from './co60-chambers.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
 
@@ -22,8 +23,10 @@ export const CO_DEFAULTS = {
   co_distance: '80', // см
   co_zref: '5', // г/см²
 
-  co_ch_type: 'cyl', // 'cyl' | 'pp'
-  co_ch_model: '',
+  co_ch_model: '', // id камеры из базы (co60-chambers.js), 'PP:…', 'MY:…' или 'CUSTOM'
+  co_cc_maker: '', // своя камера
+  co_cc_model: '',
+  co_cc_type: 'cyl', // 'cyl' | 'pp'
   co_ch_serial: '',
   co_ndw: '',
   co_ndw_unit: 'Gy/nC',
@@ -38,15 +41,22 @@ export const CO_DEFAULTS = {
   co_lab_ks: '',
 
   co_env_T: '',
+  co_env_H: '',
   co_env_P: '',
   co_env_P_unit: 'kPa',
 
   co_time: '1',
   co_time_unit: 'min', // 'min' | 's'
-  co_timer_mode: 'measured', // 'none' | 'manual' | 'measured'
+  // 'measured' — серия облучений с разным временем; 'nexp' — одно облучение t против n облучений по t/n;
+  // 'manual' — известное τ; 'window' — заряд накоплен электрометром на интервале, когда источник уже выдвинут; 'none'
+  co_timer_mode: 'measured',
   co_tau: '',
   co_tt: ['', ''],
   co_tm: ['', ''],
+  co_nx_t: '1', // время одиночного облучения
+  co_nx_n: '5',
+  co_nx_M1: ['', '', ''], // показание за одно облучение t
+  co_nx_Mn: ['', '', ''], // показание за n облучений по t/n
 
   co_V1: '300',
   co_V2: '100',
@@ -57,13 +67,23 @@ export const CO_DEFAULTS = {
   co_kleak: '1,000',
   co_rec_trs: 'eq13', // 'eq13' | 'eq16'
 
+  // контрольные измерения: обычная полярность, V₁; поправки — из основных серий
+  co_Mc: ['', '', ''],
+  co_ctrl_time: '', // пусто — то же время, что в основных сериях
+
   co_dd_on: true,
   co_zmax: '0,5',
+  co_dd_sad: 'tmr', // установка по РИК: 'tmr' | 'pdd' (PDD при РИП = РИК − z_ref)
   co_pdd: '',
   co_tmr: '',
-  co_ref_rate: '', // сГр/мин на z_max по предыдущей калибровке (или ожидаемое значение)
-  co_ref_date: '', // дата, к которой относится co_ref_rate; пусто — без поправки на распад
+  co_act0: '', // активность источника при установке
+  co_act_unit: 'Ci', // 'Ci' | 'TBq'
+  co_act_date: '', // дата установки источника (дата паспортной активности)
+  co_ref_rate: '', // сГр/мин на z_max при вводе в эксплуатацию или предыдущей калибровке
+  co_ref_date: '', // дата, к которой относится co_ref_rate; пусто — дата установки источника, если указана
 };
+
+export const ACTIVITY_UNITS = { Ci: { label: 'Ки', toTBq: 0.037 }, TBq: { label: 'ТБк', toTBq: 1 } };
 
 /** Период полураспада ⁶⁰Co: 5,2711 года (DDEP/LNHB), в сутках. */
 export const CO60_HALF_LIFE_DAYS = 5.2711 * 365.25;
@@ -90,6 +110,18 @@ export function normalizeCobalt(input) {
   const f = { ...CO_DEFAULTS, ...input };
   for (const k of ['co_M1', 'co_Mopp', 'co_M2']) if (!Array.isArray(f[k])) f[k] = isBlank(f[k]) ? ['', '', ''] : String(f[k]).trim().split(/[\s;]+/);
   for (const k of ['co_tt', 'co_tm']) if (!Array.isArray(f[k])) f[k] = ['', ''];
+  for (const k of ['co_nx_M1', 'co_nx_Mn', 'co_Mc']) if (!Array.isArray(f[k])) f[k] = isBlank(f[k]) ? ['', '', ''] : String(f[k]).trim().split(/[\s;]+/);
+  // до появления списка камер модель вводилась текстом, а тип — отдельно
+  if (!isBlank(f.co_ch_model) && !resolveCoChamber(f) && !String(f.co_ch_model).startsWith('MY:')) {
+    const id = matchCoChamberByName(f.co_ch_model);
+    if (id) f.co_ch_model = id;
+    else {
+      f.co_cc_model = f.co_ch_model;
+      f.co_cc_type = input?.co_ch_type === 'pp' ? 'pp' : 'cyl';
+      f.co_ch_model = 'CUSTOM';
+    }
+  }
+  delete f.co_ch_type;
   if (!isBlank(input?.co_expected) && isBlank(f.co_ref_rate)) f.co_ref_rate = input.co_expected;
   delete f.co_expected;
   if (!Array.isArray(f.co_staff) || f.co_staff.length === 0) f.co_staff = [''];
@@ -126,6 +158,22 @@ export function timerError(times, readings) {
   return { tau: b / a, slope: a, intercept: b, n, residual };
 }
 
+/**
+ * Ошибка таймера по двум измерениям: одно облучение временем t (показание M₁) и n облучений
+ * по t/n подряд (суммарное показание Mₙ). M₁ = Ṁ·(t + τ), Mₙ = Ṁ·(t + n·τ), откуда
+ * τ = t·(Mₙ − M₁)/(n·M₁ − Mₙ).
+ */
+export function timerErrorMultiple(t, n, m1, mn) {
+  if (!(t > 0)) return { error: 'время одиночного облучения должно быть больше нуля' };
+  if (!(Number.isInteger(n) && n >= 2)) return { error: 'число облучений n должно быть целым, не меньше 2' };
+  const a = Math.abs(m1);
+  const b = Math.abs(mn);
+  if (!(a > 0) || !(b > 0)) return { error: 'нужны оба показания' };
+  const den = n * a - b;
+  if (Math.abs(den) < 1e-12 * a) return { error: 'показания несовместимы: n·M₁ = Mₙ' };
+  return { tau: (t * (b - a)) / den };
+}
+
 export function computeCobalt(form) {
   const f = normalizeCobalt(form);
   const messages = [];
@@ -143,12 +191,20 @@ export function computeCobalt(form) {
     if (!Number.isFinite(v)) add('error', scope, isBlank(f[key]) ? `Не заполнено поле «${label}».` : `Не удалось прочитать число в поле «${label}».`, null, key);
     return v;
   };
-  const readCells = (key, label) => {
+  const readCells = (key, label, scope = 'common') => {
     const s = parseCells(f[key]);
-    if (s.error) add('error', 'common', `«${label}»: ${s.error}.`, null, key);
-    else if (s.n === 0) add('error', 'common', `Не заполнено поле «${label}».`, null, key);
-    else if (s.mean === 0) add('error', 'common', `«${label}»: среднее показание равно нулю.`, null, key);
+    if (s.error) add('error', scope, `«${label}»: ${s.error}.`, null, key);
+    else if (s.n === 0) add('error', scope, `Не заполнено поле «${label}».`, null, key);
+    else if (s.mean === 0) add('error', scope, `«${label}»: среднее показание равно нулю.`, null, key);
     return s;
+  };
+  const spread = (s, label, key, scope = 'common') => {
+    if (!s || s.n < 2 || !s.mean) return;
+    const d = Math.max(...s.values.map((v) => Math.abs(v - s.mean) / Math.abs(s.mean)));
+    const pct = ru(d * 100, 2);
+    if (d > 0.05) add('error', scope, `Показания ${label} расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, null, key);
+    else if (d > 0.005) add('warn', scope, `Разброс показаний ${label} до ${pct} % от среднего: повторите облучения.`, `${REF.r374}, разд. 4.4.2`, key);
+    else if (d > 0.001) add('info', scope, `Разброс показаний ${label} до ${pct} % от среднего: Report 374 советует повторять облучения, пока отклонение не станет меньше ±0,1 % без тренда.`, `${REF.r374}, разд. 4.4.2`, key);
   };
 
   const want51 = f.protocol === 'tg51' || f.protocol === 'both';
@@ -166,11 +222,15 @@ export function computeCobalt(form) {
   if (want51 && zref !== 10) {
     add('warn', 'tg51', 'TG-51 определяет дозу на глубине 10 см: для z_ref = 5 г/см² считайте по TRS-398 или выберите 10 г/см².', `${REF.tg51}, разд. IX.A`, 'co_zref');
   }
-  if (f.co_ch_type === 'pp') {
-    add('info', 'trs', 'Плоскопараллельную камеру можно использовать в пучке ⁶⁰Co, если она откалибрована в пучке того же качества. Опорная точка — внутренняя поверхность входного окна, в центре окна.', `${REF.trs}, разд. 5.2.1, сноска 29`);
-  }
 
   // ---------------------------------------------------------------- камера
+  const chamber = resolveCoChamber(f);
+  if (!chamber) add('error', 'common', 'Выберите камеру.', null, 'co_ch_model');
+  if (chamber?.type === 'pp') {
+    add('info', 'trs', 'Плоскопараллельную камеру можно использовать в пучке ⁶⁰Co, если она откалибрована в пучке того же качества. Опорная точка — внутренняя поверхность входного окна, в центре окна.', `${REF.trs}, разд. 5.2.1, сноска 29`);
+  }
+  if (chamber?.sleeve) add('info', 'common', 'Камера не водонепроницаема: используйте тот же чехол (ПММА ≤ 1 мм), что и при калибровке.', `${REF.trs}, разд. 4.2.4; ${REF.tg51}, разд. V.A`);
+  if (chamber?.notReferenceClass) add('info', 'common', 'По TRS-398 Rev.1 (табл. 4) камера не отвечает спецификации эталонного класса: для калибровки пучка лучше использовать камеру эталонного класса.', `${REF.trs}, табл. 4`);
   const ndwRaw = read('co_ndw', 'N_D,w');
   const ndw = Number.isFinite(ndwRaw) ? ndwToGyPerNC(ndwRaw, f.co_ndw_unit) : NaN;
   if (Number.isFinite(ndw) && (ndw < 1e-3 || ndw > 5)) {
@@ -188,13 +248,12 @@ export function computeCobalt(form) {
   const Pin = read('co_env_P', 'Давление');
   const P = Number.isFinite(Pin) ? pressureToKPa(Pin, f.co_env_P_unit) : NaN;
   if (Number.isFinite(P) && (P < 50 || P > 110)) add('error', 'common', `Давление ${ru(P, 2)} кПа вне правдоподобного диапазона: проверьте единицы.`, null, 'co_env_P');
-  if (Number.isFinite(T)) {
-    if (T < 5 || T > 40) add('error', 'common', `Температура воды ${T} °C неправдоподобна.`, null, 'co_env_T');
-    else if (T < 15 || T > 25) add('info', 'common', 'Температура воды вне 15–25 °C: тепловое расширение полости может стать заметным.', `${REF.add}, разд. 5.A.5`, 'co_env_T');
-  }
+  const env = environmentChecks({ T, Hraw: f.co_env_H, keyT: 'co_env_T', keyH: 'co_env_H', parseNumber, isBlank, ru });
+  env.items.forEach(([level, text, ref, key]) => add(level, 'common', text, ref, key));
 
   // ------------------------------------------------------------ время и таймер
-  const tSet = read('co_time', 'Заданное время облучения');
+  const windowMode = f.co_timer_mode === 'window';
+  const tSet = read('co_time', windowMode ? 'Время накопления заряда' : 'Заданное время облучения');
   if (Number.isFinite(tSet) && tSet <= 0) add('error', 'common', 'Время облучения должно быть больше нуля.', null, 'co_time');
   const unitLabel = f.co_time_unit === 's' ? 'с' : 'мин';
   const toMin = f.co_time_unit === 's' ? 1 / 60 : 1;
@@ -202,6 +261,25 @@ export function computeCobalt(form) {
   let timer = { mode: f.co_timer_mode };
   if (f.co_timer_mode === 'manual') {
     tau = read('co_tau', 'Ошибка таймера τ');
+  } else if (f.co_timer_mode === 'window') {
+    add('info', 'common', 'Заряд накоплен электрометром на интервале, когда источник уже в рабочем положении: ошибка таймера в мощность дозы не входит. Все серии, включая контрольные, нужно снимать так же. Для расчёта времени облучения пациентов ошибку таймера всё равно нужно знать.', `${REF.trs}, разд. 5.4.2`);
+  } else if (f.co_timer_mode === 'nexp') {
+    const tn = read('co_nx_t', 'Время одиночного облучения t');
+    const n = read('co_nx_n', 'Число облучений n');
+    const A = readCells('co_nx_M1', 'Показание за одно облучение t');
+    const B = readCells('co_nx_Mn', 'Показание за n облучений по t/n');
+    spread(A, 'за одно облучение', 'co_nx_M1');
+    spread(B, 'за n облучений', 'co_nx_Mn');
+    if (Number.isFinite(tn) && Number.isFinite(n) && A.n > 0 && B.n > 0 && !A.error && !B.error) {
+      const r = timerErrorMultiple(tn, n, A.mean, B.mean);
+      if (r.error) add('error', 'common', `Ошибка таймера: ${r.error}.`, null, ['co_nx_n', 'co_nx_M1', 'co_nx_Mn']);
+      else if (Math.abs(r.tau / tn) > 0.2 || Math.abs(B.mean) < 0.5 * Math.abs(A.mean) || Math.abs(B.mean) > 2 * Math.abs(A.mean)) {
+        add('error', 'common', `Ошибка таймера ${ru(r.tau, 3)} ${f.co_time_unit === 's' ? 'с' : 'мин'} неправдоподобна: суммарное показание за n облучений по t/n должно быть близко к показанию за одно облучение t. Проверьте, что Mₙ — сумма за все n облучений, а не среднее за одно.`, null, ['co_nx_M1', 'co_nx_Mn']);
+      } else {
+        tau = r.tau;
+        timer = { ...timer, t: tn, n, M1: Math.abs(A.mean), Mn: Math.abs(B.mean) };
+      }
+    }
   } else if (f.co_timer_mode === 'measured') {
     const r = timerError(f.co_tt, f.co_tm);
     if (r.error) add('error', 'common', `Ошибка таймера: ${r.error}.`, null, 'co_timer');
@@ -227,7 +305,7 @@ export function computeCobalt(form) {
   const V1 = read('co_V1', 'Рабочее напряжение V₁');
   const V2 = read('co_V2', 'Пониженное напряжение V₂');
   if (Number.isFinite(V1) && Number.isFinite(V2) && Math.abs(V1) <= Math.abs(V2)) add('error', 'common', 'Рабочее напряжение V₁ должно быть больше пониженного V₂.', null, ['co_V1', 'co_V2']);
-  if (Number.isFinite(V1) && Math.abs(V1) > 300) add('warn', 'common', 'Аддендум TG-51 рекомендует для цилиндрических камер не более 300 В.', `${REF.add}, разд. 4.E`, 'co_V1');
+  if (want51 && Number.isFinite(V1) && Math.abs(V1) > 300 && chamber?.type !== 'pp') add('warn', 'tg51', 'Аддендум TG-51 рекомендует для цилиндрических камер не более 300 В.', `${REF.add}, разд. 4.E`, 'co_V1');
   const M1 = readCells('co_M1', 'M при V₁, обычная полярность');
   const Mopp = readCells('co_Mopp', 'M при V₁, обратная полярность');
   const M2 = readCells('co_M2', 'M при V₂');
@@ -264,6 +342,29 @@ export function computeCobalt(form) {
   }
   let ksQ0 = 1;
   if (!f.co_lab_ks_applied) ksQ0 = read('co_lab_ks', 'Поправка на рекомбинацию при калибровке');
+
+  // ------------------------------------------------------- контрольные измерения
+  // Три облучения при обычной полярности и V₁ после определения поправок: k_pol и k_s берутся
+  // из основных серий, итоговая мощность дозы считается по контрольным показаниям.
+  const ctrlRaw = parseCells(f.co_Mc);
+  const ctrl = { on: ctrlRaw.n > 0 || !!ctrlRaw.error };
+  if (ctrl.on) {
+    ctrl.M = readCells('co_Mc', 'Контрольные измерения', 'ctrl');
+    spread(ctrl.M, 'контрольных измерений', 'co_Mc', 'ctrl');
+    if (readingsOk && ctrl.M.n > 0 && !ctrl.M.error && ctrl.M.mean !== 0 && Math.sign(ctrl.M.mean) !== Math.sign(M1.mean)) {
+      add('error', 'ctrl', 'Контрольные измерения снимают при той же (обычной) полярности, что и M при V₁.', null, 'co_Mc');
+    }
+    ctrl.t = isBlank(f.co_ctrl_time) ? tSet : read('co_ctrl_time', 'Время контрольного облучения', 'ctrl');
+    if (Number.isFinite(ctrl.t) && ctrl.t <= 0) add('error', 'ctrl', 'Время контрольного облучения должно быть больше нуля.', null, 'co_ctrl_time');
+    ctrl.tEff = ctrl.t + tau;
+    ctrl.tEffMin = ctrl.tEff * toMin;
+    if (ctrl.t > 0 && Number.isFinite(tau) && !(ctrl.tEff > 0)) add('error', 'ctrl', 'Фактическое время контрольного облучения t + τ получилось неположительным: проверьте время и ошибку таймера.', null, 'co_ctrl_time');
+    ctrl.mean = ctrl.M.n > 0 && !ctrl.M.error ? Math.abs(ctrl.M.mean) : NaN;
+    const ctrlErr = messages.some((m) => m.level === 'error' && m.scope === 'ctrl');
+    if (!ctrlErr && Number.isFinite(ctrl.mean) && Number.isFinite(m1) && ctrl.tEff > 0 && tEff > 0) {
+      ctrl.changePct = ((ctrl.mean / ctrl.tEff) / (m1 / tEff) - 1) * 100;
+    }
+  }
 
   // ------------------------------------------------------------- TRS-398
   const trs = { enabled: wantTRS };
@@ -316,7 +417,9 @@ export function computeCobalt(form) {
     };
     depth.zmax = readD('co_zmax', 'Глубина z_max');
     if (Number.isFinite(depth.zmax) && (depth.zmax <= 0 || depth.zmax >= zref)) add('error', 'depth', `Глубина z_max должна быть меньше опорной (${ru(zref, 0)} см).`, null, 'co_zmax');
-    if (f.co_geometry === 'SAD') {
+    depth.method = f.co_geometry === 'SAD' && f.co_dd_sad !== 'pdd' ? 'tmr' : 'pdd';
+    depth.pddSsd = f.co_geometry === 'SAD' ? distance - zref : distance;
+    if (depth.method === 'tmr') {
       const tmr = readD('co_tmr', `TMR(${ru(zref, 0)})`);
       if (Number.isFinite(tmr) && (tmr <= 0.2 || tmr > 1)) add('error', 'depth', 'TMR вводится как отношение (например, 0,904), а не в процентах.', null, 'co_tmr');
       depth.factor = tmr;
@@ -325,21 +428,30 @@ export function computeCobalt(form) {
       const pdd = readD('co_pdd', `PDD(${ru(zref, 0)})`);
       if (Number.isFinite(pdd) && (pdd < 20 || pdd > 100)) add('error', 'depth', 'PDD вводится в процентах, от 20 до 100.', null, 'co_pdd');
       depth.factor = pdd / 100;
-      depth.label = `PDD(${ru(zref, 0)} см)/100`;
+      depth.label = `PDD(${ru(zref, 0)} см)/100${f.co_geometry === 'SAD' && Number.isFinite(depth.pddSsd) ? ` при РИП ${ru(depth.pddSsd, 0)} см` : ''}`;
+      if (f.co_geometry === 'SAD' && Number.isFinite(depth.pddSsd)) {
+        add('info', 'depth', `Установка по РИК, пересчёт через PDD: результат — мощность дозы на z_max при той же установке (РИП ${ru(depth.pddSsd, 0)} см), а не в изоцентре. PDD должна быть измерена при РИП ${ru(depth.pddSsd, 0)} см.`, `${REF.trs}, разд. 5.4.3`);
+      }
     }
-    // ожидаемая мощность дозы: предыдущее значение, приведённое к дате измерения по распаду ⁶⁰Co
+    // ожидаемая мощность дозы: значение при вводе в эксплуатацию или предыдущей калибровке,
+    // приведённое к дате измерения по распаду ⁶⁰Co; без своей даты — от даты установки источника
     const refRate = parseNumber(f.co_ref_rate);
-    if (!isBlank(f.co_ref_rate) && !(refRate > 0)) add('warn', 'depth', 'Предыдущая мощность дозы должна быть положительным числом (сГр/мин).', null, 'co_ref_rate');
+    const refDate = isBlank(f.co_ref_date) ? f.co_act_date : f.co_ref_date;
+    const refKey = isBlank(f.co_ref_date) ? 'co_act_date' : 'co_ref_date';
+    depth.refDate = refDate;
+    depth.refDateFromSource = isBlank(f.co_ref_date) && !isBlank(f.co_act_date);
+    if (!isBlank(f.co_ref_rate) && !(refRate > 0)) add('warn', 'depth', 'Мощность дозы для сравнения должна быть положительным числом (сГр/мин).', null, 'co_ref_rate');
     if (refRate > 0) {
       depth.refRate = refRate;
       depth.expected = refRate;
-      if (!isBlank(f.co_ref_date)) {
-        if (isBlank(f.co_date)) add('warn', 'depth', 'Укажите дату измерения (раздел 1), чтобы учесть распад ⁶⁰Co с даты предыдущего значения.', null, ['co_date', 'co_ref_date']);
+      if (!isBlank(refDate)) {
+        if (depth.refDateFromSource) add('info', 'depth', `Для мощности дозы сравнения не указана дата — она пересчитана от даты установки источника (${refDate}). Если это значение предыдущей калибровки, укажите его дату.`, null, 'co_ref_date');
+        if (isBlank(f.co_date)) add('warn', 'depth', 'Укажите дату измерения (раздел 1), чтобы учесть распад ⁶⁰Co.', null, ['co_date', refKey]);
         else {
-          const d = decayFactor(f.co_ref_date, f.co_date);
-          if (d.error) add('warn', 'depth', `Поправка на распад: ${d.error}.`, null, 'co_ref_date');
+          const d = decayFactor(refDate, f.co_date);
+          if (d.error) add('warn', 'depth', `Поправка на распад: ${d.error}.`, null, refKey);
           else {
-            if (d.days < 0) add('warn', 'depth', 'Дата предыдущего значения позже даты измерения: проверьте даты.', null, 'co_ref_date');
+            if (d.days < 0) add('warn', 'depth', 'Дата значения для сравнения позже даты измерения: проверьте даты.', null, refKey);
             depth.days = d.days;
             depth.decay = d.factor;
             depth.expected = refRate * d.factor;
@@ -350,10 +462,38 @@ export function computeCobalt(form) {
     depth.ok = !messages.some((m) => m.level === 'error' && m.scope === 'depth');
   }
 
-  const finish = (x, M) => {
+  // ------------------------------------------------------- активность источника
+  const source = { on: !isBlank(f.co_act0) };
+  if (source.on) {
+    const a0 = parseNumber(f.co_act0);
+    const u = ACTIVITY_UNITS[f.co_act_unit] ?? ACTIVITY_UNITS.Ci;
+    if (!(a0 > 0)) add('warn', 'source', 'Активность источника должна быть положительным числом.', null, 'co_act0');
+    else {
+      source.A0 = a0;
+      source.unit = u.label;
+      source.A0TBq = a0 * u.toTBq;
+      if (isBlank(f.co_act_date)) add('warn', 'source', 'Укажите дату установки источника (дату паспортной активности), чтобы пересчитать активность на дату измерения.', null, 'co_act_date');
+      else if (isBlank(f.co_date)) add('warn', 'source', 'Укажите дату измерения (раздел 1), чтобы пересчитать активность источника.', null, ['co_date', 'co_act_date']);
+      else {
+        const d = decayFactor(f.co_act_date, f.co_date);
+        if (d.error) add('warn', 'source', `Активность источника: ${d.error}.`, null, 'co_act_date');
+        else {
+          if (d.days < 0) add('warn', 'source', 'Дата установки источника позже даты измерения: проверьте даты.', null, 'co_act_date');
+          source.days = d.days;
+          source.years = d.days / 365.25;
+          source.decay = d.factor;
+          source.A = a0 * d.factor;
+          source.ATBq = source.A0TBq * d.factor;
+          source.ACi = source.ATBq / ACTIVITY_UNITS.Ci.toTBq;
+        }
+      }
+    }
+  }
+
+  const finish = (x, M, tMin) => {
     x.M = M;
     x.D = M * ndw; // Гр за облучение
-    x.rateGy = x.D / tEffMin; // Гр/мин на z_ref
+    x.rateGy = x.D / tMin; // Гр/мин на z_ref
     x.rate = x.rateGy * 100; // сГр/мин
     if (depth.on && depth.ok && Number.isFinite(depth.factor)) {
       x.rateMaxGy = x.rateGy / depth.factor;
@@ -362,8 +502,16 @@ export function computeCobalt(form) {
     }
     x.ok = Number.isFinite(x.D) && x.D > 0 && Number.isFinite(x.rate) && x.rate > 0;
   };
-  if (wantTRS) finish(trs, m1 * trs.kTP * trs.kelec * trs.kpol * trs.ks * trs.kleak);
-  if (want51) finish(tg, m1 * tg.PTP * tg.Pelec * tg.Ppol * tg.Pion * tg.Pleak);
+  const productTRS = wantTRS ? trs.kTP * trs.kelec * trs.kpol * trs.ks * trs.kleak : NaN;
+  const product51 = want51 ? tg.PTP * tg.Pelec * tg.Ppol * tg.Pion * tg.Pleak : NaN;
+  if (wantTRS) finish(trs, m1 * productTRS, tEffMin);
+  if (want51) finish(tg, m1 * product51, tEffMin);
+  const ctrlBlocked = messages.some((m) => m.level === 'error' && m.scope === 'ctrl');
+  if (ctrl.on) {
+    if (wantTRS) finish((trs.ctrl = {}), ctrl.mean * productTRS, ctrl.tEffMin);
+    if (want51) finish((tg.ctrl = {}), ctrl.mean * product51, ctrl.tEffMin);
+    for (const x of [trs.ctrl, tg.ctrl]) if (x) x.blocked = ctrlBlocked || !x.ok;
+  }
 
   const hasError = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
   if (wantTRS && !trs.ok && !hasError('trs')) add('error', 'trs', 'Не удалось вычислить дозу: проверьте ввод.');
@@ -372,6 +520,8 @@ export function computeCobalt(form) {
   messages.sort((a, b) => order[a.level] - order[b.level]);
   trs.blocked = wantTRS && hasError('trs');
   tg.blocked = want51 && hasError('tg51');
+  if (trs.ctrl) trs.ctrl.blocked = trs.ctrl.blocked || trs.blocked;
+  if (tg.ctrl) tg.ctrl.blocked = tg.ctrl.blocked || tg.blocked;
 
   let comparison = null;
   if (want51 && wantTRS && trs.ok && tg.ok && !trs.blocked && !tg.blocked) comparison = { dRel: (tg.D / trs.D - 1) * 100 };
@@ -379,8 +529,11 @@ export function computeCobalt(form) {
   return {
     protocol: f.protocol,
     form: f,
-    inputs: { T, P, T0, P0, V1, V2, nV, ndw, kelec, kleak, M1, Mopp, M2, ratio12, tSet, tEff, tEffMin, unitLabel, distance, zref },
+    chamber,
+    inputs: { T, P, H: env.H, T0, P0, V1, V2, nV, ndw, kelec, kleak, M1, Mopp, M2, ratio12, tSet, tEff, tEffMin, unitLabel, distance, zref },
     timer,
+    ctrl,
+    source,
     depth,
     trs,
     tg51: tg,

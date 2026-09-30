@@ -169,3 +169,39 @@ export function armButton(btn, idleText, armedText, action) {
     }, 4000);
   });
 }
+
+/**
+ * Блок для печати и PDF после таблицы поправок: оговорка об ответственности и строки
+ * «ФИО — подпись» по числу сотрудников, выполнявших измерения (пустая строка — для подписи от руки).
+ */
+export function renderSignBlock(el, staff) {
+  if (!el) return;
+  const note = document.querySelector('.page-foot p')?.textContent?.trim() ?? '';
+  const names = Array.isArray(staff) && staff.length ? staff : [''];
+  el.innerHTML =
+    (note ? `<p class="disclaimer">${esc(note)}</p>` : '') +
+    '<table><tbody>' +
+    names
+      .map(
+        (n) => `<tr><td class="sig-name"><span>${esc(String(n ?? '').trim()) || '&nbsp;'}</span></td><td class="sig-line"><span>&nbsp;</span></td></tr>
+        <tr class="sig-cap"><td>ФИО</td><td><span>подпись</span></td></tr>`,
+      )
+      .join('') +
+    '</tbody></table>';
+}
+
+/**
+ * Сохранение в PDF через окно печати браузера. Имя документа на время печати становится
+ * именем файла по умолчанию.
+ */
+export function printToPdf(fileTitle, setStatus) {
+  const old = document.title;
+  document.title = String(fileTitle || old).replace(/[\\/:*?"<>|]+/g, '-');
+  setStatus?.('В окне печати выберите «Сохранить как PDF» (в поле «Принтер» или «Назначение»).');
+  const restore = () => {
+    document.title = old;
+    window.removeEventListener('afterprint', restore);
+  };
+  window.addEventListener('afterprint', restore);
+  window.print();
+}

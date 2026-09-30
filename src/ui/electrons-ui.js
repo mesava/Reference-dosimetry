@@ -6,7 +6,7 @@ import { PRESSURE_UNITS, NDW_UNITS, parseNumber } from '../core/units.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import {
   $, $$, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
-  currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton,
+  currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.electrons.v1';
@@ -144,7 +144,6 @@ function renderChamberInfo(r) {
 function doseRow(key, x, r) {
   const depthOn = r.depth.on && Number.isFinite(x.DmaxPerMU);
   const main = depthOn ? x.DmaxPerMU : x.DperMU;
-  const mainGy = depthOn ? x.DmaxPerMUGy : x.DperMUGy;
   const z = zTxt(r.quality.zref);
   const where = depthOn ? 'на z<sub>max</sub>' : `на ${z} см`;
   let chip = '';
@@ -154,7 +153,7 @@ function doseRow(key, x, r) {
   }
   const mu = r.inputs.mu;
   const secondary = [
-    `${fmt(mainGy, 6)} Гр/МЕ ${where}`,
+    `= ${fmt(main, 4)} Гр на 100 МЕ ${where}`,
     `D<sub>w</sub>(${z} см) = ${fmt(x.D, 4)} Гр${Number.isFinite(mu) ? ` за ${fmt(mu, 0)} МЕ` : ''}`,
     depthOn ? `${fmt(x.DperMU, 4)} сГр/МЕ на ${z} см` : null,
   ].filter(Boolean).join('<br>');
@@ -213,13 +212,11 @@ function renderReadout(r, data) {
       ? ['Поправка на качество', ['k<sub>Q,Qcross</sub>', t.kQ, 4], ['k′<sub>Q</sub>', g.kQ, 4]]
       : ['Поправка на качество', ['k<sub>Q</sub>', t.kQ, 4], ['k<sub>Q</sub>', g.kQ, 4]],
     [`D<sub>w</sub>(${z} см), Гр`, ['', t.D, 4, true], ['', g.D, 4, true], 'total'],
-    [`На ${z} см, сГр/МЕ`, ['', t.DperMU, 4, true], ['', g.DperMU, 4, true]],
-    [`На ${z} см, Гр/МЕ`, ['', t.DperMUGy, 6, true], ['', g.DperMUGy, 6, true]],
+    [`На ${z} см, сГр/МЕ = Гр на 100 МЕ`, ['', t.DperMU, 4, true], ['', g.DperMU, 4, true]],
   ];
   if (r.depth.on) {
     rows.push([r.depth.label, ['', r.depth.factor, 4], ['', r.depth.factor, 4]]);
-    rows.push(['На z<sub>max</sub>, сГр/МЕ', ['', t.DmaxPerMU, 4, true], ['', g.DmaxPerMU, 4, true], 'total']);
-    rows.push(['На z<sub>max</sub>, Гр/МЕ', ['', t.DmaxPerMUGy, 6, true], ['', g.DmaxPerMUGy, 6, true]]);
+    rows.push(['На z<sub>max</sub>, сГр/МЕ = Гр на 100 МЕ', ['', t.DmaxPerMU, 4, true], ['', g.DmaxPerMU, 4, true], 'total']);
   }
   const cell = ([sym, v, d, dose], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && blocked ? '—' : fmt(v, d)}</td>`;
   $('#e-factors').innerHTML =
@@ -261,7 +258,7 @@ function reportText(data, r) {
   }
   line('Стандартные условия', `T0 = ${data.e_T0} °C, P0 = ${data.e_P0} кПа`);
   line('Электрометр', `${data.e_el_model || '—'}, № ${data.e_el_serial || '—'}, k_elec = ${data.e_kelec}`);
-  line('Условия', `T = ${data.e_env_T} °C, P = ${data.e_env_P} ${PRESSURE_UNITS[data.e_env_P_unit]?.label ?? ''}`);
+  line('Условия', `T = ${data.e_env_T} °C, P = ${data.e_env_P} ${PRESSURE_UNITS[data.e_env_P_unit]?.label ?? ''}${String(data.e_env_H ?? '').trim() ? `, относительная влажность ${data.e_env_H} %` : ''}`);
   line('Облучение', `${data.e_mu} МЕ, V1 = ${data.e_V1} В, V2 = ${data.e_V2} В, обычная полярность ${data.e_polarity}`);
   const at = i.separate51 ? ', положение по TRS-398' : '';
   line(`M(V1, обычная${at}), нКл`, `${cells(data.e_M1)} → среднее ${fmt(Math.abs(i.M1.mean), 4)}`);
@@ -286,9 +283,9 @@ function reportText(data, r) {
     }
     if (x.blocked) L.push('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: есть ошибки ввода (см. замечания).');
     else {
-      L.push(`M = ${fmt(x.M)} нКл; D_w(z_ref) = ${fmt(x.D)} Гр; ${fmt(x.DperMU)} сГр/МЕ = ${fmt(x.DperMUGy, 6)} Гр/МЕ на z_ref`);
+      L.push(`M = ${fmt(x.M)} нКл; D_w(z_ref) = ${fmt(x.D)} Гр; ${fmt(x.DperMU)} сГр/МЕ (Гр на 100 МЕ) на z_ref`);
       if (r.depth.on && r.depth.ok && Number.isFinite(x.DmaxPerMU)) {
-        L.push(`${r.depth.label} = ${fmt(r.depth.factor)}${data.e_zmax ? `; z_max = ${data.e_zmax} см` : ''}; на z_max ${fmt(x.DmaxPerMU)} сГр/МЕ = ${fmt(x.DmaxPerMUGy, 6)} Гр/МЕ${Number.isFinite(x.deviation) ? `; отклонение от номинала ${fmtSigned(x.deviation, 2)} %` : ''}`);
+        L.push(`${r.depth.label} = ${fmt(r.depth.factor)}${data.e_zmax ? `; z_max = ${data.e_zmax} см` : ''}; на z_max ${fmt(x.DmaxPerMU)} сГр/МЕ (Гр на 100 МЕ)${Number.isFinite(x.deviation) ? `; отклонение от номинала ${fmtSigned(x.deviation, 2)} %` : ''}`);
       } else if (r.depth.on) L.push('Пересчёт на z_max не выполнен: исправьте данные раздела 7.');
     }
     L.push('');
@@ -342,6 +339,7 @@ function update() {
   renderReadout(result, result.form);
   $('#e-demo-flag').hidden = !(data.e_institution === SAMPLE_ELECTRONS.e_institution && data.e_machine === SAMPLE_ELECTRONS.e_machine);
   saveDraft(result.form);
+  renderSignBlock($('#e-sign'), result.form.e_staff);
 }
 
 function onBeamInput() {
@@ -417,5 +415,6 @@ export function initElectrons() {
   });
   $('#e-btn-copy-json').addEventListener('click', () => copyText(payload(), 'Данные скопированы. Чтобы вставить их обратно, нажмите Ctrl+V на странице вне полей ввода.', setStatus));
   $('#e-btn-copy-report').addEventListener('click', () => copyText(reportText(current.data, current.result), 'Протокол скопирован в буфер обмена.', setStatus));
+  $('#e-btn-pdf').addEventListener('click', () => printToPdf(['Дозиметрия', 'электроны', current.data.e_machine, current.data.e_beam, current.data.e_date].filter(Boolean).join('_'), setStatus));
   $('#e-btn-print').addEventListener('click', () => window.print());
 }

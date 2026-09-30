@@ -7,12 +7,12 @@ import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import {
   $, $$, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
-  currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton,
+  currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.photons.v2';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'photons', version: 2 };
-const SERIES_KEYS = ['rd_M1', 'rd_Mopp', 'rd_M2'];
+const SERIES_KEYS = ['rd_M1', 'rd_Mopp', 'rd_M2', 'ctrl_M'];
 const CC_KEYS = ['cc_maker', 'cc_model', 'cc_volume', 'cc_length', 'cc_radius', 'cc_wall', 'cc_wall_thickness', 'cc_electrode', 'cc_waterproof', 'cc_analog', 'cc_a', 'cc_b'];
 const ROOT = () => document.getElementById('module-photons');
 let setStatus = () => {};
@@ -42,7 +42,7 @@ function fillChamberSelect() {
     }
     parts.push('</optgroup>');
   }
-  const mine = getMyChambers();
+  const mine = getMyChambers().filter((c) => c.cc_type !== 'pp'); // плоскопараллельные для фотонов не рекомендуются
   if (mine.length) {
     parts.push('<optgroup label="Мои камеры">');
     for (const c of mine) parts.push(`<option value="${esc(c.id)}">${esc([c.cc_maker, c.cc_model].filter(Boolean).join(' ') || 'без названия')}</option>`);
@@ -143,12 +143,18 @@ function applyVisibility(data, result) {
   $('#lbl-v10').textContent = pdd ? 'PDD(10), %' : 'M на 10 см';
   const z = result.depth.zref;
   const zTxt = Number.isFinite(z) ? fmt(z, z % 1 ? 1 : 0) : '10';
-  $('#lbl-dd-pdd').textContent = `PDD(${zTxt}), %`;
+  const sad = data.setup_geometry === 'SAD';
+  const ssd = result.geometry?.ssd;
+  const ssdTxt = Number.isFinite(ssd) ? fmt(ssd, ssd % 1 ? 1 : 0) : '—';
+  $('#dd-pdd-field').hidden = !data.dd_on || (sad && data.dd_sad !== 'pdd');
+  $('#lbl-dd-pdd').textContent = sad ? `PDD(${zTxt}) при РИП ${ssdTxt} см, %` : `PDD(${zTxt}), %`;
+  $('#dd-pdd-sub').textContent = sad ? `измеренная при РИП ${ssdTxt} см; PDD при РИП 100 см здесь не подходит` : '';
   $('label[for="dd_tmr"]').textContent = `TMR(${zTxt})`;
-  $('#dd-hint').textContent =
-    data.setup_geometry === 'SAD'
-      ? 'Геометрия РИО: по протоколу доза переносится на d_max через TMR из данных ввода в эксплуатацию (TRS-398, разд. 6.4.3; TG-51, разд. IX.C).'
-      : `D(d_max) = D(${zTxt} см) / PDD(${zTxt}) · 100. PDD берут клиническую, из данных ввода в эксплуатацию и системы планирования.`;
+  $('#dd-hint').textContent = !sad
+    ? `D(d_max) = D(${zTxt} см) / PDD(${zTxt}) · 100. PDD берут клиническую, из данных ввода в эксплуатацию и системы планирования.`
+    : data.dd_sad === 'pdd'
+      ? `Установка по РИО через PDD: D(d_max) = D(${zTxt} см) / PDD(${zTxt}) · 100 при РИП ${ssdTxt} см. Это доза на d_max при той же установке (РИП ${ssdTxt} см), а не в изоцентре; PDD нужна для этого РИП (TRS-398, разд. 6.4.3, рабочая запись 6.9).`
+      : 'Установка по РИО: доза переносится на d_max в изоцентре через TMR из данных ввода в эксплуатацию (TRS-398, разд. 6.4.3; TG-51, разд. IX.C).';
   const field = parseNumber(data.setup_field);
   $('#field-view').textContent = Number.isFinite(field) ? `${fmt(field, field % 1 ? 1 : 0)} × ${fmt(field, field % 1 ? 1 : 0)} см` : '';
   $('#sdd-hint').textContent = `Если оставить пустым: ${fmt(result.inputs.sddCm, 0)} см (по геометрии из раздела 1).`;
@@ -188,26 +194,36 @@ const PROTO = {
   tg51: { name: 'TG-51 + аддендум 2014' },
 };
 
+/** Итог: по контрольным измерениям, если они введены и без ошибок, иначе по показаниям раздела 4. */
+const primaryOf = (x) => (x.ctrl && !x.ctrl.blocked && !x.blocked ? x.ctrl : x);
+
 function doseRow(key, x, result) {
-  const depthOn = result.depth.on && Number.isFinite(x.DmaxPerMU);
-  const main = depthOn ? x.DmaxPerMU : x.DperMU;
-  const mainGy = depthOn ? x.DmaxPerMUGy : x.DperMUGy;
+  const p = primaryOf(x);
+  const fromCtrl = p !== x;
+  const depthOn = result.depth.on && Number.isFinite(p.DmaxPerMU);
+  const main = depthOn ? p.DmaxPerMU : p.DperMU;
   const z = result.depth.zref;
   const zTxt = Number.isFinite(z) ? fmt(z, z % 1 ? 1 : 0) : '10';
   const where = depthOn ? 'на d<sub>max</sub>' : `на ${zTxt} см`;
   let chip = '';
-  if (depthOn && Number.isFinite(x.deviation) && !x.blocked) {
-    const cls = Math.abs(x.deviation) <= 1 ? 'good' : Math.abs(x.deviation) > 2 ? 'bad' : '';
-    chip = `<span class="chip ${cls}" title="Отклонение от номинального выхода">${fmtSigned(x.deviation, 2)} %</span>`;
+  if (depthOn && Number.isFinite(p.deviation) && !x.blocked) {
+    const cls = Math.abs(p.deviation) <= 1 ? 'good' : Math.abs(p.deviation) > 2 ? 'bad' : '';
+    chip = `<span class="chip ${cls}" title="Отклонение от номинального выхода">${fmtSigned(p.deviation, 2)} %</span>`;
   }
-  const mu = result.inputs.mu;
+  const units = fromCtrl ? result.ctrl.mu : result.inputs.mu;
+  const pre = depthOn ? x.DmaxPerMU : x.DperMU;
   const secondary = [
-    `${fmt(mainGy, 6)} Гр/МЕ ${where}`,
-    `D<sub>w</sub>(${zTxt} см) = ${fmt(x.D, 4)} Гр${Number.isFinite(mu) ? ` за ${fmt(mu, 0)} МЕ` : ''}`,
-    depthOn ? `${fmt(x.DperMU, 4)} сГр/МЕ на ${zTxt} см` : null,
+    `= ${fmt(main, 4)} Гр на 100 МЕ ${where}`,
+    `D<sub>w</sub>(${zTxt} см) = ${fmt(p.D, 4)} Гр за ${Number.isFinite(units) ? fmt(units, 0) : '—'} МЕ`,
+    depthOn ? `${fmt(p.DperMU, 4)} сГр/МЕ на ${zTxt} см` : null,
+    fromCtrl
+      ? `До калибровки (раздел 4): ${fmt(pre, 4)} сГр/МЕ${Number.isFinite(x.deviation) ? ` (${fmtSigned(x.deviation, 2)} %)` : ''}`
+      : result.ctrl.on
+        ? 'Контрольные измерения содержат ошибки — итог по разделу 4'
+        : 'Контрольные измерения не введены — итог по разделу 4',
   ].filter(Boolean).join('<br>');
   return `<div class="dose-row ${x.blocked ? 'blocked' : ''}">
-    <div class="proto"><span>${PROTO[key].name}</span>${chip}</div>
+    <div class="proto"><span>${PROTO[key].name}${fromCtrl ? ' · контрольные измерения' : ''}</span>${chip}</div>
     <div class="dose-big">${x.blocked || !Number.isFinite(main) ? '—' : fmt(main, 4)}<small>сГр/МЕ ${where}</small></div>
     <div class="secondary">${x.blocked ? 'Исправьте ошибки из списка замечаний' : secondary}</div>
   </div>`;
@@ -228,16 +244,17 @@ function renderReadout(result, data) {
   const first = keys.map((k) => ({ k, x: k === 'trs' ? result.trs : result.tg51 })).find((o) => !o.x.blocked && o.x.ok);
   const mv = $('#mobile-value');
   if (first) {
-    const val = result.depth.on && Number.isFinite(first.x.DmaxPerMU) ? first.x.DmaxPerMU : first.x.DperMU;
-    mv.innerHTML = `${first.k === 'trs' ? 'TRS' : 'TG-51'}: <b>${fmt(val, 4)}</b> сГр/МЕ${Number.isFinite(first.x.deviation) ? ` (${fmtSigned(first.x.deviation, 2)} %)` : ''}`;
+    const p = primaryOf(first.x);
+    const val = result.depth.on && Number.isFinite(p.DmaxPerMU) ? p.DmaxPerMU : p.DperMU;
+    mv.innerHTML = `${first.k === 'trs' ? 'TRS' : 'TG-51'}: <b>${fmt(val, 4)}</b> сГр/МЕ${Number.isFinite(p.deviation) ? ` (${fmtSigned(p.deviation, 2)} %)` : ''}`;
   } else {
     const n = result.messages.filter((m) => m.level === 'error').length;
     mv.textContent = n ? `Ошибок: ${n}` : '—';
   }
 
   const lvlName = { error: 'Ошибка', warn: 'Внимание', info: 'Справка' };
-  const scopeName = { common: '', depth: 'Пересчёт на d_max · ', trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
-  const list = result.messages.filter((m) => m.scope === 'common' || m.scope === 'depth' || keys.includes(m.scope));
+  const scopeName = { common: '', depth: 'Пересчёт на d_max · ', ctrl: 'Контрольные измерения · ', trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
+  const list = result.messages.filter((m) => m.scope === 'common' || m.scope === 'depth' || m.scope === 'ctrl' || keys.includes(m.scope));
   $('#messages').innerHTML = list.length
     ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(m.ref)}</span>` : ''}</li>`).join('')
     : '<li class="info"><span class="lvl">Всё в порядке</span><span>Замечаний к введённым данным нет.</span></li>';
@@ -260,18 +277,29 @@ function renderReadout(result, data) {
     ['Поправка на качество', ['k<sub>Q</sub>', t.kQ, 4], ['k<sub>Q</sub>', g.kQ, 4]],
     ['N<sub>D,w</sub>, Гр/нКл', ['', result.inputs.ndw, 5], ['', result.inputs.ndw, 5]],
     [`D<sub>w</sub>(${zTxt} см), Гр`, ['', t.D, 4, true], ['', g.D, 4, true], 'total'],
-    [`На ${zTxt} см, сГр/МЕ`, ['', t.DperMU, 4, true], ['', g.DperMU, 4, true]],
-    [`На ${zTxt} см, Гр/МЕ`, ['', t.DperMUGy, 6, true], ['', g.DperMUGy, 6, true]],
+    [`На ${zTxt} см, сГр/МЕ = Гр на 100 МЕ`, ['', t.DperMU, 4, true], ['', g.DperMU, 4, true]],
   ];
   if (result.depth.on) {
     rows.push([result.depth.label, ['', result.depth.factor, 4], ['', result.depth.factor, 4]]);
-    rows.push(['На d<sub>max</sub>, сГр/МЕ', ['', t.DmaxPerMU, 4, true], ['', g.DmaxPerMU, 4, true], 'total']);
-    rows.push(['На d<sub>max</sub>, Гр/МЕ', ['', t.DmaxPerMUGy, 6, true], ['', g.DmaxPerMUGy, 6, true]]);
+    rows.push(['На d<sub>max</sub>, сГр/МЕ = Гр на 100 МЕ', ['', t.DmaxPerMU, 4, true], ['', g.DmaxPerMU, 4, true], result.ctrl.on ? '' : 'total']);
   }
-  const cell = ([sym, v, d, dose], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && blocked ? '—' : fmt(v, d)}</td>`;
+  if (result.ctrl.on) {
+    const tc = t.ctrl || {};
+    const gc = g.ctrl || {};
+    const bT = !!tc.blocked;
+    const bG = !!gc.blocked;
+    const cz = `Контрольные измерения, ${Number.isFinite(result.ctrl.mu) ? fmt(result.ctrl.mu, 0) : '—'} МЕ`;
+    rows.push([cz, [], [], 'group']);
+    rows.push(['Исправленное показание, нКл', ['M', tc.M, 4, true, bT], ['M', gc.M, 4, true, bG]]);
+    rows.push([`D<sub>w</sub>(${zTxt} см), Гр`, ['', tc.D, 4, true, bT], ['', gc.D, 4, true, bG]]);
+    rows.push([`На ${zTxt} см, сГр/МЕ = Гр на 100 МЕ`, ['', tc.DperMU, 4, true, bT], ['', gc.DperMU, 4, true, bG], result.depth.on ? '' : 'total']);
+    if (result.depth.on) rows.push(['На d<sub>max</sub>, сГр/МЕ = Гр на 100 МЕ', ['', tc.DmaxPerMU, 4, true, bT], ['', gc.DmaxPerMU, 4, true, bG], 'total']);
+  }
+  const cell = ([sym, v, d, dose, own], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && (blocked || own) ? '—' : fmt(v, d)}</td>`;
+  const span = 1 + showT + showG;
   $('#factors').innerHTML =
     `<thead><tr><th>Величина</th>${showT ? '<th>TRS-398</th>' : ''}${showG ? '<th>TG-51</th>' : ''}</tr></thead><tbody>` +
-    rows.map((r) => `<tr class="${r[3] || ''}"><td>${r[0]}</td>${showT ? cell(r[1], t.blocked) : ''}${showG ? cell(r[2], g.blocked) : ''}</tr>`).join('') +
+    rows.map((r) => (r[3] === 'group' ? `<tr class="group"><td colspan="${span}">${r[0]}</td></tr>` : `<tr class="${r[3] || ''}"><td>${r[0]}</td>${showT ? cell(r[1], t.blocked) : ''}${showG ? cell(r[2], g.blocked) : ''}</tr>`)).join('') +
     '</tbody>';
 }
 
@@ -309,11 +337,12 @@ function reportText(data, r) {
   }
   line('N_D,w', `${data.ch_ndw} ${NDW_UNITS[data.ch_ndw_unit]?.label ?? ''} (= ${fmt(r.inputs.ndw, 6)} Гр/нКл); T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} кПа`);
   line('Электрометр', `${data.el_model || '—'}, № ${data.el_serial || '—'}, k_elec = ${data.el_kelec}`);
-  line('Условия', `T = ${data.env_T} °C, P = ${data.env_P} ${PRESSURE_UNITS[data.env_P_unit]?.label ?? ''}`);
+  line('Условия', `T = ${data.env_T} °C, P = ${data.env_P} ${PRESSURE_UNITS[data.env_P_unit]?.label ?? ''}${String(data.env_H ?? '').trim() ? `, относительная влажность ${data.env_H} %` : ''}`);
   line('Облучение', `${data.rd_mu} МЕ, V1 = ${data.rd_V1} В, V2 = ${data.rd_V2} В, обычная полярность ${data.rd_polarity}`);
   line('M(V1, обычная), нКл', `${cells(data.rd_M1)} → среднее ${fmt(Math.abs(r.inputs.M1.mean), 4)}`);
   line('M(V1, обратная), нКл', `${cells(data.rd_Mopp)} → среднее ${fmt(Math.abs(r.inputs.Mopp.mean), 4)}`);
   line('M(V2), нКл', `${cells(data.rd_M2)} → среднее ${fmt(Math.abs(r.inputs.M2.mean), 4)}`);
+  if (r.ctrl.on) line('Контрольные измерения M(V1), нКл', `${cells(data.ctrl_M)} → среднее ${fmt(r.ctrl.mean, 4)} за ${fmt(r.ctrl.mu, 0)} МЕ`);
   L.push('');
   const blocks = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
   for (const k of blocks) {
@@ -331,12 +360,16 @@ function reportText(data, r) {
     if (x.blocked) {
       L.push('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: есть ошибки ввода (см. замечания).');
     } else {
-      L.push(`M = ${fmt(x.M)} нКл; D_w(${fmt(r.depth.zref, 0)} см) = ${fmt(x.D)} Гр; ${fmt(x.DperMU)} сГр/МЕ = ${fmt(x.DperMUGy, 6)} Гр/МЕ`);
-      if (r.depth.on && r.depth.ok) {
-        L.push(`d_max = ${data.dd_zmax} см; ${r.depth.label} = ${fmt(r.depth.factor)}; D на d_max = ${fmt(x.DmaxPerMU)} сГр/МЕ = ${fmt(x.DmaxPerMUGy, 6)} Гр/МЕ${Number.isFinite(x.deviation) ? `; отклонение от номинала ${fmtSigned(x.deviation, 2)} %` : ''}`);
-      } else if (r.depth.on) {
-        L.push('Пересчёт на d_max не выполнен: исправьте данные раздела 7.');
-      }
+      const describe = (y, title, units) => {
+        L.push(`${title}: M = ${fmt(y.M)} нКл; D_w(${fmt(r.depth.zref, 0)} см) = ${fmt(y.D)} Гр за ${fmt(units, 0)} МЕ; ${fmt(y.DperMU)} сГр/МЕ (Гр на 100 МЕ)`);
+        if (r.depth.on && r.depth.ok) {
+          L.push(`  d_max = ${data.dd_zmax} см; ${r.depth.label} = ${fmt(r.depth.factor)}; на d_max ${fmt(y.DmaxPerMU)} сГр/МЕ (Гр на 100 МЕ)${Number.isFinite(y.deviation) ? `; отклонение от номинала ${fmtSigned(y.deviation, 2)} %` : ''}`);
+        } else if (r.depth.on) {
+          L.push('  Пересчёт на d_max не выполнен: исправьте данные раздела 8.');
+        }
+      };
+      describe(x, 'До калибровки (раздел 4)', r.inputs.mu);
+      if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, 'По контрольным измерениям (итог)', r.ctrl.mu);
     }
     L.push('');
   }
@@ -391,6 +424,7 @@ function update() {
   renderReadout(result, result.form);
   $('#demo-flag').hidden = !(data.meta_institution === SAMPLE_FORM.meta_institution && data.meta_machine === SAMPLE_FORM.meta_machine);
   saveDraft(result.form);
+  renderSignBlock($('#sign'), result.form.meta_staff);
 }
 
 let lastBeamFff = null;
@@ -515,5 +549,6 @@ export function initPhotons() {
 
   $('#btn-copy-json').addEventListener('click', () => copyText(payload(), 'Данные скопированы. Чтобы вставить их обратно, нажмите Ctrl+V на странице вне полей ввода.', setStatus));
   $('#btn-copy-report').addEventListener('click', () => copyText(reportText(current.data, current.result), 'Протокол скопирован в буфер обмена.', setStatus));
+  $('#btn-pdf').addEventListener('click', () => printToPdf(['Дозиметрия', current.data.meta_machine, current.data.meta_beam, current.data.meta_date].filter(Boolean).join('_'), setStatus));
   $('#btn-print').addEventListener('click', () => window.print());
 }

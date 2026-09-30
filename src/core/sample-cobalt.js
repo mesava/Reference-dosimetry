@@ -13,8 +13,7 @@ export const SAMPLE_COBALT = {
   co_distance: '80',
   co_zref: '5',
 
-  co_ch_type: 'cyl',
-  co_ch_model: 'NE 2571',
+  co_ch_model: 'NE2571',
   co_ch_serial: '0000',
   co_ndw: '0,04523',
   co_ndw_unit: 'Gy/nC',
@@ -40,12 +39,16 @@ export const SAMPLE_COBALT = {
   co_Mopp: ['-25,58', '-25,59', '-25,58'],
   co_M2: ['25,58', '25,59', '25,58'],
   co_kleak: '1,000',
+  co_Mc: ['25,61', '25,60', '25,61'],
   co_rec_trs: 'eq13',
 
   co_dd_on: true,
   co_zmax: '0,5',
   co_pdd: '78,8',
   co_date: '2026-09-15',
+  co_act0: '10500',
+  co_act_unit: 'Ci',
+  co_act_date: '2024-02-12',
   co_ref_rate: '148,6',
   co_ref_date: '2026-08-15',
 };
