@@ -98,3 +98,68 @@ export function tprEstimateFromPdd10(pdd10) {
 export function kvolGeneric({ tpr, lengthCm, sddCm }) {
   return 1 + (0.0062 * tpr - 0.0036) * lengthCm * lengthCm * (100 / sddCm) ** 2;
 }
+
+/** Узлы TPR20,10 табл. 16. */
+export const TRS_TABLE16_TPR = [0.56, 0.59, 0.62, 0.65, 0.68, 0.7, 0.72, 0.74, 0.76, 0.78, 0.8, 0.82];
+
+/**
+ * k_Q по табл. 16 с линейной интерполяцией по TPR20,10.
+ * TRS-398 даёт значения с четырьмя знаками «чтобы обеспечить плавную интерполяцию» (прим. a к табл. 16).
+ */
+export function kQFromTable(chamber, tpr) {
+  if (!chamber?.trsTable) return { error: 'табличных значений k_Q для этой камеры в табл. 16 нет' };
+  if (!Number.isFinite(tpr)) return { error: 'нет TPR20,10' };
+  const xs = TRS_TABLE16_TPR;
+  if (tpr < xs[0] || tpr > xs[xs.length - 1]) {
+    return { error: `TPR20,10 = ${ru(tpr, 3)} вне диапазона табл. 16 (0,56–0,82)` };
+  }
+  for (let i = 0; i < xs.length - 1; i++) {
+    if (tpr >= xs[i] && tpr <= xs[i + 1]) {
+      const t = (tpr - xs[i]) / (xs[i + 1] - xs[i]);
+      const y = chamber.trsTable[i] + t * (chamber.trsTable[i + 1] - chamber.trsTable[i]);
+      return { value: y, source: 'TRS-398 Rev.1, табл. 16, линейная интерполяция по TPR20,10' };
+    }
+  }
+  return { error: 'не удалось интерполировать табл. 16' };
+}
+
+/** Табл. 11: k_vol для пучков БВФ при РИД = 110 см. Строки — длина полости L (см), столбцы — TPR20,10. */
+export const TRS_TABLE11 = {
+  tpr: [0.6, 0.63, 0.66, 0.69, 0.72, 0.75],
+  lengthCm: [0.5, 1.0, 1.5, 2.0, 2.5],
+  kvol: [
+    [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    [1.0, 1.0, 1.0, 1.001, 1.001, 1.001],
+    [1.0, 1.001, 1.001, 1.001, 1.002, 1.002],
+    [1.0, 1.001, 1.002, 1.002, 1.003, 1.004],
+    [1.001, 1.002, 1.003, 1.004, 1.005, 1.006],
+  ],
+  sddCm: 110,
+};
+
+function bracket(xs, x) {
+  for (let i = 0; i < xs.length - 1; i++) {
+    if (x >= xs[i] && x <= xs[i + 1]) return [i, (x - xs[i]) / (xs[i + 1] - xs[i])];
+  }
+  return null;
+}
+
+/** k_vol по табл. 11 с билинейной интерполяцией по L и TPR20,10. */
+export function kvolFromTable11({ tpr, lengthCm }) {
+  const T = TRS_TABLE11;
+  const bt = bracket(T.tpr, tpr);
+  if (!bt) return { error: `TPR20,10 = ${ru(tpr, 3)} вне диапазона табл. 11 (0,60–0,75)` };
+  // для L < 5 мм k_vol не больше, чем в строке 5 мм, где он равен 1,000 при всех TPR20,10
+  if (lengthCm > 0 && lengthCm < T.lengthCm[0]) {
+    return { value: 1, source: 'TRS-398 Rev.1, табл. 11', note: 'L < 5 мм: взята строка 5 мм (k_vol = 1,000)' };
+  }
+  const bl = bracket(T.lengthCm, lengthCm);
+  if (!bl) return { error: `длина полости ${ru(lengthCm * 10, 1)} мм вне диапазона табл. 11 (5–25 мм)` };
+  const [i, u] = bt;
+  const [j, v] = bl;
+  const k = T.kvol;
+  const at = (jj, ii) => k[jj][ii];
+  const value =
+    (1 - u) * (1 - v) * at(j, i) + u * (1 - v) * at(j, i + 1) + (1 - u) * v * at(j + 1, i) + u * v * at(j + 1, i + 1);
+  return { value, source: 'TRS-398 Rev.1, табл. 11, билинейная интерполяция' };
+}

@@ -10,7 +10,7 @@ export const SAMPLE_FORM = {
   meta_beam: '6 МВ',
   meta_energy: '6',
   meta_fff: false,
-  meta_physicist: '',
+  meta_staff: [''],
   meta_notes: 'Демонстрационные данные, не результаты реальных измерений.',
 
   setup_geometry: 'SSD',
@@ -33,20 +33,22 @@ export const SAMPLE_FORM = {
   rd_V1: '300',
   rd_V2: '100',
   rd_beam: 'pulsed',
-  rd_M1: '12,346 12,348 12,345',
-  rd_Mopp: '-12,339 -12,341',
-  rd_M2: '12,302 12,304',
+  rd_M1: ['12,346', '12,348', '12,345'],
+  rd_Mopp: ['-12,339', '-12,341', '-12,340'],
+  rd_M2: ['12,302', '12,304', '12,303'],
   rd_kleak: '1,000',
 
   q51_method: 'open',
   q51_pdd10: '66,4',
 
-  qtrs_method: 'direct',
-  qtrs_tpr: '0,668',
+  qtrs_method: 'ratio',
+  qtrs_v20: '8,350',
+  qtrs_v10: '12,500',
 
-  prof_mode: 'none',
+  kqtrs_mode: 'formula',
 
   dd_on: true,
+  dd_zmax: '1,5',
   dd_pdd: '66,4',
   dd_nominal: '1,000',
 };

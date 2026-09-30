@@ -1,22 +1,26 @@
 // Сквозной расчёт: результат computePhotons сверяется с расчётом «вручную» по формулам протоколов.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computePhotons, FORM_DEFAULTS } from '../src/core/photons.js';
+import { computePhotons, normalizeForm, FORM_DEFAULTS } from '../src/core/photons.js';
 import { SAMPLE_FORM } from '../src/core/sample.js';
+import { findChamber } from '../src/core/chambers.js';
+import { kQFit, kQFromTable, kvolFromTable11, kvolGeneric, TRS_TABLE16_TPR, TRS_TABLE11 } from '../src/core/trs398.js';
+import { parseCells, parseBeamName } from '../src/core/units.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''} ${a} ≠ ${b} (±${tol})`);
 const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
+const errorsOf = (r) => r.messages.filter((m) => m.level === 'error');
 
 test('Демо-набор: TRS-398 Rev.1 и TG-51 совпадают с ручным расчётом', () => {
   const r = computePhotons(SAMPLE_FORM);
-  const errors = r.messages.filter((m) => m.level === 'error');
-  assert.deepEqual(errors, [], 'в демо-наборе не должно быть ошибок');
+  assert.deepEqual(errorsOf(r), [], 'в демо-наборе не должно быть ошибок');
 
   const M1 = mean([12.346, 12.348, 12.345]);
-  const Mopp = mean([12.339, 12.341]);
-  const M2 = mean([12.302, 12.304]);
+  const Mopp = mean([12.339, 12.341, 12.34]);
+  const M2 = mean([12.302, 12.304, 12.303]);
   const ndw = 0.05335;
   const kpol = (M1 + Mopp) / (2 * M1);
+  const tpr = 8.35 / 12.5;
 
   // TRS-398 Rev.1
   const kTP = ((273.15 + 21.4) / (273.15 + 20)) * (101.325 / 99.62);
@@ -24,13 +28,16 @@ test('Демо-набор: TRS-398 Rev.1 и TG-51 совпадают с ручн
   const ksExp = 1.198 - 0.875 * r12 + 0.677 * r12 * r12; // табл. 10, n = 3
   const a = 1.18273;
   const b = -0.13256;
-  const kQtrs = (1 + Math.exp((a - 0.57) / b)) / (1 + Math.exp((a - 0.668) / b));
+  const kQtrs = (1 + Math.exp((a - 0.57) / b)) / (1 + Math.exp((a - tpr) / b));
   const Dtrs = M1 * kTP * kpol * ksExp * ndw * kQtrs;
+  near(r.trs.tpr, 0.668, 1e-12, 'TPR20,10');
   near(r.trs.kTP, kTP, 1e-12, 'k_TP');
   near(r.trs.ks, ksExp, 1e-12, 'k_s');
   near(r.trs.kQ, kQtrs, 1e-12, 'k_Q TRS');
   near(r.trs.D, Dtrs, 1e-12, 'D TRS');
-  near(r.trs.DmaxPerMU, (Dtrs * 100) / 100 / 0.664, 1e-12, 'D(d_max)/МЕ TRS');
+  near(r.trs.DperMUGy, Dtrs / 100, 1e-15, 'Гр/МЕ');
+  near(r.trs.DmaxPerMU, Dtrs / 0.664, 1e-12, 'D(d_max)/МЕ TRS');
+  near(r.trs.DmaxPerMUGy, Dtrs / 100 / 0.664, 1e-15, 'D(d_max), Гр/МЕ');
 
   // TG-51 + аддендум
   const PTP = ((273.2 + 21.4) / (273.2 + 20)) * (101.325 / 99.62);
@@ -43,13 +50,13 @@ test('Демо-набор: TRS-398 Rev.1 и TG-51 совпадают с ручн
   near(r.tg51.D, D51, 1e-12, 'D TG-51');
 
   near(r.comparison.dRel, (D51 / Dtrs - 1) * 100, 1e-9, 'расхождение протоколов');
-  // Порядок величины: доза на d_max около 1 сГр/МЕ
   assert.ok(r.trs.DmaxPerMU > 0.98 && r.trs.DmaxPerMU < 1.02);
+  // пучок с фильтром: k_vol не применяется
+  assert.equal(r.profile.active, false);
+  assert.equal(r.trs.kvol, 1);
 });
 
 test('Report 374, прил. A.3.2: пересчёт на d_max через PDD', () => {
-  // 0,6600 сГр/МЕ на 10 см и %dd(10) = 66,0 → 1,0000 сГр/МЕ на d_max.
-  // Подбираем показание так, чтобы доза на 10 см была ровно 0,6600 сГр/МЕ при всех поправках = 1.
   const form = {
     ...FORM_DEFAULTS,
     protocol: 'tg51',
@@ -62,38 +69,56 @@ test('Report 374, прил. A.3.2: пересчёт на d_max через PDD', 
     rd_mu: '100',
     rd_V1: '300',
     rd_V2: '150',
-    rd_M1: '0,66',
-    rd_Mopp: '0,66',
-    rd_M2: '0,66',
+    rd_M1: ['0,66'],
+    rd_Mopp: ['0,66'],
+    rd_M2: ['0,66'],
     q51_method: 'manual',
     q51_manual: '66',
     kq51_manual_on: true,
     kq51_manual: '1',
+    dd_zmax: '1,5',
     dd_pdd: '66,0',
   };
   const r = computePhotons(form);
   near(r.tg51.DperMU, 0.66, 1e-12);
   near(r.tg51.DmaxPerMU, 1.0, 1e-12);
-  // вариант с k_Q = 0,9985 и %dd(10) = 67,0 → 0,65901/0,67 = 0,98360 (в отчёте опечатка 0,6659)
+  // k_Q = 0,9985 и %dd(10) = 67,0 → 0,65901/0,67 = 0,98360 (в отчёте опечатка 0,6659)
   const r2 = computePhotons({ ...form, kq51_manual: '0,9985', dd_pdd: '67,0' });
   near(r2.tg51.DperMU, 0.65901, 1e-12);
   near(r2.tg51.DmaxPerMU, 0.9836, 5e-5);
 });
 
-test('Проверки: P_ion > 1,05, забытая фольга в БВФ, давление в неверных единицах', () => {
-  const base = { ...SAMPLE_FORM };
-  const r1 = computePhotons({ ...base, rd_M2: '11,2' });
-  assert.ok(r1.messages.some((m) => m.level === 'error' && /P_ion/.test(m.text)));
-  assert.ok(r1.messages.some((m) => m.level === 'error' && /k_s/.test(m.text)));
+test('Проверки: P_ion > 1,05, формула (15) для БВФ, давление в неверных единицах', () => {
+  const r1 = computePhotons({ ...SAMPLE_FORM, rd_M2: ['11,2', '11,2', '11,2'] });
+  assert.ok(errorsOf(r1).some((m) => /P_ion/.test(m.text)));
+  assert.ok(errorsOf(r1).some((m) => /k_s/.test(m.text)));
   assert.ok(r1.tg51.blocked && r1.trs.blocked);
+  assert.equal(r1.flags.ks, 'error');
+  assert.equal(r1.flags.Pion, 'error');
 
-  const r2 = computePhotons({ ...base, meta_fff: true, q51_method: 'interim' });
-  assert.ok(r2.messages.some((m) => m.level === 'error' && /БВФ/.test(m.text)));
+  const r2 = computePhotons({ ...SAMPLE_FORM, meta_fff: true, q51_method: 'interim' });
+  assert.ok(errorsOf(r2).some((m) => /БВФ/.test(m.text)));
 
-  const r3 = computePhotons({ ...base, env_P: '747' }); // мм рт. ст., а единица — кПа
-  assert.ok(r3.messages.some((m) => m.level === 'error' && /Давление/.test(m.text)));
-  const r4 = computePhotons({ ...base, env_P: '747', env_P_unit: 'mmHg' });
-  assert.ok(!r4.messages.some((m) => m.level === 'error'));
+  const r3 = computePhotons({ ...SAMPLE_FORM, env_P: '747' });
+  assert.ok(errorsOf(r3).some((m) => /Давление/.test(m.text)));
+  assert.equal(r3.flags.env_P, 'error');
+  const r4 = computePhotons({ ...SAMPLE_FORM, env_P: '747', env_P_unit: 'mmHg' });
+  assert.deepEqual(errorsOf(r4), []);
+});
+
+test('k_s < 1 блокирует расчёт и подсвечивает поле', () => {
+  const r = computePhotons({ ...SAMPLE_FORM, rd_M2: ['12,40', '12,40', '12,40'] });
+  assert.ok(errorsOf(r).some((m) => /не может быть меньше 1/.test(m.text)));
+  assert.equal(r.flags.ks, 'error');
+  assert.ok(r.trs.blocked && r.tg51.blocked);
+});
+
+test('k_pol за пределами 1 ± 0,004 подсвечивается', () => {
+  const ok = computePhotons(SAMPLE_FORM);
+  assert.equal(ok.flags.kpol, undefined);
+  const bad = computePhotons({ ...SAMPLE_FORM, rd_Mopp: ['-12,24', '-12,24', '-12,24'] });
+  assert.equal(bad.flags.kpol, 'warn');
+  assert.ok(bad.messages.some((m) => m.level === 'warn' && /k_pol/.test(m.text)));
 });
 
 test('Лаборатория не вносила поправки: k′_pol = k_pol/k_pol,Q0 и k_s/k_s,Q0', () => {
@@ -103,45 +128,172 @@ test('Лаборатория не вносила поправки: k′_pol = k_
   near(r.trs.ks, r0.trs.ks / 1.001, 1e-12);
   near(r.tg51.Ppol, r0.tg51.Ppol / 1.002, 1e-12);
   near(r.tg51.Pion, r0.tg51.Pion / 1.001, 1e-12);
-  // расхождение протоколов не должно меняться от этих настроек
   near(r.comparison.dRel, r0.comparison.dRel, 1e-9);
 });
 
-test('Камера не из списка требует k_Q вручную; 31003 и IC10 есть только в TG-51', () => {
-  const other = computePhotons({ ...SAMPLE_FORM, ch_model: 'OTHER' });
-  assert.ok(other.messages.some((m) => m.level === 'error' && m.scope === 'trs' && /вручную/.test(m.text)));
-  assert.ok(other.messages.some((m) => m.level === 'error' && m.scope === 'tg51' && /вручную/.test(m.text)));
-  const manual = computePhotons({ ...SAMPLE_FORM, ch_model: 'OTHER', kqtrs_manual_on: true, kqtrs_manual: '0,99', kq51_manual_on: true, kq51_manual: '0,99' });
-  assert.ok(!manual.hasErrors);
-  const r31003 = computePhotons({ ...SAMPLE_FORM, ch_model: 'PTW31003' });
-  assert.ok(r31003.tg51.ok && !r31003.tg51.blocked);
-  assert.ok(r31003.trs.blocked);
+test('k_Q по TRS-398: формула (34) и табл. 16 рядом; выбор способа', () => {
+  const r = computePhotons(SAMPLE_FORM);
+  const c = findChamber('PTW30013');
+  near(r.trs.kQFormula, kQFit(c.trs, 0.668), 1e-12);
+  // 0,668 между узлами 0,65 и 0,68
+  const t = (0.668 - 0.65) / 0.03;
+  near(r.trs.kQTable, 0.992 + t * (0.9876 - 0.992), 1e-12);
+  const rt = computePhotons({ ...SAMPLE_FORM, kqtrs_mode: 'table' });
+  near(rt.trs.kQ, rt.trs.kQTable, 1e-15);
+  const rm = computePhotons({ ...SAMPLE_FORM, kqtrs_mode: 'manual', kqtrs_manual: '0,9901' });
+  near(rm.trs.kQ, 0.9901, 1e-15);
 });
 
-test('Большой разброс показаний: предупреждение или ошибка', () => {
-  const warn = computePhotons({ ...SAMPLE_FORM, rd_M1: '12,30 12,45' });
-  assert.ok(warn.messages.some((m) => m.level === 'warn' && /Разброс/.test(m.text)));
-  const err = computePhotons({ ...SAMPLE_FORM, rd_M1: '12 346 12,348' }); // пробел внутри числа
-  assert.ok(err.messages.some((m) => m.level === 'error' && /расходятся/.test(m.text)));
+test('Табл. 16: интерполяция точно проходит через узлы для всех 26 камер', () => {
+  let n = 0;
+  for (const id of ['NE2571', 'PTW30013', 'FC65G', 'CC13', 'SNC600c', 'PTW31021']) {
+    const c = findChamber(id);
+    TRS_TABLE16_TPR.forEach((x, i) => near(kQFromTable(c, x).value, c.trsTable[i], 1e-12, `${id} ${x}`));
+    n++;
+  }
+  assert.equal(n, 6);
+  assert.ok(kQFromTable(findChamber('NE2571'), 0.83).error);
+  assert.ok(kQFromTable(findChamber('A1'), 0.7).error);
 });
 
-test('Поправка на профиль: вручную, по формуле (22), по профилю', () => {
-  const man = computePhotons({ ...SAMPLE_FORM, prof_mode: 'manual', prof_value: '1,004' });
+test('Табл. 11: билинейная интерполяция проходит через узлы и лежит между ними', () => {
+  TRS_TABLE11.lengthCm.forEach((L, j) =>
+    TRS_TABLE11.tpr.forEach((x, i) => near(kvolFromTable11({ tpr: x, lengthCm: L }).value, TRS_TABLE11.kvol[j][i], 1e-12)),
+  );
+  near(kvolFromTable11({ tpr: 0.675, lengthCm: 2.25 }).value, (1.002 + 1.002 + 1.003 + 1.004) / 4, 1e-12);
+  assert.ok(kvolFromTable11({ tpr: 0.59, lengthCm: 2 }).error);
+  assert.ok(kvolFromTable11({ tpr: 0.7, lengthCm: 3 }).error);
+  // L < 5 мм (например, PTW 31021, 4,8 мм): строка 5 мм, k_vol = 1,000
+  assert.equal(kvolFromTable11({ tpr: 0.7, lengthCm: 0.48 }).value, 1);
+});
+
+test('k_vol: только для БВФ; формула (22), табл. 11, своё значение', () => {
+  const base = { ...SAMPLE_FORM, meta_fff: true, q51_method: 'foil30', q51_pdd10pb: '66,4' };
+  const f22 = computePhotons({ ...base, prof_mode: 'formula22' });
+  near(f22.profile.value, kvolGeneric({ tpr: 0.668, lengthCm: 2.3, sddCm: 110 }), 1e-12);
+  const t11 = computePhotons({ ...base, prof_mode: 'table11' });
+  near(t11.profile.value, kvolFromTable11({ tpr: 0.668, lengthCm: 2.3 }).value, 1e-12);
+  const man = computePhotons({ ...base, prof_mode: 'manual', prof_value: '1,004' });
   const r0 = computePhotons(SAMPLE_FORM);
-  near(man.trs.D, r0.trs.D * 1.004, 1e-12);
-  near(man.tg51.D, r0.tg51.D * 1.004, 1e-12);
+  near(man.trs.kvol, 1.004, 1e-15);
+  // без галочки БВФ способ игнорируется
+  const flat = computePhotons({ ...SAMPLE_FORM, prof_mode: 'manual', prof_value: '1,004' });
+  near(flat.trs.D, r0.trs.D, 1e-15);
+});
 
-  const gen = computePhotons({ ...SAMPLE_FORM, meta_fff: true, q51_method: 'foil30', q51_pdd10pb: '66,4', prof_mode: 'generic' });
-  near(gen.profile.value, 1 + (0.0062 * 0.668 - 0.0036) * 2.3 * 2.3 * (100 / 110) ** 2, 1e-12);
+test('Оценка TPR20,10 для БВФ по PDD(10) — только для сравнения', () => {
+  const r = computePhotons({ ...SAMPLE_FORM, meta_fff: true, q51_method: 'foil30', q51_pdd10pb: '66,4', qtrs_fff_pdd10: '63,0' });
+  near(r.trs.fffEstimate.value, -0.7898 + 0.0329 * 63 - 0.000166 * 63 * 63, 1e-12);
+  near(r.trs.tpr, 0.668, 1e-12, 'k_Q считается по измеренному TPR, а не по оценке');
+  const flat = computePhotons(SAMPLE_FORM);
+  assert.equal(flat.trs.fffEstimate, undefined);
+});
 
-  const text = Array.from({ length: 31 }, (_, i) => `${i - 15} ${1 - 1e-5 * (i - 15) ** 2}`).join('\n');
-  const pr = computePhotons({ ...SAMPLE_FORM, prof_mode: 'profile', prof_text: text });
-  near(pr.profile.value, 1 / (1 - (1e-5 * 23 * 23) / 12), 2e-6);
+test('TPR20,10 через PDD(20)/PDD(10)', () => {
+  const r = computePhotons({ ...SAMPLE_FORM, qtrs_method: 'pdd2010', qtrs_v20: '38,5', qtrs_v10: '66,4' });
+  near(r.trs.tpr, 1.2661 * (38.5 / 66.4) - 0.0595, 1e-12);
+});
+
+test('Своя камера: аналог из базы, параметры a и b, k_Q вручную', () => {
+  const custom = { ...SAMPLE_FORM, ch_model: 'CUSTOM', cc_model: 'Тестовая', cc_length: '23', cc_radius: '3,05' };
+  const none = computePhotons(custom);
+  assert.ok(none.trs.blocked && none.tg51.blocked);
+  assert.equal(none.flags.cc_analog, 'error');
+
+  const analog = computePhotons({ ...custom, cc_analog: 'PTW30013' });
+  const r0 = computePhotons(SAMPLE_FORM);
+  near(analog.trs.kQ, r0.trs.kQ, 1e-15);
+  near(analog.tg51.kQ, r0.tg51.kQ, 1e-15);
+  assert.ok(analog.messages.some((m) => m.scope === 'trs' && /аналог/.test(m.text)));
+
+  const ab = computePhotons({ ...custom, protocol: 'trs', cc_a: '1,1', cc_b: '-0,1' });
+  near(ab.trs.kQ, kQFit({ a: 1.1, b: -0.1 }, 0.668), 1e-12);
+  assert.ok(!ab.trs.blocked);
+  const abTable = computePhotons({ ...custom, protocol: 'trs', cc_a: '1,1', cc_b: '-0,1', kqtrs_mode: 'table' });
+  assert.ok(abTable.trs.blocked, 'для своих a, b табличных значений нет');
+
+  const man = computePhotons({ ...custom, protocol: 'trs', kqtrs_mode: 'manual', kqtrs_manual: '0,99' });
+  assert.ok(!man.trs.blocked);
+});
+
+test('Геометрия: ручной ввод, предупреждения о нестандартных условиях', () => {
+  const r = computePhotons({ ...SAMPLE_FORM, setup_geometry: 'manual', setup_ssd: '100', setup_field: '10', setup_depth: '10' });
+  assert.deepEqual(errorsOf(r), []);
+  assert.equal(r.flags.setup_depth, undefined);
+  const d5 = computePhotons({ ...SAMPLE_FORM, setup_geometry: 'manual', setup_ssd: '100', setup_field: '10', setup_depth: '5' });
+  assert.equal(d5.flags.setup_depth, 'warn');
+  assert.equal(d5.depth.label, 'PDD(5 см)/100');
+  const f15 = computePhotons({ ...SAMPLE_FORM, setup_geometry: 'manual', setup_ssd: '100', setup_field: '15', setup_depth: '10' });
+  assert.equal(f15.flags.setup_field, 'warn');
+  const sddDefault = computePhotons({ ...SAMPLE_FORM, meta_fff: true, q51_method: 'foil30', q51_pdd10pb: '66', setup_geometry: 'manual', setup_ssd: '90', setup_field: '10', setup_depth: '10' });
+  near(sddDefault.inputs.sddCm, 100, 1e-12);
 });
 
 test('Геометрия РИО: пересчёт через TMR', () => {
   const r = computePhotons({ ...SAMPLE_FORM, setup_geometry: 'SAD', dd_tmr: '0,736' });
   near(r.trs.DmaxPerMU, r.trs.DperMU / 0.736, 1e-12);
   const bad = computePhotons({ ...SAMPLE_FORM, setup_geometry: 'SAD', dd_tmr: '73,6' });
-  assert.ok(bad.messages.some((m) => m.level === 'error' && /TMR/.test(m.text)));
+  assert.ok(errorsOf(bad).some((m) => /TMR/.test(m.text)));
+});
+
+test('Глубина d_max обязательна для пересчёта, но не блокирует дозу на опорной глубине', () => {
+  const noZ = computePhotons({ ...SAMPLE_FORM, dd_zmax: '' });
+  assert.equal(noZ.flags.dd_zmax, 'error');
+  assert.ok(!noZ.trs.blocked && Number.isFinite(noZ.trs.D));
+  assert.equal(noZ.trs.DmaxPerMU, undefined);
+  const deep = computePhotons({ ...SAMPLE_FORM, dd_zmax: '12' });
+  assert.equal(deep.flags.dd_zmax, 'error');
+  const noNominal = computePhotons({ ...SAMPLE_FORM, dd_nominal: '' });
+  assert.ok(Number.isFinite(noNominal.trs.DmaxPerMU));
+  assert.equal(noNominal.trs.deviation, undefined);
+});
+
+test('P_ion < 1 после деления на поправку лаборатории блокирует TG-51', () => {
+  const r = computePhotons({ ...SAMPLE_FORM, protocol: 'tg51', lab_ks_applied: false, lab_ks: '1,005' });
+  assert.ok(r.tg51.blocked);
+  assert.equal(r.flags.Pion, 'error');
+});
+
+test('Заблокированный результат не участвует в сравнении протоколов', () => {
+  const r = computePhotons({ ...SAMPLE_FORM, rd_M2: ['12,50', '12,50', '12,50'] });
+  assert.equal(r.comparison, null);
+});
+
+test('Большой разброс показаний: предупреждение или ошибка', () => {
+  const warn = computePhotons({ ...SAMPLE_FORM, rd_M1: ['12,30', '12,45'] });
+  assert.ok(warn.messages.some((m) => m.level === 'warn' && /Разброс/.test(m.text)));
+  const err = computePhotons({ ...SAMPLE_FORM, rd_M1: ['12', '346', '12,348'] });
+  assert.ok(errorsOf(err).some((m) => /расходятся/.test(m.text)));
+});
+
+test('Ячейки показаний: пустые пропускаются, ошибка указывает номер ячейки', () => {
+  const s = parseCells(['12,3', '', '12,5', '']);
+  assert.equal(s.n, 2);
+  near(s.mean, 12.4, 1e-12);
+  assert.match(parseCells(['12,3', 'abc']).error, /ячейку 2/);
+});
+
+test('Название пучка → номинальная энергия и БВФ', () => {
+  assert.deepEqual(parseBeamName('6 МВ'), { energy: 6, fff: null });
+  assert.deepEqual(parseBeamName('10 МВ БВФ'), { energy: 10, fff: true });
+  assert.deepEqual(parseBeamName('6X FFF'), { energy: 6, fff: true });
+  assert.deepEqual(parseBeamName('15MV'), { energy: 15, fff: null });
+  assert.deepEqual(parseBeamName('6 MV WFF'), { energy: 6, fff: false }, 'WFF — с выравнивающим фильтром');
+  assert.deepEqual(parseBeamName('Пучок 2: 6 МВ'), { energy: 6, fff: null }, 'энергия — число перед МВ');
+  assert.ok(Number.isNaN(parseBeamName('фотоны').energy));
+});
+
+test('Старые файлы: показания строкой, медицинский физик, TPR напрямую', () => {
+  const f = normalizeForm({ rd_M1: '12,346 12,348', meta_physicist: 'Иванов', qtrs_method: 'direct', qtrs_tpr: '0,668', ch_model: 'OTHER', kqtrs_manual_on: true });
+  assert.deepEqual(f.rd_M1, ['12,346', '12,348']);
+  assert.deepEqual(f.meta_staff, ['Иванов']);
+  assert.equal(f.qtrs_method, 'ratio');
+  assert.equal(f.ch_model, 'CUSTOM');
+  assert.equal(f.kqtrs_mode, 'manual');
+  const none = normalizeForm({ prof_mode: 'none' });
+  assert.equal(none.prof_mode, 'manual');
+  assert.equal(none.prof_value, '1,000');
+  assert.equal(normalizeForm({ prof_mode: 'profile' }).prof_mode, 'manual');
+  const r = computePhotons({ ...SAMPLE_FORM, qtrs_method: 'direct', qtrs_tpr: '0,668', qtrs_v20: undefined, qtrs_v10: undefined });
+  near(r.trs.tpr, 0.668, 1e-12);
 });

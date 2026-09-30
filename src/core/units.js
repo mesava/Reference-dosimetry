@@ -73,3 +73,42 @@ export function ru(value, digits) {
   if (!Number.isFinite(value)) return String(value);
   return value.toFixed(digits).replace('.', ',').replace('-', '\u2212');
 }
+
+/**
+ * Показания из отдельных ячеек (массив строк). Пустые ячейки пропускаются.
+ * Строка вместо массива разбирается как серия через пробел (совместимость со старыми файлами).
+ */
+export function parseCells(cells) {
+  if (!Array.isArray(cells)) return parseSeries(cells);
+  const values = [];
+  for (let i = 0; i < cells.length; i++) {
+    if (isBlank(cells[i])) continue;
+    const v = parseNumber(cells[i]);
+    if (!Number.isFinite(v)) {
+      return { values: [], n: 0, mean: NaN, sd: NaN, relSd: NaN, error: `не удалось прочитать ячейку ${i + 1} («${cells[i]}»)` };
+    }
+    values.push(v);
+  }
+  const n = values.length;
+  if (n === 0) return { values: [], n: 0, mean: NaN, sd: NaN, relSd: NaN, error: null };
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const sd = n > 1 ? Math.sqrt(values.reduce((a, v) => a + (v - mean) ** 2, 0) / (n - 1)) : 0;
+  return { values, n, mean, sd, relSd: mean !== 0 ? Math.abs(sd / mean) : NaN, error: null };
+}
+
+/**
+ * Номинальная энергия и признак БВФ из названия пучка: «6 МВ», «10 МВ БВФ», «6X FFF», «10FFF».
+ * fff: true — явно БВФ/FFF; false — явно СВФ/WFF (with flattening filter); null — не указано.
+ * Энергия берётся из числа перед «МВ», «MV», «X» или «FFF»; если такого нет, а число в названии одно — из него.
+ */
+export function parseBeamName(name) {
+  const s = String(name || '');
+  let fff = null;
+  if (/FFF|БВФ|без\s+выравн/i.test(s)) fff = true;
+  else if (/\bWFF\b|СВФ|с\s+выравн/i.test(s)) fff = false;
+  const unit = s.match(/(\d+(?:[.,]\d+)?)\s*(?:МВ|MV|X|Х|FFF|БВФ)/i);
+  const all = s.match(/\d+(?:[.,]\d+)?/g) || [];
+  const raw = unit ? unit[1] : all.length === 1 ? all[0] : null;
+  const energy = raw ? Number(raw.replace(',', '.')) : NaN;
+  return { energy, fff };
+}

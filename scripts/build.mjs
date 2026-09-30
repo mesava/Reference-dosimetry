@@ -18,6 +18,7 @@ const bundle = await build({
   minify: true,
   write: false,
   legalComments: 'none',
+  charset: 'utf8',
 });
 const js = bundle.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 

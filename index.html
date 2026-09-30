@@ -34,26 +34,44 @@
 
 <main class="layout">
   <form id="sheet" class="sheet" autocomplete="off" novalidate>
-    <p class="intro">Рабочий лист калибровки пучка МВ фотонов: поглощённая доза в воде на глубине 10 см и на d<sub>max</sub>. Числа можно вводить с запятой или точкой; несколько показаний — через пробел. Всё считается в браузере, данные никуда не отправляются.</p>
+    <p class="intro">Рабочий лист калибровки пучка МВ фотонов: поглощённая доза в воде на опорной глубине и на d<sub>max</sub>. Числа можно вводить с запятой или точкой. Обозначения коэффициентов с пунктирным подчёркиванием открывают справку. Всё считается в браузере, данные никуда не отправляются.</p>
 
     <!-- 1 -->
     <section class="step" aria-labelledby="s1">
-      <header><span class="step-no">1</span><h2 id="s1">Аппарат и пучок</h2></header>
+      <header><span class="step-no">1</span><h2 id="s1">Аппарат и пучок</h2>
+        <p class="hint">Учреждение, аппарат, пучок и сотрудники запоминаются в этом браузере: в следующий раз их можно выбрать из списка, лишнее удалить крестиком.</p></header>
       <div class="grid">
-        <div class="field"><label for="meta_institution">Учреждение</label><input type="text" id="meta_institution"></div>
-        <div class="field"><label for="meta_machine">Аппарат</label><input type="text" id="meta_machine" placeholder="Модель, заводской №"></div>
-        <div class="field"><label for="meta_beam">Пучок</label><input type="text" id="meta_beam" placeholder="6 МВ"></div>
-        <div class="field"><label for="meta_energy">Номинальная энергия, МВ</label><input type="text" id="meta_energy" class="num" inputmode="decimal" placeholder="6"></div>
+        <div class="field"><label for="meta_institution">Учреждение</label><div class="combo" data-list="institutions"><input type="text" id="meta_institution"></div></div>
+        <div class="field"><label for="meta_machine">Аппарат</label><div class="combo" data-list="machines"><input type="text" id="meta_machine" placeholder="Модель, заводской №"></div></div>
+        <div class="field"><label for="meta_beam">Пучок</label><div class="combo" data-list="beams"><input type="text" id="meta_beam" placeholder="6 МВ, 10 МВ БВФ"></div></div>
+        <div class="field">
+          <label for="meta_energy">Номинальная энергия, МВ</label>
+          <input type="text" id="meta_energy" class="num" inputmode="decimal">
+          <span class="sub">заполняется по названию пучка</span>
+        </div>
         <div class="field"><label for="meta_date">Дата измерения</label><input type="date" id="meta_date"></div>
-        <div class="field"><label for="meta_physicist">Медицинский физик</label><input type="text" id="meta_physicist"></div>
+        <div class="field span-2">
+          <span class="label" id="staff-label">Сотрудник, выполняющий измерения</span>
+          <div id="staff-list" class="staff-list" role="group" aria-labelledby="staff-label"></div>
+          <button type="button" class="link-btn" id="btn-add-staff"><span aria-hidden="true">+</span> Добавить сотрудника</button>
+        </div>
         <div class="field span-all"><label class="check"><input type="checkbox" id="meta_fff"> <span>Пучок без выравнивающего фильтра (БВФ, FFF)</span></label></div>
         <div class="field span-all">
           <label for="setup_geometry">Геометрия измерения дозы</label>
           <select id="setup_geometry">
-            <option value="SSD">РИП = 100 см, поле 10 × 10 см на поверхности воды</option>
-            <option value="SAD">РИО: камера в изоцентре на глубине 10 см, поле 10 × 10 см в плоскости камеры</option>
+            <option value="SSD">РИП = 100 см, поле 10 × 10 см на поверхности воды, камера на глубине 10 см</option>
+            <option value="SAD">РИО = 100 см, поле 10 × 10 см в плоскости камеры, камера на глубине 10 см</option>
+            <option value="manual">Ручной ввод</option>
           </select>
         </div>
+      </div>
+      <div class="grid subgrid" data-show="setup_geometry:manual">
+        <div class="field"><label for="setup_ssd">РИП, см</label><input type="text" id="setup_ssd" class="num" inputmode="decimal"></div>
+        <div class="field">
+          <label for="setup_field">Размер поля, см</label>
+          <div class="inline"><input type="text" id="setup_field" class="num" inputmode="decimal"><output class="unit-note" id="field-view" for="setup_field"></output></div>
+        </div>
+        <div class="field"><label for="setup_depth">Глубина камеры, см</label><input type="text" id="setup_depth" class="num" inputmode="decimal"></div>
       </div>
     </section>
 
@@ -66,11 +84,49 @@
           <select id="ch_model"></select>
           <span class="sub" id="chamber-info"></span>
         </div>
+      </div>
+
+      <div class="custom-chamber" id="custom-chamber" hidden>
+        <h3>Своя камера</h3>
+        <div class="grid">
+          <div class="field"><label for="cc_maker">Производитель</label><input type="text" id="cc_maker"></div>
+          <div class="field"><label for="cc_model">Модель</label><input type="text" id="cc_model"></div>
+          <div class="field"><label for="cc_volume">Объём полости, см³</label><input type="text" id="cc_volume" class="num" inputmode="decimal"></div>
+          <div class="field"><label for="cc_length">Длина полости, мм</label><input type="text" id="cc_length" class="num" inputmode="decimal"></div>
+          <div class="field"><label for="cc_radius">Радиус полости, мм</label><input type="text" id="cc_radius" class="num" inputmode="decimal"></div>
+          <div class="field"><label for="cc_wall">Материал стенки</label><input type="text" id="cc_wall"></div>
+          <div class="field"><label for="cc_wall_thickness">Толщина стенки, г/см²</label><input type="text" id="cc_wall_thickness" class="num" inputmode="decimal"></div>
+          <div class="field"><label for="cc_electrode">Материал центрального электрода</label><input type="text" id="cc_electrode"></div>
+          <div class="field span-all"><label class="check"><input type="checkbox" id="cc_waterproof" checked> <span>Водонепроницаемая</span></label></div>
+        </div>
+        <h4>Откуда взять <button type="button" class="term" data-term="kQ">k<sub>Q</sub></button></h4>
+        <div class="grid two">
+          <div class="field">
+            <label for="cc_analog">Камера-аналог из базы</label>
+            <select id="cc_analog"></select>
+            <span class="sub">TG-51, разд. XI: подбирают по материалу стенки, радиусу полости, наличию алюминиевого электрода и толщине стенки; точность около 0,5 %.</span>
+          </div>
+          <div class="field">
+            <span class="label">Параметры a и b для ур. (34) TRS-398</span>
+            <div class="inline">
+              <input type="text" id="cc_a" class="num" inputmode="decimal" placeholder="a" aria-label="Параметр a">
+              <input type="text" id="cc_b" class="num" inputmode="decimal" placeholder="b" aria-label="Параметр b">
+            </div>
+            <span class="sub">Если заданы (например, из публикации или от производителя), используются вместо аналога. k<sub>Q</sub>, измеренный в лаборатории, вводится в разделе 5.</span>
+          </div>
+        </div>
+        <div class="actions">
+          <button type="button" id="btn-save-chamber">Сохранить в «Мои камеры»</button>
+          <button type="button" id="btn-del-chamber" hidden>Удалить из «Моих камер»</button>
+        </div>
+      </div>
+
+      <div class="grid two">
         <div class="field"><label for="ch_serial">Серийный № камеры</label><input type="text" id="ch_serial"></div>
         <div class="field">
-          <label for="ch_ndw">Калибровочный коэффициент N<sub>D,w</sub> (⁶⁰Co)</label>
+          <span class="label"><button type="button" class="term" data-term="ndw">N<sub>D,w</sub></button> (⁶⁰Co)</span>
           <div class="inline">
-            <input type="text" id="ch_ndw" class="num" inputmode="decimal" placeholder="0,05335">
+            <input type="text" id="ch_ndw" class="num" inputmode="decimal" placeholder="0,05335" aria-label="Калибровочный коэффициент N_D,w">
             <select id="ch_ndw_unit" aria-label="Единица N_D,w"></select>
           </div>
         </div>
@@ -78,9 +134,9 @@
           <span class="label">Стандартные условия из сертификата</span>
           <div class="inline">
             <input type="text" id="ch_T0" class="num" inputmode="decimal" aria-label="T₀, °C">
-            <span class="muted" style="align-self:center">°C</span>
+            <span class="unit-note">°C</span>
             <input type="text" id="ch_P0" class="num" inputmode="decimal" aria-label="P₀, кПа">
-            <span class="muted" style="align-self:center">кПа</span>
+            <span class="unit-note">кПа</span>
           </div>
           <div class="presets">
             <button type="button" data-preset-ref="20|101,325">20 °C · 101,325 кПа</button>
@@ -90,8 +146,8 @@
         <div class="field"><label for="el_model">Электрометр</label><input type="text" id="el_model"></div>
         <div class="field"><label for="el_serial">Серийный № электрометра</label><input type="text" id="el_serial"></div>
         <div class="field">
-          <label for="el_kelec">k<sub>elec</sub> (P<sub>elec</sub>)</label>
-          <input type="text" id="el_kelec" class="num" inputmode="decimal">
+          <span class="label"><button type="button" class="term" data-term="kelec">k<sub>elec</sub></button> (P<sub>elec</sub>)</span>
+          <input type="text" id="el_kelec" class="num" inputmode="decimal" aria-label="k_elec">
           <span class="sub">1,000, если камера и электрометр калиброваны вместе</span>
         </div>
       </div>
@@ -131,89 +187,147 @@
             <select id="env_P_unit" aria-label="Единица давления"></select>
           </div>
         </div>
-      </div>
-      <div class="calc" style="margin-top:12px">
-        <span data-protocol="trs">k<sub>TP</sub> = <b data-out="trs.kTP" data-digits="4"></b></span>
-        <span data-protocol="tg51">P<sub>TP</sub> = <b data-out="tg51.PTP" data-digits="4"></b></span>
-        <span>P = <b data-out="inputs.P" data-digits="2"></b> кПа</span>
+        <div class="field out-cell" data-protocol="trs"><span class="label"><button type="button" class="term" data-term="kTP">k<sub>TP</sub></button></span><output data-out="trs.kTP" data-digits="4"></output></div>
+        <div class="field out-cell" data-protocol="tg51"><span class="label"><button type="button" class="term" data-term="kTP">P<sub>TP</sub></button></span><output data-out="tg51.PTP" data-digits="4"></output></div>
       </div>
     </section>
 
     <!-- 4 -->
     <section class="step" aria-labelledby="s4">
       <header><span class="step-no">4</span><h2 id="s4">Показания электрометра</h2>
-        <p class="hint">Камера в точке измерения на глубине 10 см. Все три серии — при одном и том же числе МЕ; значения можно вводить со знаком или без.</p></header>
+        <p class="hint">Камера в точке измерения на опорной глубине. Все серии — при одном и том же числе МЕ; значения можно вводить со знаком или без. Кнопка «+» добавляет ячейку для ещё одного измерения.</p></header>
       <div class="grid">
         <div class="field"><label for="rd_mu">Облучение, МЕ</label><input type="text" id="rd_mu" class="num" inputmode="decimal"></div>
         <div class="field">
           <label for="rd_polarity">Обычная полярность</label>
           <select id="rd_polarity"><option value="+">положительная (+)</option><option value="-">отрицательная (−)</option></select>
         </div>
-        <div class="field"><label for="rd_V1">V₁ — рабочее напряжение, В</label><input type="text" id="rd_V1" class="num" inputmode="decimal"></div>
-        <div class="field"><label for="rd_V2">V₂ — пониженное, В</label><input type="text" id="rd_V2" class="num" inputmode="decimal"></div>
+        <div class="field"><label for="rd_V1">V₁ рабочее, В</label><input type="text" id="rd_V1" class="num" inputmode="decimal"></div>
+        <div class="field"><label for="rd_V2">V₂ пониженное, В</label><input type="text" id="rd_V2" class="num" inputmode="decimal"></div>
         <div class="field">
           <label for="rd_beam">Режим пучка</label>
           <select id="rd_beam"><option value="pulsed">импульсный</option><option value="scanned">импульсно-сканирующий</option></select>
         </div>
       </div>
-      <div class="grid two" style="margin-top:12px">
-        <div class="field"><label for="rd_M1">M при V₁, обычная полярность, нКл</label><input type="text" id="rd_M1" class="num" inputmode="decimal" placeholder="12,346 12,348 12,345"></div>
-        <div class="field"><label for="rd_Mopp">M при V₁, обратная полярность, нКл</label><input type="text" id="rd_Mopp" class="num" inputmode="decimal"></div>
-        <div class="field"><label for="rd_M2">M при V₂, обычная полярность, нКл</label><input type="text" id="rd_M2" class="num" inputmode="decimal"></div>
-        <div class="field">
-          <label for="rd_kleak">Поправка на утечку</label>
-          <input type="text" id="rd_kleak" class="num" inputmode="decimal">
-          <span class="sub">1,000, если утечка меньше 0,1 % показания</span>
+
+      <div class="series">
+        <div class="cells" data-series="rd_M1" data-label="M при V₁, обычная полярность">
+          <span class="label">M при V₁, обычная полярность, нКл</span>
+          <div class="cells-row">
+            <div class="cells-list"></div>
+            <div class="cells-tools">
+              <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+              <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+            </div>
+            <div class="cell-mean"><span>Среднее</span><output data-out="inputs.M1.mean" data-digits="4" data-abs="1"></output></div>
+          </div>
+        </div>
+        <div class="cells" data-series="rd_Mopp" data-label="M при V₁, обратная полярность">
+          <span class="label">M при V₁, обратная полярность, нКл</span>
+          <div class="cells-row">
+            <div class="cells-list"></div>
+            <div class="cells-tools">
+              <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+              <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+            </div>
+            <div class="cell-mean"><span>Среднее</span><output data-out="inputs.Mopp.mean" data-digits="4" data-abs="1"></output></div>
+          </div>
+        </div>
+        <div class="cells" data-series="rd_M2" data-label="M при V₂, обычная полярность">
+          <span class="label">M при V₂, обычная полярность, нКл</span>
+          <div class="cells-row">
+            <div class="cells-list"></div>
+            <div class="cells-tools">
+              <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+              <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+            </div>
+            <div class="cell-mean"><span>Среднее</span><output data-out="inputs.M2.mean" data-digits="4" data-abs="1"></output></div>
+          </div>
         </div>
       </div>
-      <div class="calc" style="margin-top:12px">
-        <span>M̄ = <b data-out="inputs.M1.mean" data-digits="4" data-abs="1"></b> нКл <span data-out-sd="inputs.M1"></span></span>
-        <span>V₁/V₂ = <b data-out="inputs.nV" data-digits="2"></b></span>
-        <span>M₁/M₂ = <b data-out="inputs.ratio12" data-digits="5"></b></span>
-        <span data-protocol="trs">k<sub>pol</sub> = <b data-out="trs.kpol" data-digits="4"></b></span>
-        <span data-protocol="trs">k<sub>s</sub> = <b data-out="trs.ks" data-digits="4"></b></span>
-        <span data-protocol="tg51">P<sub>pol</sub> = <b data-out="tg51.Ppol" data-digits="4"></b></span>
-        <span data-protocol="tg51">P<sub>ion</sub> = <b data-out="tg51.Pion" data-digits="4"></b></span>
-        <span class="eq" data-protocol="trs">k<sub>s</sub>: <span data-out-text="trs.ksEquation"></span>. P<sub>ion</sub> по TG-51 — ур. (12) для импульсного пучка.</span>
+
+      <div class="grid">
+        <div class="field">
+          <span class="label"><button type="button" class="term" data-term="kleak">Поправка на утечку</button></span>
+          <input type="text" id="rd_kleak" class="num" inputmode="decimal" aria-label="Поправка на утечку">
+          <span class="sub">1,000, если утечка меньше 0,1 % показания</span>
+        </div>
+        <div class="field out-cell" data-protocol="trs">
+          <span class="label"><button type="button" class="term" data-term="kpol">k<sub>pol</sub></button></span>
+          <output data-out="trs.kpol" data-digits="4" data-flag="kpol"></output>
+          <span class="sub">допустимо 1 ± 0,004</span>
+        </div>
+        <div class="field out-cell" data-protocol="trs">
+          <span class="label"><button type="button" class="term" data-term="ks">k<sub>s</sub></button></span>
+          <output data-out="trs.ks" data-digits="4" data-flag="ks"></output>
+          <span class="sub">не может быть меньше 1; больше 1,05 — недопустимо</span>
+        </div>
+        <div class="field out-cell" data-protocol="tg51">
+          <span class="label"><button type="button" class="term" data-term="kpol">P<sub>pol</sub></button></span>
+          <output data-out="tg51.Ppol" data-digits="4" data-flag="kpol"></output>
+          <span class="sub">допустимо 1 ± 0,004</span>
+        </div>
+        <div class="field out-cell" data-protocol="tg51">
+          <span class="label"><button type="button" class="term" data-term="ks">P<sub>ion</sub></button></span>
+          <output data-out="tg51.Pion" data-digits="4" data-flag="Pion"></output>
+          <span class="sub">не может быть меньше 1; больше 1,05 — недопустимо</span>
+        </div>
+        <div class="field out-cell"><span class="label">V₁/V₂</span><output data-out="inputs.nV" data-digits="2"></output></div>
+        <div class="field out-cell"><span class="label">M₁/M₂</span><output data-out="inputs.ratio12" data-digits="5"></output></div>
       </div>
+      <p class="eq" data-protocol="trs">k<sub>s</sub>: <span data-out-text="trs.ksEquation"></span>. P<sub>ion</sub> по TG-51 — ур. (12) для импульсного пучка.</p>
     </section>
 
     <!-- 5 -->
     <section class="step" aria-labelledby="s5">
-      <header><span class="step-no">5</span><h2 id="s5">Качество пучка и k<sub>Q</sub></h2>
+      <header><span class="step-no">5</span><h2 id="s5">Качество пучка и <button type="button" class="term" data-term="kQ">k<sub>Q</sub></button></h2>
         <p class="hint" id="shift-hint">Качество пучка измеряют при каждой референсной дозиметрии.</p></header>
       <div class="duo">
         <div class="proto-card" data-protocol="trs">
-          <h3>TRS-398 Rev.1 <small>TPR<sub>20,10</sub></small></h3>
+          <h3>TRS-398 Rev.1 <small><button type="button" class="term" data-term="tpr">TPR<sub>20,10</sub></button></small></h3>
           <div class="field">
             <label for="qtrs_method">Как получен TPR<sub>20,10</sub></label>
             <select id="qtrs_method">
-              <option value="direct">измерен (РИК 100 см, поле 10 × 10 в плоскости камеры)</option>
-              <option value="ratio">по показаниям камеры на 20 и 10 см</option>
-              <option value="pdd2010">из PDD(20)/PDD(10), пучки СВФ</option>
+              <option value="ratio">Измерение: РИК = 100 см, поле 10 × 10 см в плоскости камеры, глубины 20 и 10 см</option>
+              <option value="pdd2010">Через PDD на глубинах 20 и 10 см (РИП 100 см, поле 10 × 10 см на поверхности)</option>
             </select>
           </div>
-          <div class="field" data-show="qtrs_method:direct"><label for="qtrs_tpr">TPR<sub>20,10</sub></label><input type="text" id="qtrs_tpr" class="num" inputmode="decimal" placeholder="0,668"></div>
-          <div class="grid" data-show="qtrs_method:ratio">
-            <div class="field"><label for="qtrs_m20">M на 20 см</label><input type="text" id="qtrs_m20" class="num" inputmode="decimal"></div>
-            <div class="field"><label for="qtrs_m10">M на 10 см</label><input type="text" id="qtrs_m10" class="num" inputmode="decimal"></div>
+          <div class="grid three">
+            <div class="field"><label for="qtrs_v20" id="lbl-v20">M на 20 см</label><input type="text" id="qtrs_v20" class="num" inputmode="decimal"></div>
+            <div class="field"><label for="qtrs_v10" id="lbl-v10">M на 10 см</label><input type="text" id="qtrs_v10" class="num" inputmode="decimal"></div>
+            <div class="field out-cell"><span class="label">TPR<sub>20,10</sub></span><output data-out="trs.tpr" data-digits="4" data-flag="tpr"></output></div>
           </div>
-          <div class="grid" data-show="qtrs_method:pdd2010">
-            <div class="field"><label for="qtrs_pdd20">PDD(20), %</label><input type="text" id="qtrs_pdd20" class="num" inputmode="decimal"></div>
-            <div class="field"><label for="qtrs_pdd10">PDD(10), %</label><input type="text" id="qtrs_pdd10" class="num" inputmode="decimal"></div>
+          <p class="eq" data-out-text="trs.tprEquation"></p>
+
+          <div class="fff-box" data-show="meta_fff:true">
+            <h4>Оценка TPR<sub>20,10</sub> по PDD(10) для БВФ — только для сравнения, не для калибровки</h4>
+            <div class="grid three">
+              <div class="field"><label for="qtrs_fff_pdd10">PDD(10), %</label><input type="text" id="qtrs_fff_pdd10" class="num" inputmode="decimal"><span class="sub" id="fff-pdd-src"></span></div>
+              <div class="field out-cell"><span class="label">Оценка TPR<sub>20,10</sub></span><output data-out="trs.fffEstimate.value" data-digits="4"></output></div>
+              <div class="field out-cell"><span class="label">TPR<sub>20,10</sub> выше относительно оценки</span><output data-out="trs.fffEstimate.diff" data-digits="2" data-signed="1" data-suffix=" %"></output></div>
+            </div>
+            <p class="eq">TRS-398, сноска 36: TPR<sub>20,10</sub> = −0,7898 + 0,0329·PDD(10) − 0,000166·PDD(10)². Максимальное отклонение от измеренных данных ~0,6 %; PDD(10) зависит от электронного загрязнения, поэтому формула годится только для оценки. По той же сноске формулы выведены для пучков СВФ и к БВФ применимы с известной долей точности. k<sub>Q</sub> рассчитывается по TPR<sub>20,10</sub>, полученному выше.</p>
           </div>
-          <div class="calc">
-            <span>TPR<sub>20,10</sub> = <b data-out="trs.tpr" data-digits="4"></b></span>
-            <span>k<sub>Q</sub> = <b data-out="trs.kQ" data-digits="4"></b></span>
-            <span class="eq" data-out-text="trs.kQSource"></span>
-            <span class="eq" data-out-text="crossText"></span>
+
+          <div class="field">
+            <label for="kqtrs_mode">Как определить k<sub>Q</sub></label>
+            <select id="kqtrs_mode">
+              <option value="formula">по формуле (34) с параметрами камеры из табл. 45</option>
+              <option value="table">по табл. 16 с линейной интерполяцией по TPR20,10</option>
+              <option value="manual">измерен в лаборатории для этой камеры</option>
+            </select>
           </div>
-          <label class="check"><input type="checkbox" id="kqtrs_manual_on"> <span>k<sub>Q</sub> измерен в лаборатории для этой камеры</span></label>
-          <div class="field" data-show="kqtrs_manual_on:true"><label for="kqtrs_manual">k<sub>Q</sub> (TRS-398)</label><input type="text" id="kqtrs_manual" class="num" inputmode="decimal"></div>
+          <div class="field" data-show="kqtrs_mode:manual"><label for="kqtrs_manual">k<sub>Q</sub>, измеренный в лаборатории</label><input type="text" id="kqtrs_manual" class="num" inputmode="decimal"></div>
+          <div class="grid four">
+            <div class="field out-cell"><span class="label">по формуле (34)</span><output data-out="trs.kQFormula" data-digits="4"></output></div>
+            <div class="field out-cell"><span class="label">по табл. 16</span><output data-out="trs.kQTable" data-digits="4"></output></div>
+            <div class="field out-cell"><span class="label">таблица − формула</span><output data-out="trs.kQDiff" data-digits="3" data-signed="1" data-suffix=" %"></output></div>
+            <div class="field out-cell used"><span class="label">k<sub>Q</sub> в расчёте</span><output data-out="trs.kQ" data-digits="4" data-flag="kQtrs"></output></div>
+          </div>
         </div>
 
         <div class="proto-card" data-protocol="tg51">
-          <h3>TG-51 <small>%dd(10)<sub>x</sub></small></h3>
+          <h3>TG-51 <small><button type="button" class="term" data-term="pdd10x">%dd(10)<sub>x</sub></button></small></h3>
           <div class="field">
             <label for="q51_method">Как получен %dd(10)<sub>x</sub></label>
             <select id="q51_method">
@@ -227,12 +341,11 @@
           <div class="field" data-show="q51_method:open,interim"><label for="q51_pdd10">%dd(10), открытый пучок, %</label><input type="text" id="q51_pdd10" class="num" inputmode="decimal" placeholder="66,4"></div>
           <div class="field" data-show="q51_method:foil50,foil30"><label for="q51_pdd10pb">%dd(10)<sub>Pb</sub>, с фольгой, %</label><input type="text" id="q51_pdd10pb" class="num" inputmode="decimal"></div>
           <div class="field" data-show="q51_method:manual"><label for="q51_manual">%dd(10)<sub>x</sub>, %</label><input type="text" id="q51_manual" class="num" inputmode="decimal"></div>
-          <div class="calc">
-            <span>%dd(10)<sub>x</sub> = <b data-out="tg51.pdd10x" data-digits="2"></b></span>
-            <span>k<sub>Q</sub> = <b data-out="tg51.kQ" data-digits="4"></b></span>
-            <span class="eq" data-out-text="tg51.pdd10xEquation"></span>
-            <span class="eq" data-out-text="tg51.kQSource"></span>
+          <div class="grid">
+            <div class="field out-cell"><span class="label">%dd(10)<sub>x</sub></span><output data-out="tg51.pdd10x" data-digits="2" data-flag="pdd10x"></output></div>
+            <div class="field out-cell used"><span class="label">k<sub>Q</sub> в расчёте</span><output data-out="tg51.kQ" data-digits="4" data-flag="kQ51"></output></div>
           </div>
+          <p class="eq"><span data-out-text="tg51.pdd10xEquation"></span> <span data-out-text="tg51.kQSource"></span></p>
           <label class="check"><input type="checkbox" id="kq51_manual_on"> <span>ввести k<sub>Q</sub> вручную</span></label>
           <div class="field" data-show="kq51_manual_on:true"><label for="kq51_manual">k<sub>Q</sub> (TG-51)</label><input type="text" id="kq51_manual" class="num" inputmode="decimal"></div>
         </div>
@@ -240,51 +353,46 @@
     </section>
 
     <!-- 6 -->
-    <section class="step" aria-labelledby="s6">
-      <header><span class="step-no">6</span><h2 id="s6">Неоднородность профиля: k<sub>vol</sub> (TRS-398) / P<sub>rp</sub> (TG-51)</h2>
-        <p class="hint">Нужна прежде всего в пучках БВФ и для длинных камер. Одна поправка применяется в обоих протоколах.</p></header>
-      <div class="grid two">
-        <div class="field span-all">
-          <label for="prof_mode">Способ</label>
-          <select id="prof_mode">
-            <option value="none">не применяется (профиль однороден по объёму камеры)</option>
-            <option value="manual">ввести готовое значение</option>
-            <option value="profile">рассчитать по измеренному профилю</option>
-            <option value="generic">оценка по формуле (22) TRS-398 для БВФ</option>
-          </select>
+    <section class="step" id="step-kvol" aria-labelledby="s6">
+      <header><span class="step-no">6</span><h2 id="s6">Усреднение по объёму: <button type="button" class="term" data-term="kvol">k<sub>vol</sub></button> (TRS-398) / P<sub>rp</sub> (TG-51)</h2>
+        <p class="hint" id="kvol-hint"></p></header>
+      <fieldset id="kvol-fields" class="plain">
+        <div class="grid">
+          <div class="field span-2">
+            <label for="prof_mode">Способ</label>
+            <select id="prof_mode">
+              <option value="formula22">по формуле (22) TRS-398</option>
+              <option value="table11">по табл. 11 TRS-398 (РИД 110 см)</option>
+              <option value="manual">своё значение</option>
+            </select>
+          </div>
+          <div class="field" data-show="prof_mode:manual"><label for="prof_value">k<sub>vol</sub> = P<sub>rp</sub></label><input type="text" id="prof_value" class="num" inputmode="decimal"></div>
+          <div class="field" data-show="prof_mode:formula22,table11">
+            <label for="prof_length">Длина полости камеры L, мм</label>
+            <input type="text" id="prof_length" class="num" inputmode="decimal">
+            <span class="sub" id="length-hint"></span>
+          </div>
+          <div class="field" data-show="prof_mode:formula22">
+            <label for="prof_sdd">Расстояние источник — детектор, см</label>
+            <input type="text" id="prof_sdd" class="num" inputmode="decimal">
+            <span class="sub" id="sdd-hint"></span>
+          </div>
+          <div class="field out-cell used"><span class="label">k<sub>vol</sub> = P<sub>rp</sub></span><output data-out="profile.value" data-digits="4" data-flag="kvol"></output></div>
         </div>
-        <div class="field" data-show="prof_mode:manual"><label for="prof_value">k<sub>vol</sub> = P<sub>rp</sub></label><input type="text" id="prof_value" class="num" inputmode="decimal"></div>
-        <div class="field" data-show="prof_mode:profile,generic">
-          <label for="prof_length">Длина полости камеры L, мм</label>
-          <input type="text" id="prof_length" class="num" inputmode="decimal">
-          <span class="sub" id="length-hint"></span>
-        </div>
-        <div class="field" data-show="prof_mode:generic">
-          <label for="prof_sdd">Расстояние источник — детектор, см</label>
-          <input type="text" id="prof_sdd" class="num" inputmode="decimal">
-          <span class="sub">По умолчанию 110 см (РИП 100 + 10) или 100 см (РИО)</span>
-        </div>
-        <div class="field span-all" data-show="prof_mode:profile">
-          <label for="prof_text">Профиль на глубине 10 см вдоль оси камеры: «положение, мм» и «доза» в каждой строке</label>
-          <textarea id="prof_text" class="num profile" spellcheck="false" placeholder="-15  99,52&#10;-10  99,78&#10;-5   99,95&#10;0    100&#10;5    99,94&#10;10   99,77&#10;15   99,50"></textarea>
-          <span class="sub">Детектор малого объёма, шаг около 1 мм; профиль нормируется на значение на оси.</span>
-        </div>
-      </div>
-      <div class="calc" style="margin-top:12px">
-        <span>k<sub>vol</sub> = P<sub>rp</sub> = <b data-out="profile.value" data-digits="4"></b></span>
-        <span class="eq" data-out-text="profile.method"></span>
-      </div>
+        <p class="eq" data-out-text="profile.method"></p>
+      </fieldset>
     </section>
 
     <!-- 7 -->
     <section class="step" aria-labelledby="s7">
-      <header><span class="step-no">7</span><h2 id="s7">Пересчёт на d<sub>max</sub></h2>
-        <p class="hint">Используйте клинические данные, заложенные в систему планирования (TG-51, разд. IX.C; TRS-398, разд. 6.4.3).</p></header>
+      <header><span class="step-no">7</span><h2 id="s7"><button type="button" class="term" data-term="pdd">Пересчёт на d<sub>max</sub></button></h2>
+        <p class="hint" id="dd-hint"></p></header>
       <label class="check"><input type="checkbox" id="dd_on" checked> <span>Пересчитать дозу на глубину максимума</span></label>
-      <div class="grid" data-show="dd_on:true" style="margin-top:12px">
-        <div class="field" data-show="setup_geometry:SSD"><label for="dd_pdd">PDD(10), %</label><input type="text" id="dd_pdd" class="num" inputmode="decimal"><span class="sub">РИП 100 см, поле 10 × 10</span></div>
-        <div class="field" data-show="setup_geometry:SAD"><label for="dd_tmr">TMR(10, 10 × 10)</label><input type="text" id="dd_tmr" class="num" inputmode="decimal" placeholder="0,736"><span class="sub">отношение, не проценты</span></div>
-        <div class="field"><label for="dd_nominal">Номинальный выход, сГр/МЕ</label><input type="text" id="dd_nominal" class="num" inputmode="decimal"></div>
+      <div class="grid subgrid" data-show="dd_on:true">
+        <div class="field"><label for="dd_zmax">Глубина d<sub>max</sub>, см</label><input type="text" id="dd_zmax" class="num" inputmode="decimal" placeholder="1,5"></div>
+        <div class="field" data-show="setup_geometry:SSD,manual"><label for="dd_pdd" id="lbl-dd-pdd">PDD(10), %</label><input type="text" id="dd_pdd" class="num" inputmode="decimal"></div>
+        <div class="field" data-show="setup_geometry:SAD"><label for="dd_tmr">TMR(10)</label><input type="text" id="dd_tmr" class="num" inputmode="decimal" placeholder="0,736"><span class="sub">отношение, не проценты</span></div>
+        <div class="field"><label for="dd_nominal">Номинальный выход</label><input type="text" id="dd_nominal" class="num" inputmode="decimal"><span class="sub">сГр/МЕ на d<sub>max</sub>, для отклонения; можно не заполнять</span></div>
       </div>
     </section>
 
@@ -335,6 +443,14 @@
 </footer>
 
 <div class="mobile-result" id="mobile-result"><span id="mobile-value">—</span><a href="#readout">к результату</a></div>
+
+<dialog id="term-dialog" class="term-dialog" aria-labelledby="term-title">
+  <div class="dlg-head">
+    <h2 id="term-title"></h2>
+    <button type="button" class="icon-btn" id="term-close" aria-label="Закрыть справку">×</button>
+  </div>
+  <div class="dlg-body" id="term-body"></div>
+</dialog>
 
 <script type="module" src="src/ui/main.js"></script>
 </body>
