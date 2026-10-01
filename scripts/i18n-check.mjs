@@ -36,10 +36,11 @@ for (const file of files) {
       if (a.type === 'Property' && ['ref', 'refs'].includes(a.key?.name)) return;
       // import/export, ключи объектов-словарей
       if (a.type === 'ImportDeclaration' || a.type === 'ExportAllDeclaration') return;
-      // свойство с английским двойником: note/noteEn, text/textEn, label/labelEn
+      // свойство с английским двойником: note/noteEn, text/textEn, label/labelEn, { ru, en }
       if (a.type === 'Property' && anc[i + 1] === a.value && a.key?.name) {
         const obj = anc[i - 1];
         if (obj?.type === 'ObjectExpression' && obj.properties.some((p) => p.key?.name === `${a.key.name}En`)) return;
+        if (obj?.type === 'ObjectExpression' && a.key.name === 'ru' && obj.properties.some((p) => p.key?.name === 'en')) return;
       }
     }
     // ссылка на источник целиком: «TRS-398 Rev.1, разд. 4.4.3.1; аддендум TG-51 (2014), разд. 5.A.6»

@@ -162,6 +162,10 @@ function applyVisibility(data, result) {
           `Установка по РИК: мощность дозы переносится на z_max в изоцентре через TMR(${z}) из данных ввода в эксплуатацию (TRS-398, разд. 5.4.3).`,
           `SCD setup: the dose rate is transferred to z_max at the isocenter via TMR(${z}) from the commissioning data (TRS-398, Sec. 5.4.3).`,
         );
+  $('#co_ref_at').disabled = !data.co_dd_on;
+  $('#co-ref-at-sub').textContent = !data.co_dd_on
+    ? L('Без пересчёта на z_max значение для сравнения относится к опорной глубине.', 'Without transfer to z_max the comparison value refers to the reference depth.')
+    : L('Итог показывается на этой глубине; отклонение считается от значения на ней.', 'The result is shown at this depth, and the deviation is calculated from the value there.');
   const d = result.depth;
   $('#co-decay-note').textContent = Number.isFinite(d.decay)
     ? L(
@@ -187,18 +191,21 @@ function applyVisibility(data, result) {
 // ------------------------------------------------------------ вывод
 /** Итог: по контрольным измерениям, если они введены и без ошибок, иначе по основным показаниям. */
 const primaryOf = (x) => (x.ctrl && !x.ctrl.blocked && !x.blocked ? x.ctrl : x);
-const rateAt = (x, depth) => (depth.on && Number.isFinite(x.rateMax) ? x.rateMax : x.rate);
+/** Итог показывается на глубине, где задано значение для сравнения: на z_max или на опорной глубине. */
+const atMaxOf = (x, depth) => depth.expectedAt === 'zmax' && Number.isFinite(x.rateMax);
+const rateAt = (x, depth) => (atMaxOf(x, depth) ? x.rateMax : x.rate);
 
 function doseRow(key, x, result) {
   const p = primaryOf(x);
   const fromCtrl = p !== x;
-  const depthOn = result.depth.on && Number.isFinite(p.rateMax);
-  const main = depthOn ? p.rateMax : p.rate;
-  const mainGy = depthOn ? p.rateMaxGy : p.rateGy;
+  const atMax = atMaxOf(p, result.depth);
+  const hasMax = Number.isFinite(p.rateMax);
+  const main = atMax ? p.rateMax : p.rate;
+  const mainGy = atMax ? p.rateMaxGy : p.rateGy;
   const z = zText(result.inputs.zref);
-  const where = depthOn ? L('на z<sub>max</sub>', 'at z<sub>max</sub>') : L(`на ${z} г/см²`, `at ${z} g/cm²`);
+  const where = atMax ? L('на z<sub>max</sub>', 'at z<sub>max</sub>') : L(`на ${z} г/см²`, `at ${z} g/cm²`);
   let chip = '';
-  if (depthOn && Number.isFinite(p.deviation) && !x.blocked) {
+  if (Number.isFinite(p.deviation) && !x.blocked) {
     const cls = Math.abs(p.deviation) <= 1 ? 'good' : Math.abs(p.deviation) > 2 ? 'bad' : '';
     chip = `<span class="chip ${cls}" title="${L('Отклонение от ожидаемой мощности дозы', 'Deviation from the expected dose rate')}">${fmtSigned(p.deviation, 2)} %</span>`;
   }
@@ -206,13 +213,15 @@ function doseRow(key, x, result) {
   const c = result.ctrl;
   const t = fromCtrl ? c.t : i.tSet;
   const tEff = fromCtrl ? c.tEff : i.tEff;
+  const tTxt = `${fmt(t, t % 1 ? 2 : 0)} ${i.unitLabel}${result.timer.mode === 'window' ? '' : ` (t + τ = ${fmt(tEff, 3)})`}`;
   const secondary = [
-    L(`${fmt(mainGy, 4)} Гр/мин ${where}`, `${fmt(mainGy, 4)} Gy/min ${where}`),
-    L(
-      `D<sub>w</sub>(${z} г/см²) = ${fmt(p.D, 4)} Гр за ${fmt(t, t % 1 ? 2 : 0)} ${i.unitLabel}${result.timer.mode === 'window' ? '' : ` (t + τ = ${fmt(tEff, 3)})`}`,
-      `D<sub>w</sub>(${z} g/cm²) = ${fmt(p.D, 4)} Gy in ${fmt(t, t % 1 ? 2 : 0)} ${i.unitLabel}${result.timer.mode === 'window' ? '' : ` (t + τ = ${fmt(tEff, 3)})`}`,
-    ),
-    depthOn ? L(`${fmt(p.rate, 2)} сГр/мин на ${z} г/см²`, `${fmt(p.rate, 2)} cGy/min at ${z} g/cm²`) : null,
+    L(`= ${fmt(mainGy, 4)} Гр/мин ${where}`, `= ${fmt(mainGy, 4)} Gy/min ${where}`),
+    L(`D<sub>w</sub>(${z} г/см²) = ${fmt(p.DcGy, 2)} сГр = ${fmt(p.D, 4)} Гр за ${tTxt}`, `D<sub>w</sub>(${z} g/cm²) = ${fmt(p.DcGy, 2)} cGy = ${fmt(p.D, 4)} Gy in ${tTxt}`),
+    hasMax
+      ? atMax
+        ? L(`На ${z} г/см²: ${fmt(p.rate, 2)} сГр/мин`, `At ${z} g/cm²: ${fmt(p.rate, 2)} cGy/min`)
+        : L(`На z<sub>max</sub>: ${fmt(p.rateMax, 2)} сГр/мин`, `At z<sub>max</sub>: ${fmt(p.rateMax, 2)} cGy/min`)
+      : null,
     fromCtrl
       ? L(
           `По основным показаниям (раздел 5): ${fmt(rateAt(x, result.depth), 2)} сГр/мин${Number.isFinite(x.deviation) ? ` (${fmtSigned(x.deviation, 2)} %)` : ''}`,
@@ -227,6 +236,26 @@ function doseRow(key, x, result) {
     <div class="dose-big">${x.blocked || !Number.isFinite(main) ? '—' : fmt(main, 2)}<small>${L('сГр/мин', 'cGy/min')} ${where}</small></div>
     <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : secondary}</div>
   </div>`;
+}
+
+/** Строки таблицы с дозой за облучение (сГр и Гр) и мощностью дозы на опорной глубине и на z_max. */
+function doseTableRows(t, g, result, z, tEff, own = [false, false], factorRow = null) {
+  const atMax = result.depth.expectedAt === 'zmax' && result.depth.on;
+  const rows = [
+    [L(`D<sub>w</sub>(${z}) за облучение, сГр`, `D<sub>w</sub>(${z}) per exposure, cGy`), ['', t.DcGy, 2, true, own[0]], ['', g.DcGy, 2, true, own[1]]],
+    [L(`D<sub>w</sub>(${z}) за облучение, Гр`, `D<sub>w</sub>(${z}) per exposure, Gy`), ['', t.D, 4, true, own[0]], ['', g.D, 4, true, own[1]]],
+    [`t + τ, ${result.inputs.unitLabel}`, ['', tEff, 4], ['', tEff, 4]],
+    [L(`На ${z} г/см², сГр/мин`, `At ${z} g/cm², cGy/min`), ['', t.rate, 2, true, own[0]], ['', g.rate, 2, true, own[1]], atMax ? '' : 'total'],
+    [L(`На ${z} г/см², Гр/мин`, `At ${z} g/cm², Gy/min`), ['', t.rateGy, 4, true, own[0]], ['', g.rateGy, 4, true, own[1]]],
+  ];
+  if (result.depth.on) {
+    if (factorRow) rows.push(factorRow);
+    rows.push(
+      [L('На z<sub>max</sub>, сГр/мин', 'At z<sub>max</sub>, cGy/min'), ['', t.rateMax, 2, true, own[0]], ['', g.rateMax, 2, true, own[1]], atMax ? 'total' : ''],
+      [L('На z<sub>max</sub>, Гр/мин', 'At z<sub>max</sub>, Gy/min'), ['', t.rateMaxGy, 4, true, own[0]], ['', g.rateMaxGy, 4, true, own[1]]],
+    );
+  }
+  return rows;
 }
 
 function renderReadout(result, data) {
@@ -272,16 +301,8 @@ function renderReadout(result, data) {
     [L('Исправленное показание, нКл', 'Corrected reading, nC'), ['M', t.M, 4], ['M', g.M, 4]],
     [L('N<sub>D,w</sub>, Гр/нКл', 'N<sub>D,w</sub>, Gy/nC'), ['', i.ndw, 5], ['', i.ndw, 5]],
     [L('Поправка на качество', 'Beam quality correction'), ['k<sub>Q</sub>', t.enabled ? 1 : NaN, 3], ['k<sub>Q</sub>', g.enabled ? 1 : NaN, 3]],
-    [L(`D<sub>w</sub>(${z}) за облучение, Гр`, `D<sub>w</sub>(${z}) per exposure, Gy`), ['', t.D, 4, true], ['', g.D, 4, true]],
-    [`t + τ, ${i.unitLabel}`, ['', i.tEff, 4], ['', i.tEff, 4]],
-    [L(`На ${z} г/см², сГр/мин`, `At ${z} g/cm², cGy/min`), ['', t.rate, 2, true], ['', g.rate, 2, true], 'total'],
-    [L(`На ${z} г/см², Гр/мин`, `At ${z} g/cm², Gy/min`), ['', t.rateGy, 4, true], ['', g.rateGy, 4, true]],
   ];
-  if (result.depth.on) {
-    rows.push([result.depth.label || 'PDD/TMR', ['', result.depth.factor, 4], ['', result.depth.factor, 4]]);
-    rows.push([L('На z<sub>max</sub>, сГр/мин', 'At z<sub>max</sub>, cGy/min'), ['', t.rateMax, 2, true], ['', g.rateMax, 2, true], result.ctrl.on ? '' : 'total']);
-    rows.push([L('На z<sub>max</sub>, Гр/мин', 'At z<sub>max</sub>, Gy/min'), ['', t.rateMaxGy, 4, true], ['', g.rateMaxGy, 4, true]]);
-  }
+  rows.push(...doseTableRows(t, g, result, z, i.tEff, [false, false], [result.depth.label || 'PDD/TMR', ['', result.depth.factor, 4], ['', result.depth.factor, 4]]));
   if (result.ctrl.on) {
     const tc = t.ctrl || {};
     const gc = g.ctrl || {};
@@ -289,11 +310,7 @@ function renderReadout(result, data) {
     const bG = g.blocked || gc.blocked;
     rows.push([L('<b>Контрольные измерения</b>', '<b>Check measurements</b>'), ['', NaN, 0], ['', NaN, 0], 'group']);
     rows.push([L('Исправленное показание, нКл', 'Corrected reading, nC'), ['M', tc.M, 4, true, bT], ['M', gc.M, 4, true, bG]]);
-    rows.push([L(`На ${z} г/см², сГр/мин`, `At ${z} g/cm², cGy/min`), ['', tc.rate, 2, true, bT], ['', gc.rate, 2, true, bG], result.depth.on ? '' : 'total']);
-    if (result.depth.on) {
-      rows.push([L('На z<sub>max</sub>, сГр/мин', 'At z<sub>max</sub>, cGy/min'), ['', tc.rateMax, 2, true, bT], ['', gc.rateMax, 2, true, bG], 'total']);
-      rows.push([L('На z<sub>max</sub>, Гр/мин', 'At z<sub>max</sub>, Gy/min'), ['', tc.rateMaxGy, 4, true, bT], ['', gc.rateMaxGy, 4, true, bG]]);
-    }
+    rows.push(...doseTableRows(tc, gc, result, z, result.ctrl.tEff, [bT, bG]));
   }
   const cell = ([sym, v, d, dose, own], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && (blocked || own) ? '—' : fmt(v, d)}</td>`;
   $('#co-factors').innerHTML =
@@ -391,24 +408,27 @@ function reportText(data, r) {
       out.push(L('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: есть ошибки ввода (см. замечания).', 'RESULT NOT CALCULATED: there are input errors (see Messages).'));
     } else {
       const describe = (y, title) => {
+        const atZmax = r.depth.expectedAt === 'zmax';
+        let dev = '';
+        if (Number.isFinite(y.deviation)) {
+          const dec = Number.isFinite(r.depth.decay)
+            ? L(` (${data.co_ref_rate} сГр/мин на ${r.depth.refDate}, распад × ${fmt(r.depth.decay, 4)})`, ` (${data.co_ref_rate} cGy/min on ${r.depth.refDate}, decay × ${fmt(r.depth.decay, 4)})`)
+            : '';
+          dev = L(`; ожидалось ${fmt(r.depth.expected, 2)} сГр/мин${dec}, отклонение ${fmtSigned(y.deviation, 2)} %`, `; expected ${fmt(r.depth.expected, 2)} cGy/min${dec}, deviation ${fmtSigned(y.deviation, 2)} %`);
+        }
         out.push(
           L(
-            `${title}: M = ${fmt(y.M)} нКл; D_w(${z}) = ${fmt(y.D)} Гр за облучение; ${fmt(y.rate, 2)} сГр/мин = ${fmt(y.rateGy, 4)} Гр/мин на z_ref`,
-            `${title}: M = ${fmt(y.M)} nC; D_w(${z}) = ${fmt(y.D)} Gy per exposure; ${fmt(y.rate, 2)} cGy/min = ${fmt(y.rateGy, 4)} Gy/min at z_ref`,
+            `${title}: M = ${fmt(y.M)} нКл; D_w(${z}) = ${fmt(y.DcGy, 2)} сГр = ${fmt(y.D)} Гр за облучение; ${fmt(y.rate, 2)} сГр/мин = ${fmt(y.rateGy, 4)} Гр/мин на z_ref${atZmax ? '' : dev}`,
+            `${title}: M = ${fmt(y.M)} nC; D_w(${z}) = ${fmt(y.DcGy, 2)} cGy = ${fmt(y.D)} Gy per exposure; ${fmt(y.rate, 2)} cGy/min = ${fmt(y.rateGy, 4)} Gy/min at z_ref${atZmax ? '' : dev}`,
           ),
         );
         if (r.depth.on && r.depth.ok && Number.isFinite(y.rateMax)) {
-          let s = L(
-            `  z_max = ${data.co_zmax} см; ${r.depth.label} = ${fmt(r.depth.factor)}; на z_max ${fmt(y.rateMax, 2)} сГр/мин = ${fmt(y.rateMaxGy, 4)} Гр/мин`,
-            `  z_max = ${data.co_zmax} cm; ${r.depth.label} = ${fmt(r.depth.factor)}; at z_max ${fmt(y.rateMax, 2)} cGy/min = ${fmt(y.rateMaxGy, 4)} Gy/min`,
+          out.push(
+            L(
+              `  z_max = ${data.co_zmax} см; ${r.depth.label} = ${fmt(r.depth.factor)}; на z_max ${fmt(y.rateMax, 2)} сГр/мин = ${fmt(y.rateMaxGy, 4)} Гр/мин${atZmax ? dev : ''}`,
+              `  z_max = ${data.co_zmax} cm; ${r.depth.label} = ${fmt(r.depth.factor)}; at z_max ${fmt(y.rateMax, 2)} cGy/min = ${fmt(y.rateMaxGy, 4)} Gy/min${atZmax ? dev : ''}`,
+            ),
           );
-          if (Number.isFinite(y.deviation)) {
-            const dec = Number.isFinite(r.depth.decay)
-              ? L(` (${data.co_ref_rate} сГр/мин на ${r.depth.refDate}, распад × ${fmt(r.depth.decay, 4)})`, ` (${data.co_ref_rate} cGy/min on ${r.depth.refDate}, decay × ${fmt(r.depth.decay, 4)})`)
-              : '';
-            s += L(`; ожидалось ${fmt(r.depth.expected, 2)} сГр/мин${dec}, отклонение ${fmtSigned(y.deviation, 2)} %`, `; expected ${fmt(r.depth.expected, 2)} cGy/min${dec}, deviation ${fmtSigned(y.deviation, 2)} %`);
-          }
-          out.push(s);
         } else if (r.depth.on) {
           out.push(L('  Пересчёт на z_max не выполнен: исправьте данные раздела 7.', '  Transfer to z_max not performed: correct the data in section 7.'));
         }

@@ -68,6 +68,10 @@ export const E_DEFAULTS = {
   e_M51: ['', '', ''], // M при V₁, обычная полярность
   e_Mopp51: ['', '', ''], // M при V₁, обратная полярность
   e_M251: ['', '', ''], // M при V₂, обычная полярность
+  // контрольные измерения: обычная полярность, V₁; поправки — из основных серий (раздел 5)
+  e_ctrl_M: ['', '', ''], // положение по TRS-398 (или единственное положение)
+  e_ctrl_M51: ['', '', ''], // «оба протокола», положения различаются: положение по Report 385 (для TG-51)
+  e_ctrl_mu: '', // пусто — столько же МЕ, сколько в разделе 5
   e_kleak: '1,000',
 
   e_kqtrs_mode: 'table', // 'table' (табл. 20 или 21) | 'formula' (прил. II, табл. 47 или 48) | 'manual'
@@ -79,6 +83,7 @@ export const E_DEFAULTS = {
   e_zmax: '',
   e_pdd: '',
   e_nominal: '1,000',
+  e_nominal_at: 'zmax', // где задан номинальный выход: 'zmax' (после пересчёта) | 'zref'
 };
 
 const REF = {
@@ -112,7 +117,7 @@ export const zrefFromR50 = (r50) => 0.6 * r50 - 0.1;
 
 export function normalizeElectrons(input) {
   const f = { ...E_DEFAULTS, ...input };
-  for (const k of ['e_M1', 'e_Mopp', 'e_M2', 'e_M51', 'e_Mopp51', 'e_M251']) {
+  for (const k of ['e_M1', 'e_Mopp', 'e_M2', 'e_M51', 'e_Mopp51', 'e_M251', 'e_ctrl_M', 'e_ctrl_M51']) {
     if (!Array.isArray(f[k])) f[k] = isBlank(f[k]) ? ['', '', ''] : String(f[k]).trim().split(/[\s;]+/);
   }
   if (!Array.isArray(f.e_staff) || f.e_staff.length === 0) f.e_staff = [''];
@@ -631,29 +636,91 @@ export function computeElectrons(form) {
     if (Number.isFinite(pdd) && (pdd < 50 || pdd > 100)) add('error', 'depth', L('PDD на опорной глубине вводится в процентах и для z_ref = 0,6·R50 − 0,1 обычно 85–100 %.', 'PDD at the reference depth is entered as a percentage; for z_ref = 0.6·R50 − 0.1 it is usually 85–100 %.'), null, 'e_pdd');
     depth.factor = pdd / 100;
     depth.label = Number.isFinite(zref) ? L(`PDD(${ru(zref, 2)} см)/100`, `PDD(${ru(zref, 2)} cm)/100`) : 'PDD(z_ref)/100';
-    depth.nominal = parseNumber(f.e_nominal);
-    if (!isBlank(f.e_nominal) && !(depth.nominal > 0)) add('warn', 'depth', L('Номинальный выход не распознан: отклонение не считается.', 'Nominal output not recognized: the deviation is not calculated.'), null, 'e_nominal');
     depth.ok = !messages.some((m) => m.level === 'error' && m.scope === 'depth');
   }
+  // Номинальный выход: на z_max (после пересчёта) или на опорной глубине; без пересчёта — на опорной глубине.
+  depth.nominal = parseNumber(f.e_nominal);
+  depth.nominalAt = depth.on && f.e_nominal_at !== 'zref' ? 'zmax' : 'zref';
+  if (!isBlank(f.e_nominal) && !(depth.nominal > 0)) add('warn', 'common', L('Номинальный выход не распознан: отклонение не считается.', 'Nominal output not recognized: the deviation is not calculated.'), null, 'e_nominal');
 
-  const finish = (x, M, kQ, coef) => {
+  // ------------------------------------------------------- контрольные измерения
+  // Показания при обычной полярности и V₁ после определения поправок (и, возможно, подстройки
+  // ускорителя): все поправки берутся из основных серий. Если при расчёте по обоим протоколам
+  // положения камеры различаются, контрольные показания снимают в каждом положении.
+  const ctrlSeries = (key, label, ref) => {
+    const s = parseCells(f[key]);
+    if (s.n === 0 && !s.error) return null;
+    if (s.error) add('error', 'ctrl', L(`«${label.ru}»: ${s.error}.`, `"${label.en}": ${s.error}.`), null, key);
+    else if (s.mean === 0) add('error', 'ctrl', L(`«${label.ru}»: среднее показание равно нулю.`, `"${label.en}": the mean reading is zero.`), null, key);
+    const d = maxRelDeviation(s);
+    const pct = ru(d * 100, 2);
+    if (d > 0.05) add('error', 'ctrl', L(`Контрольные показания расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, `Check readings differ from the mean by up to ${pct} %: probably an input error.`), null, key);
+    else if (d > 0.005) add('warn', 'ctrl', L(`Разброс контрольных показаний до ${pct} % от среднего: повторите облучения.`, `Check readings scatter by up to ${pct} % from the mean: repeat the irradiations.`), `${REF.r374}, разд. 4.4.2`, key);
+    else if (d > 0.001) add('info', 'ctrl', L(`Разброс контрольных показаний до ${pct} % от среднего: Report 374 советует добиваться ±0,1 % без тренда.`, `Check readings scatter by up to ${pct} % from the mean: Report 374 advises reaching ±0.1 % with no trend.`), `${REF.r374}, разд. 4.4.2`, key);
+    if (!s.error && s.mean !== 0 && seriesOk(ref) && Math.sign(s.mean) !== Math.sign(ref.mean)) {
+      add('error', 'ctrl', L('Контрольные измерения снимают при той же (обычной) полярности, что и M при V₁.', 'Check measurements are taken at the same (normal) polarity as M at V₁.'), null, key);
+    }
+    return s;
+  };
+  const ctrl = { on: false, separate: separate51 };
+  const cMain = ctrlSeries('e_ctrl_M', separate51
+    ? { ru: 'Контрольные измерения, положение по TRS-398', en: 'Check measurements, TRS-398 position' }
+    : { ru: 'Контрольные измерения', en: 'Check measurements' }, M1);
+  const c51 = separate51 ? ctrlSeries('e_ctrl_M51', { ru: 'Контрольные измерения, положение по Report 385', en: 'Check measurements, Report 385 position' }, set51?.M1) : cMain;
+  ctrl.on = !!(cMain || c51);
+  if (ctrl.on) {
+    if (separate51 && (!cMain || !c51)) {
+      add('error', 'ctrl', L('При расчёте по обоим протоколам контрольные показания нужны в обоих положениях камеры.', 'When both protocols are used, check readings are needed in both chamber positions.'), null, cMain ? 'e_ctrl_M51' : 'e_ctrl_M');
+    }
+    ctrl.mu = isBlank(f.e_ctrl_mu) ? mu : parseNumber(f.e_ctrl_mu);
+    if (!isBlank(f.e_ctrl_mu) && !(ctrl.mu > 0)) add('error', 'ctrl', L('Число МЕ для контрольных измерений должно быть больше нуля.', 'The number of MU for check measurements must be greater than zero.'), null, 'e_ctrl_mu');
+    const meanOf = (s) => (s && s.n > 0 && !s.error ? Math.abs(s.mean) : NaN);
+    ctrl.M = cMain;
+    ctrl.M51 = separate51 ? c51 : null;
+    ctrl.mean = meanOf(cMain);
+    ctrl.mean51 = meanOf(c51);
+    const ctrlErr = messages.some((m) => m.level === 'error' && m.scope === 'ctrl');
+    if (!ctrlErr && ctrl.mu > 0 && mu > 0) {
+      if (Number.isFinite(ctrl.mean) && Number.isFinite(m1)) ctrl.changePct = ((ctrl.mean / ctrl.mu) / (m1 / mu) - 1) * 100;
+      const ref51 = separate51 ? (r51.ok ? Math.abs(set51.M1.mean) : NaN) : m1;
+      if (separate51 && Number.isFinite(ctrl.mean51) && Number.isFinite(ref51)) ctrl.changePct51 = ((ctrl.mean51 / ctrl.mu) / (ref51 / mu) - 1) * 100;
+    }
+  }
+
+  const finish = (x, M, kQ, coef, units = mu) => {
     x.M = M;
     x.D = M * kQ * coef;
-    x.DperMUGy = x.D / mu;
-    x.DperMU = x.DperMUGy * 100;
+    x.DcGy = x.D * 100; // сГр за отпущенные МЕ
+    x.units = units;
+    x.DperMUGy = x.D / units;
+    x.DperMU = x.DperMUGy * 100; // сГр/МЕ (= Гр на 100 МЕ)
     if (depth.on && depth.ok && Number.isFinite(depth.factor)) {
+      x.Dmax = x.D / depth.factor;
+      x.DmaxcGy = x.Dmax * 100;
       x.DmaxPerMUGy = x.DperMUGy / depth.factor;
       x.DmaxPerMU = x.DperMU / depth.factor;
-      if (depth.nominal > 0) x.deviation = (x.DmaxPerMU / depth.nominal - 1) * 100;
     }
+    const atNominal = depth.nominalAt === 'zmax' ? x.DmaxPerMU : x.DperMU;
+    if (depth.nominal > 0 && Number.isFinite(atNominal)) x.deviation = (atNominal / depth.nominal - 1) * 100;
     x.ok = Number.isFinite(x.D) && x.D > 0;
   };
-  if (wantTRS) finish(trs, m1 * trs.kTP * trs.kelec * trs.kpol * trs.ks * trs.kleak, trs.kQ, trs.coefficient);
+  const productTRS = wantTRS ? trs.kTP * trs.kelec * trs.kpol * trs.ks * trs.kleak : NaN;
+  const product51 = want51 ? tg.PTP * tg.Pelec * tg.Ppol * tg.Pion * tg.Pleak : NaN;
+  if (wantTRS) finish(trs, m1 * productTRS, trs.kQ, trs.coefficient);
   if (want51) {
     const m51 = separate51 ? (r51.ok ? Math.abs(set51.M1.mean) : NaN) : m1;
-    finish(tg, m51 * tg.PTP * tg.Pelec * tg.Ppol * tg.Pion * tg.Pleak, tg.kQ, tg.coefficient);
+    finish(tg, m51 * product51, tg.kQ, tg.coefficient);
   }
-  const devs = [trs.deviation, tg.deviation].filter(Number.isFinite);
+  if (ctrl.on) {
+    const ctrlBlocked = messages.some((m) => m.level === 'error' && m.scope === 'ctrl');
+    if (wantTRS) finish((trs.ctrl = {}), ctrl.mean * productTRS, trs.kQ, trs.coefficient, ctrl.mu);
+    if (want51) finish((tg.ctrl = {}), ctrl.mean51 * product51, tg.kQ, tg.coefficient, ctrl.mu);
+    for (const x of [trs.ctrl, tg.ctrl]) if (x) x.blocked = ctrlBlocked || !x.ok;
+  }
+  // отклонение от номинала — по итоговому результату: по контрольным измерениям, если они есть
+  const mainBlocked = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
+  const final = (x, scope) => (mainBlocked(scope) ? {} : x.ctrl && !x.ctrl.blocked ? x.ctrl : x);
+  const devs = [wantTRS ? final(trs, 'trs').deviation : NaN, want51 ? final(tg, 'tg51').deviation : NaN].filter(Number.isFinite);
   if (devs.some((d) => Math.abs(d) > 2)) add('warn', 'common', L('Отклонение от номинального выхода больше 2 %: перед подстройкой ускорителя перепроверьте ввод и измерения.', 'The deviation from the nominal output exceeds 2 %: recheck the input and the measurements before adjusting the linac.'));
 
   const hasError = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
@@ -665,6 +732,8 @@ export function computeElectrons(form) {
   messages.sort((a, b) => order[a.level] - order[b.level]);
   trs.blocked = wantTRS && hasError('trs');
   tg.blocked = want51 && hasError('tg51');
+  if (trs.ctrl) trs.ctrl.blocked = trs.ctrl.blocked || trs.blocked;
+  if (tg.ctrl) tg.ctrl.blocked = tg.ctrl.blocked || tg.blocked;
 
   let comparison = null;
   if (want51 && wantTRS && trs.ok && tg.ok && !trs.blocked && !tg.blocked) comparison = { dRel: (tg.D / trs.D - 1) * 100 };
@@ -681,6 +750,7 @@ export function computeElectrons(form) {
       M51: set51?.M1 ?? null, Mopp51: set51?.Mopp ?? null, M251: set51?.M2 ?? null, ratio51: r51.ratio,
     },
     depth,
+    ctrl,
     trs,
     tg51: tg,
     comparison,

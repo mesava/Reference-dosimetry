@@ -80,7 +80,8 @@ export const CO_DEFAULTS = {
   co_act0: '', // активность источника при установке
   co_act_unit: 'Ci', // 'Ci' | 'TBq'
   co_act_date: '', // дата установки источника (дата паспортной активности)
-  co_ref_rate: '', // сГр/мин на z_max при вводе в эксплуатацию или предыдущей калибровке
+  co_ref_rate: '', // сГр/мин при вводе в эксплуатацию или предыдущей калибровке
+  co_ref_at: 'zmax', // на какой глубине задано значение для сравнения: 'zmax' | 'zref'
   co_ref_date: '', // дата, к которой относится co_ref_rate; пусто — дата установки источника, если указана
 };
 
@@ -433,33 +434,35 @@ export function computeCobalt(form) {
         add('info', 'depth', L(`Установка по РИК, пересчёт через PDD: результат — мощность дозы на z_max при той же установке (РИП ${ru(depth.pddSsd, 0)} см), а не в изоцентре. PDD должна быть измерена при РИП ${ru(depth.pddSsd, 0)} см.`, `SCD setup with conversion via PDD: the result is the dose rate at z_max for the same setup (SSD ${ru(depth.pddSsd, 0)} cm), not at the isocenter. The PDD must be measured at SSD ${ru(depth.pddSsd, 0)} cm.`), `${REF.trs}, разд. 5.4.3`);
       }
     }
-    // ожидаемая мощность дозы: значение при вводе в эксплуатацию или предыдущей калибровке,
-    // приведённое к дате измерения по распаду ⁶⁰Co; без своей даты — от даты установки источника
-    const refRate = parseNumber(f.co_ref_rate);
-    const refDate = isBlank(f.co_ref_date) ? f.co_act_date : f.co_ref_date;
-    const refKey = isBlank(f.co_ref_date) ? 'co_act_date' : 'co_ref_date';
-    depth.refDate = refDate;
-    depth.refDateFromSource = isBlank(f.co_ref_date) && !isBlank(f.co_act_date);
-    if (!isBlank(f.co_ref_rate) && !(refRate > 0)) add('warn', 'depth', L('Мощность дозы для сравнения должна быть положительным числом (сГр/мин).', 'The comparison dose rate must be a positive number (cGy/min).'), null, 'co_ref_rate');
-    if (refRate > 0) {
-      depth.refRate = refRate;
-      depth.expected = refRate;
-      if (!isBlank(refDate)) {
-        if (depth.refDateFromSource) add('info', 'depth', L(`Для мощности дозы сравнения не указана дата — она пересчитана от даты установки источника (${refDate}). Если это значение предыдущей калибровки, укажите его дату.`, `No date is given for the comparison dose rate, so it is decay-corrected from the source installation date (${refDate}). If this value comes from a previous calibration, enter its date.`), null, 'co_ref_date');
-        if (isBlank(f.co_date)) add('warn', 'depth', L('Укажите дату измерения (раздел 1), чтобы учесть распад ⁶⁰Co.', 'Enter the measurement date (section 1) to account for ⁶⁰Co decay.'), null, ['co_date', refKey]);
+    depth.ok = !messages.some((m) => m.level === 'error' && m.scope === 'depth');
+  }
+  // Сравнение с ожидаемой мощностью дозы — на z_max (после пересчёта) или на опорной глубине.
+  depth.expectedAt = depth.on && f.co_ref_at !== 'zref' ? 'zmax' : 'zref';
+  // ожидаемая мощность дозы: значение при вводе в эксплуатацию или предыдущей калибровке,
+  // приведённое к дате измерения по распаду ⁶⁰Co; без своей даты — от даты установки источника
+  const refRate = parseNumber(f.co_ref_rate);
+  const refDate = isBlank(f.co_ref_date) ? f.co_act_date : f.co_ref_date;
+  const refKey = isBlank(f.co_ref_date) ? 'co_act_date' : 'co_ref_date';
+  depth.refDate = refDate;
+  depth.refDateFromSource = isBlank(f.co_ref_date) && !isBlank(f.co_act_date);
+  if (!isBlank(f.co_ref_rate) && !(refRate > 0)) add('warn', 'common', L('Мощность дозы для сравнения должна быть положительным числом (сГр/мин).', 'The comparison dose rate must be a positive number (cGy/min).'), null, 'co_ref_rate');
+  if (refRate > 0) {
+    depth.refRate = refRate;
+    depth.expected = refRate;
+    if (!isBlank(refDate)) {
+      if (depth.refDateFromSource) add('info', 'common', L(`Для мощности дозы сравнения не указана дата — она пересчитана от даты установки источника (${refDate}). Если это значение предыдущей калибровки, укажите его дату.`, `No date is given for the comparison dose rate, so it is decay-corrected from the source installation date (${refDate}). If this value comes from a previous calibration, enter its date.`), null, 'co_ref_date');
+      if (isBlank(f.co_date)) add('warn', 'common', L('Укажите дату измерения (раздел 1), чтобы учесть распад ⁶⁰Co.', 'Enter the measurement date (section 1) to account for ⁶⁰Co decay.'), null, ['co_date', refKey]);
+      else {
+        const d = decayFactor(refDate, f.co_date);
+        if (d.error) add('warn', 'common', L(`Поправка на распад: ${d.error}.`, `Decay correction: ${d.error}.`), null, refKey);
         else {
-          const d = decayFactor(refDate, f.co_date);
-          if (d.error) add('warn', 'depth', L(`Поправка на распад: ${d.error}.`, `Decay correction: ${d.error}.`), null, refKey);
-          else {
-            if (d.days < 0) add('warn', 'depth', L('Дата значения для сравнения позже даты измерения: проверьте даты.', 'The date of the comparison value is later than the measurement date: check the dates.'), null, refKey);
-            depth.days = d.days;
-            depth.decay = d.factor;
-            depth.expected = refRate * d.factor;
-          }
+          if (d.days < 0) add('warn', 'common', L('Дата значения для сравнения позже даты измерения: проверьте даты.', 'The date of the comparison value is later than the measurement date: check the dates.'), null, refKey);
+          depth.days = d.days;
+          depth.decay = d.factor;
+          depth.expected = refRate * d.factor;
         }
       }
     }
-    depth.ok = !messages.some((m) => m.level === 'error' && m.scope === 'depth');
   }
 
   // ------------------------------------------------------- активность источника
@@ -498,8 +501,10 @@ export function computeCobalt(form) {
     if (depth.on && depth.ok && Number.isFinite(depth.factor)) {
       x.rateMaxGy = x.rateGy / depth.factor;
       x.rateMax = x.rate / depth.factor;
-      if (depth.expected > 0) x.deviation = (x.rateMax / depth.expected - 1) * 100;
     }
+    x.DcGy = x.D * 100; // сГр за облучение
+    const atExpected = depth.expectedAt === 'zmax' ? x.rateMax : x.rate;
+    if (depth.expected > 0 && Number.isFinite(atExpected)) x.deviation = (atExpected / depth.expected - 1) * 100;
     x.ok = Number.isFinite(x.D) && x.D > 0 && Number.isFinite(x.rate) && x.rate > 0;
   };
   const productTRS = wantTRS ? trs.kTP * trs.kelec * trs.kpol * trs.ks * trs.kleak : NaN;

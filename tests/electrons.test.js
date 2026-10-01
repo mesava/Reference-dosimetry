@@ -204,3 +204,56 @@ test('Перекрёстная калибровка: поправки лабор
   const b = computeElectrons({ ...f, e_lab_pol_applied: false, e_lab_kpol: '1,01', e_lab_ks_applied: false, e_lab_ks: '1,01' });
   near(a.trs.D, b.trs.D, 1e-15);
 });
+
+test('Контрольные измерения: оба протокола, два положения камеры', () => {
+  const S = SAMPLE_ELECTRONS;
+  // те же показания, что в разделе 5 — итог совпадает с «до калибровки»
+  const same = computeElectrons({ ...S, protocol: 'both', e_ctrl_M: S.e_M1, e_ctrl_M51: S.e_M51 });
+  assert.ok(same.inputs.separate51 && same.ctrl.on && same.ctrl.separate);
+  assert.deepEqual(errorsOf(same), []);
+  near(same.trs.ctrl.D, same.trs.D, 1e-12, 'TRS-398');
+  near(same.tg51.ctrl.D, same.tg51.D, 1e-12, 'TG-51 по положению Report 385');
+  near(same.ctrl.changePct, 0, 1e-9);
+  near(same.ctrl.changePct51, 0, 1e-9);
+  // показания на 1 % больше при вдвое большем числе МЕ: на МЕ — на 1 % больше
+  const up = (a) => a.map((v) => String(parseFloat(String(v).replace(',', '.')) * 2 * 1.01));
+  const r = computeElectrons({ ...S, protocol: 'both', e_ctrl_M: up(S.e_M1), e_ctrl_M51: up(S.e_M51), e_ctrl_mu: String(2 * parseFloat(S.e_mu)) });
+  assert.deepEqual(errorsOf(r), []);
+  near(r.trs.ctrl.DperMU, r.trs.DperMU * 1.01, 1e-9);
+  near(r.tg51.ctrl.DperMU, r.tg51.DperMU * 1.01, 1e-9);
+  near(r.ctrl.changePct, 1, 1e-9);
+  near(r.ctrl.changePct51, 1, 1e-9);
+  near(r.trs.ctrl.DcGy, r.trs.ctrl.D * 100, 1e-12);
+  // только одно положение — ошибка контрольных измерений, основной результат не блокируется
+  const one = computeElectrons({ ...S, protocol: 'both', e_ctrl_M: S.e_M1 });
+  assert.ok(one.messages.some((m) => m.level === 'error' && m.scope === 'ctrl' && /обоих положениях/.test(m.text)));
+  assert.ok(one.trs.ctrl.blocked && one.tg51.ctrl.blocked);
+  assert.ok(!one.trs.blocked && !one.tg51.blocked);
+  // один протокол — одна серия; другая полярность — ошибка
+  const trs = computeElectrons({ ...S, protocol: 'trs', e_ctrl_M: S.e_M1 });
+  assert.ok(!trs.ctrl.separate && !trs.trs.ctrl.blocked);
+  near(trs.trs.ctrl.D, trs.trs.D, 1e-12);
+  const neg = (a) => a.map((v) => `-${String(v).replace(/^[-+]/, '')}`);
+  const pos = (a) => a.map((v) => String(v).replace(/^[-+]/, ''));
+  const flip = computeElectrons({ ...S, protocol: 'trs', e_ctrl_M: /^-/.test(String(S.e_M1[0])) ? pos(S.e_M1) : neg(S.e_M1) });
+  assert.ok(flip.messages.some((m) => m.level === 'error' && m.scope === 'ctrl' && /полярности/.test(m.text)));
+});
+
+test('Электроны: доза в сГр и Гр; номинальный выход на z_max или на опорной глубине', () => {
+  const S = SAMPLE_ELECTRONS;
+  const atMax = computeElectrons({ ...S, protocol: 'trs', e_nominal: '1,000', e_nominal_at: 'zmax' });
+  const x = atMax.trs;
+  assert.equal(atMax.depth.nominalAt, 'zmax');
+  near(x.DcGy, x.D * 100, 1e-12);
+  near(x.Dmax, x.D / atMax.depth.factor, 1e-12);
+  near(x.DmaxcGy, x.Dmax * 100, 1e-12);
+  near(x.DmaxPerMU, x.DmaxcGy / parseFloat(S.e_mu), 1e-12);
+  near(x.deviation, (x.DmaxPerMU - 1) * 100, 1e-9);
+  const atRef = computeElectrons({ ...S, protocol: 'trs', e_nominal: '0,98', e_nominal_at: 'zref' });
+  assert.equal(atRef.depth.nominalAt, 'zref');
+  near(atRef.trs.deviation, (atRef.trs.DperMU / 0.98 - 1) * 100, 1e-9);
+  const off = computeElectrons({ ...S, protocol: 'trs', e_dd_on: false, e_nominal: '0,98' });
+  assert.equal(off.depth.nominalAt, 'zref');
+  near(off.trs.deviation, (off.trs.DperMU / 0.98 - 1) * 100, 1e-9);
+  assert.equal(off.trs.Dmax, undefined);
+});

@@ -13,7 +13,7 @@ import {
 
 const DRAFT_KEY = 'reference-dosimetry.electrons.v1';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'electrons', version: 1 };
-const SERIES_KEYS = ['e_M1', 'e_Mopp', 'e_M2', 'e_M51', 'e_Mopp51', 'e_M251'];
+const SERIES_KEYS = ['e_M1', 'e_Mopp', 'e_M2', 'e_M51', 'e_Mopp51', 'e_M251', 'e_ctrl_M', 'e_ctrl_M51'];
 const ROOT = () => document.getElementById('module-electrons');
 let setStatus = () => {};
 export const electronsStatus = (text) => setStatus(text);
@@ -93,6 +93,14 @@ function applyVisibility(data, r) {
   $('#e-grp51').hidden = !sep;
   $('#e-grp-main-head').hidden = !sep;
   $('#e-ratio51').hidden = !sep;
+  $('#e-ctrl-main-head').hidden = !sep;
+  $('#e-ctrl-grp51').hidden = !sep;
+  $('#e-ctrl-change51').hidden = !sep;
+  $('#e-lbl-ctrl-change').textContent = sep ? L('Изменение относительно раздела 5 (TRS-398)', 'Change relative to section 5 (TRS-398)') : L('Изменение относительно раздела 5', 'Change relative to section 5');
+  $('#e_nominal_at').disabled = !data.e_dd_on;
+  $('#e-nominal-sub').textContent = !data.e_dd_on
+    ? L('Без пересчёта на z_max номинальный выход относится к опорной глубине.', 'Without transfer to z_max the nominal output refers to the reference depth.')
+    : L('Итог показывается на этой глубине; отклонение считается от номинала на ней.', 'The result is shown at this depth, and the deviation is calculated from the nominal output there.');
   $('#e-lbl-ratio12').textContent = sep ? 'M₁/M₂ (TRS-398)' : 'M₁/M₂';
   const p = r.positions;
   const depth51 = p && Number.isFinite(p.tg51?.depth) ? ` = ${fmt(p.tg51.depth, 2)} ${L('см', 'cm')}` : '';
@@ -159,28 +167,69 @@ function renderChamberInfo(r) {
 }
 
 // ------------------------------------------------------------ вывод
+/** Итог: по контрольным измерениям, если они введены и без ошибок, иначе по показаниям раздела 5. */
+const primaryOf = (x) => (x.ctrl && !x.ctrl.blocked && !x.blocked ? x.ctrl : x);
+
+/** Итог показывается на глубине, где задан номинальный выход: на z_max или на опорной глубине. */
+const atMaxOf = (y, r) => r.depth.nominalAt === 'zmax' && Number.isFinite(y.DmaxPerMU);
+
 function doseRow(key, x, r) {
-  const depthOn = r.depth.on && Number.isFinite(x.DmaxPerMU);
-  const main = depthOn ? x.DmaxPerMU : x.DperMU;
+  const p = primaryOf(x);
+  const fromCtrl = p !== x;
+  const atMax = atMaxOf(p, r);
+  const hasMax = Number.isFinite(p.DmaxPerMU);
+  const main = atMax ? p.DmaxPerMU : p.DperMU;
   const z = zTxt(r.quality.zref);
-  const where = depthOn ? L('на z<sub>max</sub>', 'at z<sub>max</sub>') : L(`на ${z} см`, `at ${z} cm`);
+  const where = atMax ? L('на z<sub>max</sub>', 'at z<sub>max</sub>') : L(`на ${z} см`, `at ${z} cm`);
   let chip = '';
-  if (depthOn && Number.isFinite(x.deviation) && !x.blocked) {
-    const cls = Math.abs(x.deviation) <= 1 ? 'good' : Math.abs(x.deviation) > 2 ? 'bad' : '';
-    chip = `<span class="chip ${cls}" title="${L('Отклонение от номинального выхода', 'Deviation from nominal output')}">${fmtSigned(x.deviation, 2)} %</span>`;
+  if (Number.isFinite(p.deviation) && !x.blocked) {
+    const cls = Math.abs(p.deviation) <= 1 ? 'good' : Math.abs(p.deviation) > 2 ? 'bad' : '';
+    chip = `<span class="chip ${cls}" title="${L('Отклонение от номинального выхода', 'Deviation from the nominal output')}">${fmtSigned(p.deviation, 2)} %</span>`;
   }
-  const mu = r.inputs.mu;
-  const forMu = Number.isFinite(mu) ? L(` за ${fmt(mu, 0)} МЕ`, ` for ${fmt(mu, 0)} MU`) : '';
+  const units = fromCtrl ? r.ctrl.mu : r.inputs.mu;
+  const unitsTxt = Number.isFinite(units) ? fmt(units, 0) : '—';
+  const pre = atMaxOf(x, r) ? x.DmaxPerMU : x.DperMU;
+  const preDev = Number.isFinite(x.deviation) ? ` (${fmtSigned(x.deviation, 2)} %)` : '';
+  const doseLine = (lbl, cgy, gy) => `${lbl} = ${fmt(cgy, 2)} ${L('сГр', 'cGy')} = ${fmt(gy, 4)} ${L('Гр', 'Gy')} ${L(`за ${unitsTxt} МЕ`, `for ${unitsTxt} MU`)}`;
   const secondary = [
-    L(`= ${fmt(main, 4)} Гр на 100 МЕ ${where}`, `= ${fmt(main, 4)} Gy per 100 MU ${where}`),
-    L(`D<sub>w</sub>(${z} см) = ${fmt(x.D, 4)} Гр${forMu}`, `D<sub>w</sub>(${z} cm) = ${fmt(x.D, 4)} Gy${forMu}`),
-    depthOn ? L(`${fmt(x.DperMU, 4)} сГр/МЕ на ${z} см`, `${fmt(x.DperMU, 4)} cGy/MU at ${z} cm`) : null,
+    L(`= ${fmt(main, 4)} сГр/МЕ ${where}`, `= ${fmt(main, 4)} cGy/MU ${where}`),
+    doseLine(L(`D<sub>w</sub>(${z} см)`, `D<sub>w</sub>(${z} cm)`), p.DcGy, p.D),
+    hasMax ? doseLine('D(z<sub>max</sub>)', p.DmaxcGy, p.Dmax) : null,
+    hasMax
+      ? atMax
+        ? L(`На ${z} см: ${fmt(p.DperMU, 4)} Гр на 100 МЕ`, `At ${z} cm: ${fmt(p.DperMU, 4)} Gy per 100 MU`)
+        : L(`На z<sub>max</sub>: ${fmt(p.DmaxPerMU, 4)} Гр на 100 МЕ`, `At z<sub>max</sub>: ${fmt(p.DmaxPerMU, 4)} Gy per 100 MU`)
+      : null,
+    fromCtrl
+      ? L(`До калибровки (раздел 5): ${fmt(pre, 4)} Гр на 100 МЕ${preDev}`, `Before calibration (section 5): ${fmt(pre, 4)} Gy per 100 MU${preDev}`)
+      : r.ctrl.on
+        ? L('Контрольные измерения содержат ошибки — итог по разделу 5', 'Check measurements contain errors — result from section 5')
+        : L('Контрольные измерения не введены — итог по разделу 5', 'No check measurements entered — result from section 5'),
   ].filter(Boolean).join('<br>');
   return `<div class="dose-row ${x.blocked ? 'blocked' : ''}">
-    <div class="proto"><span>${PROTO[key].name}</span>${chip}</div>
-    <div class="dose-big">${x.blocked || !Number.isFinite(main) ? '—' : fmt(main, 4)}<small>${L('сГр/МЕ', 'cGy/MU')} ${where}</small></div>
+    <div class="proto"><span>${PROTO[key].name}${fromCtrl ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
+    <div class="dose-big">${x.blocked || !Number.isFinite(main) ? '—' : fmt(main, 4)}<small>${L('Гр на 100 МЕ', 'Gy per 100 MU')} ${where}</small></div>
     <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : secondary}</div>
   </div>`;
+}
+
+/** Строки таблицы с дозой: сГр и Гр за отпущенные МЕ и Гр на 100 МЕ — на опорной глубине и на z_max. */
+function doseTableRows(t, g, r, z, units, own = [false, false]) {
+  const u = Number.isFinite(units) ? fmt(units, 0) : '—';
+  const atMax = r.depth.nominalAt === 'zmax' && r.depth.on;
+  const rows = [
+    [L(`D<sub>w</sub>(${z} см) за ${u} МЕ, сГр`, `D<sub>w</sub>(${z} cm) for ${u} MU, cGy`), ['', t.DcGy, 2, true, own[0]], ['', g.DcGy, 2, true, own[1]]],
+    [L(`D<sub>w</sub>(${z} см) за ${u} МЕ, Гр`, `D<sub>w</sub>(${z} cm) for ${u} MU, Gy`), ['', t.D, 4, true, own[0]], ['', g.D, 4, true, own[1]]],
+    [L(`На ${z} см, Гр на 100 МЕ (= сГр/МЕ)`, `At ${z} cm, Gy per 100 MU (= cGy/MU)`), ['', t.DperMU, 4, true, own[0]], ['', g.DperMU, 4, true, own[1]], atMax ? '' : 'total'],
+  ];
+  if (r.depth.on) {
+    rows.push(
+      [L(`D(z<sub>max</sub>) за ${u} МЕ, сГр`, `D(z<sub>max</sub>) for ${u} MU, cGy`), ['', t.DmaxcGy, 2, true, own[0]], ['', g.DmaxcGy, 2, true, own[1]]],
+      [L(`D(z<sub>max</sub>) за ${u} МЕ, Гр`, `D(z<sub>max</sub>) for ${u} MU, Gy`), ['', t.Dmax, 4, true, own[0]], ['', g.Dmax, 4, true, own[1]]],
+      [L('На z<sub>max</sub>, Гр на 100 МЕ (= сГр/МЕ)', 'At z<sub>max</sub>, Gy per 100 MU (= cGy/MU)'), ['', t.DmaxPerMU, 4, true, own[0]], ['', g.DmaxPerMU, 4, true, own[1]], atMax ? 'total' : ''],
+    );
+  }
+  return rows;
 }
 
 function renderReadout(r, data) {
@@ -196,16 +245,17 @@ function renderReadout(r, data) {
   const first = keys.map((k) => ({ k, x: pick(k) })).find((o) => !o.x.blocked && o.x.ok);
   const mv = $('#e-mobile-value');
   if (first) {
-    const val = r.depth.on && Number.isFinite(first.x.DmaxPerMU) ? first.x.DmaxPerMU : first.x.DperMU;
-    mv.innerHTML = `${first.k === 'trs' ? 'TRS' : 'TG-51'}: <b>${fmt(val, 4)}</b> ${L('сГр/МЕ', 'cGy/MU')}${Number.isFinite(first.x.deviation) ? ` (${fmtSigned(first.x.deviation, 2)} %)` : ''}`;
+    const p = primaryOf(first.x);
+    const val = atMaxOf(p, r) ? p.DmaxPerMU : p.DperMU;
+    mv.innerHTML = `${first.k === 'trs' ? 'TRS' : 'TG-51'}: <b>${fmt(val, 4)}</b> ${L('Гр/100 МЕ', 'Gy/100 MU')}${Number.isFinite(p.deviation) ? ` (${fmtSigned(p.deviation, 2)} %)` : ''}`;
   } else {
     const n = r.messages.filter((m) => m.level === 'error').length;
     mv.textContent = n ? L(`Ошибок: ${n}`, `Errors: ${n}`) : '—';
   }
 
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
-  const scopeName = { common: '', depth: L('Пересчёт на z_max · ', 'Transfer to z_max · '), trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
-  const list = r.messages.filter((m) => m.scope === 'common' || m.scope === 'depth' || keys.includes(m.scope));
+  const scopeName = { common: '', depth: L('Пересчёт на z_max · ', 'Transfer to z_max · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
+  const list = r.messages.filter((m) => m.scope === 'common' || m.scope === 'depth' || m.scope === 'ctrl' || keys.includes(m.scope));
   $('#e-messages').innerHTML = list.length
     ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
     : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
@@ -230,17 +280,24 @@ function renderReadout(r, data) {
     cross
       ? [L('Поправка на качество', 'Beam quality correction'), ['k<sub>Q,Qcross</sub>', t.kQ, 4], ['k′<sub>Q</sub>', g.kQ, 4]]
       : [L('Поправка на качество', 'Beam quality correction'), ['k<sub>Q</sub>', t.kQ, 4], ['k<sub>Q</sub>', g.kQ, 4]],
-    [L(`D<sub>w</sub>(${z} см), Гр`, `D<sub>w</sub>(${z} cm), Gy`), ['', t.D, 4, true], ['', g.D, 4, true], 'total'],
-    [L(`На ${z} см, сГр/МЕ = Гр на 100 МЕ`, `At ${z} cm, cGy/MU = Gy per 100 MU`), ['', t.DperMU, 4, true], ['', g.DperMU, 4, true]],
   ];
-  if (r.depth.on) {
-    rows.push([r.depth.label, ['', r.depth.factor, 4], ['', r.depth.factor, 4]]);
-    rows.push([L('На z<sub>max</sub>, сГр/МЕ = Гр на 100 МЕ', 'At z<sub>max</sub>, cGy/MU = Gy per 100 MU'), ['', t.DmaxPerMU, 4, true], ['', g.DmaxPerMU, 4, true], 'total']);
+  if (r.depth.on) rows.push([r.depth.label, ['', r.depth.factor, 4], ['', r.depth.factor, 4]]);
+  rows.push(...doseTableRows(t, g, r, z, r.inputs.mu));
+  if (r.ctrl.on) {
+    const tc = t.ctrl || {};
+    const gc = g.ctrl || {};
+    const bT = !!tc.blocked;
+    const bG = !!gc.blocked;
+    const ctrlMu = Number.isFinite(r.ctrl.mu) ? fmt(r.ctrl.mu, 0) : '—';
+    rows.push([L(`Контрольные измерения, ${ctrlMu} МЕ`, `Check measurements, ${ctrlMu} MU`), [], [], 'group']);
+    rows.push([L('Исправленное показание, нКл', 'Corrected reading, nC'), ['M<sub>Q</sub>', tc.M, 4, true, bT], ['M', gc.M, 4, true, bG]]);
+    rows.push(...doseTableRows(tc, gc, r, z, r.ctrl.mu, [bT, bG]));
   }
-  const cell = ([sym, v, d, dose], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && blocked ? '—' : fmt(v, d)}</td>`;
+  const cell = ([sym, v, d, dose, own], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && (blocked || own) ? '—' : fmt(v, d)}</td>`;
+  const span = 1 + showT + showG;
   $('#e-factors').innerHTML =
     `<thead><tr><th>${L('Величина', 'Quantity')}</th>${showT ? '<th>TRS-398</th>' : ''}${showG ? '<th>TG-51</th>' : ''}</tr></thead><tbody>` +
-    rows.map((row) => `<tr class="${row[3] || ''}"><td>${row[0]}</td>${showT ? cell(row[1], t.blocked) : ''}${showG ? cell(row[2], g.blocked) : ''}</tr>`).join('') +
+    rows.map((row) => (row[3] === 'group' ? `<tr class="group"><td colspan="${span}">${row[0]}</td></tr>` : `<tr class="${row[3] || ''}"><td>${row[0]}</td>${showT ? cell(row[1], t.blocked) : ''}${showG ? cell(row[2], g.blocked) : ''}</tr>`)).join('') +
     '</tbody>';
 }
 
@@ -303,6 +360,11 @@ function reportText(data, r) {
     line(L('M(V1, обратная, положение по Report 385), нКл', 'M(V1, opposite, Report 385 position), nC'), `${cells(data.e_Mopp51)} → ${mean} ${fmt(Math.abs(i.Mopp51?.mean), 4)}`);
     line(L('M(V2, положение по Report 385), нКл', 'M(V2, Report 385 position), nC'), `${cells(data.e_M251)} → ${mean} ${fmt(Math.abs(i.M251?.mean), 4)}`);
   }
+  if (r.ctrl.on) {
+    const forMu = L(`за ${fmt(r.ctrl.mu, 0)} МЕ`, `for ${fmt(r.ctrl.mu, 0)} MU`);
+    line(L(`Контрольные измерения M(V1${at}), нКл`, `Check measurements M(V1${at}), nC`), `${cells(data.e_ctrl_M)} → ${mean} ${fmt(r.ctrl.mean, 4)} ${forMu}`);
+    if (i.separate51) line(L('Контрольные измерения M(V1, положение по Report 385), нКл', 'Check measurements M(V1, Report 385 position), nC'), `${cells(data.e_ctrl_M51)} → ${mean} ${fmt(r.ctrl.mean51, 4)} ${forMu}`);
+  }
   out.push('');
   const blocks = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
   for (const k of blocks) {
@@ -317,12 +379,31 @@ function reportText(data, r) {
     }
     if (x.blocked) out.push(L('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: есть ошибки ввода (см. замечания).', 'RESULT NOT CALCULATED: there are input errors (see Messages).'));
     else {
-      out.push(L(`M = ${fmt(x.M)} нКл; D_w(z_ref) = ${fmt(x.D)} Гр; ${fmt(x.DperMU)} сГр/МЕ (Гр на 100 МЕ) на z_ref`, `M = ${fmt(x.M)} nC; D_w(z_ref) = ${fmt(x.D)} Gy; ${fmt(x.DperMU)} cGy/MU (Gy per 100 MU) at z_ref`));
-      if (r.depth.on && r.depth.ok && Number.isFinite(x.DmaxPerMU)) {
-        const zmax = data.e_zmax ? `; z_max = ${data.e_zmax} ${L('см', 'cm')}` : '';
-        const dev = Number.isFinite(x.deviation) ? L(`; отклонение от номинала ${fmtSigned(x.deviation, 2)} %`, `; deviation from nominal ${fmtSigned(x.deviation, 2)} %`) : '';
-        out.push(L(`${r.depth.label} = ${fmt(r.depth.factor)}${zmax}; на z_max ${fmt(x.DmaxPerMU)} сГр/МЕ (Гр на 100 МЕ)${dev}`, `${r.depth.label} = ${fmt(r.depth.factor)}${zmax}; at z_max ${fmt(x.DmaxPerMU)} cGy/MU (Gy per 100 MU)${dev}`));
-      } else if (r.depth.on) out.push(L('Пересчёт на z_max не выполнен: исправьте данные раздела 7.', 'Transfer to z_max not performed: correct the data in section 7.'));
+      const describe = (y, title, units) => {
+        const z0 = zTxt(q.zref);
+        const u = fmt(units, 0);
+        const atZmax = r.depth.nominalAt === 'zmax';
+        const dev = Number.isFinite(y.deviation)
+          ? L(`; отклонение от номинала (${atZmax ? 'на z_max' : `на ${z0} см`}) ${fmtSigned(y.deviation, 2)} %`, `; deviation from nominal (${atZmax ? 'at z_max' : `at ${z0} cm`}) ${fmtSigned(y.deviation, 2)} %`)
+          : '';
+        out.push(
+          L(
+            `${title}: M = ${fmt(y.M)} нКл; D_w(${z0} см) = ${fmt(y.DcGy, 2)} сГр = ${fmt(y.D)} Гр за ${u} МЕ; ${fmt(y.DperMU)} Гр на 100 МЕ (сГр/МЕ)${atZmax ? '' : dev}`,
+            `${title}: M = ${fmt(y.M)} nC; D_w(${z0} cm) = ${fmt(y.DcGy, 2)} cGy = ${fmt(y.D)} Gy for ${u} MU; ${fmt(y.DperMU)} Gy per 100 MU (cGy/MU)${atZmax ? '' : dev}`,
+          ),
+        );
+        if (r.depth.on && r.depth.ok && Number.isFinite(y.DmaxPerMU)) {
+          const zmax = data.e_zmax ? `z_max = ${data.e_zmax} ${L('см', 'cm')}; ` : '';
+          out.push(
+            L(
+              `  ${zmax}${r.depth.label} = ${fmt(r.depth.factor)}; D(z_max) = ${fmt(y.DmaxcGy, 2)} сГр = ${fmt(y.Dmax)} Гр за ${u} МЕ; ${fmt(y.DmaxPerMU)} Гр на 100 МЕ (сГр/МЕ)${atZmax ? dev : ''}`,
+              `  ${zmax}${r.depth.label} = ${fmt(r.depth.factor)}; D(z_max) = ${fmt(y.DmaxcGy, 2)} cGy = ${fmt(y.Dmax)} Gy for ${u} MU; ${fmt(y.DmaxPerMU)} Gy per 100 MU (cGy/MU)${atZmax ? dev : ''}`,
+            ),
+          );
+        } else if (r.depth.on) out.push(L('  Пересчёт на z_max не выполнен: исправьте данные раздела 8.', '  Transfer to z_max not performed: correct the data in section 8.'));
+      };
+      describe(x, L('До калибровки (раздел 5)', 'Before calibration (section 5)'), i.mu);
+      if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (итог)', 'From check measurements (final)'), r.ctrl.mu);
     }
     out.push('');
   }

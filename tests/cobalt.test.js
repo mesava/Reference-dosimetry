@@ -176,3 +176,16 @@ test('Проверки по итогам ревью: Mₙ как среднее,
   const blocked = computeCobalt({ ...SAMPLE_COBALT, co_ndw: '' });
   assert.ok(blocked.trs.blocked && blocked.trs.ctrl.blocked);
 });
+
+test('⁶⁰Co: доза за облучение в сГр; значение для сравнения на z_max или на опорной глубине', () => {
+  const r = computeCobalt(SAMPLE_COBALT);
+  assert.equal(r.depth.expectedAt, 'zmax');
+  near(r.trs.DcGy, r.trs.D * 100, 1e-12);
+  const ref = computeCobalt({ ...SAMPLE_COBALT, co_ref_at: 'zref', co_ref_rate: '120' });
+  assert.equal(ref.depth.expectedAt, 'zref');
+  near(ref.trs.deviation, (ref.trs.rate / ref.depth.expected - 1) * 100, 1e-9);
+  const off = computeCobalt({ ...SAMPLE_COBALT, co_dd_on: false, co_ref_rate: '120' });
+  assert.equal(off.depth.expectedAt, 'zref');
+  near(off.trs.deviation, (off.trs.rate / off.depth.expected - 1) * 100, 1e-9);
+  assert.equal(off.trs.rateMax, undefined);
+});

@@ -102,6 +102,7 @@ export const FORM_DEFAULTS = {
   dd_pdd: '',
   dd_tmr: '',
   dd_nominal: '1,000',
+  dd_nominal_at: 'dmax', // где задан номинальный выход: 'dmax' (после пересчёта) | 'zref' (аппарат калибруют на опорной глубине)
 };
 
 const REF = {
@@ -996,11 +997,14 @@ export function computePhotons(form) {
         );
       }
     }
-    depth.nominal = parseNumber(f.dd_nominal);
-    if (!isBlank(f.dd_nominal) && !(depth.nominal > 0)) {
-      add('warn', 'depth', L('Номинальный выход не распознан: отклонение от номинала не считается.', 'Nominal output not recognized: the deviation from nominal is not calculated.'), null, 'dd_nominal');
-    }
     depth.ok = !messages.some((m) => m.level === 'error' && m.scope === 'depth');
+  }
+  // Номинальный выход: на d_max (после пересчёта) или на опорной глубине — не все аппараты калибруют на d_max.
+  // Без пересчёта на d_max он всегда относится к опорной глубине.
+  depth.nominal = parseNumber(f.dd_nominal);
+  depth.nominalAt = depth.on && f.dd_nominal_at !== 'zref' ? 'dmax' : 'zref';
+  if (!isBlank(f.dd_nominal) && !(depth.nominal > 0)) {
+    add('warn', 'common', L('Номинальный выход не распознан: отклонение от номинала не считается.', 'Nominal output not recognized: the deviation from nominal is not calculated.'), null, 'dd_nominal');
   }
 
   // ------------------------------------------------------- контрольные измерения
@@ -1016,12 +1020,12 @@ export function computePhotons(form) {
       const d = Math.max(...ctrl.M.values.map((v) => Math.abs(v - ctrl.M.mean) / Math.abs(ctrl.M.mean)));
       const pct = ru(d * 100, 2);
       if (d > 0.05) {
-        add('error', 'ctrl', L(`Контрольные показания расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, `Control readings deviate by ${pct}% from the mean: probably an input error.`), null, 'ctrl_M');
+        add('error', 'ctrl', L(`Контрольные показания расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, `Check readings deviate by ${pct}% from the mean: probably an input error.`), null, 'ctrl_M');
       } else if (d > 0.005) {
         add(
           'warn',
           'ctrl',
-          L(`Разброс контрольных показаний до ${pct} % от среднего: повторите облучения.`, `Control readings scatter by up to ${pct}% from the mean: repeat the irradiations.`),
+          L(`Разброс контрольных показаний до ${pct} % от среднего: повторите облучения.`, `Check readings scatter by up to ${pct}% from the mean: repeat the irradiations.`),
           `${REF.r374}, разд. 4.4.2`,
           'ctrl_M',
         );
@@ -1031,7 +1035,7 @@ export function computePhotons(form) {
           'ctrl',
           L(
             `Разброс контрольных показаний до ${pct} % от среднего: Report 374 советует добиваться ±0,1 % без тренда.`,
-            `Control readings scatter by up to ${pct}% from the mean: Report 374 advises achieving ±0.1% with no trend.`,
+            `Check readings scatter by up to ${pct}% from the mean: Report 374 advises achieving ±0.1% with no trend.`,
           ),
           `${REF.r374}, разд. 4.4.2`,
           'ctrl_M',
@@ -1059,14 +1063,18 @@ export function computePhotons(form) {
   const finish = (x, M, kQ, units = mu) => {
     x.M = M;
     x.D = M * kQ * ndw; // Гр
+    x.DcGy = x.D * 100; // сГр за отпущенные МЕ
+    x.units = units;
     x.DperMUGy = x.D / units; // Гр/МЕ
     x.DperMU = x.DperMUGy * 100; // сГр/МЕ (= Гр на 100 МЕ)
     if (depth.on && depth.ok && Number.isFinite(depth.factor)) {
       x.Dmax = x.D / depth.factor;
+      x.DmaxcGy = x.Dmax * 100;
       x.DmaxPerMUGy = x.DperMUGy / depth.factor;
       x.DmaxPerMU = x.DperMU / depth.factor;
-      if (Number.isFinite(depth.nominal) && depth.nominal > 0) x.deviation = (x.DmaxPerMU / depth.nominal - 1) * 100;
     }
+    const atNominal = depth.nominalAt === 'dmax' ? x.DmaxPerMU : x.DperMU;
+    if (depth.nominal > 0 && Number.isFinite(atNominal)) x.deviation = (atNominal / depth.nominal - 1) * 100;
     x.ok = Number.isFinite(x.D) && x.D > 0;
   };
 

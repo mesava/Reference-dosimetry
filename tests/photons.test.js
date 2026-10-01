@@ -350,3 +350,43 @@ test('Установка по РИО: пересчёт на d_max через TMR
   assert.equal(p.depth.pddSsd, 90);
   assert.match(p.depth.label, /РИП 90 см/);
 });
+
+test('Доза в сГр и Гр за отпущенные МЕ; номинальный выход на опорной глубине или на d_max', () => {
+  // Versa HD, 6 МВ БВФ, РИО: аппарат калибруют на 10 см — 1 сГр/МЕ (1 Гр на 100 МЕ) на опорной глубине
+  const f = {
+    ...FORM_DEFAULTS, protocol: 'trs', meta_beam: '6 FFF', meta_fff: true, setup_geometry: 'SAD',
+    ch_model: 'PTW31010', ch_ndw: '0,297', ch_T0: '20', ch_P0: '101,325', el_kelec: '1',
+    env_T: '21,8', env_P: '1014,42', env_P_unit: 'hPa', rd_mu: '500', rd_V1: '400', rd_V2: '200',
+    rd_M1: ['16,67', '16,67', '16,66'], rd_Mopp: ['16,65', '16,66', '16,66'], rd_M2: ['16,54', '16,55', '16,55'],
+    qtrs_method: 'ratio', qtrs_v20: '0,6785', qtrs_v10: '1', kqtrs_mode: 'manual', kqtrs_manual: '0,9892',
+    prof_mode: 'formula22', prof_length: '6,5', prof_sdd: '100', dd_on: false,
+    ctrl_M: ['16,83', '16,83', '16,81'], dd_nominal: '1,000',
+  };
+  const r = computePhotons(f);
+  assert.equal(r.depth.nominalAt, 'zref', 'без пересчёта на d_max номинал — на опорной глубине');
+  const c = r.trs.ctrl;
+  near(c.DcGy, 500.22, 0.05, 'D_w(10) за 500 МЕ, сГр');
+  near(c.D, c.DcGy / 100, 1e-12, 'то же в Гр');
+  near(c.DperMU, c.DcGy / 500, 1e-12, 'сГр/МЕ = Гр на 100 МЕ');
+  near(c.DperMUGy * 100, c.DperMU, 1e-12);
+  near(c.deviation, (c.DperMU / 1 - 1) * 100, 1e-9, 'отклонение по опорной глубине');
+  near(c.deviation, 0.044, 0.01);
+  assert.equal(c.Dmax, undefined);
+
+  // с пересчётом на d_max: номинал на d_max (по умолчанию) или на опорной глубине
+  const atMax = computePhotons({ ...SAMPLE_FORM, dd_nominal: '1,000', dd_nominal_at: 'dmax' });
+  const atRef = computePhotons({ ...SAMPLE_FORM, dd_nominal: '0,670', dd_nominal_at: 'zref' });
+  for (const x of [atMax.trs, atMax.tg51, atRef.trs]) {
+    near(x.Dmax, x.D / atMax.depth.factor, 1e-12, 'D(d_max) = D(z_ref)/PDD');
+    near(x.DmaxcGy, x.Dmax * 100, 1e-12);
+    near(x.DmaxPerMU, x.DmaxcGy / x.units, 1e-12);
+  }
+  assert.equal(atMax.depth.nominalAt, 'dmax');
+  assert.equal(atRef.depth.nominalAt, 'zref');
+  near(atMax.trs.deviation, (atMax.trs.DmaxPerMU - 1) * 100, 1e-9);
+  near(atRef.trs.deviation, (atRef.trs.DperMU / 0.67 - 1) * 100, 1e-9);
+  // выключенный пересчёт переводит номинал на опорную глубину, даже если выбрано «на d_max»
+  const off = computePhotons({ ...SAMPLE_FORM, dd_on: false, dd_nominal: '0,670', dd_nominal_at: 'dmax' });
+  assert.equal(off.depth.nominalAt, 'zref');
+  near(off.trs.deviation, (off.trs.DperMU / 0.67 - 1) * 100, 1e-9);
+});
