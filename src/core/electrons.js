@@ -4,7 +4,8 @@
 // TG-51 с аддендумом WGTG51 Report 385 (2024): D_w = M · k′_Q · k_Qecal · N_D,w⁶⁰Co (ур. 4),
 //   d_ref = 0,6·R50 − 0,1 см (ур. 2), k′_Q и k_Qecal — табл. 4–7, перекрёстная калибровка — ур. (5)–(6).
 
-import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru } from './units.js';
+import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
+import { L } from './i18n.js';
 import { temperaturePressure, polarity, environmentChecks } from './common.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
@@ -102,8 +103,8 @@ export function parseElectronBeam(name) {
 /** R50 по глубине 50 % ионизации: TRS-398 ур. (37); TG-51 ур. (16)–(17); Report 385 ур. (3). */
 export function r50FromI50(i50) {
   if (!(i50 > 0)) return { value: NaN };
-  if (i50 <= 10) return { value: 1.029 * i50 - 0.06, equation: 'R50 = 1,029·R50,ion − 0,06 (R50,ion ≤ 10 г/см²)' };
-  return { value: 1.059 * i50 - 0.37, equation: 'R50 = 1,059·R50,ion − 0,37 (R50,ion > 10 г/см²)' };
+  if (i50 <= 10) return { value: 1.029 * i50 - 0.06, equation: L('R50 = 1,029·R50,ion − 0,06 (R50,ion ≤ 10 г/см²)', 'R50 = 1.029·R50,ion − 0.06 (R50,ion ≤ 10 g/cm²)') };
+  return { value: 1.059 * i50 - 0.37, equation: L('R50 = 1,059·R50,ion − 0,37 (R50,ion > 10 г/см²)', 'R50 = 1.059·R50,ion − 0.37 (R50,ion > 10 g/cm²)') };
 }
 
 export const zrefFromR50 = (r50) => 0.6 * r50 - 0.1;
@@ -125,7 +126,7 @@ export function resolveEChamber(f) {
       id: 'OTHER',
       other: true,
       maker: '',
-      model: f.e_other_name || 'другая камера',
+      model: f.e_other_name || L('другая камера', 'other chamber'),
       type: f.e_other_type === 'cyl' ? 'cyl' : 'pp',
       trsRcylMm: Number.isFinite(r) ? r : NaN,
     };
@@ -140,18 +141,44 @@ export function positions(chamber, zref) {
   if (chamber.type === 'cyl') {
     const r = chamber.trsRcylMm ?? chamber.rCavMm;
     out.trs = Number.isFinite(r)
-      ? { depth: zref + 0.05 * r, text: `центр камеры на 0,5·r_cyl = ${ru(0.5 * r, 2)} мм глубже z_ref, то есть на глубине ${ru(zref + 0.05 * r, 2)} см` }
-      : { depth: NaN, text: 'центр камеры на 0,5·r_cyl глубже z_ref (укажите радиус полости)' };
-    out.tg51 = { depth: zref, text: `центр камеры на глубине d_ref = ${ru(zref, 2)} см, без сдвига` };
+      ? {
+          depth: zref + 0.05 * r,
+          text: L(
+            `центр камеры на 0,5·r_cyl = ${ru(0.5 * r, 2)} мм глубже z_ref, то есть на глубине ${ru(zref + 0.05 * r, 2)} см`,
+            `chamber center 0.5·r_cyl = ${ru(0.5 * r, 2)} mm deeper than z_ref, i.e. at a depth of ${ru(zref + 0.05 * r, 2)} cm`,
+          ),
+        }
+      : { depth: NaN, text: L('центр камеры на 0,5·r_cyl глубже z_ref (укажите радиус полости)', 'chamber center 0.5·r_cyl deeper than z_ref (enter the cavity radius)') };
+    out.tg51 = { depth: zref, text: L(`центр камеры на глубине d_ref = ${ru(zref, 2)} см, без сдвига`, `chamber center at d_ref = ${ru(zref, 2)} cm, no shift`) };
   } else {
     const wet = Number.isFinite(chamber.windowMgCm2) ? chamber.windowMgCm2 / 100 : NaN; // мм водного эквивалента
     out.trs = Number.isFinite(wet)
-      ? { depth: zref, front: zref - wet / 10, text: `внутренняя поверхность входного окна на z_ref = ${ru(zref, 2)} см; водоэквивалентная толщина окна ${ru(wet, 2)} мм, наружная поверхность — на ${ru(zref - wet / 10, 2)} см` }
-      : { depth: zref, text: `внутренняя поверхность входного окна на z_ref = ${ru(zref, 2)} см с учётом водоэквивалентной толщины окна` };
+      ? {
+          depth: zref,
+          front: zref - wet / 10,
+          text: L(
+            `внутренняя поверхность входного окна на z_ref = ${ru(zref, 2)} см; водоэквивалентная толщина окна ${ru(wet, 2)} мм, наружная поверхность — на ${ru(zref - wet / 10, 2)} см`,
+            `inner surface of the entrance window at z_ref = ${ru(zref, 2)} cm; water-equivalent window thickness ${ru(wet, 2)} mm, outer surface at ${ru(zref - wet / 10, 2)} cm`,
+          ),
+        }
+      : {
+          depth: zref,
+          text: L(
+            `внутренняя поверхность входного окна на z_ref = ${ru(zref, 2)} см с учётом водоэквивалентной толщины окна`,
+            `inner surface of the entrance window at z_ref = ${ru(zref, 2)} cm, accounting for the water-equivalent window thickness`,
+          ),
+        };
     const s = chamber.r385?.shiftMm;
     out.tg51 = Number.isFinite(s)
-      ? { depth: zref, front: zref - s / 10, text: `наружная поверхность входного окна на ${ru(zref - s / 10, 2)} см: точка измерения на ${ru(s, 1)} мм за ней установлена на d_ref = ${ru(zref, 2)} см` }
-      : { depth: zref, text: `точка измерения на d_ref = ${ru(zref, 2)} см` };
+      ? {
+          depth: zref,
+          front: zref - s / 10,
+          text: L(
+            `наружная поверхность входного окна на ${ru(zref - s / 10, 2)} см: точка измерения на ${ru(s, 1)} мм за ней установлена на d_ref = ${ru(zref, 2)} см`,
+            `outer surface of the entrance window at ${ru(zref - s / 10, 2)} cm, so that the point of measurement ${ru(s, 1)} mm behind it is at d_ref = ${ru(zref, 2)} cm`,
+          ),
+        }
+      : { depth: zref, text: L(`точка измерения на d_ref = ${ru(zref, 2)} см`, `point of measurement at d_ref = ${ru(zref, 2)} cm`) };
   }
   return out;
 }
@@ -175,14 +202,16 @@ export function computeElectrons(form) {
   };
   const read = (key, label, scope = 'common') => {
     const v = parseNumber(f[key]);
-    if (!Number.isFinite(v)) add('error', scope, isBlank(f[key]) ? `Не заполнено поле «${label}».` : `Не удалось прочитать число в поле «${label}».`, null, key);
+    if (!Number.isFinite(v)) {
+      add('error', scope, isBlank(f[key]) ? L(`Не заполнено поле «${label}».`, `Field "${label}" is empty.`) : L(`Не удалось прочитать число в поле «${label}».`, `Could not read the number in field "${label}".`), null, key);
+    }
     return v;
   };
   const readCells = (key, label, scope = 'common') => {
     const s = parseCells(f[key]);
-    if (s.error) add('error', scope, `«${label}»: ${s.error}.`, null, key);
-    else if (s.n === 0) add('error', scope, `Не заполнено поле «${label}».`, null, key);
-    else if (s.mean === 0) add('error', scope, `«${label}»: среднее показание равно нулю.`, null, key);
+    if (s.error) add('error', scope, L(`«${label}»: ${s.error}.`, `"${label}": ${s.error}.`), null, key);
+    else if (s.n === 0) add('error', scope, L(`Не заполнено поле «${label}».`, `Field "${label}" is empty.`), null, key);
+    else if (s.mean === 0) add('error', scope, L(`«${label}»: среднее показание равно нулю.`, `"${label}": the mean reading is zero.`), null, key);
     return s;
   };
 
@@ -191,19 +220,24 @@ export function computeElectrons(form) {
   const energy = parseNumber(f.e_energy);
 
   // ---------------------------------------------------------- геометрия
-  const ssd = read('e_ssd', 'РИП');
+  const ssd = read('e_ssd', L('РИП', 'SSD'));
   if (Number.isFinite(ssd)) {
-    if (ssd < 50 || ssd > 150) add('error', 'common', 'РИП задаётся в сантиметрах (обычно 100).', null, 'e_ssd');
+    if (ssd < 50 || ssd > 150) add('error', 'common', L('РИП задаётся в сантиметрах (обычно 100).', 'SSD is entered in centimeters (usually 100).'), null, 'e_ssd');
     else {
-      if (wantTRS && Math.abs(ssd - 100) > 1e-9) add('warn', 'trs', 'TRS-398 задаёт РИП 100 см.', `${REF.trs}, табл. 19`, 'e_ssd');
-      if (want51 && (ssd < 90 || ssd > 110)) add('warn', 'tg51', 'Report 385 допускает для референсных измерений РИП от 90 до 110 см.', `${REF.r385}, разд. 3`, 'e_ssd');
-      else if (want51 && Math.abs(ssd - 100) > 1e-9) add('info', 'tg51', 'РИП должно совпадать с тем, при котором вводилась в эксплуатацию система планирования; R50 всё равно измеряют при РИП 100 см.', `${REF.r385}, разд. 3`);
+      if (wantTRS && Math.abs(ssd - 100) > 1e-9) add('warn', 'trs', L('TRS-398 задаёт РИП 100 см.', 'TRS-398 specifies an SSD of 100 cm.'), `${REF.trs}, табл. 19`, 'e_ssd');
+      if (want51 && (ssd < 90 || ssd > 110)) add('warn', 'tg51', L('Report 385 допускает для референсных измерений РИП от 90 до 110 см.', 'Report 385 allows an SSD of 90 to 110 cm for reference measurements.'), `${REF.r385}, разд. 3`, 'e_ssd');
+      else if (want51 && Math.abs(ssd - 100) > 1e-9) {
+        add('info', 'tg51', L(
+          'РИП должно совпадать с тем, при котором вводилась в эксплуатацию система планирования; R50 всё равно измеряют при РИП 100 см.',
+          'The SSD should match the one used to commission the treatment planning system; R50 is still measured at SSD 100 cm.',
+        ), `${REF.r385}, разд. 3`);
+      }
     }
   }
-  const field = read('e_field', 'Размер поля');
+  const field = read('e_field', L('Размер поля', 'Field size'));
   if (Number.isFinite(field)) {
-    if (field < 2 || field > 40) add('error', 'common', 'Размер поля задаётся одним числом в сантиметрах, например 10.', null, 'e_field');
-    else if (field < 10) add('warn', 'common', 'Поле на поверхности фантома должно быть не меньше 10 × 10 см.', `${REF.trs}, табл. 19; ${REF.r385}, разд. 3`, 'e_field');
+    if (field < 2 || field > 40) add('error', 'common', L('Размер поля задаётся одним числом в сантиметрах, например 10.', 'Field size is entered as a single number in centimeters, e.g. 10.'), null, 'e_field');
+    else if (field < 10) add('warn', 'common', L('Поле на поверхности фантома должно быть не меньше 10 × 10 см.', 'The field at the phantom surface must be at least 10 × 10 cm.'), `${REF.trs}, табл. 19; ${REF.r385}, разд. 3`, 'e_field');
   }
 
   // ---------------------------------------------------------- качество пучка
@@ -211,20 +245,23 @@ export function computeElectrons(form) {
   let r50 = NaN;
   if (f.e_r50_method === 'r50') {
     r50 = read('e_r50', 'R50');
-    quality.equation = 'R50 введён (измерен детектором, отвечающим дозе, или известен)';
+    quality.equation = L('R50 введён (измерен детектором, отвечающим дозе, или известен)', 'R50 entered (measured with a dose-responding detector, or known)');
   } else {
     const i50 = read('e_i50', 'R50,ion (I50)');
     if (Number.isFinite(i50)) {
-      if (i50 <= 0) add('error', 'common', 'R50,ion должен быть больше нуля.', null, 'e_i50');
+      if (i50 <= 0) add('error', 'common', L('R50,ion должен быть больше нуля.', 'R50,ion must be greater than zero.'), null, 'e_i50');
       const r = r50FromI50(i50);
       r50 = r.value;
       quality.i50 = i50;
       quality.equation = r.equation;
-      if (want51 && i50 < 1.7) add('warn', 'tg51', 'Формула R50 по I50 проверена для 1,7 ≤ I50 ≤ 10 см.', `${REF.r385}, ур. (3)`, 'e_i50');
+      if (want51 && i50 < 1.7) add('warn', 'tg51', L('Формула R50 по I50 проверена для 1,7 ≤ I50 ≤ 10 см.', 'The R50-from-I50 formula is verified for 1.7 ≤ I50 ≤ 10 cm.'), `${REF.r385}, ур. (3)`, 'e_i50');
     }
   }
   if (Number.isFinite(r50) && (r50 <= 0.3 || r50 > 15)) {
-    add('error', 'common', `R50 = ${ru(r50, 2)} г/см² неправдоподобен: вводится в г/см² (см), например 4,9 для пучка 12 МэВ.`, null, ['e_r50', 'e_i50']);
+    add('error', 'common', L(
+      `R50 = ${ru(r50, 2)} г/см² неправдоподобен: вводится в г/см² (см), например 4,9 для пучка 12 МэВ.`,
+      `R50 = ${ru(r50, 2)} g/cm² is implausible: enter it in g/cm² (cm), e.g. 4.9 for a 12 MeV beam.`,
+    ), null, ['e_r50', 'e_i50']);
     r50 = NaN;
   }
   const zref = Number.isFinite(r50) ? zrefFromR50(r50) : NaN;
@@ -234,21 +271,35 @@ export function computeElectrons(form) {
 
   // ---------------------------------------------------------------- камера
   const chamber = resolveEChamber(f);
-  if (isBlank(f.e_ch_model)) add('error', 'common', 'Выберите тип камеры.', null, 'e_ch_model');
+  if (isBlank(f.e_ch_model)) add('error', 'common', L('Выберите тип камеры.', 'Select the chamber type.'), null, 'e_ch_model');
   if (chamber?.other) {
-    add('warn', 'common', 'Для камеры не из списка k_Q берётся только вручную (например, измеренный в лаборатории). Report 385 не рекомендует для электронов камеры, которых нет в его таблицах.', `${REF.r385}, разд. 6.6; ${REF.trs}, табл. 20–21`);
-    if (chamber.type === 'cyl' && !Number.isFinite(chamber.trsRcylMm) && wantTRS) add('warn', 'trs', 'Укажите радиус полости: по TRS-398 центр цилиндрической камеры ставят на 0,5·r_cyl глубже z_ref.', `${REF.trs}, табл. 19`, 'e_other_r');
+    add('warn', 'common', L(
+      'Для камеры не из списка k_Q берётся только вручную (например, измеренный в лаборатории). Report 385 не рекомендует для электронов камеры, которых нет в его таблицах.',
+      'For a chamber not in the list, k_Q can only be entered manually (e.g. measured by a calibration laboratory). Report 385 does not recommend chambers absent from its tables for electron beams.',
+    ), `${REF.r385}, разд. 6.6; ${REF.trs}, табл. 20–21`);
+    if (chamber.type === 'cyl' && !Number.isFinite(chamber.trsRcylMm) && wantTRS) {
+      add('warn', 'trs', L(
+        'Укажите радиус полости: по TRS-398 центр цилиндрической камеры ставят на 0,5·r_cyl глубже z_ref.',
+        'Enter the cavity radius: per TRS-398, the center of a cylindrical chamber is placed 0.5·r_cyl deeper than z_ref.',
+      ), `${REF.trs}, табл. 19`, 'e_other_r');
+    }
   }
-  if (chamber?.sleeve) add('info', 'common', 'Камера не водонепроницаема: используйте тот же чехол (ПММА ≤ 1 мм), что и при калибровке.', `${REF.trs}, разд. 7.2.2`);
+  if (chamber?.sleeve) add('info', 'common', L('Камера не водонепроницаема: используйте тот же чехол (ПММА ≤ 1 мм), что и при калибровке.', 'The chamber is not waterproof: use the same waterproofing sleeve (PMMA ≤ 1 mm) as during calibration.'), `${REF.trs}, разд. 7.2.2`);
   const isCyl = chamber?.type === 'cyl';
   if (isCyl && Number.isFinite(r50) && r50 < 3 && wantTRS) {
-    add('error', 'trs', 'При R50 < 3 г/см² TRS-398 допускает только плоскопараллельные камеры.', `${REF.trs}, табл. 19`, 'e_ch_model');
+    add('error', 'trs', L('При R50 < 3 г/см² TRS-398 допускает только плоскопараллельные камеры.', 'For R50 < 3 g/cm², TRS-398 allows only plane-parallel chambers.'), `${REF.trs}, табл. 19`, 'e_ch_model');
   }
   if (!isCyl && chamber && f.e_cal_route === 'co60' && want51) {
-    add('info', 'tg51', 'Report 385 допускает плоскопараллельную камеру, откалиброванную в ⁶⁰Co, если подтверждено её поведение как камеры эталонного класса, в частности стабильность.', `${REF.r385}, разд. 5.3.1, прил. A`);
+    add('info', 'tg51', L(
+      'Report 385 допускает плоскопараллельную камеру, откалиброванную в ⁶⁰Co, если подтверждено её поведение как камеры эталонного класса, в частности стабильность.',
+      'Report 385 allows a plane-parallel chamber calibrated in ⁶⁰Co if its reference-class behavior, in particular its stability, has been verified.',
+    ), `${REF.r385}, разд. 5.3.1, прил. A`);
   }
   if (!isCyl && chamber && f.e_cal_route === 'co60' && wantTRS) {
-    add('info', 'trs', 'TRS-398 рекомендует калибровать плоскопараллельную камеру в пучке электронов — в лаборатории или перекрёстно.', `${REF.trs}, разд. 7.2.1`);
+    add('info', 'trs', L(
+      'TRS-398 рекомендует калибровать плоскопараллельную камеру в пучке электронов — в лаборатории или перекрёстно.',
+      'TRS-398 recommends calibrating a plane-parallel chamber in an electron beam, either at a calibration laboratory or by cross-calibration.',
+    ), `${REF.trs}, разд. 7.2.1`);
   }
   const pos = positions(chamber, zref);
 
@@ -262,32 +313,42 @@ export function computeElectrons(form) {
   if (!cross) {
     ndwRaw = read('e_ndw', 'N_D,w');
     ndw = Number.isFinite(ndwRaw) ? ndwToGyPerNC(ndwRaw, f.e_ndw_unit) : NaN;
-    if (Number.isFinite(ndw) && (ndw < 1e-3 || ndw > 5)) add('warn', 'common', `N_D,w = ${ndw.toPrecision(4).replace('.', ',')} Гр/нКл выглядит неправдоподобно: проверьте единицы.`, null, 'e_ndw');
+    if (Number.isFinite(ndw) && (ndw < 1e-3 || ndw > 5)) {
+      add('warn', 'common', L(
+        `N_D,w = ${dec(ndw.toPrecision(4))} Гр/нКл выглядит неправдоподобно: проверьте единицы.`,
+        `N_D,w = ${dec(ndw.toPrecision(4))} Gy/nC looks implausible: check the units.`,
+      ), null, 'e_ndw');
+    }
   } else {
     if (wantTRS) {
       const v = read('e_cross_ndw', 'N_D,w,Qcross', 'trs');
       crossNdw = Number.isFinite(v) ? ndwToGyPerNC(v, f.e_cross_ndw_unit) : NaN;
-      crossR50 = read('e_cross_r50', 'R50 пучка перекрёстной калибровки', 'trs');
-      if (Number.isFinite(crossR50) && crossR50 < 7) add('info', 'trs', 'TRS-398 рекомендует перекрёстную калибровку в пучке с R50 > 7 г/см² (E₀ > 16 МэВ).', `${REF.trs}, разд. 7.6.1`, 'e_cross_r50');
+      crossR50 = read('e_cross_r50', L('R50 пучка перекрёстной калибровки', 'R50 of the cross-calibration beam'), 'trs');
+      if (Number.isFinite(crossR50) && crossR50 < 7) add('info', 'trs', L('TRS-398 рекомендует перекрёстную калибровку в пучке с R50 > 7 г/см² (E₀ > 16 МэВ).', 'TRS-398 recommends cross-calibration in a beam with R50 > 7 g/cm² (E₀ > 16 MeV).'), `${REF.trs}, разд. 7.6.1`, 'e_cross_r50');
     }
     if (want51) {
-      if (isCyl) add('error', 'tg51', 'Report 385 предусматривает перекрёстную калибровку только плоскопараллельной камеры по цилиндрической: для цилиндрической камеры используйте N_D,w в ⁶⁰Co.', `${REF.r385}, разд. 5.3.2`, 'e_cal_route');
+      if (isCyl) {
+        add('error', 'tg51', L(
+          'Report 385 предусматривает перекрёстную калибровку только плоскопараллельной камеры по цилиндрической: для цилиндрической камеры используйте N_D,w в ⁶⁰Co.',
+          'Report 385 provides cross-calibration only of a plane-parallel chamber against a cylindrical one: for a cylindrical chamber, use N_D,w in ⁶⁰Co.',
+        ), `${REF.r385}, разд. 5.3.2`, 'e_cal_route');
+      }
       const v = read('e_cross_kn', '(k_Qecal·N_D,w)_pp', 'tg51');
       crossKN = Number.isFinite(v) ? ndwToGyPerNC(v, f.e_cross_kn_unit) : NaN;
     }
   }
-  const T0 = read('e_T0', 'T₀ из сертификата');
-  const P0 = read('e_P0', 'P₀ из сертификата');
-  if (Number.isFinite(T0) && (T0 < 15 || T0 > 25)) add('error', 'common', 'T₀ задаётся в °C (обычно 20 или 22).', null, 'e_T0');
-  if (Number.isFinite(P0) && (P0 < 95 || P0 > 105)) add('warn', 'common', 'P₀ задаётся в кПа (обычно 101,325 или 101,33).', null, 'e_P0');
+  const T0 = read('e_T0', L('T₀ из сертификата', 'T₀ from the certificate'));
+  const P0 = read('e_P0', L('P₀ из сертификата', 'P₀ from the certificate'));
+  if (Number.isFinite(T0) && (T0 < 15 || T0 > 25)) add('error', 'common', L('T₀ задаётся в °C (обычно 20 или 22).', 'T₀ is entered in °C (usually 20 or 22).'), null, 'e_T0');
+  if (Number.isFinite(P0) && (P0 < 95 || P0 > 105)) add('warn', 'common', L('P₀ задаётся в кПа (обычно 101,325 или 101,33).', 'P₀ is entered in kPa (usually 101.325 or 101.33).'), null, 'e_P0');
   const kelec = read('e_kelec', 'k_elec (P_elec)');
-  if (Number.isFinite(kelec) && Math.abs(kelec - 1) > 0.02) add('warn', 'common', 'k_elec отличается от 1 больше чем на 2 %: проверьте сертификат электрометра.', null, 'e_kelec');
+  if (Number.isFinite(kelec) && Math.abs(kelec - 1) > 0.02) add('warn', 'common', L('k_elec отличается от 1 больше чем на 2 %: проверьте сертификат электрометра.', 'k_elec differs from 1 by more than 2 %: check the electrometer calibration certificate.'), null, 'e_kelec');
 
   // ------------------------------------------------------ окружающая среда
-  const T = read('e_env_T', 'Температура воды');
-  const Pin = read('e_env_P', 'Давление');
+  const T = read('e_env_T', L('Температура воды', 'Water temperature'));
+  const Pin = read('e_env_P', L('Давление', 'Pressure'));
   const P = Number.isFinite(Pin) ? pressureToKPa(Pin, f.e_env_P_unit) : NaN;
-  if (Number.isFinite(P) && (P < 50 || P > 110)) add('error', 'common', `Давление ${ru(P, 2)} кПа вне правдоподобного диапазона: проверьте единицы.`, null, 'e_env_P');
+  if (Number.isFinite(P) && (P < 50 || P > 110)) add('error', 'common', L(`Давление ${ru(P, 2)} кПа вне правдоподобного диапазона: проверьте единицы.`, `Pressure ${ru(P, 2)} kPa is outside the plausible range: check the units.`), null, 'e_env_P');
   const env = environmentChecks({ T, Hraw: f.e_env_H, keyT: 'e_env_T', keyH: 'e_env_H', parseNumber, isBlank, ru });
   env.items.forEach(([level, text, ref, key]) => add(level, 'common', text, ref, key));
 

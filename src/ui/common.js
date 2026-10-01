@@ -150,27 +150,39 @@ export function applyShowRules(root, data, protocol) {
   for (const el of $$('[data-standalone]', root)) el.hidden = framed;
 }
 
-/** Двухшаговая кнопка подтверждения (вместо confirm()). */
+/**
+ * Двухшаговая кнопка подтверждения (вместо confirm()). Подписи — строки или функции,
+ * возвращающие строку на текущем языке.
+ */
 export function armButton(btn, idleText, armedText, action) {
+  const text = (t) => (typeof t === 'function' ? t() : t);
+  // меняем тот же текстовый узел, чтобы перевод статического текста (translateStatic) его не терял
+  const setText = (t) => {
+    const node = btn.firstChild;
+    if (node && node.nodeType === Node.TEXT_NODE && btn.childNodes.length === 1) node.nodeValue = text(t);
+    else btn.textContent = text(t);
+  };
   btn.addEventListener('click', () => {
     if (btn.dataset.armed) {
       delete btn.dataset.armed;
       btn.classList.remove('danger-armed');
-      btn.textContent = idleText;
+      setText(idleText);
       action();
       return;
     }
     btn.dataset.armed = '1';
     btn.classList.add('danger-armed');
-    btn.textContent = armedText;
+    setText(armedText);
     setTimeout(() => {
       if (btn.dataset.armed) {
         delete btn.dataset.armed;
         btn.classList.remove('danger-armed');
-        btn.textContent = idleText;
+        setText(idleText);
       }
     }, 4000);
   });
+  // после смены языка подпись должна соответствовать текущему состоянию кнопки
+  document.addEventListener('langchange', () => setText(btn.dataset.armed ? armedText : idleText));
 }
 
 /**

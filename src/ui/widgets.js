@@ -1,5 +1,6 @@
 // Элементы формы: поле со списком сохранённых значений, ячейки показаний, список сотрудников.
 import { getList, addToList, removeFromList } from './store.js';
+import { L } from '../core/i18n.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -27,7 +28,7 @@ export function makeCombo(wrapper, { onPick } = {}) {
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'combo-toggle';
-  toggle.setAttribute('aria-label', 'Показать сохранённые значения');
+  toggle.setAttribute('aria-label', L('Показать сохранённые значения', 'Show saved values'));
   toggle.tabIndex = -1;
   toggle.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2 4.5 6 8.5 10 4.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
   wrapper.append(toggle, menu);
@@ -50,12 +51,12 @@ export function makeCombo(wrapper, { onPick } = {}) {
     const q = (filter ?? '').trim().toLowerCase();
     items = q ? all.filter((v) => v.toLowerCase().includes(q) && v !== input.value) : all;
     if (items.length === 0) {
-      menu.innerHTML = q ? '' : '<div class="combo-empty">Список пуст. Введённое значение сохранится автоматически.</div>';
+      menu.innerHTML = q ? '' : `<div class="combo-empty">${L('Список пуст. Введённое значение сохранится автоматически.', 'The list is empty. The value you enter will be saved automatically.')}</div>`;
     } else {
       menu.innerHTML = items
         .map(
           (v, i) =>
-            `<div class="combo-item${i === active ? ' active' : ''}" role="option" data-i="${i}"><span class="combo-pick">${esc(v)}</span><button type="button" class="combo-del" data-i="${i}" aria-label="Удалить «${esc(v)}» из списка" title="Удалить из списка">×</button></div>`,
+            `<div class="combo-item${i === active ? ' active' : ''}" role="option" data-i="${i}"><span class="combo-pick">${esc(v)}</span><button type="button" class="combo-del" data-i="${i}" aria-label="${L(`Удалить «${esc(v)}» из списка`, `Remove “${esc(v)}” from the list`)}" title="${L('Удалить из списка', 'Remove from the list')}">×</button></div>`,
         )
         .join('');
     }
@@ -139,7 +140,7 @@ export function renderCells(container, values) {
   list.innerHTML = vals
     .map(
       (v, i) =>
-        `<input type="text" class="num cell" inputmode="decimal" id="${key}_${i}" aria-label="${esc(container.dataset.label)}, измерение ${i + 1}" value="${esc(v)}">`,
+        `<input type="text" class="num cell" inputmode="decimal" id="${key}_${i}" aria-label="${esc(container.dataset.label)}, ${L('измерение', 'reading')} ${i + 1}" value="${esc(v)}">`,
     )
     .join('');
   container.querySelector('.cell-remove').disabled = vals.length <= 1;
@@ -175,8 +176,8 @@ export function renderStaff(container, values, onChange) {
   container.innerHTML = vals
     .map(
       (v, i) => `<div class="staff-row">
-        <div class="combo" data-list="staff"><input type="text" class="staff-input" id="${prefix}_${i}" aria-label="Сотрудник ${i + 1}" value="${esc(v)}"></div>
-        ${i > 0 ? `<button type="button" class="icon-btn staff-remove" data-i="${i}" aria-label="Убрать сотрудника ${i + 1}" title="Убрать строку">−</button>` : ''}
+        <div class="combo" data-list="staff"><input type="text" class="staff-input" id="${prefix}_${i}" aria-label="${L('Сотрудник', 'Staff member')} ${i + 1}" value="${esc(v)}"></div>
+        ${i > 0 ? `<button type="button" class="icon-btn staff-remove" data-i="${i}" aria-label="${L(`Убрать сотрудника ${i + 1}`, `Remove staff member ${i + 1}`)}" title="${L('Убрать строку', 'Remove row')}">−</button>` : ''}
       </div>`,
     )
     .join('');
@@ -210,8 +211,8 @@ export function renderPairs(container, a, b) {
   const rows = [];
   for (let i = 0; i < n; i++) {
     rows.push(`<div class="pair-row"><span class="pair-no">${i + 1}</span>
-      <input type="text" class="num pair-a" inputmode="decimal" id="${ka}_${i}" aria-label="${esc(la)}, облучение ${i + 1}" value="${esc(a?.[i] ?? '')}">
-      <input type="text" class="num pair-b" inputmode="decimal" id="${kb}_${i}" aria-label="${esc(lb)}, облучение ${i + 1}" value="${esc(b?.[i] ?? '')}"></div>`);
+      <input type="text" class="num pair-a" inputmode="decimal" id="${ka}_${i}" aria-label="${esc(la)}, ${L('облучение', 'irradiation')} ${i + 1}" value="${esc(a?.[i] ?? '')}">
+      <input type="text" class="num pair-b" inputmode="decimal" id="${kb}_${i}" aria-label="${esc(lb)}, ${L('облучение', 'irradiation')} ${i + 1}" value="${esc(b?.[i] ?? '')}"></div>`);
   }
   container.querySelector('.pairs-list').innerHTML = rows.join('');
   container.querySelector('.pair-remove').disabled = n <= 2;

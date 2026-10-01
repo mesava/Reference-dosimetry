@@ -7,6 +7,7 @@
 
 import { CHAMBERS, chamberLabel, chamberNote } from './chambers.js';
 import { E_CHAMBERS, eChamberLabel } from './electron-chambers.js';
+import { L } from './i18n.js';
 
 export const PP_PREFIX = 'PP:';
 
@@ -14,12 +15,12 @@ export const PP_PREFIX = 'PP:';
 export function coChamberGroups() {
   const groups = new Map();
   for (const c of CHAMBERS) {
-    const g = `${c.maker} — цилиндрические`;
+    const g = L(`${c.maker} — цилиндрические`, `${c.maker} — cylindrical`);
     if (!groups.has(g)) groups.set(g, []);
     groups.get(g).push({ id: c.id, label: `${chamberLabel(c)}${c.note ? ' — ' + chamberNote(c) : ''}` });
   }
   const pp = E_CHAMBERS.filter((c) => c.type === 'pp').map((c) => ({ id: PP_PREFIX + c.id, label: eChamberLabel(c) }));
-  return [...[...groups].map(([label, items]) => ({ label, items })), { label: 'Плоскопараллельные', items: pp }];
+  return [...[...groups].map(([label, items]) => ({ label, items })), { label: L('Плоскопараллельные', 'Plane-parallel'), items: pp }];
 }
 
 /**
@@ -31,7 +32,7 @@ export function resolveCoChamber(f) {
   if (!id) return null;
   if (id === 'CUSTOM' || id.startsWith('MY:')) {
     const label = [f.co_cc_maker, f.co_cc_model].map((s) => String(s ?? '').trim()).filter(Boolean).join(' ');
-    return { id, custom: true, type: f.co_cc_type === 'pp' ? 'pp' : 'cyl', label: label || 'своя камера' };
+    return { id, custom: true, type: f.co_cc_type === 'pp' ? 'pp' : 'cyl', label: label || L('своя камера', 'custom chamber') };
   }
   if (id.startsWith(PP_PREFIX)) {
     const c = E_CHAMBERS.find((x) => x.id === id.slice(PP_PREFIX.length));

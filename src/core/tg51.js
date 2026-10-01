@@ -1,5 +1,6 @@
 // AAPM TG-51 (Almond et al., 1999) и аддендум для фотонов (McEwen et al., 2014).
 import { ru } from './units.js';
+import { L } from './i18n.js';
 import { LEGACY_NODES } from './chambers.js';
 
 export const TG51_ABS0 = 273.2;
@@ -38,33 +39,50 @@ export function pIon({ mH, mL, vH, vL, beam = 'pulsed' }) {
 export function pdd10x({ method, pdd10, pdd10Pb, manual }) {
   switch (method) {
     case 'open':
-      if (!Number.isFinite(pdd10)) return { error: 'не введено %dd(10)' };
+      if (!Number.isFinite(pdd10)) return { error: L('не введено %dd(10)', '%dd(10) not entered') };
       if (pdd10 > 75) {
-        return { value: NaN, error: 'при %dd(10) > 75 % без фольги нельзя: нужна свинцовая фольга или промежуточная формула (15)' };
+        return {
+          value: NaN,
+          error: L(
+            'при %dd(10) > 75 % без фольги нельзя: нужна свинцовая фольга или промежуточная формула (15)',
+            'the open-beam method cannot be used for %dd(10) > 75%: a lead foil or the interim formula (15) is required',
+          ),
+        };
       }
-      return { value: pdd10, equation: '%dd(10)x = %dd(10) (энергия ниже 10 МВ)' };
+      return { value: pdd10, equation: L('%dd(10)x = %dd(10) (энергия ниже 10 МВ)', '%dd(10)x = %dd(10) (energy below 10 MV)') };
     case 'foil50':
-      if (!Number.isFinite(pdd10Pb)) return { error: 'не введено %dd(10)Pb' };
+      if (!Number.isFinite(pdd10Pb)) return { error: L('не введено %dd(10)Pb', '%dd(10)Pb not entered') };
       if (pdd10Pb >= 73) {
-        return { value: (0.8905 + 0.0015 * pdd10Pb) * pdd10Pb, equation: 'ур. (13): (0,8905 + 0,00150·%dd(10)Pb)·%dd(10)Pb' };
+        return {
+          value: (0.8905 + 0.0015 * pdd10Pb) * pdd10Pb,
+          equation: L('ур. (13): (0,8905 + 0,00150·%dd(10)Pb)·%dd(10)Pb', 'Eq. (13): (0.8905 + 0.00150·%dd(10)Pb)·%dd(10)Pb'),
+        };
       }
       return { value: pdd10Pb, equation: '%dd(10)Pb < 73 % → %dd(10)x = %dd(10)Pb' };
     case 'foil30':
-      if (!Number.isFinite(pdd10Pb)) return { error: 'не введено %dd(10)Pb' };
+      if (!Number.isFinite(pdd10Pb)) return { error: L('не введено %dd(10)Pb', '%dd(10)Pb not entered') };
       if (pdd10Pb >= 71) {
-        return { value: (0.8116 + 0.00264 * pdd10Pb) * pdd10Pb, equation: 'ур. (14): (0,8116 + 0,00264·%dd(10)Pb)·%dd(10)Pb' };
+        return {
+          value: (0.8116 + 0.00264 * pdd10Pb) * pdd10Pb,
+          equation: L('ур. (14): (0,8116 + 0,00264·%dd(10)Pb)·%dd(10)Pb', 'Eq. (14): (0.8116 + 0.00264·%dd(10)Pb)·%dd(10)Pb'),
+        };
       }
       return { value: pdd10Pb, equation: '%dd(10)Pb < 71 % → %dd(10)x = %dd(10)Pb' };
     case 'interim':
-      if (!Number.isFinite(pdd10)) return { error: 'не введено %dd(10)' };
+      if (!Number.isFinite(pdd10)) return { error: L('не введено %dd(10)', '%dd(10) not entered') };
       if (pdd10 <= 75) return { value: pdd10, equation: '%dd(10) ≤ 75 % → %dd(10)x = %dd(10)' };
-      if (pdd10 > 89) return { value: NaN, error: 'промежуточная формула (15) применима только до %dd(10) = 89 %' };
-      return { value: 1.267 * pdd10 - 20.0, equation: 'ур. (15): 1,267·%dd(10) − 20,0' };
+      if (pdd10 > 89) {
+        return {
+          value: NaN,
+          error: L('промежуточная формула (15) применима только до %dd(10) = 89 %', 'the interim formula (15) is applicable only up to %dd(10) = 89%'),
+        };
+      }
+      return { value: 1.267 * pdd10 - 20.0, equation: L('ур. (15): 1,267·%dd(10) − 20,0', 'Eq. (15): 1.267·%dd(10) − 20.0') };
     case 'manual':
-      if (!Number.isFinite(manual)) return { error: 'не введено %dd(10)x' };
-      return { value: manual, equation: 'введено вручную' };
+      if (!Number.isFinite(manual)) return { error: L('не введено %dd(10)x', '%dd(10)x not entered') };
+      return { value: manual, equation: L('введено вручную', 'entered manually') };
     default:
-      return { error: `неизвестный способ определения %dd(10)x: ${method}` };
+      return { error: L(`неизвестный способ определения %dd(10)x: ${method}`, `unknown %dd(10)x method: ${method}`) };
   }
 }
 
@@ -91,25 +109,43 @@ function interpolate(xs, ys, x) {
  * Возвращает { value, source, error }.
  */
 export function kQ(chamber, x) {
-  if (!chamber) return { error: 'камера не выбрана' };
-  if (!Number.isFinite(x)) return { error: 'нет %dd(10)x' };
+  if (!chamber) return { error: L('камера не выбрана', 'no chamber selected') };
+  if (!Number.isFinite(x)) return { error: L('нет %dd(10)x', 'no %dd(10)x') };
   if (chamber.tg51) {
     if (x > ADD_FIT_MIN && x < ADD_FIT_MAX) {
-      return { value: kQAddendumFit(chamber.tg51, x), source: 'аддендум TG-51 (2014), табл. I, ур. (1)' };
+      return {
+        value: kQAddendumFit(chamber.tg51, x),
+        source: L('аддендум TG-51 (2014), табл. I, ур. (1)', 'TG-51 addendum (2014), Table I, Eq. (1)'),
+      };
     }
     if (x >= CO60_PDD10X && x <= ADD_FIT_MIN) {
       const t = (x - CO60_PDD10X) / (ADD_FIT_MIN - CO60_PDD10X);
       return {
         value: 1 + t * (chamber.tg51.kq63 - 1),
-        source: 'аддендум TG-51, разд. 3.D: интерполяция между k_Q(63) и 1,000 при 58',
+        source: L(
+          'аддендум TG-51, разд. 3.D: интерполяция между k_Q(63) и 1,000 при 58',
+          'TG-51 addendum, Sec. 3.D: interpolation between k_Q(63) and 1.000 at 58',
+        ),
       };
     }
-    return { error: `%dd(10)x = ${ru(x, 1)} вне диапазона данных аддендума (58–86)` };
+    return {
+      error: L(
+        `%dd(10)x = ${ru(x, 1)} вне диапазона данных аддендума (58–86)`,
+        `%dd(10)x = ${ru(x, 1)} is outside the range of the addendum data (58–86)`,
+      ),
+    };
   }
   if (chamber.tg51Legacy) {
     const v = interpolate(LEGACY_NODES, chamber.tg51Legacy, x);
-    if (!Number.isFinite(v)) return { error: `%dd(10)x = ${ru(x, 1)} вне диапазона табл. I TG-51 (58–93)` };
-    return { value: v, source: 'TG-51 (1999), табл. I, линейная интерполяция' };
+    if (!Number.isFinite(v)) {
+      return {
+        error: L(
+          `%dd(10)x = ${ru(x, 1)} вне диапазона табл. I TG-51 (58–93)`,
+          `%dd(10)x = ${ru(x, 1)} is outside the range of TG-51 Table I (58–93)`,
+        ),
+      };
+    }
+    return { value: v, source: L('TG-51 (1999), табл. I, линейная интерполяция', 'TG-51 (1999), Table I, linear interpolation') };
   }
-  return { error: 'для этой камеры в TG-51 и аддендуме нет данных k_Q' };
+  return { error: L('для этой камеры в TG-51 и аддендуме нет данных k_Q', 'TG-51 and its addendum give no k_Q data for this chamber') };
 }

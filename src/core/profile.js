@@ -3,6 +3,7 @@
 // WGTG51 Report 374, ур. (8) (P_rp) — то же выражение для одномерной камеры.
 
 import { parseNumber } from './units.js';
+import { L } from './i18n.js';
 
 /**
  * Разбор профиля: по строке на точку, «положение (мм)  значение».
@@ -15,18 +16,20 @@ export function parseProfile(text) {
     const line = lines[i].trim();
     if (line === '' || line.startsWith('#')) continue;
     const parts = line.split(/[\s;\t]+/).filter(Boolean);
-    if (parts.length < 2) return { points: [], error: `строка ${i + 1}: нужно два числа` };
+    if (parts.length < 2) return { points: [], error: L(`строка ${i + 1}: нужно два числа`, `line ${i + 1}: two numbers are required`) };
     const x = parseNumber(parts[0]);
     const y = parseNumber(parts[1]);
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       if (points.length === 0 && i === 0) continue; // строка заголовка
-      return { points: [], error: `строка ${i + 1}: не удалось прочитать числа` };
+      return { points: [], error: L(`строка ${i + 1}: не удалось прочитать числа`, `line ${i + 1}: could not read the numbers`) };
     }
     points.push({ x, y });
   }
   points.sort((p, q) => p.x - q.x);
   for (let i = 1; i < points.length; i++) {
-    if (points[i].x === points[i - 1].x) return { points: [], error: `повторяется положение ${points[i].x} мм` };
+    if (points[i].x === points[i - 1].x) {
+      return { points: [], error: L(`повторяется положение ${points[i].x} мм`, `position ${points[i].x} mm is repeated`) };
+    }
   }
   return { points, error: null };
 }
@@ -46,14 +49,14 @@ function valueAt(points, x) {
  * по измеренным точкам с линейной интерполяцией на краях.
  */
 export function kvolFromProfile(points, lengthMm) {
-  if (!(lengthMm > 0)) return { error: 'не задана длина полости камеры' };
-  if (points.length < 3) return { error: 'в профиле меньше трёх точек' };
+  if (!(lengthMm > 0)) return { error: L('не задана длина полости камеры', 'chamber cavity length not specified') };
+  if (points.length < 3) return { error: L('в профиле меньше трёх точек', 'the profile has fewer than three points') };
   const half = lengthMm / 2;
   if (points[0].x > -half || points[points.length - 1].x < half) {
-    return { error: `профиль должен покрывать от −${half} до +${half} мм` };
+    return { error: L(`профиль должен покрывать от −${half} до +${half} мм`, `the profile must cover −${half} to +${half} mm`) };
   }
   const center = valueAt(points, 0);
-  if (!(center > 0)) return { error: 'значение профиля на оси должно быть положительным' };
+  if (!(center > 0)) return { error: L('значение профиля на оси должно быть положительным', 'the profile value on the axis must be positive') };
   const xs = [-half, ...points.map((p) => p.x).filter((x) => x > -half && x < half), half];
   let integral = 0;
   for (let i = 0; i < xs.length - 1; i++) {
