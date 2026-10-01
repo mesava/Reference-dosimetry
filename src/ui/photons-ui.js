@@ -169,7 +169,7 @@ function applyVisibility(data, result) {
     : L('Итог показывается на этой глубине; отклонение считается от номинала на ней.', 'The result is shown at this depth, and the deviation is calculated from the nominal output there.');
   $('#lbl-dd-pdd').textContent = sad ? L(`PDD(${zTxt}) при РИП ${ssdTxt} см, %`, `PDD(${zTxt}) at SSD ${ssdTxt} cm, %`) : `PDD(${zTxt}), %`;
   $('#dd-pdd-sub').textContent = sad ? L(`измеренная при РИП ${ssdTxt} см; PDD при РИП 100 см здесь не подходит`, `measured at SSD ${ssdTxt} cm; PDD at SSD 100 cm is not suitable here`) : '';
-  $('label[for="dd_tmr"]').textContent = `TMR(${zTxt})`;
+  $('#lbl-dd-tmr .term').textContent = `TMR(${zTxt})`;
   $('#dd-hint').textContent = !sad
     ? L(
         `D(d_max) = D(${zTxt} см) / PDD(${zTxt}) · 100. PDD берут клиническую, из данных ввода в эксплуатацию и системы планирования.`,

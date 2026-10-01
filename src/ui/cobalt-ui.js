@@ -140,7 +140,7 @@ function applyVisibility(data, result) {
   const pddSsd = result.depth.pddSsd;
   $('#co-lbl-pdd').textContent = sad && Number.isFinite(pddSsd) ? L(`PDD(${z}) при РИП ${fmt(pddSsd, 0)} см, %`, `PDD(${z}) at SSD ${fmt(pddSsd, 0)} cm, %`) : `PDD(${z}), %`;
   $('#co-pdd-sub').textContent = sad ? L(`измеренная при РИП ${Number.isFinite(pddSsd) ? fmt(pddSsd, 0) : 'РИК − z_ref'} см`, `measured at SSD ${Number.isFinite(pddSsd) ? fmt(pddSsd, 0) : 'SCD − z_ref'} cm`) : '';
-  $('#co-lbl-tmr').textContent = `TMR(${z})`;
+  $('#co-lbl-tmr .term').textContent = `TMR(${z})`;
   const windowMode = data.co_timer_mode === 'window';
   $('#co-lbl-time').textContent = windowMode ? L('Время накопления заряда', 'Charge collection time') : L('Заданное время облучения', 'Set irradiation time');
   $('#co-time-sub').textContent = windowMode ? L('интервал, на котором электрометр накапливал заряд', 'the interval over which the electrometer collected charge') : L('время для всех серий показаний в разделе 5', 'the time for all reading series in section 5');

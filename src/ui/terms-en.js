@@ -194,6 +194,29 @@ export const TERMS_EN = {
 <p class="src">TRS-398 Rev.1, Secs. 5.4.3 and 6.4.3; TG-51, Sec. IX.C; Report 374, Sec. 2.4.3.</p>`,
   },
 
+  tmr: {
+    title: 'TMR — tissue-maximum ratio',
+    html: `
+<p>TMR (tissue-maximum ratio) is the ratio of the dose at a point at depth d to the dose at the same point with a water layer of thickness d<sub>max</sub> above it. The source-to-point distance (usually the isocenter) and the field size at the point stay the same; only the water thickness above the point changes.</p>
+<p class="formula">TMR(d, A) = D(d, A) / D(d<sub>max</sub>, A)</p>
+<p>Unlike PDD, TMR contains no inverse-square factor: it does not depend on SSD and suits the isocentric setup. A is the field at the plane of the point; for calibration it is 10 × 10 cm at the isocenter.</p>
+<h4>Why it is needed here</h4>
+<p>In an SAD (SCD) setup the chamber is at the isocenter at the reference depth. The dose at d<sub>max</sub> at the isocenter is D(d<sub>max</sub>) = D(z<sub>ref</sub>) / TMR(z<sub>ref</sub>). A PDD measured at SSD 100 cm must not be used here: it refers to a different setup, and the result would be too high (by about 17% for 6 MV).</p>
+<h4>Where to get it</h4>
+<ul>
+<li><b>From the commissioning data</b> — the same data entered into the treatment planning system, for this beam and a 10 × 10 cm field at the isocenter. TMR is not remeasured at every calibration.</li>
+<li><b>Measure it.</b> The chamber stays fixed at the isocenter with a 10 × 10 cm field at the isocenter; only the water level above the chamber is changed (by adding or removing water; some water phantoms have a TMR/TPR mode with a reservoir). Readings are taken at the reference depth and at d<sub>max</sub>: TMR(z<sub>ref</sub>) = M(z<sub>ref</sub>) / M(d<sub>max</sub>). It is a ratio of readings of the same chamber, so N<sub>D,w</sub> and k<sub>TP</sub> cancel if the temperature and pressure did not change during the measurement.</li>
+<li><b>Calculate it from PDD</b> if no TMR is available: TMR(d, A<sub>d</sub>) = PDD(d, A, f)/100 · ((f + d)/(f + d<sub>max</sub>))² · S<sub>p</sub>(A<sub>dmax</sub>)/S<sub>p</sub>(A<sub>d</sub>), where f is the SSD, A is the field at the surface, A<sub>d</sub> and A<sub>dmax</sub> are the fields at depths d and d<sub>max</sub>, and S<sub>p</sub> is the phantom scatter factor. This is an approximation: the commissioning data are more reliable.</li>
+</ul>
+<h4>Checks</h4>
+<ul>
+<li>TMR is entered as a ratio, not as a percentage.</li>
+<li>TMR(10) is noticeably larger than PDD(10)/100 at SSD 100 cm: for 6 MV by a factor of about (110/101.5)² ≈ 1.17, slightly less because of the difference in scatter.</li>
+<li>Do not confuse TMR(10) with TPR<sub>20,10</sub>: the latter is a beam quality index, the ratio of doses at depths of 20 and 10 cm.</li>
+</ul>
+<p class="src">TRS-398 Rev.1, Secs. 5.4.3 and 6.4.3; TG-51, Sec. IX.C; Report 374, Sec. 2.4.3; F. M. Khan, The Physics of Radiation Therapy (TPR and TMR).</p>`,
+  },
+
   timer: {
     title: 'Timer error of a ⁶⁰Co unit',
     html: `
@@ -203,7 +226,8 @@ export const TERMS_EN = {
 <ul>
 <li>Make several irradiations in the same geometry with different set times, e.g. 0.5, 1 and 2 min, and record the readings.</li>
 <li>The calculator fits a straight line M = a·t + b through the points by least squares; τ = b/a. With two irradiations the solution is exact.</li>
-<li>Another common method is to compare a single irradiation of time t with n irradiations of t/n each. It is not implemented in the calculator: a τ obtained this way can be entered manually.</li>
+<li>Another common method is to compare a single irradiation of time t (reading M₁) with n irradiations of t/n each (total reading Mₙ): τ = t·(Mₙ − M₁)/(n·M₁ − Mₙ).</li>
+<li>If the charge is collected by the electrometer over an interval when the source is already in the treatment position, the timer error does not enter the dose rate.</li>
 </ul>
 <p>τ can be either positive or negative. Dose rate = D per irradiation / (t + τ).</p>
 <p class="src">TRS-398 Rev.1, Sec. 5.4.2 and worksheet 5.8; TG-51, Sec. VII ("shutter timing error").</p>`,

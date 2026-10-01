@@ -380,7 +380,7 @@
           <select id="co_dd_sad"><option value="tmr">через TMR — на z_max в изоцентре</option><option value="pdd">через PDD при РИП = РИК − z_ref</option></select>
         </div>
         <div class="field" id="co-pdd-field"><label for="co_pdd" id="co-lbl-pdd">PDD(5), %</label><input type="text" id="co_pdd" class="num" inputmode="decimal"><span class="sub" id="co-pdd-sub"></span></div>
-        <div class="field" data-show="co_geometry:SAD;co_dd_sad:tmr"><label for="co_tmr" id="co-lbl-tmr">TMR(5)</label><input type="text" id="co_tmr" class="num" inputmode="decimal" placeholder="0,904"><span class="sub">отношение, не проценты</span></div>
+        <div class="field" data-show="co_geometry:SAD;co_dd_sad:tmr"><span class="label" id="co-lbl-tmr"><button type="button" class="term" data-term="tmr">TMR(5)</button></span><input type="text" id="co_tmr" class="num" inputmode="decimal" placeholder="0,904" aria-labelledby="co-lbl-tmr"><span class="sub">отношение, не проценты</span></div>
       </div>
       <div class="grid subgrid">
         <div class="field"><label for="co_ref_rate">Мощность дозы для сравнения, сГр/мин</label><input type="text" id="co_ref_rate" class="num" inputmode="decimal"><span class="sub">при вводе в эксплуатацию или предыдущей калибровке; можно не заполнять</span></div>
@@ -848,7 +848,7 @@
           <select id="dd_sad"><option value="tmr">через TMR — на d_max в изоцентре</option><option value="pdd">через PDD при РИП 90 см</option></select>
         </div>
         <div class="field" id="dd-pdd-field"><label for="dd_pdd" id="lbl-dd-pdd">PDD(10), %</label><input type="text" id="dd_pdd" class="num" inputmode="decimal"><span class="sub" id="dd-pdd-sub"></span></div>
-        <div class="field" data-show="setup_geometry:SAD;dd_sad:tmr"><label for="dd_tmr">TMR(10)</label><input type="text" id="dd_tmr" class="num" inputmode="decimal" placeholder="0,736"><span class="sub">отношение, не проценты</span></div>
+        <div class="field" data-show="setup_geometry:SAD;dd_sad:tmr"><span class="label" id="lbl-dd-tmr"><button type="button" class="term" data-term="tmr">TMR(10)</button></span><input type="text" id="dd_tmr" class="num" inputmode="decimal" placeholder="0,736" aria-labelledby="lbl-dd-tmr"><span class="sub">отношение, не проценты</span></div>
       </div>
       <div class="grid subgrid">
         <div class="field"><label for="dd_nominal">Номинальный выход, Гр на 100 МЕ</label><input type="text" id="dd_nominal" class="num" inputmode="decimal"><span class="sub">= сГр/МЕ; для отклонения, можно не заполнять</span></div>
