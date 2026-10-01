@@ -5,7 +5,7 @@
 // Цилиндрические камеры берутся из базы МВ фотонов (chambers.js: Report 374, табл. 1; TRS-398, табл. 4),
 // плоскопараллельные — из базы электронов (electron-chambers.js: TRS-398, табл. 5).
 
-import { CHAMBERS, chamberLabel } from './chambers.js';
+import { CHAMBERS, chamberLabel, chamberNote } from './chambers.js';
 import { E_CHAMBERS, eChamberLabel } from './electron-chambers.js';
 
 export const PP_PREFIX = 'PP:';
@@ -16,7 +16,7 @@ export function coChamberGroups() {
   for (const c of CHAMBERS) {
     const g = `${c.maker} — цилиндрические`;
     if (!groups.has(g)) groups.set(g, []);
-    groups.get(g).push({ id: c.id, label: `${chamberLabel(c)}${c.note ? ' — ' + c.note : ''}` });
+    groups.get(g).push({ id: c.id, label: `${chamberLabel(c)}${c.note ? ' — ' + chamberNote(c) : ''}` });
   }
   const pp = E_CHAMBERS.filter((c) => c.type === 'pp').map((c) => ({ id: PP_PREFIX + c.id, label: eChamberLabel(c) }));
   return [...[...groups].map(([label, items]) => ({ label, items })), { label: 'Плоскопараллельные', items: pp }];
@@ -41,7 +41,7 @@ export function resolveCoChamber(f) {
   const c = CHAMBERS.find((x) => x.id === id);
   if (!c) return null;
   return {
-    id, custom: false, type: 'cyl', label: chamberLabel(c), note: c.note, rCavMm: c.rCavMm, lengthMm: c.lengthMm, sleeve: !!c.sleeve,
+    id, custom: false, type: 'cyl', label: chamberLabel(c), note: chamberNote(c), rCavMm: c.rCavMm, lengthMm: c.lengthMm, sleeve: !!c.sleeve,
     notReferenceClass: (c.notes || []).some((n) => /не отвечает спецификации эталонного класса/.test(n.text)),
   };
 }

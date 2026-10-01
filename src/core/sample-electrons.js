@@ -49,3 +49,12 @@ export const SAMPLE_ELECTRONS = {
   e_pdd: '99,6',
   e_nominal: '1,000',
 };
+
+// Текстовые поля демонстрационного набора по-английски (числа те же).
+export const SAMPLE_ELECTRONS_EN = {
+  e_institution: 'Example',
+  e_machine: 'Linac (demo)',
+  e_beam: '12 MeV',
+  e_el_model: 'Electrometer (demo)',
+  e_notes: 'Demo data, not results of real measurements.',
+};

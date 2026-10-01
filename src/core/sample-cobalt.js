@@ -52,3 +52,11 @@ export const SAMPLE_COBALT = {
   co_ref_rate: '148,6',
   co_ref_date: '2026-08-15',
 };
+
+// Текстовые поля демонстрационного набора по-английски (числа те же).
+export const SAMPLE_COBALT_EN = {
+  co_institution: 'Example',
+  co_machine: '⁶⁰Co unit (demo)',
+  co_el_model: 'Electrometer (demo)',
+  co_notes: 'Demo data, not results of real measurements.',
+};

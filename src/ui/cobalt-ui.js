@@ -1,8 +1,10 @@
 // Модуль «⁶⁰Co»: связывает форму с расчётным ядром cobalt.js.
 import { computeCobalt, CO_DEFAULTS, normalizeCobalt, ACTIVITY_UNITS } from '../core/cobalt.js';
-import { SAMPLE_COBALT } from '../core/sample-cobalt.js';
+import { SAMPLE_COBALT, SAMPLE_COBALT_EN } from '../core/sample-cobalt.js';
+import { L, getLang } from '../core/i18n.js';
+import { localizeDecimals } from './i18n.js';
 import { coChamberGroups } from '../core/co60-chambers.js';
-import { PRESSURE_UNITS, NDW_UNITS } from '../core/units.js';
+import { PRESSURE_UNITS, NDW_UNITS, unitLabel } from '../core/units.js';
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, renderPairs, readPairs, setupPairs } from './widgets.js';
 import {
@@ -48,11 +50,20 @@ function fillChamberSelect() {
   if (keep && sel.querySelector(`option[value="${CSS.escape(keep)}"]`)) sel.value = keep;
 }
 
+function fillUnitSelects() {
+  $('#co_ndw_unit').innerHTML = Object.entries(NDW_UNITS).map(([k, u]) => `<option value="${k}">${unitLabel(u)}</option>`).join('');
+  $('#co_env_P_unit').innerHTML = Object.entries(PRESSURE_UNITS).map(([k, u]) => `<option value="${k}">${unitLabel(u)}</option>`).join('');
+}
+
 function fillCustomFields(saved) {
   $('#co_cc_maker').value = saved?.cc_maker ?? '';
   $('#co_cc_model').value = saved?.cc_model ?? '';
   $('#co_cc_type').value = saved?.cc_type === 'pp' ? 'pp' : 'cyl';
 }
+
+/** Демонстрационный набор на текущем языке (текстовые поля), числа одинаковые. */
+const sampleData = () => (getLang() === 'en' ? { ...SAMPLE_COBALT, ...SAMPLE_COBALT_EN } : SAMPLE_COBALT);
+const isDemo = (d) => [SAMPLE_COBALT.co_institution, SAMPLE_COBALT_EN.co_institution].includes(d.co_institution) && [SAMPLE_COBALT.co_machine, SAMPLE_COBALT_EN.co_machine].includes(d.co_machine);
 
 // ------------------------------------------------------------ форма ↔ данные
 const seriesBox = (key) => (key === 'co_timer' ? null : $(`#co-sheet .cells[data-series="${key}"]`));
@@ -92,6 +103,7 @@ function writeForm(values) {
     }
   }
   renderPairs(pairsBox(), data.co_tt, data.co_tm);
+  localizeDecimals(ROOT());
 }
 
 // ------------------------------------------------------------ видимость и подписи
@@ -271,19 +283,19 @@ function renderReadout(result, data) {
 
 // ------------------------------------------------------------ протокол текстом
 function reportText(data, r) {
-  const L = [];
-  const line = (k, v) => L.push(`${k}: ${v}`);
+  const out = [];
+  const line = (k, v) => out.push(`${k}: ${v}`);
   const cells = (a) => (Array.isArray(a) ? a.filter((x) => String(x).trim() !== '').join('; ') : a);
   const i = r.inputs;
   const z = zText(i.zref);
-  L.push('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — ⁶⁰Co');
+  out.push('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — ⁶⁰Co');
   line('Протокол', data.protocol === 'both' ? 'TRS-398 Rev.1 и TG-51' : PROTO[data.protocol].name);
   line('Учреждение', data.co_institution || '—');
   line('Аппарат', data.co_machine || '—');
   line('Дата', data.co_date || '—');
   line('Измерения выполнили', data.co_staff.filter((s) => s.trim()).join(', ') || '—');
   line('Геометрия', `${data.co_geometry === 'SAD' ? 'РИК' : 'РИП'} = ${data.co_distance} см, поле 10×10 см ${data.co_geometry === 'SAD' ? 'в плоскости камеры' : 'на поверхности воды'}, z_ref = ${z} г/см²`);
-  L.push('');
+  out.push('');
   line('Камера', `${r.chamber ? `${r.chamber.label} (${r.chamber.type === 'pp' ? 'плоскопараллельная' : 'цилиндрическая'})` : '—'}, № ${data.co_ch_serial || '—'}`);
   line('N_D,w', `${data.co_ndw} ${NDW_UNITS[data.co_ndw_unit]?.label ?? ''} (= ${fmt(i.ndw, 6)} Гр/нКл); T0 = ${data.co_T0} °C, P0 = ${data.co_P0} кПа`);
   line('Электрометр', `${data.co_el_model || '—'}, № ${data.co_el_serial || '—'}, k_elec = ${data.co_kelec}`);
@@ -309,43 +321,43 @@ function reportText(data, r) {
   line('M(V2), нКл', `${cells(data.co_M2)} → среднее ${fmt(Math.abs(i.M2.mean), 4)}`);
   if (r.ctrl.on) line('Контрольные измерения M(V1), нКл', `${cells(data.co_Mc)} → среднее ${fmt(r.ctrl.mean, 4)} за ${fmt(r.ctrl.t, 2)} ${i.unitLabel}`);
   if (Number.isFinite(r.source.A)) line('Источник', `${data.co_act0} ${ACTIVITY_UNITS[data.co_act_unit]?.label ?? ''} на ${data.co_act_date}; на дату измерения ${fmt(r.source.ACi, 0)} Ки = ${fmt(r.source.ATBq, 1)} ТБк`);
-  L.push('');
+  out.push('');
   const blocks = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
   for (const k of blocks) {
     const x = k === 'trs' ? r.trs : r.tg51;
-    L.push(`— ${PROTO[k].name} —`);
-    if (k === 'trs') L.push(`k_TP = ${fmt(x.kTP)}; k_elec = ${fmt(x.kelec)}; k_pol = ${fmt(x.kpol)}; k_s = ${fmt(x.ks)} (${x.ksEquation || '—'}); k_leak = ${fmt(x.kleak)}; k_Q = 1`);
-    else L.push(`P_TP = ${fmt(x.PTP)}; P_elec = ${fmt(x.Pelec)}; P_pol = ${fmt(x.Ppol)}; P_ion = ${fmt(x.Pion)} (ур. 11); P_leak = ${fmt(x.Pleak)}; k_Q = 1,000`);
+    out.push(`— ${PROTO[k].name} —`);
+    if (k === 'trs') out.push(`k_TP = ${fmt(x.kTP)}; k_elec = ${fmt(x.kelec)}; k_pol = ${fmt(x.kpol)}; k_s = ${fmt(x.ks)} (${x.ksEquation || '—'}); k_leak = ${fmt(x.kleak)}; k_Q = 1`);
+    else out.push(`P_TP = ${fmt(x.PTP)}; P_elec = ${fmt(x.Pelec)}; P_pol = ${fmt(x.Ppol)}; P_ion = ${fmt(x.Pion)} (ур. 11); P_leak = ${fmt(x.Pleak)}; k_Q = 1,000`);
     if (x.blocked) {
-      L.push('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: есть ошибки ввода (см. замечания).');
+      out.push('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: есть ошибки ввода (см. замечания).');
     } else {
       const describe = (y, title) => {
-        L.push(`${title}: M = ${fmt(y.M)} нКл; D_w(${z}) = ${fmt(y.D)} Гр за облучение; ${fmt(y.rate, 2)} сГр/мин = ${fmt(y.rateGy, 4)} Гр/мин на z_ref`);
+        out.push(`${title}: M = ${fmt(y.M)} нКл; D_w(${z}) = ${fmt(y.D)} Гр за облучение; ${fmt(y.rate, 2)} сГр/мин = ${fmt(y.rateGy, 4)} Гр/мин на z_ref`);
         if (r.depth.on && r.depth.ok && Number.isFinite(y.rateMax)) {
           let s = `  z_max = ${data.co_zmax} см; ${r.depth.label} = ${fmt(r.depth.factor)}; на z_max ${fmt(y.rateMax, 2)} сГр/мин = ${fmt(y.rateMaxGy, 4)} Гр/мин`;
           if (Number.isFinite(y.deviation)) {
             const dec = Number.isFinite(r.depth.decay) ? ` (${data.co_ref_rate} сГр/мин на ${r.depth.refDate}, распад × ${fmt(r.depth.decay, 4)})` : '';
             s += `; ожидалось ${fmt(r.depth.expected, 2)} сГр/мин${dec}, отклонение ${fmtSigned(y.deviation, 2)} %`;
           }
-          L.push(s);
+          out.push(s);
         } else if (r.depth.on) {
-          L.push('  Пересчёт на z_max не выполнен: исправьте данные раздела 7.');
+          out.push('  Пересчёт на z_max не выполнен: исправьте данные раздела 7.');
         }
       };
       describe(x, 'По основным показаниям (раздел 5)');
       if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, 'По контрольным измерениям (итог)');
     }
-    L.push('');
+    out.push('');
   }
-  if (r.comparison) L.push(`TG-51 относительно TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`, '');
+  if (r.comparison) out.push(`TG-51 относительно TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`, '');
   const msgs = r.messages.filter((m) => m.level !== 'info');
   if (msgs.length) {
-    L.push('Замечания:');
-    msgs.forEach((m) => L.push(`- ${m.text}${m.ref ? ` [${m.ref}]` : ''}`));
-    L.push('');
+    out.push('Замечания:');
+    msgs.forEach((m) => out.push(`- ${m.text}${m.ref ? ` [${m.ref}]` : ''}`));
+    out.push('');
   }
-  if (data.co_notes) L.push(`Примечания: ${data.co_notes}`);
-  return L.join('\n');
+  if (data.co_notes) out.push(`Примечания: ${data.co_notes}`);
+  return out.join('\n');
 }
 
 // ------------------------------------------------------------ сохранение
@@ -383,22 +395,34 @@ function update() {
   renderOutputs(ROOT(), result);
   renderFlags(ROOT(), result.flags, seriesBox);
   renderReadout(result, result.form);
-  $('#co-demo-flag').hidden = !(data.co_institution === SAMPLE_COBALT.co_institution && data.co_machine === SAMPLE_COBALT.co_machine);
+  $('#co-demo-flag').hidden = !isDemo(data);
   saveDraft(result.form);
   renderSignBlock($('#co-sign'), result.form.co_staff);
 }
 
+/** Смена языка: списки с переведёнными подписями, подписи ячеек, десятичный разделитель, пересчёт. */
+function refreshForLang() {
+  const kept = $$('select', ROOT()).map((sel) => [sel, sel.value]);
+  fillUnitSelects();
+  fillChamberSelect();
+  for (const [sel, v] of kept) if ([...sel.options].some((o) => o.value === v)) sel.value = v;
+  $$('#co-sheet .cells').forEach((box) => renderCells(box, readCells(box)));
+  { const { a, b } = readPairs(pairsBox()); renderPairs(pairsBox(), a, b); }
+  renderStaff($('#co-staff-list'), readStaff($('#co-staff-list')), update);
+  localizeDecimals(ROOT());
+  update();
+}
+
 export function initCobalt() {
   setStatus = makeStatus($('#co-status'));
-  $('#co_ndw_unit').innerHTML = Object.entries(NDW_UNITS).map(([k, u]) => `<option value="${k}">${u.label}</option>`).join('');
-  $('#co_env_P_unit').innerHTML = Object.entries(PRESSURE_UNITS).map(([k, u]) => `<option value="${k}">${u.label}</option>`).join('');
+  fillUnitSelects();
   fillChamberSelect();
   $$('#co-sheet .cells').forEach((box) => setupCells(box, update));
   setupPairs(pairsBox(), update);
   $$('#co-sheet > section .combo').forEach((c) => makeCombo(c));
 
   const draft = loadDraft();
-  writeForm(draft ? draft : SAMPLE_COBALT);
+  writeForm(draft ? draft : sampleData());
   update();
   if (!draft) setStatus('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.');
 
@@ -442,6 +466,7 @@ export function initCobalt() {
   document.addEventListener('change', (e) => {
     if (e.target.name === 'protocol') update();
   });
+  document.addEventListener('langchange', refreshForLang);
 
   $('#co-btn-add-staff').addEventListener('click', () => {
     const cur = readStaff($('#co-staff-list'));
@@ -466,7 +491,7 @@ export function initCobalt() {
   }
 
   $('#co-btn-sample').addEventListener('click', () => {
-    writeForm(SAMPLE_COBALT);
+    writeForm(sampleData());
     update();
     setStatus('Загружен демонстрационный пример (вымышленные данные).');
   });

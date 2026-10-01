@@ -1,5 +1,8 @@
-// Точка входа: вкладки разделов, общий переключатель протокола, справки, вставка данных из буфера.
+// Точка входа: язык, вкладки разделов, общий переключатель протокола, справки, вставка данных из буфера.
 import { TERMS } from './terms.js';
+import { TERMS_EN } from './terms-en.js';
+import { L, setLang, getLang } from '../core/i18n.js';
+import { initialLang, saveLang, applyLang, translateStatic } from './i18n.js';
 import { $, $$, setActiveModule, getActiveModule, PROTOCOL_KEY, applyProtocol } from './common.js';
 import { initCobalt, importCobalt, cobaltStatus } from './cobalt-ui.js';
 import { initPhotons, importPhotons, photonsStatus } from './photons-ui.js';
@@ -7,9 +10,9 @@ import { initElectrons, importElectrons, electronsStatus } from './electrons-ui.
 
 const TAB_KEY = 'reference-dosimetry.tab';
 const MODULES = {
-  co60: { title: '⁶⁰Co — референсная дозиметрия', file: 'cobalt', importData: importCobalt, status: cobaltStatus },
-  photons: { title: 'МВ фотоны — референсная дозиметрия', file: 'photons', importData: importPhotons, status: photonsStatus },
-  electrons: { title: 'Электроны — референсная дозиметрия', file: 'electrons', importData: importElectrons, status: electronsStatus },
+  co60: { title: () => L('⁶⁰Co — референсная дозиметрия', '⁶⁰Co — reference dosimetry'), file: 'cobalt', importData: importCobalt, status: cobaltStatus },
+  photons: { title: () => L('МВ фотоны — референсная дозиметрия', 'MV photons — reference dosimetry'), file: 'photons', importData: importPhotons, status: photonsStatus },
+  electrons: { title: () => L('Электроны — референсная дозиметрия', 'Electrons — reference dosimetry'), file: 'electrons', importData: importElectrons, status: electronsStatus },
 };
 
 const store = {
@@ -39,7 +42,7 @@ function showModule(name) {
     else tab.removeAttribute('aria-current');
   }
   setActiveModule(name);
-  document.title = MODULES[name].title;
+  document.title = MODULES[name].title();
   store.set(TAB_KEY, name);
 }
 
@@ -62,7 +65,7 @@ function moduleFromHash() {
 
 // ------------------------------------------------------------ справки
 function openTerm(key) {
-  const t = TERMS[key];
+  const t = (getLang() === 'en' && TERMS_EN[key]) || TERMS[key];
   if (!t) return;
   $('#term-title').innerHTML = t.title;
   $('#term-body').innerHTML = t.html;
@@ -114,31 +117,48 @@ function initPaste() {
     try {
       obj = JSON.parse(text);
     } catch {
-      MODULES[getActiveModule()].status('В буфере обмена повреждённые данные.');
+      MODULES[getActiveModule()].status(L('В буфере обмена повреждённые данные.', 'The clipboard data are damaged.'));
       return;
     }
     const target = Object.keys(MODULES).find((k) => MODULES[k].file === obj?.module);
     if (!target) {
-      MODULES[getActiveModule()].status('Эти данные не относятся ни к одному разделу калькулятора.');
+      MODULES[getActiveModule()].status(L('Эти данные не относятся ни к одному разделу калькулятора.', 'These data do not belong to any section of the calculator.'));
       return;
     }
     if (target !== getActiveModule()) switchTo(target);
     try {
       MODULES[target].importData(obj);
-      MODULES[target].status('Данные вставлены из буфера обмена.');
+      MODULES[target].status(L('Данные вставлены из буфера обмена.', 'Data pasted from the clipboard.'));
     } catch (err) {
       MODULES[target].status(err.message);
     }
   });
 }
 
+// ------------------------------------------------------------ язык
+function initLang() {
+  // язык задаётся до первого расчёта, чтобы модули сразу вывели текст на нём
+  setLang(initialLang());
+  document.documentElement.lang = getLang();
+  const r = document.getElementById(`lang_${getLang()}`);
+  if (r) r.checked = true;
+  document.addEventListener('change', (e) => {
+    if (e.target.name !== 'lang') return;
+    saveLang(e.target.value);
+    applyLang(e.target.value);
+    document.title = MODULES[getActiveModule()].title();
+  });
+}
+
 function init() {
+  initLang();
   initProtocol();
   initTerms();
   initCobalt();
   initPhotons();
   initElectrons();
   initPaste();
+  translateStatic(document.body);
   showModule(moduleFromHash() ?? store.get(TAB_KEY) ?? 'co60');
   window.addEventListener('hashchange', () => {
     const m = moduleFromHash();

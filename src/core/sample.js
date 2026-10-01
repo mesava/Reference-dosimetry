@@ -52,3 +52,11 @@ export const SAMPLE_FORM = {
   dd_pdd: '66,4',
   dd_nominal: '1,000',
 };
+
+// Текстовые поля демонстрационного набора по-английски (числа те же).
+export const SAMPLE_FORM_EN = {
+  meta_institution: 'Example',
+  meta_machine: 'Linear accelerator (demo)',
+  meta_beam: '6 MV',
+  meta_notes: 'Demo data, not results of real measurements.',
+};

@@ -1,8 +1,10 @@
 // Модуль «МВ фотоны»: связывает форму с расчётным ядром.
 import { computePhotons, FORM_DEFAULTS, normalizeForm } from '../core/photons.js';
-import { SAMPLE_FORM } from '../core/sample.js';
-import { CHAMBERS, chamberLabel } from '../core/chambers.js';
-import { PRESSURE_UNITS, NDW_UNITS, parseBeamName, parseNumber } from '../core/units.js';
+import { SAMPLE_FORM, SAMPLE_FORM_EN } from '../core/sample.js';
+import { L, getLang } from '../core/i18n.js';
+import { localizeDecimals } from './i18n.js';
+import { CHAMBERS, chamberLabel, chamberNote } from '../core/chambers.js';
+import { PRESSURE_UNITS, NDW_UNITS, parseBeamName, parseNumber, unitLabel } from '../core/units.js';
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import {
@@ -38,7 +40,7 @@ function fillChamberSelect() {
     parts.push(`<optgroup label="${esc(maker)}">`);
     for (const c of list) {
       const tags = [c.tg51 || c.tg51Legacy ? 'TG-51' : null, c.trs ? 'TRS-398' : null].filter(Boolean).join(', ');
-      parts.push(`<option value="${c.id}">${esc(c.model)}${c.note ? ' — ' + esc(c.note) : ''} [${tags}]</option>`);
+      parts.push(`<option value="${c.id}">${esc(c.model)}${c.note ? ' — ' + esc(chamberNote(c)) : ''} [${tags}]</option>`);
     }
     parts.push('</optgroup>');
   }
@@ -62,9 +64,13 @@ function fillSelects() {
     analog.push('</optgroup>');
   }
   $('#cc_analog').innerHTML = analog.join('');
-  $('#ch_ndw_unit').innerHTML = Object.entries(NDW_UNITS).map(([k, u]) => `<option value="${k}">${u.label}</option>`).join('');
-  $('#env_P_unit').innerHTML = Object.entries(PRESSURE_UNITS).map(([k, u]) => `<option value="${k}">${u.label}</option>`).join('');
+  $('#ch_ndw_unit').innerHTML = Object.entries(NDW_UNITS).map(([k, u]) => `<option value="${k}">${unitLabel(u)}</option>`).join('');
+  $('#env_P_unit').innerHTML = Object.entries(PRESSURE_UNITS).map(([k, u]) => `<option value="${k}">${unitLabel(u)}</option>`).join('');
 }
+
+/** Демонстрационный набор на текущем языке (текстовые поля), числа одинаковые. */
+const sampleData = () => (getLang() === 'en' ? { ...SAMPLE_FORM, ...SAMPLE_FORM_EN } : SAMPLE_FORM);
+const isDemo = (d) => [SAMPLE_FORM.meta_institution, SAMPLE_FORM_EN.meta_institution].includes(d.meta_institution) && [SAMPLE_FORM.meta_machine, SAMPLE_FORM_EN.meta_machine].includes(d.meta_machine);
 
 // ------------------------------------------------------------ форма ↔ данные
 const seriesBox = (key) => $(`#sheet .cells[data-series="${key}"]`);
@@ -103,6 +109,7 @@ function writeForm(values, { withProtocol = false } = {}) {
       else el.value = value ?? '';
     }
   }
+  localizeDecimals(ROOT());
 }
 
 function fillCustomFields(saved) {
@@ -311,11 +318,11 @@ function geometryText(data) {
 }
 
 function reportText(data, r) {
-  const L = [];
+  const out = [];
   const c = r.chamber;
-  const line = (k, v) => L.push(`${k}: ${v}`);
+  const line = (k, v) => out.push(`${k}: ${v}`);
   const cells = (a) => (Array.isArray(a) ? a.filter((x) => String(x).trim() !== '').join('; ') : a);
-  L.push('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — МВ ФОТОНЫ');
+  out.push('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — МВ ФОТОНЫ');
   line('Протокол', data.protocol === 'both' ? 'TRS-398 Rev.1 и TG-51 (+ аддендум 2014)' : PROTO[data.protocol].name);
   line('Учреждение', data.meta_institution || '—');
   line('Аппарат', data.meta_machine || '—');
@@ -326,7 +333,7 @@ function reportText(data, r) {
   line('Дата', data.meta_date || '—');
   line('Измерения выполнили', data.meta_staff.filter((s) => s.trim()).join(', ') || '—');
   line('Геометрия', geometryText(data));
-  L.push('');
+  out.push('');
   if (c?.custom) {
     line('Камера', `своя: ${[data.cc_maker, data.cc_model].filter(Boolean).join(' ') || '—'}, № ${data.ch_serial || '—'}`);
     line('Характеристики', `V = ${data.cc_volume || '—'} см³, L = ${data.cc_length || '—'} мм, r = ${data.cc_radius || '—'} мм, стенка ${data.cc_wall || '—'} ${data.cc_wall_thickness ? `(${data.cc_wall_thickness} г/см²)` : ''}, электрод ${data.cc_electrode || '—'}, ${data.cc_waterproof ? 'водонепроницаемая' : 'не водонепроницаемая'}`);
@@ -343,45 +350,45 @@ function reportText(data, r) {
   line('M(V1, обратная), нКл', `${cells(data.rd_Mopp)} → среднее ${fmt(Math.abs(r.inputs.Mopp.mean), 4)}`);
   line('M(V2), нКл', `${cells(data.rd_M2)} → среднее ${fmt(Math.abs(r.inputs.M2.mean), 4)}`);
   if (r.ctrl.on) line('Контрольные измерения M(V1), нКл', `${cells(data.ctrl_M)} → среднее ${fmt(r.ctrl.mean, 4)} за ${fmt(r.ctrl.mu, 0)} МЕ`);
-  L.push('');
+  out.push('');
   const blocks = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
   for (const k of blocks) {
     const x = k === 'trs' ? r.trs : r.tg51;
-    L.push(`— ${PROTO[k].name} —`);
+    out.push(`— ${PROTO[k].name} —`);
     if (k === 'trs') {
-      L.push(`k_TP = ${fmt(x.kTP)}; k_elec = ${fmt(x.kelec)}; k_pol = ${fmt(x.kpol)}; k_s = ${fmt(x.ks)}; k_leak = ${fmt(x.kleak)}; k_vol = ${fmt(x.kvol)}`);
-      L.push(`TPR20,10 = ${fmt(x.tpr)} (${x.tprEquation || '—'})`);
-      if (x.fffEstimate) L.push(`Оценка TPR20,10 по PDD(10) = ${fmt(x.fffEstimate.pdd10, 1)} %: ${fmt(x.fffEstimate.value)} (не для калибровки)`);
-      L.push(`k_Q: по формуле (34) ${fmt(x.kQFormula)}, по табл. 16 ${fmt(x.kQTable)}; в расчёте ${fmt(x.kQ)} (${x.kQSource || '—'})`);
+      out.push(`k_TP = ${fmt(x.kTP)}; k_elec = ${fmt(x.kelec)}; k_pol = ${fmt(x.kpol)}; k_s = ${fmt(x.ks)}; k_leak = ${fmt(x.kleak)}; k_vol = ${fmt(x.kvol)}`);
+      out.push(`TPR20,10 = ${fmt(x.tpr)} (${x.tprEquation || '—'})`);
+      if (x.fffEstimate) out.push(`Оценка TPR20,10 по PDD(10) = ${fmt(x.fffEstimate.pdd10, 1)} %: ${fmt(x.fffEstimate.value)} (не для калибровки)`);
+      out.push(`k_Q: по формуле (34) ${fmt(x.kQFormula)}, по табл. 16 ${fmt(x.kQTable)}; в расчёте ${fmt(x.kQ)} (${x.kQSource || '—'})`);
     } else {
-      L.push(`P_TP = ${fmt(x.PTP)}; P_elec = ${fmt(x.Pelec)}; P_pol = ${fmt(x.Ppol)}; P_ion = ${fmt(x.Pion)}; P_leak = ${fmt(x.Pleak)}; P_rp = ${fmt(x.Prp)}`);
-      L.push(`%dd(10)x = ${fmt(x.pdd10x, 2)} (${x.pdd10xEquation || '—'}); k_Q = ${fmt(x.kQ)} (${x.kQSource || '—'})`);
+      out.push(`P_TP = ${fmt(x.PTP)}; P_elec = ${fmt(x.Pelec)}; P_pol = ${fmt(x.Ppol)}; P_ion = ${fmt(x.Pion)}; P_leak = ${fmt(x.Pleak)}; P_rp = ${fmt(x.Prp)}`);
+      out.push(`%dd(10)x = ${fmt(x.pdd10x, 2)} (${x.pdd10xEquation || '—'}); k_Q = ${fmt(x.kQ)} (${x.kQSource || '—'})`);
     }
     if (x.blocked) {
-      L.push('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: есть ошибки ввода (см. замечания).');
+      out.push('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: есть ошибки ввода (см. замечания).');
     } else {
       const describe = (y, title, units) => {
-        L.push(`${title}: M = ${fmt(y.M)} нКл; D_w(${fmt(r.depth.zref, 0)} см) = ${fmt(y.D)} Гр за ${fmt(units, 0)} МЕ; ${fmt(y.DperMU)} сГр/МЕ (Гр на 100 МЕ)`);
+        out.push(`${title}: M = ${fmt(y.M)} нКл; D_w(${fmt(r.depth.zref, 0)} см) = ${fmt(y.D)} Гр за ${fmt(units, 0)} МЕ; ${fmt(y.DperMU)} сГр/МЕ (Гр на 100 МЕ)`);
         if (r.depth.on && r.depth.ok) {
-          L.push(`  d_max = ${data.dd_zmax} см; ${r.depth.label} = ${fmt(r.depth.factor)}; на d_max ${fmt(y.DmaxPerMU)} сГр/МЕ (Гр на 100 МЕ)${Number.isFinite(y.deviation) ? `; отклонение от номинала ${fmtSigned(y.deviation, 2)} %` : ''}`);
+          out.push(`  d_max = ${data.dd_zmax} см; ${r.depth.label} = ${fmt(r.depth.factor)}; на d_max ${fmt(y.DmaxPerMU)} сГр/МЕ (Гр на 100 МЕ)${Number.isFinite(y.deviation) ? `; отклонение от номинала ${fmtSigned(y.deviation, 2)} %` : ''}`);
         } else if (r.depth.on) {
-          L.push('  Пересчёт на d_max не выполнен: исправьте данные раздела 8.');
+          out.push('  Пересчёт на d_max не выполнен: исправьте данные раздела 8.');
         }
       };
       describe(x, 'До калибровки (раздел 4)', r.inputs.mu);
       if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, 'По контрольным измерениям (итог)', r.ctrl.mu);
     }
-    L.push('');
+    out.push('');
   }
-  if (r.comparison) L.push(`TG-51 относительно TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`, '');
+  if (r.comparison) out.push(`TG-51 относительно TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`, '');
   const msgs = r.messages.filter((m) => m.level !== 'info');
   if (msgs.length) {
-    L.push('Замечания:');
-    msgs.forEach((m) => L.push(`- ${m.text}${m.ref ? ` [${m.ref}]` : ''}`));
-    L.push('');
+    out.push('Замечания:');
+    msgs.forEach((m) => out.push(`- ${m.text}${m.ref ? ` [${m.ref}]` : ''}`));
+    out.push('');
   }
-  if (data.meta_notes) L.push(`Примечания: ${data.meta_notes}`);
-  return L.join('\n');
+  if (data.meta_notes) out.push(`Примечания: ${data.meta_notes}`);
+  return out.join('\n');
 }
 
 // ------------------------------------------------------------ сохранение
@@ -422,7 +429,7 @@ function update() {
   applyVisibility(result.form, result);
   renderInline(result, result.form);
   renderReadout(result, result.form);
-  $('#demo-flag').hidden = !(data.meta_institution === SAMPLE_FORM.meta_institution && data.meta_machine === SAMPLE_FORM.meta_machine);
+  $('#demo-flag').hidden = !isDemo(data);
   saveDraft(result.form);
   renderSignBlock($('#sign'), result.form.meta_staff);
 }
@@ -439,6 +446,17 @@ function onBeamInput() {
   lastBeamFff = fff;
 }
 
+/** Смена языка: списки с переведёнными подписями, подписи ячеек, десятичный разделитель, пересчёт. */
+function refreshForLang() {
+  const kept = $$('select', ROOT()).map((sel) => [sel, sel.value]);
+  fillSelects();
+  for (const [sel, v] of kept) if ([...sel.options].some((o) => o.value === v)) sel.value = v;
+  $$('#sheet .cells').forEach((box) => renderCells(box, readCells(box)));
+  renderStaff($('#staff-list'), readStaff($('#staff-list')), update);
+  localizeDecimals(ROOT());
+  update();
+}
+
 export function initPhotons() {
   setStatus = makeStatus($('#status'));
   fillSelects();
@@ -446,7 +464,7 @@ export function initPhotons() {
   $$('#sheet > section .combo').forEach((c) => makeCombo(c));
 
   const draft = loadDraft();
-  writeForm(draft ? draft : SAMPLE_FORM);
+  writeForm(draft ? draft : sampleData());
   lastBeamFff = parseBeamName($('#meta_beam').value).fff;
   update();
   if (!draft) setStatus('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.');
@@ -467,6 +485,7 @@ export function initPhotons() {
   document.addEventListener('change', (e) => {
     if (e.target.name === 'protocol') update();
   });
+  document.addEventListener('langchange', refreshForLang);
 
   $('#btn-add-staff').addEventListener('click', () => {
     const cur = readStaff($('#staff-list'));
@@ -514,7 +533,7 @@ export function initPhotons() {
   });
 
   $('#btn-sample').addEventListener('click', () => {
-    writeForm(SAMPLE_FORM);
+    writeForm(sampleData());
     update();
     setStatus('Загружен демонстрационный пример (вымышленные данные).');
   });

@@ -15,6 +15,16 @@
 // sleeve — камера не водонепроницаема, нужен чехол (ПММА ≤ 1 мм).
 // notes — замечания к камере: scope 'tg51' | 'trs', level 'warn' | 'info'.
 
+// noteEn, textEn — те же пояснения и замечания по-английски.
+
+import { L } from './i18n.js';
+
+/** Пояснение к модели («Фармер 0,6 см³») на текущем языке. */
+export const chamberNote = (c) => (c?.note ? L(c.note, c.noteEn) : '');
+
+/** Текст замечания к камере на текущем языке. */
+export const noteText = (n) => L(n.text, n.textEn);
+
 export const LEGACY_NODES = [58, 63, 66, 71, 81, 93];
 
 export const CHAMBERS = [

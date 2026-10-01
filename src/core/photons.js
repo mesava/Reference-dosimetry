@@ -6,7 +6,7 @@ import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru } fro
 import { temperaturePressure, polarity, environmentChecks } from './common.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
-import { findChamber, chamberLabel } from './chambers.js';
+import { findChamber, chamberLabel, noteText } from './chambers.js';
 import { parseProfile, kvolFromProfile } from './profile.js';
 
 export const FORM_DEFAULTS = {
@@ -446,7 +446,7 @@ export function computePhotons(form) {
         else add('warn', 'trs', `В TRS-398 Rev.1 нет данных для этой камеры; k_Q взят по камере-аналогу ${chamberLabel(chamber.analog)}. Предпочтительнее k_Q, измеренный в лаборатории.`, `${REF.trs}, разд. 6.5`, 'kQtrs');
       }
     }
-    if (!chamber?.custom) (chamber?.notes || []).filter((n) => n.scope === 'trs').forEach((n) => add(n.level, 'trs', n.text));
+    if (!chamber?.custom) (chamber?.notes || []).filter((n) => n.scope === 'trs').forEach((n) => add(n.level, 'trs', noteText(n)));
   }
 
   // ------------------------------------------------------------- TG-51
@@ -514,7 +514,7 @@ export function computePhotons(form) {
         add('info', 'tg51', 'Для этой камеры используются данные исходного TG-51 (1999): в аддендуме её нет.', `${REF.add}, разд. 3.E`);
       }
     }
-    if (!chamber?.custom) (chamber?.notes || []).filter((n) => n.scope === 'tg51').forEach((n) => add(n.level, 'tg51', n.text));
+    if (!chamber?.custom) (chamber?.notes || []).filter((n) => n.scope === 'tg51').forEach((n) => add(n.level, 'tg51', noteText(n)));
   }
 
   // --------------------------------------- поправка на профиль (k_vol / P_rp)

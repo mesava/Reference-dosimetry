@@ -129,7 +129,9 @@ a { color: var(--accent); }
 .modules a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
 .modules span { opacity: 0.7; }
 .modules small { font: 11px var(--font-body); }
-.protocol-switch { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lang-switch { margin-left: auto; }
+.lang-switch .segmented span { padding: 6px 10px; font-size: 13px; }
+.protocol-switch { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .protocol-switch > span { font: 500 12px var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .segmented {
   display: inline-flex;
@@ -357,7 +359,7 @@ footer.page-foot p { max-width: 90ch; }
 @media (max-width: 1079px) { body { padding-bottom: 56px; } }
 
 @media (max-width: 560px) {
-  .protocol-switch { margin-left: 0; }
+  .protocol-switch, .lang-switch { margin-left: 0; }
   .segmented span { padding: 6px 9px; font-size: 13px; }
   .dose-big { font-size: 28px; }
   .step { padding: 14px 14px 16px; }

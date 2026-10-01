@@ -1,4 +1,5 @@
 // Общие вспомогательные функции интерфейса.
+import { L, getLang } from '../core/i18n.js';
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -13,12 +14,14 @@ export const framed = (() => {
 })();
 
 const numberFormats = new Map();
+/** Число с заданным числом знаков: десятичная запятая по-русски, точка по-английски. */
 export function fmt(value, digits = 4) {
   if (!Number.isFinite(value)) return '—';
-  if (!numberFormats.has(digits)) {
-    numberFormats.set(digits, new Intl.NumberFormat('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false }));
+  const key = `${getLang()}:${digits}`;
+  if (!numberFormats.has(key)) {
+    numberFormats.set(key, new Intl.NumberFormat(getLang() === 'en' ? 'en-US' : 'ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false }));
   }
-  return numberFormats.get(digits).format(value).replace('-', '−');
+  return numberFormats.get(key).format(value).replace('-', '−');
 }
 
 export function fmtSigned(value, digits = 2) {
@@ -68,7 +71,7 @@ export async function copyText(text, okMsg, setStatus) {
       ok = false;
     }
     ta.remove();
-    setStatus(ok ? okMsg : 'Браузер не дал скопировать: выделите текст вручную.');
+    setStatus(ok ? okMsg : L('Браузер не дал скопировать: выделите текст вручную.', 'The browser blocked copying: select the text manually.'));
   }
 }
 
@@ -184,7 +187,7 @@ export function renderSignBlock(el, staff) {
     names
       .map(
         (n) => `<tr><td class="sig-name"><span>${esc(String(n ?? '').trim()) || '&nbsp;'}</span></td><td class="sig-line"><span>&nbsp;</span></td></tr>
-        <tr class="sig-cap"><td>ФИО</td><td><span>подпись</span></td></tr>`,
+        <tr class="sig-cap"><td>${L('ФИО', 'Name')}</td><td><span>${L('подпись', 'signature')}</span></td></tr>`,
       )
       .join('') +
     '</tbody></table>';
@@ -197,7 +200,7 @@ export function renderSignBlock(el, staff) {
 export function printToPdf(fileTitle, setStatus) {
   const old = document.title;
   document.title = String(fileTitle || old).replace(/[\\/:*?"<>|]+/g, '-');
-  setStatus?.('В окне печати выберите «Сохранить как PDF» (в поле «Принтер» или «Назначение»).');
+  setStatus?.(L('В окне печати выберите «Сохранить как PDF» (в поле «Принтер» или «Назначение»).', 'In the print dialog choose “Save as PDF” as the printer or destination.'));
   const restore = () => {
     document.title = old;
     window.removeEventListener('afterprint', restore);

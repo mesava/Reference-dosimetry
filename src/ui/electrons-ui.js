@@ -1,8 +1,10 @@
 // Модуль «Электроны»: связывает форму с расчётным ядром electrons.js.
 import { computeElectrons, E_DEFAULTS, normalizeElectrons, parseElectronBeam } from '../core/electrons.js';
 import { E_CHAMBERS, eChamberLabel } from '../core/electron-chambers.js';
-import { SAMPLE_ELECTRONS } from '../core/sample-electrons.js';
-import { PRESSURE_UNITS, NDW_UNITS, parseNumber } from '../core/units.js';
+import { SAMPLE_ELECTRONS, SAMPLE_ELECTRONS_EN } from '../core/sample-electrons.js';
+import { L, getLang } from '../core/i18n.js';
+import { localizeDecimals } from './i18n.js';
+import { PRESSURE_UNITS, NDW_UNITS, parseNumber, unitLabel } from '../core/units.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import {
   $, $$, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
@@ -37,10 +39,14 @@ function fillSelects() {
     group('pp', 'Плоскопараллельные') +
     group('cyl', 'Цилиндрические') +
     '<option value="OTHER">Другая камера (k_Q вручную)…</option>';
-  const ndw = Object.entries(NDW_UNITS).map(([k, u]) => `<option value="${k}">${u.label}</option>`).join('');
+  const ndw = Object.entries(NDW_UNITS).map(([k, u]) => `<option value="${k}">${unitLabel(u)}</option>`).join('');
   for (const id of ['#e_ndw_unit', '#e_cross_ndw_unit', '#e_cross_kn_unit']) $(id).innerHTML = ndw;
-  $('#e_env_P_unit').innerHTML = Object.entries(PRESSURE_UNITS).map(([k, u]) => `<option value="${k}">${u.label}</option>`).join('');
+  $('#e_env_P_unit').innerHTML = Object.entries(PRESSURE_UNITS).map(([k, u]) => `<option value="${k}">${unitLabel(u)}</option>`).join('');
 }
+
+/** Демонстрационный набор на текущем языке (текстовые поля), числа одинаковые. */
+const sampleData = () => (getLang() === 'en' ? { ...SAMPLE_ELECTRONS, ...SAMPLE_ELECTRONS_EN } : SAMPLE_ELECTRONS);
+const isDemo = (d) => [SAMPLE_ELECTRONS.e_institution, SAMPLE_ELECTRONS_EN.e_institution].includes(d.e_institution) && [SAMPLE_ELECTRONS.e_machine, SAMPLE_ELECTRONS_EN.e_machine].includes(d.e_machine);
 
 // ------------------------------------------------------------ форма ↔ данные
 const seriesBox = (key) => $(`#e-sheet .cells[data-series="${key}"]`);
@@ -73,6 +79,7 @@ function writeForm(values) {
       else el.value = value ?? '';
     }
   }
+  localizeDecimals(ROOT());
 }
 
 // ------------------------------------------------------------ видимость и подписи
@@ -227,13 +234,13 @@ function renderReadout(r, data) {
 
 // ------------------------------------------------------------ протокол текстом
 function reportText(data, r) {
-  const L = [];
-  const line = (k, v) => L.push(`${k}: ${v}`);
+  const out = [];
+  const line = (k, v) => out.push(`${k}: ${v}`);
   const cells = (a) => (Array.isArray(a) ? a.filter((x) => String(x).trim() !== '').join('; ') : a);
   const c = r.chamber;
   const q = r.quality;
   const i = r.inputs;
-  L.push('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — ПУЧОК ЭЛЕКТРОНОВ');
+  out.push('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — ПУЧОК ЭЛЕКТРОНОВ');
   line('Протокол', data.protocol === 'both' ? 'TRS-398 Rev.1 и TG-51 с Report 385' : PROTO[data.protocol].name);
   line('Учреждение', data.e_institution || '—');
   line('Аппарат', data.e_machine || '—');
@@ -244,7 +251,7 @@ function reportText(data, r) {
   line('Измерения выполнили', data.e_staff.filter((s) => s.trim()).join(', ') || '—');
   line('Геометрия', `РИП = ${data.e_ssd} см, поле ${data.e_field}×${data.e_field} см на поверхности воды`);
   line('Качество пучка', `${q.method === 'i50' ? `R50,ion = ${data.e_i50} г/см²; ` : ''}R50 = ${fmt(q.r50, 3)} г/см²; z_ref = ${fmt(q.zref, 3)} г/см²; E0 ≈ ${fmt(q.E0, 1)} МэВ`);
-  L.push('');
+  out.push('');
   line('Камера', c ? `${c.other ? data.e_other_name || 'другая камера' : eChamberLabel(c)} (${c.type === 'pp' ? 'плоскопараллельная' : 'цилиндрическая'}), № ${data.e_ch_serial || '—'}` : '—');
   if (r.positions) {
     const keys = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
@@ -269,36 +276,36 @@ function reportText(data, r) {
     line('M(V1, обратная, положение по Report 385), нКл', `${cells(data.e_Mopp51)} → среднее ${fmt(Math.abs(i.Mopp51?.mean), 4)}`);
     line('M(V2, положение по Report 385), нКл', `${cells(data.e_M251)} → среднее ${fmt(Math.abs(i.M251?.mean), 4)}`);
   }
-  L.push('');
+  out.push('');
   const blocks = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
   for (const k of blocks) {
     const x = k === 'trs' ? r.trs : r.tg51;
-    L.push(`— ${PROTO[k].name} —`);
+    out.push(`— ${PROTO[k].name} —`);
     if (k === 'trs') {
-      L.push(`k_TP = ${fmt(x.kTP)}; k_elec = ${fmt(x.kelec)}; k_pol = ${fmt(x.kpol)}; k_s = ${fmt(x.ks)}; k_leak = ${fmt(x.kleak)}`);
-      L.push(`k_Q = ${fmt(x.kQ)} (${x.kQSource || '—'})`);
+      out.push(`k_TP = ${fmt(x.kTP)}; k_elec = ${fmt(x.kelec)}; k_pol = ${fmt(x.kpol)}; k_s = ${fmt(x.ks)}; k_leak = ${fmt(x.kleak)}`);
+      out.push(`k_Q = ${fmt(x.kQ)} (${x.kQSource || '—'})`);
     } else {
-      L.push(`P_TP = ${fmt(x.PTP)}; P_elec = ${fmt(x.Pelec)}; P_pol = ${fmt(x.Ppol)}; P_ion = ${fmt(x.Pion)}; P_leak = ${fmt(x.Pleak)}`);
-      L.push(`${i.cross ? 'k′_Q' : 'k_Q'} = ${fmt(x.kQ)} (${x.kQSource || '—'})`);
+      out.push(`P_TP = ${fmt(x.PTP)}; P_elec = ${fmt(x.Pelec)}; P_pol = ${fmt(x.Ppol)}; P_ion = ${fmt(x.Pion)}; P_leak = ${fmt(x.Pleak)}`);
+      out.push(`${i.cross ? 'k′_Q' : 'k_Q'} = ${fmt(x.kQ)} (${x.kQSource || '—'})`);
     }
-    if (x.blocked) L.push('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: есть ошибки ввода (см. замечания).');
+    if (x.blocked) out.push('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: есть ошибки ввода (см. замечания).');
     else {
-      L.push(`M = ${fmt(x.M)} нКл; D_w(z_ref) = ${fmt(x.D)} Гр; ${fmt(x.DperMU)} сГр/МЕ (Гр на 100 МЕ) на z_ref`);
+      out.push(`M = ${fmt(x.M)} нКл; D_w(z_ref) = ${fmt(x.D)} Гр; ${fmt(x.DperMU)} сГр/МЕ (Гр на 100 МЕ) на z_ref`);
       if (r.depth.on && r.depth.ok && Number.isFinite(x.DmaxPerMU)) {
-        L.push(`${r.depth.label} = ${fmt(r.depth.factor)}${data.e_zmax ? `; z_max = ${data.e_zmax} см` : ''}; на z_max ${fmt(x.DmaxPerMU)} сГр/МЕ (Гр на 100 МЕ)${Number.isFinite(x.deviation) ? `; отклонение от номинала ${fmtSigned(x.deviation, 2)} %` : ''}`);
-      } else if (r.depth.on) L.push('Пересчёт на z_max не выполнен: исправьте данные раздела 7.');
+        out.push(`${r.depth.label} = ${fmt(r.depth.factor)}${data.e_zmax ? `; z_max = ${data.e_zmax} см` : ''}; на z_max ${fmt(x.DmaxPerMU)} сГр/МЕ (Гр на 100 МЕ)${Number.isFinite(x.deviation) ? `; отклонение от номинала ${fmtSigned(x.deviation, 2)} %` : ''}`);
+      } else if (r.depth.on) out.push('Пересчёт на z_max не выполнен: исправьте данные раздела 7.');
     }
-    L.push('');
+    out.push('');
   }
-  if (r.comparison) L.push(`TG-51 относительно TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`, '');
+  if (r.comparison) out.push(`TG-51 относительно TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`, '');
   const msgs = r.messages.filter((m) => m.level !== 'info');
   if (msgs.length) {
-    L.push('Замечания:');
-    msgs.forEach((m) => L.push(`- ${m.text}${m.ref ? ` [${m.ref}]` : ''}`));
-    L.push('');
+    out.push('Замечания:');
+    msgs.forEach((m) => out.push(`- ${m.text}${m.ref ? ` [${m.ref}]` : ''}`));
+    out.push('');
   }
-  if (data.e_notes) L.push(`Примечания: ${data.e_notes}`);
-  return L.join('\n');
+  if (data.e_notes) out.push(`Примечания: ${data.e_notes}`);
+  return out.join('\n');
 }
 
 // ------------------------------------------------------------ сохранение
@@ -337,7 +344,7 @@ function update() {
   renderFlags(ROOT(), result.flags, seriesBox);
   renderChamberInfo(result);
   renderReadout(result, result.form);
-  $('#e-demo-flag').hidden = !(data.e_institution === SAMPLE_ELECTRONS.e_institution && data.e_machine === SAMPLE_ELECTRONS.e_machine);
+  $('#e-demo-flag').hidden = !isDemo(data);
   saveDraft(result.form);
   renderSignBlock($('#e-sign'), result.form.e_staff);
 }
@@ -347,6 +354,17 @@ function onBeamInput() {
   if (Number.isFinite(energy)) $('#e_energy').value = String(energy).replace('.', ',');
 }
 
+/** Смена языка: списки с переведёнными подписями, подписи ячеек, десятичный разделитель, пересчёт. */
+function refreshForLang() {
+  const kept = $$('select', ROOT()).map((sel) => [sel, sel.value]);
+  fillSelects();
+  for (const [sel, v] of kept) if ([...sel.options].some((o) => o.value === v)) sel.value = v;
+  $$('#e-sheet .cells').forEach((box) => renderCells(box, readCells(box)));
+  renderStaff($('#e-staff-list'), readStaff($('#e-staff-list')), update);
+  localizeDecimals(ROOT());
+  update();
+}
+
 export function initElectrons() {
   setStatus = makeStatus($('#e-status'));
   fillSelects();
@@ -354,7 +372,7 @@ export function initElectrons() {
   $$('#e-sheet > section .combo').forEach((c) => makeCombo(c));
 
   const draft = loadDraft();
-  writeForm(draft ? draft : SAMPLE_ELECTRONS);
+  writeForm(draft ? draft : sampleData());
   update();
   if (!draft) setStatus('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.');
 
@@ -367,6 +385,7 @@ export function initElectrons() {
   document.addEventListener('change', (e) => {
     if (e.target.name === 'protocol') update();
   });
+  document.addEventListener('langchange', refreshForLang);
 
   $('#e-btn-add-staff').addEventListener('click', () => {
     const cur = readStaff($('#e-staff-list'));
@@ -385,7 +404,7 @@ export function initElectrons() {
   }
 
   $('#e-btn-sample').addEventListener('click', () => {
-    writeForm(SAMPLE_ELECTRONS);
+    writeForm(sampleData());
     update();
     setStatus('Загружен демонстрационный пример (вымышленные данные).');
   });

@@ -1,6 +1,8 @@
 // Разбор чисел и единиц измерения.
 // Принимаем десятичную запятую и точку, знак «−» (U+2212), экспоненциальную запись.
 
+import { L, getLang } from './i18n.js';
+
 const NUMBER_RE = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
 
 /** Одно число из строки. Возвращает NaN, если строка пустая или некорректная. */
@@ -34,7 +36,7 @@ export function parseSeries(input) {
   const values = tokens.map(parseNumber);
   const badIndex = values.findIndex((v) => !Number.isFinite(v));
   if (badIndex >= 0) {
-    return { values: [], n: 0, mean: NaN, sd: NaN, relSd: NaN, error: `не удалось прочитать «${tokens[badIndex]}»` };
+    return { values: [], n: 0, mean: NaN, sd: NaN, relSd: NaN, error: L(`не удалось прочитать «${tokens[badIndex]}»`, `could not read "${tokens[badIndex]}"`) };
   }
   const n = values.length;
   const mean = values.reduce((a, b) => a + b, 0) / n;
@@ -43,10 +45,13 @@ export function parseSeries(input) {
 }
 
 export const PRESSURE_UNITS = {
-  kPa: { label: 'кПа', toKPa: (v) => v },
-  hPa: { label: 'гПа (мбар)', toKPa: (v) => v / 10 },
-  mmHg: { label: 'мм рт. ст.', toKPa: (v) => (v * 101.325) / 760 },
+  kPa: { label: 'кПа', labelEn: 'kPa', toKPa: (v) => v },
+  hPa: { label: 'гПа (мбар)', labelEn: 'hPa (mbar)', toKPa: (v) => v / 10 },
+  mmHg: { label: 'мм рт. ст.', labelEn: 'mmHg', toKPa: (v) => (v * 101.325) / 760 },
 };
+
+/** Подпись единицы на текущем языке. */
+export const unitLabel = (u) => (u ? L(u.label, u.labelEn) : '');
 
 export function pressureToKPa(value, unit) {
   const u = PRESSURE_UNITS[unit];
@@ -56,10 +61,10 @@ export function pressureToKPa(value, unit) {
 
 /** Единицы калибровочного коэффициента N_D,w; показания электрометра — в нКл. */
 export const NDW_UNITS = {
-  'Gy/nC': { label: 'Гр/нКл', toGyPerNC: (v) => v },
-  'cGy/nC': { label: 'сГр/нКл', toGyPerNC: (v) => v / 100 },
-  'mGy/nC': { label: 'мГр/нКл', toGyPerNC: (v) => v / 1000 },
-  'Gy/C': { label: 'Гр/Кл', toGyPerNC: (v) => v * 1e-9 },
+  'Gy/nC': { label: 'Гр/нКл', labelEn: 'Gy/nC', toGyPerNC: (v) => v },
+  'cGy/nC': { label: 'сГр/нКл', labelEn: 'cGy/nC', toGyPerNC: (v) => v / 100 },
+  'mGy/nC': { label: 'мГр/нКл', labelEn: 'mGy/nC', toGyPerNC: (v) => v / 1000 },
+  'Gy/C': { label: 'Гр/Кл', labelEn: 'Gy/C', toGyPerNC: (v) => v * 1e-9 },
 };
 
 export function ndwToGyPerNC(value, unit) {
@@ -68,11 +73,15 @@ export function ndwToGyPerNC(value, unit) {
   return u.toGyPerNC(value);
 }
 
-/** Число для текста сообщений: десятичная запятая и знак «−». */
+/** Число для текста сообщений: десятичная запятая (по-английски — точка) и знак «−». */
 export function ru(value, digits) {
   if (!Number.isFinite(value)) return String(value);
-  return value.toFixed(digits).replace('.', ',').replace('-', '\u2212');
+  const s = value.toFixed(digits).replace('-', '\u2212');
+  return getLang() === 'en' ? s : s.replace('.', ',');
 }
+
+/** Десятичный разделитель текущего языка в строке с числом (например, из toPrecision). */
+export const dec = (s) => (getLang() === 'en' ? String(s) : String(s).replace('.', ','));
 
 /**
  * Показания из отдельных ячеек (массив строк). Пустые ячейки пропускаются.
@@ -85,7 +94,7 @@ export function parseCells(cells) {
     if (isBlank(cells[i])) continue;
     const v = parseNumber(cells[i]);
     if (!Number.isFinite(v)) {
-      return { values: [], n: 0, mean: NaN, sd: NaN, relSd: NaN, error: `не удалось прочитать ячейку ${i + 1} («${cells[i]}»)` };
+      return { values: [], n: 0, mean: NaN, sd: NaN, relSd: NaN, error: L(`не удалось прочитать ячейку ${i + 1} («${cells[i]}»)`, `could not read cell ${i + 1} ("${cells[i]}")`) };
     }
     values.push(v);
   }
