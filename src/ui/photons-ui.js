@@ -1,7 +1,7 @@
 // Модуль «МВ фотоны»: связывает форму с расчётным ядром.
 import { computePhotons, FORM_DEFAULTS, normalizeForm } from '../core/photons.js';
 import { SAMPLE_FORM, SAMPLE_FORM_EN } from '../core/sample.js';
-import { L, getLang } from '../core/i18n.js';
+import { L, getLang, refText } from '../core/i18n.js';
 import { localizeDecimals } from './i18n.js';
 import { CHAMBERS, chamberLabel, chamberNote } from '../core/chambers.js';
 import { PRESSURE_UNITS, NDW_UNITS, parseBeamName, parseNumber, unitLabel } from '../core/units.js';
@@ -35,7 +35,7 @@ function chamberOptions() {
 function fillChamberSelect() {
   const sel = $('#ch_model');
   const keep = sel.value;
-  const parts = ['<option value="">— выберите камеру —</option>'];
+  const parts = [`<option value="">${L('— выберите камеру —', '— select a chamber —')}</option>`];
   for (const [maker, list] of chamberOptions()) {
     parts.push(`<optgroup label="${esc(maker)}">`);
     for (const c of list) {
@@ -46,18 +46,18 @@ function fillChamberSelect() {
   }
   const mine = getMyChambers().filter((c) => c.cc_type !== 'pp'); // плоскопараллельные для фотонов не рекомендуются
   if (mine.length) {
-    parts.push('<optgroup label="Мои камеры">');
-    for (const c of mine) parts.push(`<option value="${esc(c.id)}">${esc([c.cc_maker, c.cc_model].filter(Boolean).join(' ') || 'без названия')}</option>`);
+    parts.push(`<optgroup label="${L('Мои камеры', 'My chambers')}">`);
+    for (const c of mine) parts.push(`<option value="${esc(c.id)}">${esc([c.cc_maker, c.cc_model].filter(Boolean).join(' ') || L('без названия', 'unnamed'))}</option>`);
     parts.push('</optgroup>');
   }
-  parts.push('<option value="CUSTOM">Ввести свою камеру…</option>');
+  parts.push(`<option value="CUSTOM">${L('Ввести свою камеру…', 'Enter a custom chamber…')}</option>`);
   sel.innerHTML = parts.join('');
   if (keep && $(`#ch_model option[value="${CSS.escape(keep)}"]`)) sel.value = keep;
 }
 
 function fillSelects() {
   fillChamberSelect();
-  const analog = ['<option value="">— нет —</option>'];
+  const analog = [`<option value="">${L('— нет —', '— none —')}</option>`];
   for (const [maker, list] of chamberOptions()) {
     analog.push(`<optgroup label="${esc(maker)}">`);
     for (const c of list) analog.push(`<option value="${c.id}">${esc(chamberLabel(c))}</option>`);
@@ -139,34 +139,55 @@ function applyVisibility(data, result) {
     opt.disabled = !trsOn;
   }
   $('#kvol-hint').textContent = !fff
-    ? 'Недоступно: в калькуляторе для пучков с выравнивающим фильтром принимается k_vol = P_rp = 1. Протоколы допускают эту поправку и для таких пучков при неоднородном профиле (TRS-398, табл. 15, прим. c; аддендум TG-51, разд. 5.C.7). Отметьте БВФ в разделе 1, если это ваш случай.'
+    ? L(
+        'Недоступно: в калькуляторе для пучков с выравнивающим фильтром принимается k_vol = P_rp = 1. Протоколы допускают эту поправку и для таких пучков при неоднородном профиле (TRS-398, табл. 15, прим. c; аддендум TG-51, разд. 5.C.7). Отметьте БВФ в разделе 1, если это ваш случай.',
+        'Not available: for beams with a flattening filter the calculator assumes k_vol = P_rp = 1. The protocols allow this correction for such beams too when the profile is non-uniform (TRS-398, Table 15, note c; TG-51 addendum, Sec. 5.C.7). Select FFF in section 1 if this applies to your beam.',
+      )
     : trsOn
-      ? 'Пучок без выравнивающего фильтра: поправка обязательна, если камера не короткая. Одна и та же поправка применяется в обоих протоколах.'
-      : 'Формула (22) и табл. 11 взяты из TRS-398 и требуют TPR20,10: в режиме «только TG-51» рассчитайте P_rp по измеренному профилю или введите своё значение.';
+      ? L(
+          'Пучок без выравнивающего фильтра: поправка обязательна, если камера не короткая. Одна и та же поправка применяется в обоих протоколах.',
+          'Flattening-filter-free beam: the correction is required unless the chamber is short. The same correction is applied in both protocols.',
+        )
+      : L(
+          'Формула (22) и табл. 11 взяты из TRS-398 и требуют TPR20,10: в режиме «только TG-51» рассчитайте P_rp по измеренному профилю или введите своё значение.',
+          'Eq. (22) and Table 11 come from TRS-398 and require TPR20,10: in "TG-51 only" mode, calculate P_rp from a measured profile or enter your own value.',
+        );
 
   // подписи, зависящие от выбора
   const pdd = data.qtrs_method === 'pdd2010';
-  $('#lbl-v20').textContent = pdd ? 'PDD(20), %' : 'M на 20 см';
-  $('#lbl-v10').textContent = pdd ? 'PDD(10), %' : 'M на 10 см';
+  $('#lbl-v20').textContent = pdd ? 'PDD(20), %' : L('M на 20 см', 'M at 20 cm');
+  $('#lbl-v10').textContent = pdd ? 'PDD(10), %' : L('M на 10 см', 'M at 10 cm');
   const z = result.depth.zref;
   const zTxt = Number.isFinite(z) ? fmt(z, z % 1 ? 1 : 0) : '10';
   const sad = data.setup_geometry === 'SAD';
   const ssd = result.geometry?.ssd;
   const ssdTxt = Number.isFinite(ssd) ? fmt(ssd, ssd % 1 ? 1 : 0) : '—';
   $('#dd-pdd-field').hidden = !data.dd_on || (sad && data.dd_sad !== 'pdd');
-  $('#lbl-dd-pdd').textContent = sad ? `PDD(${zTxt}) при РИП ${ssdTxt} см, %` : `PDD(${zTxt}), %`;
-  $('#dd-pdd-sub').textContent = sad ? `измеренная при РИП ${ssdTxt} см; PDD при РИП 100 см здесь не подходит` : '';
+  $('#lbl-dd-pdd').textContent = sad ? L(`PDD(${zTxt}) при РИП ${ssdTxt} см, %`, `PDD(${zTxt}) at SSD ${ssdTxt} cm, %`) : `PDD(${zTxt}), %`;
+  $('#dd-pdd-sub').textContent = sad ? L(`измеренная при РИП ${ssdTxt} см; PDD при РИП 100 см здесь не подходит`, `measured at SSD ${ssdTxt} cm; PDD at SSD 100 cm is not suitable here`) : '';
   $('label[for="dd_tmr"]').textContent = `TMR(${zTxt})`;
   $('#dd-hint').textContent = !sad
-    ? `D(d_max) = D(${zTxt} см) / PDD(${zTxt}) · 100. PDD берут клиническую, из данных ввода в эксплуатацию и системы планирования.`
+    ? L(
+        `D(d_max) = D(${zTxt} см) / PDD(${zTxt}) · 100. PDD берут клиническую, из данных ввода в эксплуатацию и системы планирования.`,
+        `D(d_max) = D(${zTxt} cm) / PDD(${zTxt}) · 100. Use the clinical PDD from the commissioning data and the treatment planning system.`,
+      )
     : data.dd_sad === 'pdd'
-      ? `Установка по РИО через PDD: D(d_max) = D(${zTxt} см) / PDD(${zTxt}) · 100 при РИП ${ssdTxt} см. Это доза на d_max при той же установке (РИП ${ssdTxt} см), а не в изоцентре; PDD нужна для этого РИП (TRS-398, разд. 6.4.3, рабочая запись 6.9).`
-      : 'Установка по РИО: доза переносится на d_max в изоцентре через TMR из данных ввода в эксплуатацию (TRS-398, разд. 6.4.3; TG-51, разд. IX.C).';
+      ? L(
+          `Установка по РИО через PDD: D(d_max) = D(${zTxt} см) / PDD(${zTxt}) · 100 при РИП ${ssdTxt} см. Это доза на d_max при той же установке (РИП ${ssdTxt} см), а не в изоцентре; PDD нужна для этого РИП (TRS-398, разд. 6.4.3, рабочая запись 6.9).`,
+          `SAD setup via PDD: D(d_max) = D(${zTxt} cm) / PDD(${zTxt}) · 100 at SSD ${ssdTxt} cm. This is the dose at d_max in the same setup (SSD ${ssdTxt} cm), not at the isocenter; the PDD must be for this SSD (TRS-398, Sec. 6.4.3, worksheet 6.9).`,
+        )
+      : L(
+          'Установка по РИО: доза переносится на d_max в изоцентре через TMR из данных ввода в эксплуатацию (TRS-398, разд. 6.4.3; TG-51, разд. IX.C).',
+          'SAD setup: the dose is transferred to d_max at the isocenter using the TMR from the commissioning data (TRS-398, Sec. 6.4.3; TG-51, Sec. IX.C).',
+        );
   const field = parseNumber(data.setup_field);
-  $('#field-view').textContent = Number.isFinite(field) ? `${fmt(field, field % 1 ? 1 : 0)} × ${fmt(field, field % 1 ? 1 : 0)} см` : '';
-  $('#sdd-hint').textContent = `Если оставить пустым: ${fmt(result.inputs.sddCm, 0)} см (по геометрии из раздела 1).`;
+  $('#field-view').textContent = Number.isFinite(field) ? `${fmt(field, field % 1 ? 1 : 0)} × ${fmt(field, field % 1 ? 1 : 0)} ${L('см', 'cm')}` : '';
+  $('#sdd-hint').textContent = L(
+    `Если оставить пустым: ${fmt(result.inputs.sddCm, 0)} см (по геометрии из раздела 1).`,
+    `If left blank: ${fmt(result.inputs.sddCm, 0)} cm (from the geometry in section 1).`,
+  );
   const src = result.trs?.fffEstimate?.source;
-  $('#fff-pdd-src').textContent = src && src !== 'введено' ? `Взято: ${src}.` : '';
+  $('#fff-pdd-src').textContent = src && src !== L('введено', 'entered') ? L(`Взято: ${src}.`, `Source: ${src}.`) : '';
 }
 
 // ------------------------------------------------------------ вывод
@@ -178,27 +199,37 @@ function renderInline(result, data) {
   const info = $('#chamber-info');
   if (c && !c.custom) {
     const bits = [];
-    if (c.rCavMm) bits.push(`радиус полости ${fmt(c.rCavMm, 2)} мм`);
-    if (c.lengthMm) bits.push(`длина полости ${fmt(c.lengthMm, 1)} мм`);
-    const srcs = [c.tg51 ? 'аддендум TG-51' : c.tg51Legacy ? 'TG-51 (1999)' : null, c.trs ? 'TRS-398 Rev.1 (формула и табл. 16)' : null].filter(Boolean);
-    bits.push(`данные k_Q: ${srcs.join(', ')}`);
+    if (c.rCavMm) bits.push(L(`радиус полости ${fmt(c.rCavMm, 2)} мм`, `cavity radius ${fmt(c.rCavMm, 2)} mm`));
+    if (c.lengthMm) bits.push(L(`длина полости ${fmt(c.lengthMm, 1)} мм`, `cavity length ${fmt(c.lengthMm, 1)} mm`));
+    const srcs = [c.tg51 ? L('аддендум TG-51', 'TG-51 addendum') : c.tg51Legacy ? 'TG-51 (1999)' : null, c.trs ? L('TRS-398 Rev.1 (формула и табл. 16)', 'TRS-398 Rev.1 (formula and Table 16)') : null].filter(Boolean);
+    bits.push(L(`данные k_Q: ${srcs.join(', ')}`, `k_Q data: ${srcs.join(', ')}`));
     info.textContent = bits.join(' · ');
   } else if (c?.custom) {
-    info.textContent = 'Заполните характеристики камеры ниже и укажите, откуда брать k_Q.';
+    info.textContent = L('Заполните характеристики камеры ниже и укажите, откуда брать k_Q.', 'Fill in the chamber characteristics below and specify where to take k_Q from.');
   } else {
     info.textContent = '';
   }
   $('#shift-hint').textContent = Number.isFinite(c?.rCavMm)
-    ? `Качество пучка измеряют при каждой референсной дозиметрии. Кривую ионизации цилиндрической камеры сдвигают к поверхности на 0,6·r = ${fmt(0.6 * c.rCavMm, 1)} мм.`
-    : 'Качество пучка измеряют при каждой референсной дозиметрии.';
+    ? L(
+        `Качество пучка измеряют при каждой референсной дозиметрии. Кривую ионизации цилиндрической камеры сдвигают к поверхности на 0,6·r = ${fmt(0.6 * c.rCavMm, 1)} мм.`,
+        `Beam quality is measured at every reference dosimetry session. The depth-ionization curve of a cylindrical chamber is shifted toward the surface by 0.6·r = ${fmt(0.6 * c.rCavMm, 1)} mm.`,
+      )
+    : L('Качество пучка измеряют при каждой референсной дозиметрии.', 'Beam quality is measured at every reference dosimetry session.');
   $('#length-hint').textContent = Number.isFinite(c?.lengthMm)
-    ? `Если оставить пустым, возьмётся ${fmt(c.lengthMm, 1)} мм${c.custom ? ' из характеристик камеры' : ' из табл. 4 TRS-398'}.`
-    : 'Длина полости по данным производителя.';
+    ? L(
+        `Если оставить пустым, возьмётся ${fmt(c.lengthMm, 1)} мм${c.custom ? ' из характеристик камеры' : ' из табл. 4 TRS-398'}.`,
+        `If left blank, ${fmt(c.lengthMm, 1)} mm${c.custom ? ' from the chamber characteristics' : ' from TRS-398 Table 4'} will be used.`,
+      )
+    : L('Длина полости по данным производителя.', 'Cavity length according to the manufacturer.');
 }
 
 const PROTO = {
   trs: { name: 'TRS-398 Rev.1' },
-  tg51: { name: 'TG-51 + аддендум 2014' },
+  tg51: {
+    get name() {
+      return L('TG-51 + аддендум 2014', 'TG-51 + 2014 addendum');
+    },
+  },
 };
 
 /** Итог: по контрольным измерениям, если они введены и без ошибок, иначе по показаниям раздела 4. */
@@ -211,28 +242,30 @@ function doseRow(key, x, result) {
   const main = depthOn ? p.DmaxPerMU : p.DperMU;
   const z = result.depth.zref;
   const zTxt = Number.isFinite(z) ? fmt(z, z % 1 ? 1 : 0) : '10';
-  const where = depthOn ? 'на d<sub>max</sub>' : `на ${zTxt} см`;
+  const where = depthOn ? L('на d<sub>max</sub>', 'at d<sub>max</sub>') : L(`на ${zTxt} см`, `at ${zTxt} cm`);
   let chip = '';
   if (depthOn && Number.isFinite(p.deviation) && !x.blocked) {
     const cls = Math.abs(p.deviation) <= 1 ? 'good' : Math.abs(p.deviation) > 2 ? 'bad' : '';
-    chip = `<span class="chip ${cls}" title="Отклонение от номинального выхода">${fmtSigned(p.deviation, 2)} %</span>`;
+    chip = `<span class="chip ${cls}" title="${L('Отклонение от номинального выхода', 'Deviation from the nominal output')}">${fmtSigned(p.deviation, 2)} %</span>`;
   }
   const units = fromCtrl ? result.ctrl.mu : result.inputs.mu;
   const pre = depthOn ? x.DmaxPerMU : x.DperMU;
+  const unitsTxt = Number.isFinite(units) ? fmt(units, 0) : '—';
+  const preDev = Number.isFinite(x.deviation) ? ` (${fmtSigned(x.deviation, 2)} %)` : '';
   const secondary = [
-    `= ${fmt(main, 4)} Гр на 100 МЕ ${where}`,
-    `D<sub>w</sub>(${zTxt} см) = ${fmt(p.D, 4)} Гр за ${Number.isFinite(units) ? fmt(units, 0) : '—'} МЕ`,
-    depthOn ? `${fmt(p.DperMU, 4)} сГр/МЕ на ${zTxt} см` : null,
+    L(`= ${fmt(main, 4)} Гр на 100 МЕ ${where}`, `= ${fmt(main, 4)} Gy per 100 MU ${where}`),
+    L(`D<sub>w</sub>(${zTxt} см) = ${fmt(p.D, 4)} Гр за ${unitsTxt} МЕ`, `D<sub>w</sub>(${zTxt} cm) = ${fmt(p.D, 4)} Gy for ${unitsTxt} MU`),
+    depthOn ? L(`${fmt(p.DperMU, 4)} сГр/МЕ на ${zTxt} см`, `${fmt(p.DperMU, 4)} cGy/MU at ${zTxt} cm`) : null,
     fromCtrl
-      ? `До калибровки (раздел 4): ${fmt(pre, 4)} сГр/МЕ${Number.isFinite(x.deviation) ? ` (${fmtSigned(x.deviation, 2)} %)` : ''}`
+      ? L(`До калибровки (раздел 4): ${fmt(pre, 4)} сГр/МЕ${preDev}`, `Before calibration (section 4): ${fmt(pre, 4)} cGy/MU${preDev}`)
       : result.ctrl.on
-        ? 'Контрольные измерения содержат ошибки — итог по разделу 4'
-        : 'Контрольные измерения не введены — итог по разделу 4',
+        ? L('Контрольные измерения содержат ошибки — итог по разделу 4', 'Check measurements contain errors — result from section 4')
+        : L('Контрольные измерения не введены — итог по разделу 4', 'No check measurements entered — result from section 4'),
   ].filter(Boolean).join('<br>');
   return `<div class="dose-row ${x.blocked ? 'blocked' : ''}">
-    <div class="proto"><span>${PROTO[key].name}${fromCtrl ? ' · контрольные измерения' : ''}</span>${chip}</div>
-    <div class="dose-big">${x.blocked || !Number.isFinite(main) ? '—' : fmt(main, 4)}<small>сГр/МЕ ${where}</small></div>
-    <div class="secondary">${x.blocked ? 'Исправьте ошибки из списка замечаний' : secondary}</div>
+    <div class="proto"><span>${PROTO[key].name}${fromCtrl ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
+    <div class="dose-big">${x.blocked || !Number.isFinite(main) ? '—' : fmt(main, 4)}<small>${L('сГр/МЕ', 'cGy/MU')} ${where}</small></div>
+    <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : secondary}</div>
   </div>`;
 }
 
@@ -243,7 +276,7 @@ function renderReadout(result, data) {
   const delta = $('#delta');
   if (result.comparison && !result.trs.blocked && !result.tg51.blocked) {
     delta.hidden = false;
-    delta.innerHTML = `TG-51 относительно TRS-398: <b>${fmtSigned(result.comparison.dRel, 2)} %</b>`;
+    delta.innerHTML = L(`TG-51 относительно TRS-398: <b>${fmtSigned(result.comparison.dRel, 2)} %</b>`, `TG-51 relative to TRS-398: <b>${fmtSigned(result.comparison.dRel, 2)} %</b>`);
   } else {
     delta.hidden = true;
   }
@@ -253,18 +286,18 @@ function renderReadout(result, data) {
   if (first) {
     const p = primaryOf(first.x);
     const val = result.depth.on && Number.isFinite(p.DmaxPerMU) ? p.DmaxPerMU : p.DperMU;
-    mv.innerHTML = `${first.k === 'trs' ? 'TRS' : 'TG-51'}: <b>${fmt(val, 4)}</b> сГр/МЕ${Number.isFinite(p.deviation) ? ` (${fmtSigned(p.deviation, 2)} %)` : ''}`;
+    mv.innerHTML = `${first.k === 'trs' ? 'TRS' : 'TG-51'}: <b>${fmt(val, 4)}</b> ${L('сГр/МЕ', 'cGy/MU')}${Number.isFinite(p.deviation) ? ` (${fmtSigned(p.deviation, 2)} %)` : ''}`;
   } else {
     const n = result.messages.filter((m) => m.level === 'error').length;
-    mv.textContent = n ? `Ошибок: ${n}` : '—';
+    mv.textContent = n ? L(`Ошибок: ${n}`, `Errors: ${n}`) : '—';
   }
 
-  const lvlName = { error: 'Ошибка', warn: 'Внимание', info: 'Справка' };
-  const scopeName = { common: '', depth: 'Пересчёт на d_max · ', ctrl: 'Контрольные измерения · ', trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
+  const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
+  const scopeName = { common: '', depth: L('Пересчёт на d_max · ', 'Transfer to d_max · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
   const list = result.messages.filter((m) => m.scope === 'common' || m.scope === 'depth' || m.scope === 'ctrl' || keys.includes(m.scope));
   $('#messages').innerHTML = list.length
-    ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(m.ref)}</span>` : ''}</li>`).join('')
-    : '<li class="info"><span class="lvl">Всё в порядке</span><span>Замечаний к введённым данным нет.</span></li>';
+    ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
+    : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
 
   const t = result.trs;
   const g = result.tg51;
@@ -273,48 +306,54 @@ function renderReadout(result, data) {
   const z = result.depth.zref;
   const zTxt = Number.isFinite(z) ? fmt(z, z % 1 ? 1 : 0) : '10';
   const rows = [
-    ['Температура и давление', ['k<sub>TP</sub>', t.kTP, 4], ['P<sub>TP</sub>', g.PTP, 4]],
-    ['Электрометр', ['k<sub>elec</sub>', t.kelec, 4], ['P<sub>elec</sub>', g.Pelec, 4]],
-    ['Полярность', ['k<sub>pol</sub>', t.kpol, 4], ['P<sub>pol</sub>', g.Ppol, 4]],
-    ['Рекомбинация', ['k<sub>s</sub>', t.ks, 4], ['P<sub>ion</sub>', g.Pion, 4]],
-    ['Утечка', ['k<sub>leak</sub>', t.kleak, 4], ['P<sub>leak</sub>', g.Pleak, 4]],
-    ['Усреднение по объёму', ['k<sub>vol</sub>', t.kvol, 4], ['P<sub>rp</sub>', g.Prp, 4]],
-    ['Исправленное показание, нКл', ['M<sub>Q</sub>', t.M, 4], ['M', g.M, 4]],
-    ['Качество пучка', ['TPR<sub>20,10</sub>', t.tpr, 4], ['%dd(10)<sub>x</sub>', g.pdd10x, 2]],
-    ['Поправка на качество', ['k<sub>Q</sub>', t.kQ, 4], ['k<sub>Q</sub>', g.kQ, 4]],
-    ['N<sub>D,w</sub>, Гр/нКл', ['', result.inputs.ndw, 5], ['', result.inputs.ndw, 5]],
-    [`D<sub>w</sub>(${zTxt} см), Гр`, ['', t.D, 4, true], ['', g.D, 4, true], 'total'],
-    [`На ${zTxt} см, сГр/МЕ = Гр на 100 МЕ`, ['', t.DperMU, 4, true], ['', g.DperMU, 4, true]],
+    [L('Температура и давление', 'Temperature and pressure'), ['k<sub>TP</sub>', t.kTP, 4], ['P<sub>TP</sub>', g.PTP, 4]],
+    [L('Электрометр', 'Electrometer'), ['k<sub>elec</sub>', t.kelec, 4], ['P<sub>elec</sub>', g.Pelec, 4]],
+    [L('Полярность', 'Polarity'), ['k<sub>pol</sub>', t.kpol, 4], ['P<sub>pol</sub>', g.Ppol, 4]],
+    [L('Рекомбинация', 'Recombination'), ['k<sub>s</sub>', t.ks, 4], ['P<sub>ion</sub>', g.Pion, 4]],
+    [L('Утечка', 'Leakage'), ['k<sub>leak</sub>', t.kleak, 4], ['P<sub>leak</sub>', g.Pleak, 4]],
+    [L('Усреднение по объёму', 'Volume averaging'), ['k<sub>vol</sub>', t.kvol, 4], ['P<sub>rp</sub>', g.Prp, 4]],
+    [L('Исправленное показание, нКл', 'Corrected reading, nC'), ['M<sub>Q</sub>', t.M, 4], ['M', g.M, 4]],
+    [L('Качество пучка', 'Beam quality'), ['TPR<sub>20,10</sub>', t.tpr, 4], ['%dd(10)<sub>x</sub>', g.pdd10x, 2]],
+    [L('Поправка на качество', 'Beam quality correction'), ['k<sub>Q</sub>', t.kQ, 4], ['k<sub>Q</sub>', g.kQ, 4]],
+    [L('N<sub>D,w</sub>, Гр/нКл', 'N<sub>D,w</sub>, Gy/nC'), ['', result.inputs.ndw, 5], ['', result.inputs.ndw, 5]],
+    [L(`D<sub>w</sub>(${zTxt} см), Гр`, `D<sub>w</sub>(${zTxt} cm), Gy`), ['', t.D, 4, true], ['', g.D, 4, true], 'total'],
+    [L(`На ${zTxt} см, сГр/МЕ = Гр на 100 МЕ`, `At ${zTxt} cm, cGy/MU = Gy per 100 MU`), ['', t.DperMU, 4, true], ['', g.DperMU, 4, true]],
   ];
   if (result.depth.on) {
     rows.push([result.depth.label, ['', result.depth.factor, 4], ['', result.depth.factor, 4]]);
-    rows.push(['На d<sub>max</sub>, сГр/МЕ = Гр на 100 МЕ', ['', t.DmaxPerMU, 4, true], ['', g.DmaxPerMU, 4, true], result.ctrl.on ? '' : 'total']);
+    rows.push([L('На d<sub>max</sub>, сГр/МЕ = Гр на 100 МЕ', 'At d<sub>max</sub>, cGy/MU = Gy per 100 MU'), ['', t.DmaxPerMU, 4, true], ['', g.DmaxPerMU, 4, true], result.ctrl.on ? '' : 'total']);
   }
   if (result.ctrl.on) {
     const tc = t.ctrl || {};
     const gc = g.ctrl || {};
     const bT = !!tc.blocked;
     const bG = !!gc.blocked;
-    const cz = `Контрольные измерения, ${Number.isFinite(result.ctrl.mu) ? fmt(result.ctrl.mu, 0) : '—'} МЕ`;
+    const ctrlMu = Number.isFinite(result.ctrl.mu) ? fmt(result.ctrl.mu, 0) : '—';
+    const cz = L(`Контрольные измерения, ${ctrlMu} МЕ`, `Check measurements, ${ctrlMu} MU`);
     rows.push([cz, [], [], 'group']);
-    rows.push(['Исправленное показание, нКл', ['M', tc.M, 4, true, bT], ['M', gc.M, 4, true, bG]]);
-    rows.push([`D<sub>w</sub>(${zTxt} см), Гр`, ['', tc.D, 4, true, bT], ['', gc.D, 4, true, bG]]);
-    rows.push([`На ${zTxt} см, сГр/МЕ = Гр на 100 МЕ`, ['', tc.DperMU, 4, true, bT], ['', gc.DperMU, 4, true, bG], result.depth.on ? '' : 'total']);
-    if (result.depth.on) rows.push(['На d<sub>max</sub>, сГр/МЕ = Гр на 100 МЕ', ['', tc.DmaxPerMU, 4, true, bT], ['', gc.DmaxPerMU, 4, true, bG], 'total']);
+    rows.push([L('Исправленное показание, нКл', 'Corrected reading, nC'), ['M', tc.M, 4, true, bT], ['M', gc.M, 4, true, bG]]);
+    rows.push([L(`D<sub>w</sub>(${zTxt} см), Гр`, `D<sub>w</sub>(${zTxt} cm), Gy`), ['', tc.D, 4, true, bT], ['', gc.D, 4, true, bG]]);
+    rows.push([L(`На ${zTxt} см, сГр/МЕ = Гр на 100 МЕ`, `At ${zTxt} cm, cGy/MU = Gy per 100 MU`), ['', tc.DperMU, 4, true, bT], ['', gc.DperMU, 4, true, bG], result.depth.on ? '' : 'total']);
+    if (result.depth.on) rows.push([L('На d<sub>max</sub>, сГр/МЕ = Гр на 100 МЕ', 'At d<sub>max</sub>, cGy/MU = Gy per 100 MU'), ['', tc.DmaxPerMU, 4, true, bT], ['', gc.DmaxPerMU, 4, true, bG], 'total']);
   }
   const cell = ([sym, v, d, dose, own], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && (blocked || own) ? '—' : fmt(v, d)}</td>`;
   const span = 1 + showT + showG;
   $('#factors').innerHTML =
-    `<thead><tr><th>Величина</th>${showT ? '<th>TRS-398</th>' : ''}${showG ? '<th>TG-51</th>' : ''}</tr></thead><tbody>` +
+    `<thead><tr><th>${L('Величина', 'Quantity')}</th>${showT ? '<th>TRS-398</th>' : ''}${showG ? '<th>TG-51</th>' : ''}</tr></thead><tbody>` +
     rows.map((r) => (r[3] === 'group' ? `<tr class="group"><td colspan="${span}">${r[0]}</td></tr>` : `<tr class="${r[3] || ''}"><td>${r[0]}</td>${showT ? cell(r[1], t.blocked) : ''}${showG ? cell(r[2], g.blocked) : ''}</tr>`)).join('') +
     '</tbody>';
 }
 
 // ------------------------------------------------------------ протокол текстом
 function geometryText(data) {
-  if (data.setup_geometry === 'SAD') return 'РИО = 100 см, поле 10×10 см в плоскости камеры, камера на глубине 10 см';
-  if (data.setup_geometry === 'manual') return `РИП = ${data.setup_ssd} см, поле ${data.setup_field}×${data.setup_field} см, камера на глубине ${data.setup_depth} см`;
-  return 'РИП = 100 см, поле 10×10 см на поверхности воды, камера на глубине 10 см';
+  if (data.setup_geometry === 'SAD') return L('РИО = 100 см, поле 10×10 см в плоскости камеры, камера на глубине 10 см', 'SAD = 100 cm, 10×10 cm field at the chamber plane, chamber at 10 cm depth');
+  if (data.setup_geometry === 'manual') {
+    return L(
+      `РИП = ${data.setup_ssd} см, поле ${data.setup_field}×${data.setup_field} см, камера на глубине ${data.setup_depth} см`,
+      `SSD = ${data.setup_ssd} cm, ${data.setup_field}×${data.setup_field} cm field, chamber at ${data.setup_depth} cm depth`,
+    );
+  }
+  return L('РИП = 100 см, поле 10×10 см на поверхности воды, камера на глубине 10 см', 'SSD = 100 cm, 10×10 cm field at the water surface, chamber at 10 cm depth');
 }
 
 function reportText(data, r) {
@@ -322,34 +361,44 @@ function reportText(data, r) {
   const c = r.chamber;
   const line = (k, v) => out.push(`${k}: ${v}`);
   const cells = (a) => (Array.isArray(a) ? a.filter((x) => String(x).trim() !== '').join('; ') : a);
-  out.push('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — МВ ФОТОНЫ');
-  line('Протокол', data.protocol === 'both' ? 'TRS-398 Rev.1 и TG-51 (+ аддендум 2014)' : PROTO[data.protocol].name);
-  line('Учреждение', data.meta_institution || '—');
-  line('Аппарат', data.meta_machine || '—');
+  out.push(L('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — МВ ФОТОНЫ', 'REFERENCE DOSIMETRY REPORT — MV PHOTONS'));
+  line(L('Протокол', 'Protocol'), data.protocol === 'both' ? L('TRS-398 Rev.1 и TG-51 (+ аддендум 2014)', 'TRS-398 Rev.1 and TG-51 (+ 2014 addendum)') : PROTO[data.protocol].name);
+  line(L('Учреждение', 'Institution'), data.meta_institution || '—');
+  line(L('Аппарат', 'Machine'), data.meta_machine || '—');
   const beamE = parseBeamName(data.meta_beam).energy;
   const showE = data.meta_energy && !(Number.isFinite(beamE) && Math.abs(beamE - parseNumber(data.meta_energy)) < 1e-9);
   const showF = data.meta_fff && parseBeamName(data.meta_beam).fff !== true;
-  line('Пучок', `${data.meta_beam || '—'}${showE ? `, ${data.meta_energy} МВ` : ''}${showF ? ', БВФ' : ''}`);
-  line('Дата', data.meta_date || '—');
-  line('Измерения выполнили', data.meta_staff.filter((s) => s.trim()).join(', ') || '—');
-  line('Геометрия', geometryText(data));
+  line(L('Пучок', 'Beam'), `${data.meta_beam || '—'}${showE ? L(`, ${data.meta_energy} МВ`, `, ${data.meta_energy} MV`) : ''}${showF ? L(', БВФ', ', FFF') : ''}`);
+  line(L('Дата', 'Date'), data.meta_date || '—');
+  line(L('Измерения выполнили', 'Measured by'), data.meta_staff.filter((s) => s.trim()).join(', ') || '—');
+  line(L('Геометрия', 'Geometry'), geometryText(data));
   out.push('');
   if (c?.custom) {
-    line('Камера', `своя: ${[data.cc_maker, data.cc_model].filter(Boolean).join(' ') || '—'}, № ${data.ch_serial || '—'}`);
-    line('Характеристики', `V = ${data.cc_volume || '—'} см³, L = ${data.cc_length || '—'} мм, r = ${data.cc_radius || '—'} мм, стенка ${data.cc_wall || '—'} ${data.cc_wall_thickness ? `(${data.cc_wall_thickness} г/см²)` : ''}, электрод ${data.cc_electrode || '—'}, ${data.cc_waterproof ? 'водонепроницаемая' : 'не водонепроницаемая'}`);
-    if (c.analog) line('Аналог для k_Q', chamberLabel(c.analog));
-    if (c.hasAB) line('Параметры ур. (34)', `a = ${data.cc_a}, b = ${data.cc_b}`);
+    const ccName = [data.cc_maker, data.cc_model].filter(Boolean).join(' ') || '—';
+    line(L('Камера', 'Chamber'), L(`своя: ${ccName}, № ${data.ch_serial || '—'}`, `custom: ${ccName}, S/N ${data.ch_serial || '—'}`));
+    line(
+      L('Характеристики', 'Characteristics'),
+      L(
+        `V = ${data.cc_volume || '—'} см³, L = ${data.cc_length || '—'} мм, r = ${data.cc_radius || '—'} мм, стенка ${data.cc_wall || '—'} ${data.cc_wall_thickness ? `(${data.cc_wall_thickness} г/см²)` : ''}, электрод ${data.cc_electrode || '—'}, ${data.cc_waterproof ? 'водонепроницаемая' : 'не водонепроницаемая'}`,
+        `V = ${data.cc_volume || '—'} cm³, L = ${data.cc_length || '—'} mm, r = ${data.cc_radius || '—'} mm, wall ${data.cc_wall || '—'} ${data.cc_wall_thickness ? `(${data.cc_wall_thickness} g/cm²)` : ''}, electrode ${data.cc_electrode || '—'}, ${data.cc_waterproof ? 'waterproof' : 'not waterproof'}`,
+      ),
+    );
+    if (c.analog) line(L('Аналог для k_Q', 'Analogous chamber for k_Q'), chamberLabel(c.analog));
+    if (c.hasAB) line(L('Параметры ур. (34)', 'Parameters of Eq. (34)'), `a = ${data.cc_a}, b = ${data.cc_b}`);
   } else {
-    line('Камера', c ? `${chamberLabel(c)}, № ${data.ch_serial || '—'}` : '—');
+    line(L('Камера', 'Chamber'), c ? L(`${chamberLabel(c)}, № ${data.ch_serial || '—'}`, `${chamberLabel(c)}, S/N ${data.ch_serial || '—'}`) : '—');
   }
-  line('N_D,w', `${data.ch_ndw} ${NDW_UNITS[data.ch_ndw_unit]?.label ?? ''} (= ${fmt(r.inputs.ndw, 6)} Гр/нКл); T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} кПа`);
-  line('Электрометр', `${data.el_model || '—'}, № ${data.el_serial || '—'}, k_elec = ${data.el_kelec}`);
-  line('Условия', `T = ${data.env_T} °C, P = ${data.env_P} ${PRESSURE_UNITS[data.env_P_unit]?.label ?? ''}${String(data.env_H ?? '').trim() ? `, относительная влажность ${data.env_H} %` : ''}`);
-  line('Облучение', `${data.rd_mu} МЕ, V1 = ${data.rd_V1} В, V2 = ${data.rd_V2} В, обычная полярность ${data.rd_polarity}`);
-  line('M(V1, обычная), нКл', `${cells(data.rd_M1)} → среднее ${fmt(Math.abs(r.inputs.M1.mean), 4)}`);
-  line('M(V1, обратная), нКл', `${cells(data.rd_Mopp)} → среднее ${fmt(Math.abs(r.inputs.Mopp.mean), 4)}`);
-  line('M(V2), нКл', `${cells(data.rd_M2)} → среднее ${fmt(Math.abs(r.inputs.M2.mean), 4)}`);
-  if (r.ctrl.on) line('Контрольные измерения M(V1), нКл', `${cells(data.ctrl_M)} → среднее ${fmt(r.ctrl.mean, 4)} за ${fmt(r.ctrl.mu, 0)} МЕ`);
+  const ndwUnit = unitLabel(NDW_UNITS[data.ch_ndw_unit]);
+  line('N_D,w', L(`${data.ch_ndw} ${ndwUnit} (= ${fmt(r.inputs.ndw, 6)} Гр/нКл); T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} кПа`, `${data.ch_ndw} ${ndwUnit} (= ${fmt(r.inputs.ndw, 6)} Gy/nC); T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} kPa`));
+  line(L('Электрометр', 'Electrometer'), L(`${data.el_model || '—'}, № ${data.el_serial || '—'}, k_elec = ${data.el_kelec}`, `${data.el_model || '—'}, S/N ${data.el_serial || '—'}, k_elec = ${data.el_kelec}`));
+  const hasH = String(data.env_H ?? '').trim();
+  line(L('Условия', 'Conditions'), `T = ${data.env_T} °C, P = ${data.env_P} ${unitLabel(PRESSURE_UNITS[data.env_P_unit])}${hasH ? L(`, относительная влажность ${data.env_H} %`, `, relative humidity ${data.env_H} %`) : ''}`);
+  line(L('Облучение', 'Irradiation'), L(`${data.rd_mu} МЕ, V1 = ${data.rd_V1} В, V2 = ${data.rd_V2} В, обычная полярность ${data.rd_polarity}`, `${data.rd_mu} MU, V1 = ${data.rd_V1} V, V2 = ${data.rd_V2} V, normal polarity ${data.rd_polarity}`));
+  const mean = L('среднее', 'mean');
+  line(L('M(V1, обычная), нКл', 'M(V1, normal), nC'), `${cells(data.rd_M1)} → ${mean} ${fmt(Math.abs(r.inputs.M1.mean), 4)}`);
+  line(L('M(V1, обратная), нКл', 'M(V1, opposite), nC'), `${cells(data.rd_Mopp)} → ${mean} ${fmt(Math.abs(r.inputs.Mopp.mean), 4)}`);
+  line(L('M(V2), нКл', 'M(V2), nC'), `${cells(data.rd_M2)} → ${mean} ${fmt(Math.abs(r.inputs.M2.mean), 4)}`);
+  if (r.ctrl.on) line(L('Контрольные измерения M(V1), нКл', 'Check measurements M(V1), nC'), L(`${cells(data.ctrl_M)} → среднее ${fmt(r.ctrl.mean, 4)} за ${fmt(r.ctrl.mu, 0)} МЕ`, `${cells(data.ctrl_M)} → mean ${fmt(r.ctrl.mean, 4)} for ${fmt(r.ctrl.mu, 0)} MU`));
   out.push('');
   const blocks = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
   for (const k of blocks) {
@@ -358,36 +407,59 @@ function reportText(data, r) {
     if (k === 'trs') {
       out.push(`k_TP = ${fmt(x.kTP)}; k_elec = ${fmt(x.kelec)}; k_pol = ${fmt(x.kpol)}; k_s = ${fmt(x.ks)}; k_leak = ${fmt(x.kleak)}; k_vol = ${fmt(x.kvol)}`);
       out.push(`TPR20,10 = ${fmt(x.tpr)} (${x.tprEquation || '—'})`);
-      if (x.fffEstimate) out.push(`Оценка TPR20,10 по PDD(10) = ${fmt(x.fffEstimate.pdd10, 1)} %: ${fmt(x.fffEstimate.value)} (не для калибровки)`);
-      out.push(`k_Q: по формуле (34) ${fmt(x.kQFormula)}, по табл. 16 ${fmt(x.kQTable)}; в расчёте ${fmt(x.kQ)} (${x.kQSource || '—'})`);
+      if (x.fffEstimate) {
+        out.push(
+          L(
+            `Оценка TPR20,10 по PDD(10) = ${fmt(x.fffEstimate.pdd10, 1)} %: ${fmt(x.fffEstimate.value)} (не для калибровки)`,
+            `TPR20,10 estimate from PDD(10) = ${fmt(x.fffEstimate.pdd10, 1)} %: ${fmt(x.fffEstimate.value)} (not for calibration)`,
+          ),
+        );
+      }
+      out.push(
+        L(
+          `k_Q: по формуле (34) ${fmt(x.kQFormula)}, по табл. 16 ${fmt(x.kQTable)}; в расчёте ${fmt(x.kQ)} (${x.kQSource || '—'})`,
+          `k_Q: by Eq. (34) ${fmt(x.kQFormula)}, from Table 16 ${fmt(x.kQTable)}; used ${fmt(x.kQ)} (${x.kQSource || '—'})`,
+        ),
+      );
     } else {
       out.push(`P_TP = ${fmt(x.PTP)}; P_elec = ${fmt(x.Pelec)}; P_pol = ${fmt(x.Ppol)}; P_ion = ${fmt(x.Pion)}; P_leak = ${fmt(x.Pleak)}; P_rp = ${fmt(x.Prp)}`);
       out.push(`%dd(10)x = ${fmt(x.pdd10x, 2)} (${x.pdd10xEquation || '—'}); k_Q = ${fmt(x.kQ)} (${x.kQSource || '—'})`);
     }
     if (x.blocked) {
-      out.push('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: есть ошибки ввода (см. замечания).');
+      out.push(L('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: есть ошибки ввода (см. замечания).', 'RESULT NOT CALCULATED: there are input errors (see Messages).'));
     } else {
       const describe = (y, title, units) => {
-        out.push(`${title}: M = ${fmt(y.M)} нКл; D_w(${fmt(r.depth.zref, 0)} см) = ${fmt(y.D)} Гр за ${fmt(units, 0)} МЕ; ${fmt(y.DperMU)} сГр/МЕ (Гр на 100 МЕ)`);
+        out.push(
+          L(
+            `${title}: M = ${fmt(y.M)} нКл; D_w(${fmt(r.depth.zref, 0)} см) = ${fmt(y.D)} Гр за ${fmt(units, 0)} МЕ; ${fmt(y.DperMU)} сГр/МЕ (Гр на 100 МЕ)`,
+            `${title}: M = ${fmt(y.M)} nC; D_w(${fmt(r.depth.zref, 0)} cm) = ${fmt(y.D)} Gy for ${fmt(units, 0)} MU; ${fmt(y.DperMU)} cGy/MU (Gy per 100 MU)`,
+          ),
+        );
         if (r.depth.on && r.depth.ok) {
-          out.push(`  d_max = ${data.dd_zmax} см; ${r.depth.label} = ${fmt(r.depth.factor)}; на d_max ${fmt(y.DmaxPerMU)} сГр/МЕ (Гр на 100 МЕ)${Number.isFinite(y.deviation) ? `; отклонение от номинала ${fmtSigned(y.deviation, 2)} %` : ''}`);
+          const dev = Number.isFinite(y.deviation) ? L(`; отклонение от номинала ${fmtSigned(y.deviation, 2)} %`, `; deviation from nominal ${fmtSigned(y.deviation, 2)} %`) : '';
+          out.push(
+            L(
+              `  d_max = ${data.dd_zmax} см; ${r.depth.label} = ${fmt(r.depth.factor)}; на d_max ${fmt(y.DmaxPerMU)} сГр/МЕ (Гр на 100 МЕ)${dev}`,
+              `  d_max = ${data.dd_zmax} cm; ${r.depth.label} = ${fmt(r.depth.factor)}; at d_max ${fmt(y.DmaxPerMU)} cGy/MU (Gy per 100 MU)${dev}`,
+            ),
+          );
         } else if (r.depth.on) {
-          out.push('  Пересчёт на d_max не выполнен: исправьте данные раздела 8.');
+          out.push(L('  Пересчёт на d_max не выполнен: исправьте данные раздела 8.', '  Transfer to d_max not performed: correct the data in section 8.'));
         }
       };
-      describe(x, 'До калибровки (раздел 4)', r.inputs.mu);
-      if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, 'По контрольным измерениям (итог)', r.ctrl.mu);
+      describe(x, L('До калибровки (раздел 4)', 'Before calibration (section 4)'), r.inputs.mu);
+      if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (итог)', 'From check measurements (final)'), r.ctrl.mu);
     }
     out.push('');
   }
-  if (r.comparison) out.push(`TG-51 относительно TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`, '');
+  if (r.comparison) out.push(L(`TG-51 относительно TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`, `TG-51 relative to TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`), '');
   const msgs = r.messages.filter((m) => m.level !== 'info');
   if (msgs.length) {
-    out.push('Замечания:');
-    msgs.forEach((m) => out.push(`- ${m.text}${m.ref ? ` [${m.ref}]` : ''}`));
+    out.push(L('Замечания:', 'Messages:'));
+    msgs.forEach((m) => out.push(`- ${m.text}${m.ref ? ` [${refText(m.ref)}]` : ''}`));
     out.push('');
   }
-  if (data.meta_notes) out.push(`Примечания: ${data.meta_notes}`);
+  if (data.meta_notes) out.push(L(`Примечания: ${data.meta_notes}`, `Notes: ${data.meta_notes}`));
   return out.join('\n');
 }
 
@@ -410,8 +482,15 @@ function loadDraft() {
 
 /** Загрузка данных из файла или буфера обмена. Бросает ошибку, если файл не от этого модуля. */
 export function importPhotons(obj) {
-  if (!obj || obj.app !== FILE_TAG.app || typeof obj.form !== 'object') throw new Error('Это не файл калькулятора референсной дозиметрии.');
-  if (obj.module !== FILE_TAG.module) throw new Error('Это файл другого раздела: откройте его на соответствующей вкладке или вставьте данные через Ctrl+V — нужная вкладка откроется сама.');
+  if (!obj || obj.app !== FILE_TAG.app || typeof obj.form !== 'object') throw new Error(L('Это не файл калькулятора референсной дозиметрии.', 'This is not a reference dosimetry calculator file.'));
+  if (obj.module !== FILE_TAG.module) {
+    throw new Error(
+      L(
+        'Это файл другого раздела: откройте его на соответствующей вкладке или вставьте данные через Ctrl+V — нужная вкладка откроется сама.',
+        'This file belongs to another section: open it on the corresponding tab, or paste the data with Ctrl+V and the right tab will open automatically.',
+      ),
+    );
+  }
   writeForm(obj.form);
   update();
 }
@@ -467,7 +546,7 @@ export function initPhotons() {
   writeForm(draft ? draft : sampleData());
   lastBeamFff = parseBeamName($('#meta_beam').value).fff;
   update();
-  if (!draft) setStatus('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.');
+  if (!draft) setStatus(L('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.', 'Demo example loaded. Click "Clear" to enter your own data.'));
 
   const sheet = $('#sheet');
   sheet.addEventListener('input', (e) => {
@@ -508,7 +587,7 @@ export function initPhotons() {
   $('#btn-save-chamber').addEventListener('click', () => {
     const data = readForm();
     if (!data.cc_model.trim()) {
-      setStatus('Укажите модель камеры, чтобы сохранить её.');
+      setStatus(L('Укажите модель камеры, чтобы сохранить её.', 'Enter the chamber model to save it.'));
       $('#cc_model').focus();
       return;
     }
@@ -516,33 +595,34 @@ export function initPhotons() {
     const entry = { id };
     for (const k of CC_KEYS) entry[k] = data[k];
     if (!saveMyChamber(entry)) {
-      setStatus('Браузер не дал сохранить камеру: хранилище недоступно.');
+      setStatus(L('Браузер не дал сохранить камеру: хранилище недоступно.', 'The browser did not allow saving the chamber: storage is unavailable.'));
       return;
     }
     fillChamberSelect();
     $('#ch_model').value = id;
     update();
-    setStatus(`Камера «${[data.cc_maker, data.cc_model].filter(Boolean).join(' ')}» сохранена в «Мои камеры».`);
+    const ccName = [data.cc_maker, data.cc_model].filter(Boolean).join(' ');
+    setStatus(L(`Камера «${ccName}» сохранена в «Мои камеры».`, `Chamber "${ccName}" saved to "My chambers".`));
   });
-  armButton($('#btn-del-chamber'), 'Удалить из «Моих камер»', 'Точно удалить?', () => {
+  armButton($('#btn-del-chamber'), () => L('Удалить из «Моих камер»', 'Remove from "My chambers"'), () => L('Точно удалить?', 'Remove it?'), () => {
     deleteMyChamber($('#ch_model').value);
     fillChamberSelect();
     $('#ch_model').value = 'CUSTOM';
     update();
-    setStatus('Камера удалена из списка; её данные остались в форме.');
+    setStatus(L('Камера удалена из списка; её данные остались в форме.', 'The chamber was removed from the list; its data remain in the form.'));
   });
 
   $('#btn-sample').addEventListener('click', () => {
     writeForm(sampleData());
     update();
-    setStatus('Загружен демонстрационный пример (вымышленные данные).');
+    setStatus(L('Загружен демонстрационный пример (вымышленные данные).', 'Demo example loaded (fictitious data).'));
   });
 
-  armButton($('#btn-clear'), 'Очистить', 'Точно очистить?', () => {
+  armButton($('#btn-clear'), () => L('Очистить', 'Clear'), () => L('Точно очистить?', 'Clear everything?'), () => {
     writeForm({ ...FORM_DEFAULTS, meta_date: today() });
     lastBeamFff = null;
     update();
-    setStatus('Форма очищена.');
+    setStatus(L('Форма очищена.', 'Form cleared.'));
   });
 
   const payload = () => JSON.stringify({ ...FILE_TAG, savedAt: new Date().toISOString(), form: current.data }, null, 2);
@@ -550,7 +630,7 @@ export function initPhotons() {
   $('#btn-save').addEventListener('click', () => {
     const name = [current.data.meta_machine, current.data.meta_beam, current.data.meta_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-') || 'photons';
     downloadText(payload(), `dosimetry_${name}.json`);
-    setStatus('Файл сохранён.');
+    setStatus(L('Файл сохранён.', 'File saved.'));
   });
 
   $('#btn-load').addEventListener('click', () => $('#file-input').click());
@@ -559,15 +639,17 @@ export function initPhotons() {
     if (!file) return;
     try {
       importPhotons(JSON.parse(await file.text()));
-      setStatus(`Открыт файл ${file.name}.`);
+      setStatus(L(`Открыт файл ${file.name}.`, `Opened file ${file.name}.`));
     } catch (err) {
-      setStatus(err instanceof SyntaxError ? 'Файл повреждён: это не JSON.' : err.message);
+      setStatus(err instanceof SyntaxError ? L('Файл повреждён: это не JSON.', 'The file is damaged: it is not JSON.') : err.message);
     }
     e.target.value = '';
   });
 
-  $('#btn-copy-json').addEventListener('click', () => copyText(payload(), 'Данные скопированы. Чтобы вставить их обратно, нажмите Ctrl+V на странице вне полей ввода.', setStatus));
-  $('#btn-copy-report').addEventListener('click', () => copyText(reportText(current.data, current.result), 'Протокол скопирован в буфер обмена.', setStatus));
-  $('#btn-pdf').addEventListener('click', () => printToPdf(['Дозиметрия', current.data.meta_machine, current.data.meta_beam, current.data.meta_date].filter(Boolean).join('_'), setStatus));
+  $('#btn-copy-json').addEventListener('click', () =>
+    copyText(payload(), L('Данные скопированы. Чтобы вставить их обратно, нажмите Ctrl+V на странице вне полей ввода.', 'Data copied. To paste them back, press Ctrl+V on the page outside the input fields.'), setStatus),
+  );
+  $('#btn-copy-report').addEventListener('click', () => copyText(reportText(current.data, current.result), L('Протокол скопирован в буфер обмена.', 'Report copied to the clipboard.'), setStatus));
+  $('#btn-pdf').addEventListener('click', () => printToPdf([L('Дозиметрия', 'Dosimetry'), current.data.meta_machine, current.data.meta_beam, current.data.meta_date].filter(Boolean).join('_'), setStatus));
   $('#btn-print').addEventListener('click', () => window.print());
 }

@@ -1,6 +1,7 @@
 // Переключение языка интерфейса.
-// Статический текст страницы (index.html) пишется по-русски и переводится по словарю фрагментов
-// STATIC_EN: каждый текстовый узел и переводимый атрибут ищется в словаре целиком. Динамический
+// Статический текст страницы (index.html) пишется по-русски и переводится по словарю STATIC_EN:
+// абзацы, подписи и пункты списков — целиком вместе с вложенной разметкой, остальное — по текстовым
+// узлам и значениям атрибутов. Динамический
 // текст модули выводят сами на текущем языке через L() из core/i18n.js.
 
 import { setLang, getLang } from '../core/i18n.js';
@@ -40,19 +41,44 @@ export function tStatic(text) {
   return en === undefined ? text : en;
 }
 
+/**
+ * Блок для перевода целиком: элемент с русским текстом прямо внутри, у которого внутри нет полей ввода,
+ * элементов с id и выводов расчёта (их пересоздание сломало бы ссылки модулей). Ключ — его innerHTML
+ * с пробелами, сжатыми до одного; перевод сохраняет вложенную разметку (<sub>, кнопки справок).
+ */
+const UNSAFE = 'input, select, textarea, output, [id], [data-out], [data-out-text], .cells, .combo';
+const hasDirectCyr = (el) => [...el.childNodes].some((n) => n.nodeType === 3 && CYR.test(n.nodeValue));
+export const blockKey = (el) => norm(el.innerHTML);
+export const isBlock = (el) => hasDirectCyr(el) && !el.querySelector(UNSAFE);
+
 /** Переводит статический текст внутри root на текущий язык (или возвращает русский). */
 export function translateStatic(root = document.body) {
-  for (const r of recorded) {
+  for (const r of recorded.reverse()) {
     if (r.attr) r.node.setAttribute(r.attr, r.original);
+    else if (r.html) r.node.innerHTML = r.original;
     else r.node.nodeValue = r.original;
   }
   recorded = [];
   if (getLang() !== 'en') return;
 
+  const skip = (el) => !el || el.closest('script, style, textarea, [data-i18n-skip]');
+  const done = new Set();
+  // 1) блоки целиком
+  for (const el of root.querySelectorAll('*')) {
+    if (skip(el) || !hasDirectCyr(el)) continue;
+    if ([...done].some((d) => d.contains(el))) continue;
+    if (!isBlock(el)) continue;
+    const en = STATIC_EN[blockKey(el)];
+    if (en === undefined) continue;
+    recorded.push({ node: el, html: true, original: el.innerHTML });
+    el.innerHTML = en;
+    done.add(el);
+  }
+  // 2) отдельные текстовые узлы там, где блок целиком перевести нельзя
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(n) {
       const p = n.parentElement;
-      if (!p || p.closest('script, style, textarea, [data-i18n-skip]')) return NodeFilter.FILTER_REJECT;
+      if (skip(p)) return NodeFilter.FILTER_REJECT;
       return CYR.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
     },
   });
@@ -64,6 +90,13 @@ export function translateStatic(root = document.body) {
     if (en === undefined) continue;
     recorded.push({ node, original: v });
     node.nodeValue = v.match(/^\s*/)[0] + en + v.match(/\s*$/)[0];
+  }
+  // числовые подсказки в полях («0,05335», «1,5») — с десятичной точкой
+  for (const el of root.querySelectorAll('input[placeholder]')) {
+    const v = el.getAttribute('placeholder');
+    if (!/^\s*[+\-−]?\d+,\d+\s*$/.test(v)) continue;
+    recorded.push({ node: el, attr: 'placeholder', original: v });
+    el.setAttribute('placeholder', v.replace(',', '.'));
   }
   const sel = ATTRS.map((a) => `[${a}]`).join(',');
   for (const el of root.querySelectorAll(sel)) {

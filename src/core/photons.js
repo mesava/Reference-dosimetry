@@ -150,7 +150,8 @@ function maxRelDeviation(series) {
   return Math.max(...series.values.map((v) => Math.abs(v - series.mean) / Math.abs(series.mean)));
 }
 
-const cap = (s) => s[0].toUpperCase() + s.slice(1);
+// первая буква — заглавная, кроме обозначений величин (k_Q, k′_Q, …)
+const cap = (s) => (/^[a-z][_′]/.test(s) ? s : s[0].toUpperCase() + s.slice(1));
 
 /** Камера из базы или своя камера, собранная из полей cc_*. */
 export function resolveChamber(f) {
@@ -1009,8 +1010,8 @@ export function computePhotons(form) {
   const ctrl = { on: ctrlRaw.n > 0 || !!ctrlRaw.error };
   if (ctrl.on) {
     ctrl.M = parseCells(f.ctrl_M);
-    if (ctrl.M.error) add('error', 'ctrl', L(`«Контрольные измерения»: ${ctrl.M.error}.`, `"Control measurements": ${ctrl.M.error}.`), null, 'ctrl_M');
-    else if (ctrl.M.mean === 0) add('error', 'ctrl', L('«Контрольные измерения»: среднее показание равно нулю.', '"Control measurements": the mean reading is zero.'), null, 'ctrl_M');
+    if (ctrl.M.error) add('error', 'ctrl', L(`«Контрольные измерения»: ${ctrl.M.error}.`, `"Check measurements": ${ctrl.M.error}.`), null, 'ctrl_M');
+    else if (ctrl.M.mean === 0) add('error', 'ctrl', L('«Контрольные измерения»: среднее показание равно нулю.', '"Check measurements": the mean reading is zero.'), null, 'ctrl_M');
     if (ctrl.M.n >= 2 && ctrl.M.mean) {
       const d = Math.max(...ctrl.M.values.map((v) => Math.abs(v - ctrl.M.mean) / Math.abs(ctrl.M.mean)));
       const pct = ru(d * 100, 2);
@@ -1041,14 +1042,14 @@ export function computePhotons(form) {
       add(
         'error',
         'ctrl',
-        L('Контрольные измерения снимают при той же (обычной) полярности, что и M при V₁.', 'Control measurements are taken at the same (normal) polarity as M at V₁.'),
+        L('Контрольные измерения снимают при той же (обычной) полярности, что и M при V₁.', 'Check measurements are taken at the same (normal) polarity as M at V₁.'),
         null,
         'ctrl_M',
       );
     }
     ctrl.mu = isBlank(f.ctrl_mu) ? mu : parseNumber(f.ctrl_mu);
     if (!isBlank(f.ctrl_mu) && !(ctrl.mu > 0)) {
-      add('error', 'ctrl', L('Число МЕ для контрольных измерений должно быть больше нуля.', 'The number of MU for control measurements must be greater than zero.'), null, 'ctrl_mu');
+      add('error', 'ctrl', L('Число МЕ для контрольных измерений должно быть больше нуля.', 'The number of MU for check measurements must be greater than zero.'), null, 'ctrl_mu');
     }
     ctrl.mean = ctrl.M.n > 0 && !ctrl.M.error ? Math.abs(ctrl.M.mean) : NaN;
     const ctrlErr = messages.some((m) => m.level === 'error' && m.scope === 'ctrl');

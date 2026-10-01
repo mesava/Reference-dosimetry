@@ -89,7 +89,8 @@ const REF = {
   trs: 'TRS-398 Rev.1',
 };
 
-const cap = (s) => s[0].toUpperCase() + s.slice(1);
+// первая буква — заглавная, кроме обозначений величин (k_Q, k′_Q, …)
+const cap = (s) => (/^[a-z][_′]/.test(s) ? s : s[0].toUpperCase() + s.slice(1));
 
 /** Номинальная энергия по названию пучка: «12 МэВ», «6e», «e 9» и т. п. */
 export function parseElectronBeam(name) {
@@ -353,11 +354,11 @@ export function computeElectrons(form) {
   env.items.forEach(([level, text, ref, key]) => add(level, 'common', text, ref, key));
 
   // ------------------------------------------------------------- показания
-  const mu = read('e_mu', 'Мониторные единицы');
-  if (Number.isFinite(mu) && mu <= 0) add('error', 'common', 'Число МЕ должно быть больше нуля.', null, 'e_mu');
-  const V1 = read('e_V1', 'Рабочее напряжение V₁');
-  const V2 = read('e_V2', 'Пониженное напряжение V₂');
-  if (Number.isFinite(V1) && Number.isFinite(V2) && Math.abs(V1) <= Math.abs(V2)) add('error', 'common', 'Рабочее напряжение V₁ должно быть больше пониженного V₂.', null, ['e_V1', 'e_V2']);
+  const mu = read('e_mu', L('Мониторные единицы', 'Monitor units'));
+  if (Number.isFinite(mu) && mu <= 0) add('error', 'common', L('Число МЕ должно быть больше нуля.', 'The number of MU must be greater than zero.'), null, 'e_mu');
+  const V1 = read('e_V1', L('Рабочее напряжение V₁', 'Operating voltage V₁'));
+  const V2 = read('e_V2', L('Пониженное напряжение V₂', 'Reduced voltage V₂'));
+  if (Number.isFinite(V1) && Number.isFinite(V2) && Math.abs(V1) <= Math.abs(V2)) add('error', 'common', L('Рабочее напряжение V₁ должно быть больше пониженного V₂.', 'The operating voltage V₁ must be higher than the reduced voltage V₂.'), null, ['e_V1', 'e_V2']);
   // Положения камеры по протоколам: у цилиндрической всегда различаются (0,5·r_cyl),
   // у плоскопараллельной — на разницу водоэквивалентной толщины окна (TRS-398) и сдвига Report 385.
   // Если различаются, при расчёте по обоим протоколам каждый протокол получает свой полный набор показаний
@@ -366,40 +367,44 @@ export function computeElectrons(form) {
   if (pos && !isCyl && Number.isFinite(pos.trs.front) && Number.isFinite(pos.tg51.front)) posDiffMm = Math.abs(pos.trs.front - pos.tg51.front) * 10;
   const separate51 = f.protocol === 'both' && !!chamber && (isCyl || (!!pos && !(posDiffMm <= 0.5)));
   const mainScope = separate51 ? 'trs' : 'common';
-  const at = separate51 ? ', положение по TRS-398' : '';
-  const M1 = readCells('e_M1', `M при V₁, обычная полярность${at}`, mainScope);
-  const Mopp = readCells('e_Mopp', `M при V₁, обратная полярность${at}`, mainScope);
-  const M2 = readCells('e_M2', `M при V₂${at}`, mainScope);
+  const at = separate51 ? L(', положение по TRS-398', ', TRS-398 position') : '';
+  const M1 = readCells('e_M1', L(`M при V₁, обычная полярность${at}`, `M at V₁, normal polarity${at}`), mainScope);
+  const Mopp = readCells('e_Mopp', L(`M при V₁, обратная полярность${at}`, `M at V₁, opposite polarity${at}`), mainScope);
+  const M2 = readCells('e_M2', L(`M при V₂${at}`, `M at V₂${at}`), mainScope);
   const set51 = separate51
     ? {
-        M1: readCells('e_M51', 'M при V₁, обычная полярность, положение по Report 385', 'tg51'),
-        Mopp: readCells('e_Mopp51', 'M при V₁, обратная полярность, положение по Report 385', 'tg51'),
-        M2: readCells('e_M251', 'M при V₂, положение по Report 385', 'tg51'),
+        M1: readCells('e_M51', L('M при V₁, обычная полярность, положение по Report 385', 'M at V₁, normal polarity, Report 385 position'), 'tg51'),
+        Mopp: readCells('e_Mopp51', L('M при V₁, обратная полярность, положение по Report 385', 'M at V₁, opposite polarity, Report 385 position'), 'tg51'),
+        M2: readCells('e_M251', L('M при V₂, положение по Report 385', 'M at V₂, Report 385 position'), 'tg51'),
       }
     : null;
   const series = [
-    [M1, `при V₁${at ? ' (TRS-398)' : ''}`, 'e_M1', mainScope],
-    [Mopp, `обратной полярности${at ? ' (TRS-398)' : ''}`, 'e_Mopp', mainScope],
-    [M2, `при V₂${at ? ' (TRS-398)' : ''}`, 'e_M2', mainScope],
+    [M1, L(`при V₁${at ? ' (TRS-398)' : ''}`, `at V₁${at ? ' (TRS-398)' : ''}`), 'e_M1', mainScope],
+    [Mopp, L(`обратной полярности${at ? ' (TRS-398)' : ''}`, `at opposite polarity${at ? ' (TRS-398)' : ''}`), 'e_Mopp', mainScope],
+    [M2, L(`при V₂${at ? ' (TRS-398)' : ''}`, `at V₂${at ? ' (TRS-398)' : ''}`), 'e_M2', mainScope],
   ];
   if (set51) {
-    series.push([set51.M1, 'при V₁ (Report 385)', 'e_M51', 'tg51'], [set51.Mopp, 'обратной полярности (Report 385)', 'e_Mopp51', 'tg51'], [set51.M2, 'при V₂ (Report 385)', 'e_M251', 'tg51']);
+    series.push(
+      [set51.M1, L('при V₁ (Report 385)', 'at V₁ (Report 385)'), 'e_M51', 'tg51'],
+      [set51.Mopp, L('обратной полярности (Report 385)', 'at opposite polarity (Report 385)'), 'e_Mopp51', 'tg51'],
+      [set51.M2, L('при V₂ (Report 385)', 'at V₂ (Report 385)'), 'e_M251', 'tg51'],
+    );
   }
   for (const [s, label, key, scope] of series) {
     const d = maxRelDeviation(s);
     const pct = ru(d * 100, 2);
-    if (d > 0.05) add('error', scope, `Показания ${label} расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, null, key);
-    else if (d > 0.005) add('warn', scope, `Разброс показаний ${label} до ${pct} % от среднего: повторите облучения.`, `${REF.r374}, разд. 4.4.2`, key);
-    else if (d > 0.001) add('info', scope, `Разброс показаний ${label} до ${pct} % от среднего: Report 374 советует повторять облучения, пока отклонение не станет меньше ±0,1 % без тренда.`, `${REF.r374}, разд. 4.4.2`, key);
+    if (d > 0.05) add('error', scope, L(`Показания ${label} расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, `Readings ${label} differ from the mean by up to ${pct} %: probably a data-entry error.`), null, key);
+    else if (d > 0.005) add('warn', scope, L(`Разброс показаний ${label} до ${pct} % от среднего: повторите облучения.`, `Spread of readings ${label} up to ${pct} % of the mean: repeat the exposures.`), `${REF.r374}, разд. 4.4.2`, key);
+    else if (d > 0.001) add('info', scope, L(`Разброс показаний ${label} до ${pct} % от среднего: Report 374 советует повторять облучения, пока отклонение не станет меньше ±0,1 % без тренда.`, `Spread of readings ${label} up to ${pct} % of the mean: Report 374 recommends repeating exposures until the deviation is below ±0.1 % with no trend.`), `${REF.r374}, разд. 4.4.2`, key);
   }
-  const kleak = read('e_kleak', 'Поправка на утечку');
-  if (Number.isFinite(kleak) && Math.abs(kleak - 1) > 0.001) add('warn', 'common', 'Утечка больше 0,1 % показания: причину нужно выяснить.', `${REF.r385}, табл. A1; ${REF.trs}, табл. 3`, 'e_kleak');
+  const kleak = read('e_kleak', L('Поправка на утечку', 'Leakage correction'));
+  if (Number.isFinite(kleak) && Math.abs(kleak - 1) > 0.001) add('warn', 'common', L('Утечка больше 0,1 % показания: причину нужно выяснить.', 'Leakage exceeds 0.1 % of the reading: the cause must be found.'), `${REF.r385}, табл. A1; ${REF.trs}, табл. 3`, 'e_kleak');
 
   const seriesOk = (x) => x && x.n > 0 && !x.error && x.mean !== 0;
   const checkPolarity = (value, name, scope, flagKey) => {
     const d = Math.abs(value - 1);
-    if (d > 0.02) add('warn', scope, `${name} = ${ru(value, 4)}: эффект полярности больше 2 % — больше, чем допускает Report 385 для камеры эталонного класса. Проверьте камеру, кабель и время стабилизации.`, `${REF.r385}, табл. A1; ${REF.trs}, табл. 3`, flagKey);
-    else if (d > 0.004) add('info', scope, `${name} = ${ru(value, 4)}: в пучках электронов эффект полярности бывает больше, чем в фотонных, — до 2 % по Report 385; TRS-398 задаёт для камер эталонного класса менее 0,4 %. Поправку обязательно измерять.`, `${REF.r385}, прил. A; ${REF.trs}, табл. 3`, flagKey);
+    if (d > 0.02) add('warn', scope, L(`${name} = ${ru(value, 4)}: эффект полярности больше 2 % — больше, чем допускает Report 385 для камеры эталонного класса. Проверьте камеру, кабель и время стабилизации.`, `${name} = ${ru(value, 4)}: the polarity effect exceeds 2 %, more than Report 385 allows for a reference-class chamber. Check the chamber, the cable and the stabilization time.`), `${REF.r385}, табл. A1; ${REF.trs}, табл. 3`, flagKey);
+    else if (d > 0.004) add('info', scope, L(`${name} = ${ru(value, 4)}: в пучках электронов эффект полярности бывает больше, чем в фотонных, — до 2 % по Report 385; TRS-398 задаёт для камер эталонного класса менее 0,4 %. Поправку обязательно измерять.`, `${name} = ${ru(value, 4)}: in electron beams the polarity effect can be larger than in photon beams, up to 2 % according to Report 385; TRS-398 specifies less than 0.4 % for reference-class chambers. The correction must always be measured.`), `${REF.r385}, прил. A; ${REF.trs}, табл. 3`, flagKey);
   };
   const readingsOk = seriesOk(M1);
   const m1 = readingsOk ? Math.abs(M1.mean) : NaN;
@@ -410,15 +415,15 @@ export function computeElectrons(form) {
   }
   // поправки лаборатории относятся к калибровке в ⁶⁰Co; при перекрёстной калибровке показания уже полностью исправлены (TRS-398 ур. 41; Report 385 ур. 5)
   let kpolQ0 = 1;
-  if (!f.e_lab_pol_applied && !cross) kpolQ0 = read('e_lab_kpol', 'Поправка на полярность при калибровке');
+  if (!f.e_lab_pol_applied && !cross) kpolQ0 = read('e_lab_kpol', L('Поправка на полярность при калибровке', 'Polarity correction at calibration'));
   const kpol = kpolRaw / kpolQ0;
 
   const nV = Math.abs(V1) / Math.abs(V2);
   const recOk = readingsOk && seriesOk(M2) && Number.isFinite(nV) && nV > 1;
-  if (readingsOk && M2.n > 0 && Math.sign(M1.mean) !== Math.sign(M2.mean)) add('error', mainScope, 'Показания при V₁ и V₂ должны быть сняты при одной и той же (обычной) полярности.', null, 'e_M2');
+  if (readingsOk && M2.n > 0 && Math.sign(M1.mean) !== Math.sign(M2.mean)) add('error', mainScope, L('Показания при V₁ и V₂ должны быть сняты при одной и той же (обычной) полярности.', 'Readings at V₁ and V₂ must be taken at the same (normal) polarity.'), null, 'e_M2');
   const ratio12 = recOk ? Math.abs(M1.mean) / Math.abs(M2.mean) : NaN;
   if (recOk && ratio12 < 1) {
-    add('error', mainScope, `${separate51 ? 'k_s' : 'k_s (P_ion)'} не может быть меньше 1: при пониженном напряжении собирается меньше заряда. Проверьте показания и напряжения.`, `${REF.trs}, разд. 4.4.3.4`, separate51 ? ['ks', 'e_M2'] : ['ks', 'Pion', 'e_M2']);
+    add('error', mainScope, L(`${separate51 ? 'k_s' : 'k_s (P_ion)'} не может быть меньше 1: при пониженном напряжении собирается меньше заряда. Проверьте показания и напряжения.`, `${separate51 ? 'k_s' : 'k_s (P_ion)'} cannot be less than 1: less charge is collected at the reduced voltage. Check the readings and voltages.`), `${REF.trs}, разд. 4.4.3.4`, separate51 ? ['ks', 'e_M2'] : ['ks', 'Pion', 'e_M2']);
   }
 
   // полный набор показаний в положении по Report 385 (только «оба протокола», если положения различаются)
@@ -427,15 +432,15 @@ export function computeElectrons(form) {
     r51.ok = seriesOk(set51.M1);
     if (r51.ok && set51.Mopp.n > 0 && !set51.Mopp.error) {
       r51.kpolRaw = polarity(set51.M1.mean, set51.Mopp.mean);
-      checkPolarity(r51.kpolRaw, 'P_pol (положение по Report 385)', 'tg51', 'Ppol');
+      checkPolarity(r51.kpolRaw, L('P_pol (положение по Report 385)', 'P_pol (Report 385 position)'), 'tg51', 'Ppol');
     }
     r51.recOk = r51.ok && seriesOk(set51.M2) && Number.isFinite(nV) && nV > 1;
-    if (r51.ok && set51.M2.n > 0 && Math.sign(set51.M1.mean) !== Math.sign(set51.M2.mean)) add('error', 'tg51', 'Показания при V₁ и V₂ в положении по Report 385 должны быть сняты при одной и той же (обычной) полярности.', null, 'e_M251');
+    if (r51.ok && set51.M2.n > 0 && Math.sign(set51.M1.mean) !== Math.sign(set51.M2.mean)) add('error', 'tg51', L('Показания при V₁ и V₂ в положении по Report 385 должны быть сняты при одной и той же (обычной) полярности.', 'Readings at V₁ and V₂ in the Report 385 position must be taken at the same (normal) polarity.'), null, 'e_M251');
     r51.ratio = r51.recOk ? Math.abs(set51.M1.mean) / Math.abs(set51.M2.mean) : NaN;
-    if (r51.recOk && r51.ratio < 1) add('error', 'tg51', 'P_ion не может быть меньше 1: в положении по Report 385 при пониженном напряжении получилось больше заряда. Проверьте показания и напряжения.', `${REF.tg51}, разд. VII.D`, ['Pion', 'e_M251']);
+    if (r51.recOk && r51.ratio < 1) add('error', 'tg51', L('P_ion не может быть меньше 1: в положении по Report 385 при пониженном напряжении получилось больше заряда. Проверьте показания и напряжения.', 'P_ion cannot be less than 1: in the Report 385 position, more charge was collected at the reduced voltage. Check the readings and voltages.'), `${REF.tg51}, разд. VII.D`, ['Pion', 'e_M251']);
   }
   let ksQ0 = 1;
-  if (!f.e_lab_ks_applied && !cross) ksQ0 = read('e_lab_ks', 'Поправка на рекомбинацию при калибровке');
+  if (!f.e_lab_ks_applied && !cross) ksQ0 = read('e_lab_ks', L('Поправка на рекомбинацию при калибровке', 'Recombination correction at calibration'));
 
   const r50ok = Number.isFinite(r50);
 
@@ -452,10 +457,10 @@ export function computeElectrons(form) {
       trs.ksEquation = r.equation;
       if (r.error) add('error', 'trs', cap(r.error) + '.', `${REF.trs}, табл. 10`, 'ks');
       r.notes.forEach((n) => add('warn', 'trs', cap(n) + '.', `${REF.trs}, разд. 4.4.3.4`, 'ks'));
-      if (nV < 3 - 1e-9) add('info', 'trs', 'TRS-398 рекомендует отношение напряжений V₁/V₂ ≥ 3.', `${REF.trs}, разд. 4.4.3.4`);
+      if (nV < 3 - 1e-9) add('info', 'trs', L('TRS-398 рекомендует отношение напряжений V₁/V₂ ≥ 3.', 'TRS-398 recommends a voltage ratio V₁/V₂ ≥ 3.'), `${REF.trs}, разд. 4.4.3.4`);
       trs.ks = r.value / ksQ0;
-      if (trs.ks > 1.05) add('error', 'trs', `k_s = ${ru(trs.ks, 4)} > 1,05: метод двух напряжений неприменим.`, `${REF.trs}, табл. 3`, 'ks');
-      if (ratio12 >= 1 && trs.ks < 1) add('error', 'trs', `k_s = ${ru(trs.ks, 4)} < 1: так быть не может, проверьте показания и поправку лаборатории.`, `${REF.trs}, разд. 4.4.3.4`, 'ks');
+      if (trs.ks > 1.05) add('error', 'trs', L(`k_s = ${ru(trs.ks, 4)} > 1,05: метод двух напряжений неприменим.`, `k_s = ${ru(trs.ks, 4)} > 1.05: the two-voltage method is not applicable.`), `${REF.trs}, табл. 3`, 'ks');
+      if (ratio12 >= 1 && trs.ks < 1) add('error', 'trs', L(`k_s = ${ru(trs.ks, 4)} < 1: так быть не может, проверьте показания и поправку лаборатории.`, `k_s = ${ru(trs.ks, 4)} < 1 is impossible: check the readings and the calibration laboratory correction.`), `${REF.trs}, разд. 4.4.3.4`, 'ks');
     } else trs.ks = NaN;
 
     // k_Q,Q₀: таблица (табл. 20/21, линейная интерполяция) и аппроксимация прил. II (табл. 47/48) — рядом для сравнения
@@ -473,45 +478,58 @@ export function computeElectrons(form) {
         trs.kQint = a.value;
         trs.kQcrossInt = b.value;
         trs.kQTable = a.value / b.value;
-        trs.kQTableError = a.error ? `k_Q,Qint для пучка измерения: ${a.error}` : b.error ? `k_Q,Qint для пучка перекрёстной калибровки: ${b.error}` : null;
+        trs.kQTableError = a.error
+          ? L(`k_Q,Qint для пучка измерения: ${a.error}`, `k_Q,Qint for the measured beam: ${a.error}`)
+          : b.error
+            ? L(`k_Q,Qint для пучка перекрёстной калибровки: ${b.error}`, `k_Q,Qint for the cross-calibration beam: ${b.error}`)
+            : null;
         trs.kQFormula = trs.kQTableError ? NaN : trsFit(chamber, chamber.trsFit21, r50) / trsFit(chamber, chamber.trsFit21, crossR50);
       }
       trs.kQDiff = (trs.kQTable / trs.kQFormula - 1) * 100;
     }
     if (f.e_kqtrs_mode === 'manual') {
       trs.kQ = read('e_kqtrs_manual', cross ? 'k_Q,Qcross (TRS-398)' : 'k_Q,Q₀ (TRS-398)', 'trs');
-      if (Number.isFinite(trs.kQ) && (trs.kQ < 0.8 || trs.kQ > 1.2)) add('warn', 'trs', 'Введённый k_Q необычен: проверьте значение.', null, 'e_kqtrs_manual');
-      trs.kQSource = 'введён вручную (например, измерен в лаборатории)';
+      if (Number.isFinite(trs.kQ) && (trs.kQ < 0.8 || trs.kQ > 1.2)) add('warn', 'trs', L('Введённый k_Q необычен: проверьте значение.', 'The entered k_Q is unusual: check the value.'), null, 'e_kqtrs_manual');
+      trs.kQSource = L('введён вручную (например, измерен в лаборатории)', 'entered manually (e.g. measured by a calibration laboratory)');
     } else if (!chamber || chamber.other) {
-      if (chamber?.other) add('error', 'trs', 'Для камеры не из таблиц TRS-398 введите k_Q вручную.', `${REF.trs}, табл. 20–21`, 'e_kqtrs_mode');
+      if (chamber?.other) add('error', 'trs', L('Для камеры не из таблиц TRS-398 введите k_Q вручную.', 'For a chamber not in the TRS-398 tables, enter k_Q manually.'), `${REF.trs}, табл. 20–21`, 'e_kqtrs_mode');
       trs.kQ = NaN;
     } else if (!cross) {
       if (!chamber.trsT20) {
         if (chamber.type === 'pp' && chamber.trsT21) {
-          add('error', 'trs', `Для ${eChamberLabel(chamber)} TRS-398 не даёт k_Q при калибровке в ⁶⁰Co (табл. 20): нужна калибровка в пучке электронов — перекрёстная или в лаборатории.`, `${REF.trs}, разд. 7.5–7.6, табл. 20–21`, ['e_cal_route', 'kQtrs']);
+          add('error', 'trs', L(
+            `Для ${eChamberLabel(chamber)} TRS-398 не даёт k_Q при калибровке в ⁶⁰Co (табл. 20): нужна калибровка в пучке электронов — перекрёстная или в лаборатории.`,
+            `TRS-398 gives no k_Q for ${eChamberLabel(chamber)} calibrated in ⁶⁰Co (Table 20): calibration in an electron beam is required, either by cross-calibration or at a calibration laboratory.`,
+          ), `${REF.trs}, разд. 7.5–7.6, табл. 20–21`, ['e_cal_route', 'kQtrs']);
         } else {
-          add('error', 'trs', `Для ${eChamberLabel(chamber)} в TRS-398 нет данных k_Q для электронов (табл. 20–21): для расчёта по TRS-398 введите k_Q вручную.`, `${REF.trs}, табл. 20–21`, ['e_kqtrs_mode', 'kQtrs']);
+          add('error', 'trs', L(
+            `Для ${eChamberLabel(chamber)} в TRS-398 нет данных k_Q для электронов (табл. 20–21): для расчёта по TRS-398 введите k_Q вручную.`,
+            `TRS-398 gives no electron-beam k_Q data for ${eChamberLabel(chamber)} (Tables 20–21): to calculate per TRS-398, enter k_Q manually.`,
+          ), `${REF.trs}, табл. 20–21`, ['e_kqtrs_mode', 'kQtrs']);
         }
         trs.kQ = NaN;
       } else if (r50ok) {
-        if (trs.kQTableError) add('error', 'trs', `k_Q по табл. 20: ${trs.kQTableError}.`, `${REF.trs}, табл. 20`, ['kQtrs', 'e_i50', 'e_r50']);
+        if (trs.kQTableError) add('error', 'trs', L(`k_Q по табл. 20: ${trs.kQTableError}.`, `k_Q from Table 20: ${trs.kQTableError}.`), `${REF.trs}, табл. 20`, ['kQtrs', 'e_i50', 'e_r50']);
         trs.kQ = useFormula ? trs.kQFormula : trs.kQTable;
         trs.kQSource = useFormula
-          ? `прил. II, ур. (${chamber.type === 'cyl' ? '99' : '98'}) с параметрами табл. 47 TRS-398`
-          : 'табл. 20 TRS-398, линейная интерполяция по R50';
+          ? L(`прил. II, ур. (${chamber.type === 'cyl' ? '99' : '98'}) с параметрами табл. 47 TRS-398`, `App. II, Eq. (${chamber.type === 'cyl' ? '99' : '98'}) with the parameters of TRS-398 Table 47`)
+          : L('табл. 20 TRS-398, линейная интерполяция по R50', 'TRS-398 Table 20, linear interpolation in R50');
       } else trs.kQ = NaN;
     } else if (!chamber.trsT21) {
-      add('error', 'trs', `Для ${eChamberLabel(chamber)} в табл. 21 TRS-398 нет k_Q,Qint: введите k_Q,Qcross вручную.`, `${REF.trs}, табл. 21`, ['e_kqtrs_mode', 'kQtrs']);
+      add('error', 'trs', L(`Для ${eChamberLabel(chamber)} в табл. 21 TRS-398 нет k_Q,Qint: введите k_Q,Qcross вручную.`, `TRS-398 Table 21 gives no k_Q,Qint for ${eChamberLabel(chamber)}: enter k_Q,Qcross manually.`), `${REF.trs}, табл. 21`, ['e_kqtrs_mode', 'kQtrs']);
       trs.kQ = NaN;
     } else if (r50ok && Number.isFinite(crossR50)) {
       if (trs.kQTableError) add('error', 'trs', `${cap(trs.kQTableError)}.`, `${REF.trs}, табл. 21`, ['kQtrs', 'e_cross_r50']);
       trs.kQ = useFormula ? trs.kQFormula : trs.kQTable;
       trs.kQSource = useFormula
-        ? `ур. (44) по аппроксимации прил. II, ур. (${chamber.type === 'cyl' ? '99' : '98'}), табл. 48 TRS-398`
-        : 'ур. (44): k_Q,Qcross = k_Q,Qint / k_Qcross,Qint, табл. 21 TRS-398';
+        ? L(`ур. (44) по аппроксимации прил. II, ур. (${chamber.type === 'cyl' ? '99' : '98'}), табл. 48 TRS-398`, `Eq. (44) with the fit of App. II, Eq. (${chamber.type === 'cyl' ? '99' : '98'}), TRS-398 Table 48`)
+        : L('ур. (44): k_Q,Qcross = k_Q,Qint / k_Qcross,Qint, табл. 21 TRS-398', 'Eq. (44): k_Q,Qcross = k_Q,Qint / k_Qcross,Qint, TRS-398 Table 21');
     } else trs.kQ = NaN;
     if (r50ok && r50 < 1.4 && f.e_kqtrs_mode !== 'manual') {
-      add('warn', 'trs', 'При R50 < 1,4 г/см² TRS-398 рекомендует экспериментально определённые коэффициенты k_Q,Qint: табличные значения здесь не подтверждены измерениями.', `${REF.trs}, табл. 20–21, прим. c`, 'kQtrs');
+      add('warn', 'trs', L(
+        'При R50 < 1,4 г/см² TRS-398 рекомендует экспериментально определённые коэффициенты k_Q,Qint: табличные значения здесь не подтверждены измерениями.',
+        'For R50 < 1.4 g/cm², TRS-398 recommends experimentally determined k_Q,Qint factors: the tabulated values here are not confirmed by measurements.',
+      ), `${REF.trs}, табл. 20–21, прим. c`, 'kQtrs');
     }
   }
 
@@ -527,48 +545,75 @@ export function computeElectrons(form) {
     if (rec51) {
       const src = separate51 ? set51 : { M1, M2 };
       tg.PionRaw = TG51.pIon({ mH: src.M1.mean, mL: src.M2.mean, vH: Math.abs(V1), vL: Math.abs(V2), beam: 'pulsed' });
-      if (nV < 2 - 1e-9) add('warn', 'tg51', 'TG-51: пониженное напряжение должно быть меньше рабочего как минимум вдвое.', `${REF.tg51}, разд. VII.D.2`, ['e_V1', 'e_V2']);
+      if (nV < 2 - 1e-9) add('warn', 'tg51', L('TG-51: пониженное напряжение должно быть меньше рабочего как минимум вдвое.', 'TG-51: the reduced voltage must be at most half the operating voltage.'), `${REF.tg51}, разд. VII.D.2`, ['e_V1', 'e_V2']);
       tg.Pion = tg.PionRaw / ksQ0;
-      if (tg.Pion > 1.05) add('error', 'tg51', `P_ion = ${ru(tg.Pion, 4)} > 1,05: нужна другая камера.`, `${REF.tg51}, разд. VII.D.1`, 'Pion');
-      if (ratio51 >= 1 && tg.Pion < 1) add('error', 'tg51', `P_ion = ${ru(tg.Pion, 4)} < 1: так быть не может, проверьте показания и поправку лаборатории.`, `${REF.tg51}, разд. VII.D`, 'Pion');
+      if (tg.Pion > 1.05) add('error', 'tg51', L(`P_ion = ${ru(tg.Pion, 4)} > 1,05: нужна другая камера.`, `P_ion = ${ru(tg.Pion, 4)} > 1.05: use a different chamber.`), `${REF.tg51}, разд. VII.D.1`, 'Pion');
+      if (ratio51 >= 1 && tg.Pion < 1) add('error', 'tg51', L(`P_ion = ${ru(tg.Pion, 4)} < 1: так быть не может, проверьте показания и поправку лаборатории.`, `P_ion = ${ru(tg.Pion, 4)} < 1 is impossible: check the readings and the calibration laboratory correction.`), `${REF.tg51}, разд. VII.D`, 'Pion');
     } else tg.Pion = NaN;
 
     if (f.e_kq51_mode === 'manual') {
       tg.kQ = read('e_kq51_manual', 'k_Q (TG-51)', 'tg51');
-      if (Number.isFinite(tg.kQ) && (tg.kQ < 0.8 || tg.kQ > 1.2)) add('warn', 'tg51', 'Введённый k_Q необычен: проверьте значение.', null, 'e_kq51_manual');
-      tg.kQSource = cross ? 'k′_Q введён вручную' : 'введён вручную';
+      if (Number.isFinite(tg.kQ) && (tg.kQ < 0.8 || tg.kQ > 1.2)) add('warn', 'tg51', L('Введённый k_Q необычен: проверьте значение.', 'The entered k_Q is unusual: check the value.'), null, 'e_kq51_manual');
+      tg.kQSource = cross ? L('k′_Q введён вручную', 'k′_Q entered manually') : L('введён вручную', 'entered manually');
       if (cross) tg.kQprime = tg.kQ;
     } else if (!chamber || chamber.other || !chamber.r385) {
-      if (chamber && (chamber.other || !chamber.r385)) add('error', 'tg51', `Для ${chamber.other ? 'этой камеры' : eChamberLabel(chamber)} в Report 385 нет данных: такие камеры не рекомендуется использовать для электронов; при необходимости введите k_Q вручную.`, `${REF.r385}, разд. 6.6`, ['e_ch_model', 'kQ51']);
+      if (chamber && (chamber.other || !chamber.r385)) add('error', 'tg51', L(
+        `Для ${chamber.other ? 'этой камеры' : eChamberLabel(chamber)} в Report 385 нет данных: такие камеры не рекомендуется использовать для электронов; при необходимости введите k_Q вручную.`,
+        `Report 385 gives no data for ${chamber.other ? 'this chamber' : eChamberLabel(chamber)}: such chambers are not recommended for electron beams; if necessary, enter k_Q manually.`,
+      ), `${REF.r385}, разд. 6.6`, ['e_ch_model', 'kQ51']);
       tg.kQ = NaN;
     } else if (r50ok) {
       if (r50 < R385_RANGE[0] - 1e-9 || r50 > R385_RANGE[1] + 1e-9) {
-        add('error', 'tg51', `R50 = ${ru(r50, 2)} см вне диапазона Report 385 (1,70–8,70 см): аппроксимации k′_Q там не проверены.`, `${REF.r385}, ур. (7)–(8)`, ['kQ51', 'e_i50', 'e_r50']);
+        add('error', 'tg51', L(`R50 = ${ru(r50, 2)} см вне диапазона Report 385 (1,70–8,70 см): аппроксимации k′_Q там не проверены.`, `R50 = ${ru(r50, 2)} cm is outside the Report 385 range (1.70–8.70 cm): the k′_Q fits have not been verified there.`), `${REF.r385}, ур. (7)–(8)`, ['kQ51', 'e_i50', 'e_r50']);
       }
       tg.kQprime = kQprime385(chamber, r50);
       tg.kQecal = chamber.r385.kQecal;
       tg.kQ = cross ? tg.kQprime : tg.kQprime * tg.kQecal;
       tg.kQSource = chamber.type === 'cyl'
-        ? `Report 385: k′_Q = ${ru(chamber.r385.a, 3)} + ${ru(chamber.r385.b, 3)}·R50^(−${ru(chamber.r385.c, 3)}) (ур. 7, табл. 5)${cross ? '' : `, k_Qecal = ${ru(tg.kQecal, 3)} (табл. 4)`}`
-        : `Report 385: k′_Q = ${ru(chamber.r385.a, 3)} + ${ru(chamber.r385.b, 3)}·exp(−R50/${ru(chamber.r385.c, 3)}) (ур. 8, табл. 7)${cross ? '' : `, k_Qecal = ${ru(tg.kQecal, 3)} (табл. 6)`}`;
+        ? L(
+            `Report 385: k′_Q = ${ru(chamber.r385.a, 3)} + ${ru(chamber.r385.b, 3)}·R50^(−${ru(chamber.r385.c, 3)}) (ур. 7, табл. 5)${cross ? '' : `, k_Qecal = ${ru(tg.kQecal, 3)} (табл. 4)`}`,
+            `Report 385: k′_Q = ${ru(chamber.r385.a, 3)} + ${ru(chamber.r385.b, 3)}·R50^(−${ru(chamber.r385.c, 3)}) (Eq. 7, Table 5)${cross ? '' : `, k_Qecal = ${ru(tg.kQecal, 3)} (Table 4)`}`,
+          )
+        : L(
+            `Report 385: k′_Q = ${ru(chamber.r385.a, 3)} + ${ru(chamber.r385.b, 3)}·exp(−R50/${ru(chamber.r385.c, 3)}) (ур. 8, табл. 7)${cross ? '' : `, k_Qecal = ${ru(tg.kQecal, 3)} (табл. 6)`}`,
+            `Report 385: k′_Q = ${ru(chamber.r385.a, 3)} + ${ru(chamber.r385.b, 3)}·exp(−R50/${ru(chamber.r385.c, 3)}) (Eq. 8, Table 7)${cross ? '' : `, k_Qecal = ${ru(tg.kQecal, 3)} (Table 6)`}`,
+          );
     } else tg.kQ = NaN;
     tg.coefficient = cross ? crossKN : ndw;
     if (separate51 && isCyl) {
-      add('info', 'common', 'Положения камеры по протоколам различаются, поэтому для каждого протокола нужен свой полный набор показаний: TRS-398 — со сдвигом центра на 0,5·r_cyl, TG-51 — с центром на d_ref. P_pol и P_ion для TG-51 рассчитываются по его набору.', `${REF.trs}, табл. 19; ${REF.r385}, разд. 4`);
+      add('info', 'common', L(
+        'Положения камеры по протоколам различаются, поэтому для каждого протокола нужен свой полный набор показаний: TRS-398 — со сдвигом центра на 0,5·r_cyl, TG-51 — с центром на d_ref. P_pol и P_ion для TG-51 рассчитываются по его набору.',
+        'The chamber positions differ between the protocols, so each protocol needs its own full set of readings: TRS-398 with the center shifted by 0.5·r_cyl, TG-51 with the center at d_ref. P_pol and P_ion for TG-51 are calculated from its set.',
+      ), `${REF.trs}, табл. 19; ${REF.r385}, разд. 4`);
     }
     if (cross && Number.isFinite(kelec) && Math.abs(kelec - 1) > 1e-9) {
-      add('info', 'tg51', 'Для перекрёстно откалиброванной плоскопараллельной камеры TG-51 принимает P_elec = 1: он сокращается. Оставьте другое значение, только если оно применялось и к показаниям рабочей камеры при перекрёстной калибровке.', `${REF.tg51}, разд. VII.B`, 'e_kelec');
+      add('info', 'tg51', L(
+        'Для перекрёстно откалиброванной плоскопараллельной камеры TG-51 принимает P_elec = 1: он сокращается. Оставьте другое значение, только если оно применялось и к показаниям рабочей камеры при перекрёстной калибровке.',
+        'For a cross-calibrated plane-parallel chamber, TG-51 takes P_elec = 1, since it cancels out. Keep a different value only if it was also applied to the field chamber readings during cross-calibration.',
+      ), `${REF.tg51}, разд. VII.B`, 'e_kelec');
     }
   }
   if (isCyl && f.protocol === 'tg51' && chamber?.r385) {
-    add('info', 'tg51', 'Report 385: центр цилиндрической камеры устанавливают на d_ref без сдвига — поправка на градиент уже учтена в k_Q = k′_Q·k_Qecal: оба коэффициента рассчитаны для такого положения. Сдвиг точки измерения применяют только при измерении кривой ионизации для R50.', `${REF.r385}, разд. 4, 6.5`);
+    add('info', 'tg51', L(
+      'Report 385: центр цилиндрической камеры устанавливают на d_ref без сдвига — поправка на градиент уже учтена в k_Q = k′_Q·k_Qecal: оба коэффициента рассчитаны для такого положения. Сдвиг точки измерения применяют только при измерении кривой ионизации для R50.',
+      'Report 385: the center of a cylindrical chamber is placed at d_ref without a shift, since the gradient correction is already included in k_Q = k′_Q·k_Qecal: both factors were calculated for this position. The shift of the point of measurement is applied only when measuring the depth-ionization curve for R50.',
+    ), `${REF.r385}, разд. 4, 6.5`);
   }
   if (!isCyl && chamber && f.protocol === 'both') {
-    const how = 'Плоскопараллельную камеру по TRS-398 устанавливают по внутренней поверхности входного окна с учётом его водоэквивалентной толщины, а по Report 385 — со сдвигом из табл. 3';
+    const how = L(
+      'Плоскопараллельную камеру по TRS-398 устанавливают по внутренней поверхности входного окна с учётом его водоэквивалентной толщины, а по Report 385 — со сдвигом из табл. 3',
+      'Per TRS-398, a plane-parallel chamber is positioned by the inner surface of the entrance window, accounting for its water-equivalent thickness, and per Report 385, with the shift from Table 3',
+    );
     if (separate51) {
-      add('info', 'common', `${how}; ${Number.isFinite(posDiffMm) ? `положения различаются на ${ru(posDiffMm, 1)} мм` : 'разницу положений по имеющимся данным оценить нельзя'}, поэтому для TG-51 нужен свой полный набор показаний; P_pol и P_ion для TG-51 рассчитываются по нему.`, `${REF.trs}, табл. 5, 19; ${REF.r385}, табл. 3`);
+      add('info', 'common', L(
+        `${how}; ${Number.isFinite(posDiffMm) ? `положения различаются на ${ru(posDiffMm, 1)} мм` : 'разницу положений по имеющимся данным оценить нельзя'}, поэтому для TG-51 нужен свой полный набор показаний; P_pol и P_ion для TG-51 рассчитываются по нему.`,
+        `${how}; ${Number.isFinite(posDiffMm) ? `the positions differ by ${ru(posDiffMm, 1)} mm` : 'the difference between the positions cannot be estimated from the available data'}, so TG-51 needs its own full set of readings; P_pol and P_ion for TG-51 are calculated from it.`,
+      ), `${REF.trs}, табл. 5, 19; ${REF.r385}, табл. 3`);
     } else {
-      add('info', 'common', `${how}; положения различаются на ${ru(posDiffMm, 2)} мм, поэтому одни и те же показания используются для обоих протоколов.`, `${REF.trs}, табл. 5, 19; ${REF.r385}, табл. 3`);
+      add('info', 'common', L(
+        `${how}; положения различаются на ${ru(posDiffMm, 2)} мм, поэтому одни и те же показания используются для обоих протоколов.`,
+        `${how}; the positions differ by ${ru(posDiffMm, 2)} mm, so the same readings are used for both protocols.`,
+      ), `${REF.trs}, табл. 5, 19; ${REF.r385}, табл. 3`);
     }
   }
 
@@ -577,17 +622,17 @@ export function computeElectrons(form) {
   if (depth.on) {
     const readD = (key, label) => {
       const v = parseNumber(f[key]);
-      if (!Number.isFinite(v)) add('error', 'depth', isBlank(f[key]) ? `Не заполнено поле «${label}».` : `Не удалось прочитать число в поле «${label}».`, null, key);
+      if (!Number.isFinite(v)) add('error', 'depth', isBlank(f[key]) ? L(`Не заполнено поле «${label}».`, `Field "${label}" is empty.`) : L(`Не удалось прочитать число в поле «${label}».`, `Could not read the number in field "${label}".`), null, key);
       return v;
     };
     depth.zmax = parseNumber(f.e_zmax);
-    if (!isBlank(f.e_zmax) && !(depth.zmax > 0 && depth.zmax < 10)) add('warn', 'depth', 'Глубина z_max задаётся в сантиметрах.', null, 'e_zmax');
+    if (!isBlank(f.e_zmax) && !(depth.zmax > 0 && depth.zmax < 10)) add('warn', 'depth', L('Глубина z_max задаётся в сантиметрах.', 'Depth z_max is entered in centimeters.'), null, 'e_zmax');
     const pdd = readD('e_pdd', `PDD(z_ref)`);
-    if (Number.isFinite(pdd) && (pdd < 50 || pdd > 100)) add('error', 'depth', 'PDD на опорной глубине вводится в процентах и для z_ref = 0,6·R50 − 0,1 обычно 85–100 %.', null, 'e_pdd');
+    if (Number.isFinite(pdd) && (pdd < 50 || pdd > 100)) add('error', 'depth', L('PDD на опорной глубине вводится в процентах и для z_ref = 0,6·R50 − 0,1 обычно 85–100 %.', 'PDD at the reference depth is entered as a percentage; for z_ref = 0.6·R50 − 0.1 it is usually 85–100 %.'), null, 'e_pdd');
     depth.factor = pdd / 100;
-    depth.label = Number.isFinite(zref) ? `PDD(${ru(zref, 2)} см)/100` : 'PDD(z_ref)/100';
+    depth.label = Number.isFinite(zref) ? L(`PDD(${ru(zref, 2)} см)/100`, `PDD(${ru(zref, 2)} cm)/100`) : 'PDD(z_ref)/100';
     depth.nominal = parseNumber(f.e_nominal);
-    if (!isBlank(f.e_nominal) && !(depth.nominal > 0)) add('warn', 'depth', 'Номинальный выход не распознан: отклонение не считается.', null, 'e_nominal');
+    if (!isBlank(f.e_nominal) && !(depth.nominal > 0)) add('warn', 'depth', L('Номинальный выход не распознан: отклонение не считается.', 'Nominal output not recognized: the deviation is not calculated.'), null, 'e_nominal');
     depth.ok = !messages.some((m) => m.level === 'error' && m.scope === 'depth');
   }
 
@@ -609,11 +654,11 @@ export function computeElectrons(form) {
     finish(tg, m51 * tg.PTP * tg.Pelec * tg.Ppol * tg.Pion * tg.Pleak, tg.kQ, tg.coefficient);
   }
   const devs = [trs.deviation, tg.deviation].filter(Number.isFinite);
-  if (devs.some((d) => Math.abs(d) > 2)) add('warn', 'common', 'Отклонение от номинального выхода больше 2 %: перед подстройкой ускорителя перепроверьте ввод и измерения.');
+  if (devs.some((d) => Math.abs(d) > 2)) add('warn', 'common', L('Отклонение от номинального выхода больше 2 %: перед подстройкой ускорителя перепроверьте ввод и измерения.', 'The deviation from the nominal output exceeds 2 %: recheck the input and the measurements before adjusting the linac.'));
 
   const hasError = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
-  if (wantTRS && !trs.ok && !hasError('trs')) add('error', 'trs', 'Не удалось вычислить дозу: проверьте R50 и k_Q.');
-  if (want51 && !tg.ok && !hasError('tg51')) add('error', 'tg51', 'Не удалось вычислить дозу: проверьте R50 и k_Q.');
+  if (wantTRS && !trs.ok && !hasError('trs')) add('error', 'trs', L('Не удалось вычислить дозу: проверьте R50 и k_Q.', 'Could not calculate the dose: check R50 and k_Q.'));
+  if (want51 && !tg.ok && !hasError('tg51')) add('error', 'tg51', L('Не удалось вычислить дозу: проверьте R50 и k_Q.', 'Could not calculate the dose: check R50 and k_Q.'));
   // один набор показаний на оба протокола: подсветка k_pol относится и к P_pol
   if (!separate51 && flags.kpol) flags.Ppol = flags.kpol;
   const order = { error: 0, warn: 1, info: 2 };

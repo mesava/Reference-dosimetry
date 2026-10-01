@@ -16,6 +16,9 @@
 //            табл. 3: для плоскопараллельных — положение точки измерения за наружной поверхностью
 //            входного окна (при измерении R50 и при установке на d_ref).
 
+import { L } from './i18n.js';
+import { dec } from './units.js';
+
 export const E_NODES = [1.0, 1.4, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 7.0, 8.0, 10.0];
 export const R385_RANGE = [1.7, 8.7];
 
@@ -146,17 +149,17 @@ export const eChamberLabel = (c) => (c ? `${c.maker} ${c.model}` : '');
 
 /** Линейная интерполяция по узлам R50; null вне диапазона данных. */
 export function interpE(values, r50) {
-  if (!values || !Number.isFinite(r50)) return { value: NaN, error: 'нет данных' };
+  if (!values || !Number.isFinite(r50)) return { value: NaN, error: L('нет данных', 'no data') };
   const pts = E_NODES.map((x, i) => [x, values[i]]).filter(([, v]) => v != null);
   const lo = pts[0][0];
   const hi = pts[pts.length - 1][0];
-  if (r50 < lo - 1e-9 || r50 > hi + 1e-9) return { value: NaN, error: `R50 вне диапазона таблицы (${String(lo).replace('.', ',')}–${String(hi).replace('.', ',')} г/см²)`, lo, hi };
+  if (r50 < lo - 1e-9 || r50 > hi + 1e-9) return { value: NaN, error: L(`R50 вне диапазона таблицы (${dec(lo)}–${dec(hi)} г/см²)`, `R50 outside the table range (${dec(lo)}–${dec(hi)} g/cm²)`), lo, hi };
   for (let i = 0; i < pts.length - 1; i++) {
     const [x1, y1] = pts[i];
     const [x2, y2] = pts[i + 1];
     if (r50 >= x1 - 1e-9 && r50 <= x2 + 1e-9) return { value: y1 + ((r50 - x1) / (x2 - x1)) * (y2 - y1), lo, hi };
   }
-  return { value: NaN, error: 'ошибка интерполяции' };
+  return { value: NaN, error: L('ошибка интерполяции', 'interpolation error') };
 }
 
 /** Аппроксимация TRS-398 прил. II: ур. (98) для плоскопараллельных, ур. (99) для цилиндрических камер. */

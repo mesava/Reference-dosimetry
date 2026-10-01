@@ -55,6 +55,7 @@ export const SAMPLE_FORM = {
 
 // Текстовые поля демонстрационного набора по-английски (числа те же).
 export const SAMPLE_FORM_EN = {
+  el_model: 'Electrometer (demo)',
   meta_institution: 'Example',
   meta_machine: 'Linear accelerator (demo)',
   meta_beam: '6 MV',

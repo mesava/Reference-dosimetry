@@ -105,7 +105,8 @@ const REF = {
   trs: 'TRS-398 Rev.1',
 };
 
-const cap = (s) => s[0].toUpperCase() + s.slice(1);
+// первая буква — заглавная, кроме обозначений величин (k_Q, k′_Q, …)
+const cap = (s) => (/^[a-z][_′]/.test(s) ? s : s[0].toUpperCase() + s.slice(1));
 
 export function normalizeCobalt(input) {
   const f = { ...CO_DEFAULTS, ...input };
@@ -263,7 +264,7 @@ export function computeCobalt(form) {
   if (f.co_timer_mode === 'manual') {
     tau = read('co_tau', L('Ошибка таймера τ', 'Timer error τ'));
   } else if (f.co_timer_mode === 'window') {
-    add('info', 'common', L('Заряд накоплен электрометром на интервале, когда источник уже в рабочем положении: ошибка таймера в мощность дозы не входит. Все серии, включая контрольные, нужно снимать так же. Для расчёта времени облучения пациентов ошибку таймера всё равно нужно знать.', 'Charge was collected by the electrometer over an interval with the source already in the treatment (exposed) position, so the timer error does not enter the dose rate. All series, including the control measurements, must be taken the same way. The timer error must still be known for calculating patient treatment times.'), `${REF.trs}, разд. 5.4.2`);
+    add('info', 'common', L('Заряд накоплен электрометром на интервале, когда источник уже в рабочем положении: ошибка таймера в мощность дозы не входит. Все серии, включая контрольные, нужно снимать так же. Для расчёта времени облучения пациентов ошибку таймера всё равно нужно знать.', 'Charge was collected by the electrometer over an interval with the source already in the treatment (exposed) position, so the timer error does not enter the dose rate. All series, including the check measurements, must be taken the same way. The timer error must still be known for calculating patient treatment times.'), `${REF.trs}, разд. 5.4.2`);
   } else if (f.co_timer_mode === 'nexp') {
     const tn = read('co_nx_t', L('Время одиночного облучения t', 'Single exposure time t'));
     const n = read('co_nx_n', L('Число облучений n', 'Number of exposures n'));
@@ -345,10 +346,10 @@ export function computeCobalt(form) {
   const ctrlRaw = parseCells(f.co_Mc);
   const ctrl = { on: ctrlRaw.n > 0 || !!ctrlRaw.error };
   if (ctrl.on) {
-    ctrl.M = readCells('co_Mc', L('Контрольные измерения', 'Control measurements'), 'ctrl');
-    spread(ctrl.M, L('контрольных измерений', 'of the control measurements'), 'co_Mc', 'ctrl');
+    ctrl.M = readCells('co_Mc', L('Контрольные измерения', 'Check measurements'), 'ctrl');
+    spread(ctrl.M, L('контрольных измерений', 'of the check measurements'), 'co_Mc', 'ctrl');
     if (readingsOk && ctrl.M.n > 0 && !ctrl.M.error && ctrl.M.mean !== 0 && Math.sign(ctrl.M.mean) !== Math.sign(M1.mean)) {
-      add('error', 'ctrl', L('Контрольные измерения снимают при той же (обычной) полярности, что и M при V₁.', 'Control measurements must be taken at the same (normal) polarity as M at V₁.'), null, 'co_Mc');
+      add('error', 'ctrl', L('Контрольные измерения снимают при той же (обычной) полярности, что и M при V₁.', 'Check measurements must be taken at the same (normal) polarity as M at V₁.'), null, 'co_Mc');
     }
     ctrl.t = isBlank(f.co_ctrl_time) ? tSet : read('co_ctrl_time', L('Время контрольного облучения', 'Control exposure time'), 'ctrl');
     if (Number.isFinite(ctrl.t) && ctrl.t <= 0) add('error', 'ctrl', L('Время контрольного облучения должно быть больше нуля.', 'The control exposure time must be greater than zero.'), null, 'co_ctrl_time');

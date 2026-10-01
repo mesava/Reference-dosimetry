@@ -55,7 +55,7 @@ export const unitLabel = (u) => (u ? L(u.label, u.labelEn) : '');
 
 export function pressureToKPa(value, unit) {
   const u = PRESSURE_UNITS[unit];
-  if (!u) throw new Error(`Неизвестная единица давления: ${unit}`);
+  if (!u) throw new Error(L(`Неизвестная единица давления: ${unit}`, `Unknown pressure unit: ${unit}`));
   return u.toKPa(value);
 }
 
@@ -69,7 +69,7 @@ export const NDW_UNITS = {
 
 export function ndwToGyPerNC(value, unit) {
   const u = NDW_UNITS[unit];
-  if (!u) throw new Error(`Неизвестная единица N_D,w: ${unit}`);
+  if (!u) throw new Error(L(`Неизвестная единица N_D,w: ${unit}`, `Unknown N_D,w unit: ${unit}`));
   return u.toGyPerNC(value);
 }
 
