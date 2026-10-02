@@ -87,7 +87,7 @@ export const CO_DEFAULTS = {
 
 export const ACTIVITY_UNITS = { Ci: { label: 'Ки', labelEn: 'Ci', toTBq: 0.037 }, TBq: { label: 'ТБк', labelEn: 'TBq', toTBq: 1 } };
 
-/** Период полураспада ⁶⁰Co: 5,2711 года (DDEP/LNHB), в сутках. */
+/** Период полураспада ⁶⁰Co: 5,2711 года (оценка DDEP: Bé et al., Monographie BIPM-5, т. 3, 2006), в сутках. */
 export const CO60_HALF_LIFE_DAYS = 5.2711 * 365.25;
 
 /** Множитель распада между двумя датами ISO (YYYY-MM-DD). */

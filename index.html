@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Референсная дозиметрия</title>
-<meta name="description" content="Расчёт поглощённой дозы в воде для пучков ⁶⁰Co, МВ фотонов и электронов по AAPM TG-51 (с аддендумами 2014 и 2024) и МАГАТЭ TRS-398 Rev.1 (2024).">
+<meta name="description" content="Расчёт поглощённой дозы в воде для пучков ⁶⁰Co, МВ фотонов и электронов по IAEA TRS-398 Rev.1 (Andreo et al., 2024); AAPM TG-51 с аддендумами 2014 и 2024 — для сравнения.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -15,7 +15,7 @@
   <div class="topbar-inner">
     <div class="brand">
       <h1>Референсная дозиметрия</h1>
-      <span class="tag">TG-51 · TRS-398 Rev.1</span>
+      <span class="tag">TRS-398 Rev.1 · TG-51</span>
     </div>
     <nav class="modules" aria-label="Разделы">
       <a href="#co60" id="tab-co60" data-module="co60" aria-controls="module-co60">⁶⁰Co</a>
@@ -1354,7 +1354,21 @@
 </div>
 
 <footer class="page-foot">
-  <p>Инструмент помогает считать, но не заменяет независимую проверку медицинским физиком. Источники: AAPM TG-51 (Almond et al., Med. Phys. 26, 1999), аддендум для фотонов (McEwen et al., Med. Phys. 41, 2014), WGTG51 Report 374 (Muir et al., 2022), аддендум для электронов WGTG51 Report 385 (Muir et al., 2024), МАГАТЭ TRS-398 Rev.1 (2024). Подробности расчёта — в папке docs репозитория.</p>
+  <p>Инструмент помогает считать, но не заменяет независимую проверку медицинским физиком. Расчёт ведётся по TRS-398 Rev.1; TG-51 — только для сравнения, не для калибровки. Источники: Andreo et al., IAEA TRS-398 Rev.1 (2024); AAPM TG-51 (Almond et al., Med. Phys. 26, 1999), аддендум для фотонов (McEwen et al., Med. Phys. 41, 2014), WGTG51 Report 374 (Muir et al., 2022), аддендум для электронов WGTG51 Report 385 (Muir et al., 2024). Полный список литературы — внизу страницы калькулятора и в README; подробности расчёта — в папке docs репозитория.</p>
+  <section class="refs" aria-labelledby="refs-title">
+    <h2 id="refs-title">Литература</h2>
+    <ul class="refs-list">
+      <li>Andreo P, Burns D T, Kapsch R-P, McEwen M and Vatnitsky S 2024 Absorbed dose determination in external beam radiotherapy: an international code of practice for dosimetry based on standards of absorbed dose to water. IAEA Technical Reports Series no. 398 (Rev. 1) (Vienna: International Atomic Energy Agency)</li>
+      <li>Almond P R, Biggs P J, Coursey B M, Hanson W F, Huq M S, Nath R and Rogers D W O 1999 AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon and electron beams. Med. Phys. 26 1847–70. doi:<a href="https://doi.org/10.1118/1.598691" target="_blank" rel="noopener">10.1118/1.598691</a></li>
+      <li>McEwen M, DeWerd L, Ibbott G, Followill D, Rogers D W O, Seltzer S and Seuntjens J 2014 Addendum to the AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon beams. Med. Phys. 41 041501. doi:<a href="https://doi.org/10.1118/1.4866223" target="_blank" rel="noopener">10.1118/1.4866223</a></li>
+      <li>Muir B, Culberson W, Davis S, Kim G G, Lee S-W, Lowenstein J, Renaud J, Sarfehnia A, Siebers J, Tantôt L and Tolani N 2022 AAPM WGTG51 Report 374: Guidance for TG-51 reference dosimetry. Med. Phys. 49 6739–64. doi:<a href="https://doi.org/10.1002/mp.15949" target="_blank" rel="noopener">10.1002/mp.15949</a></li>
+      <li>Muir B, Davis S, Dhanesar S, Hillman Y, Iakovenko V, Kim G G, Alves V G L, Lei Y, Lowenstein J, Renaud J, Sarfehnia A, Siebers J and Tantôt L 2024 AAPM WGTG51 Report 385: Addendum to the AAPM's TG-51 protocol for clinical reference dosimetry of high-energy electron beams. Med. Phys. 51 5840–57. doi:<a href="https://doi.org/10.1002/mp.17277" target="_blank" rel="noopener">10.1002/mp.17277</a></li>
+      <li>Bé M-M, Chisté V, Dulieu C, Browne E, Baglin C, Chechev V, Kuzmenco N, Helmer R, Kondev F, MacMahon D and Lee K B 2006 Table of Radionuclides (Vol. 3 – A = 3 to 244). Monographie BIPM-5 (Sèvres: Bureau International des Poids et Mesures)</li>
+      <li>Khan F M and Gibbons J P 2014 Khan's The Physics of Radiation Therapy 5th edn (Philadelphia, PA: Lippincott Williams &amp; Wilkins)</li>
+      <li>Klein E E, Hanley J, Bayouth J, Yin F-F, Simon W, Dresser S, Serago C, Aguirre F, Ma L, Arjomandy B, Liu C, Sandin C and Holmes T 2009 Task Group 142 report: quality assurance of medical accelerators. Med. Phys. 36 4197–212. doi:<a href="https://doi.org/10.1118/1.3190392" target="_blank" rel="noopener">10.1118/1.3190392</a></li>
+      <li>Lloyd S A M, Lim T Y, Fave X, Flores-Martinez E, Atwood T F and Moiseenko V 2018 TG-51 reference dosimetry for the Halcyon™: a clinical experience. J. Appl. Clin. Med. Phys. 19 98–102. doi:<a href="https://doi.org/10.1002/acm2.12349" target="_blank" rel="noopener">10.1002/acm2.12349</a></li>
+    </ul>
+  </section>
 </footer>
 
 

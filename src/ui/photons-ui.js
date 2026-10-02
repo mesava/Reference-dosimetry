@@ -8,7 +8,7 @@ import { PRESSURE_UNITS, NDW_UNITS, parseBeamName, parseNumber, unitLabel } from
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import {
-  $, $$, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
+  $, $$, tg51Note, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
 } from './common.js';
 
@@ -309,7 +309,7 @@ function renderReadout(result, data) {
   const delta = $('#delta');
   if (result.comparison && !result.trs.blocked && !result.tg51.blocked) {
     delta.hidden = false;
-    delta.innerHTML = L(`TG-51 относительно TRS-398: <b>${fmtSigned(result.comparison.dRel, 2)} %</b>`, `TG-51 relative to TRS-398: <b>${fmtSigned(result.comparison.dRel, 2)} %</b>`);
+    delta.innerHTML = L(`TG-51 относительно TRS-398: <b>${fmtSigned(result.comparison.dRel, 2)} %</b>`, `TG-51 relative to TRS-398: <b>${fmtSigned(result.comparison.dRel, 2)} %</b>`) + `<small>${tg51Note()}</small>`;
   } else {
     delta.hidden = true;
   }
@@ -483,7 +483,7 @@ function reportText(data, r) {
     }
     out.push('');
   }
-  if (r.comparison) out.push(L(`TG-51 относительно TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`, `TG-51 relative to TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`), '');
+  if (r.comparison) out.push(L(`TG-51 относительно TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`, `TG-51 relative to TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`), tg51Note(), '');
   const msgs = r.messages.filter((m) => m.level !== 'info');
   if (msgs.length) {
     out.push(L('Замечания:', 'Messages:'));

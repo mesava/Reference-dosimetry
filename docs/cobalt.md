@@ -66,7 +66,7 @@ TRS-398 (разд. 5.4.3): для перехода к глубине макси�
 
 Для сравнения можно ввести предыдущую мощность дозы — на z<sub>max</sub> или на опорной глубине (по выбору; без пересчёта на z<sub>max</sub> — на опорной) — и дату, к которой она относится. Тогда ожидаемое значение приводится к дате измерения по распаду ⁶⁰Co:
 
-Ḋ<sub>ожид</sub> = Ḋ<sub>пред</sub> · 2<sup>−Δt/T½</sup>, T½ = 5,2711 года (DDEP/LNHB) = 1925,3 сут.
+Ḋ<sub>ожид</sub> = Ḋ<sub>пред</sub> · 2<sup>−Δt/T½</sup>, T½ = 5,2711 года (оценка DDEP, Bé et al., 2006) = 1925,3 сут.
 
 В качестве Ḋ<sub>пред</sub> можно ввести мощность дозы при вводе источника в эксплуатацию или при предыдущей калибровке. Если её дата не указана, берётся дата установки источника; если нет и её — сравнение идёт без поправки на распад. Отклонение измеренной мощности дозы от ожидаемой выводится в процентах; крупный итог и отклонение показываются на той глубине, на которой задано значение для сравнения.
 
@@ -100,10 +100,15 @@ TRS-398 (разд. 5.4.3): для перехода к глубине макси�
 - Перекрестная калибровка рабочей камеры по опорной в пучке ⁶⁰Co (TRS-398, разд. 5.5, ур. 32).
 - Бюджет неопределённости (TRS-398, табл. 13).
 
-## Источники
+## Литература
 
-- IAEA TRS-398 Rev.1 (2024), глава 5 и разд. 4.4.3; использован русский перевод.
-- Almond P.R. et al. AAPM's TG-51 protocol. Med. Phys. 26(9), 1847–1870 (1999): разд. VII, IX.A, ур. (3), (8), (11).
-- McEwen M. et al. Addendum to the AAPM's TG-51 protocol (2014): разд. 4.E, 5.A.5, табл. III.
-- Muir B. et al. AAPM WGTG51 Report 374 (2022): разд. 4.4.2.
-- LNHB/DDEP. Recommended data: ⁶⁰Co, T½ = 5,2711 (8) года.
+- Andreo P, Burns D T, Kapsch R-P, McEwen M and Vatnitsky S 2024 Absorbed dose determination in external beam radiotherapy: an international code of practice for dosimetry based on standards of absorbed dose to water. IAEA Technical Reports Series no. 398 (Rev. 1) (Vienna: International Atomic Energy Agency)  
+  Использованы глава 5 и разд. 4.4.3, русский перевод.
+- Almond P R, Biggs P J, Coursey B M, Hanson W F, Huq M S, Nath R and Rogers D W O 1999 AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon and electron beams. Med. Phys. 26 1847–70. doi:[10.1118/1.598691](https://doi.org/10.1118/1.598691)  
+  Разд. VII, IX.A, ур. (3), (8), (11) — для сравнения.
+- McEwen M, DeWerd L, Ibbott G, Followill D, Rogers D W O, Seltzer S and Seuntjens J 2014 Addendum to the AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon beams. Med. Phys. 41 041501. doi:[10.1118/1.4866223](https://doi.org/10.1118/1.4866223)  
+  Разд. 4.E, 5.A.5, табл. III.
+- Muir B, Culberson W, Davis S, Kim G G, Lee S-W, Lowenstein J, Renaud J, Sarfehnia A, Siebers J, Tantôt L and Tolani N 2022 AAPM WGTG51 Report 374: Guidance for TG-51 reference dosimetry. Med. Phys. 49 6739–64. doi:[10.1002/mp.15949](https://doi.org/10.1002/mp.15949)  
+  Разд. 4.4.2.
+- Bé M-M, Chisté V, Dulieu C, Browne E, Baglin C, Chechev V, Kuzmenco N, Helmer R, Kondev F, MacMahon D and Lee K B 2006 Table of Radionuclides (Vol. 3 – A = 3 to 244). Monographie BIPM-5 (Sèvres: Bureau International des Poids et Mesures)  
+  Оценка DDEP: T½(⁶⁰Co) = 5,2711 (8) года.

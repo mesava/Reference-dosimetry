@@ -189,6 +189,10 @@ export function armButton(btn, idleText, armedText, action) {
  * Блок для печати и PDF после таблицы поправок: оговорка об ответственности и строки
  * «ФИО — подпись» по числу сотрудников, выполнявших измерения (пустая строка — для подписи от руки).
  */
+/** Пометка к сравнению протоколов: калибровка — по TRS-398 Rev.1, TG-51 — только для сравнения. */
+export const tg51Note = () =>
+  L('Расчёт ведётся по TRS-398 Rev.1; TG-51 — только для сравнения, не для калибровки.', 'The calculation follows TRS-398 Rev.1; TG-51 is shown for comparison only, not for calibration.');
+
 export function renderSignBlock(el, staff) {
   if (!el) return;
   const note = document.querySelector('.page-foot p')?.textContent?.trim() ?? '';

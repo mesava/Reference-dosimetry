@@ -312,6 +312,7 @@ details.more[open] summary { margin-bottom: 10px; }
 .display .chip.bad { color: #ffab9f; }
 .delta { border-top: 1px solid #2a3538; padding-top: 10px; font: 13px var(--font-body); color: var(--display-dim); }
 .delta b { font: 500 15px var(--font-mono); color: var(--display-ink); }
+.delta small { display: block; margin-top: 4px; font-size: 12px; }
 
 .panel { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius); padding: 14px 16px; min-width: 0; }
 .panel h2 { font-size: 15px; margin-bottom: 8px; }
@@ -343,6 +344,11 @@ table.factors tr.group td { padding-top: 12px; color: var(--accent); font: 600 1
 
 footer.page-foot { max-width: 1320px; margin: 0 auto; padding: 0 16px 40px; color: var(--muted); font-size: 13px; }
 footer.page-foot p { max-width: 90ch; }
+.refs { margin-top: 20px; max-width: 110ch; }
+.refs h2 { font-size: 15px; margin: 0 0 8px; color: var(--ink); }
+.refs-list { list-style: none; margin: 0; padding: 0; }
+.refs-list li { margin: 0 0 6px; padding-left: 1.5em; text-indent: -1.5em; overflow-wrap: anywhere; }
+.refs-list a { color: inherit; }
 
 /* мобильная строка с результатом */
 .mobile-result {

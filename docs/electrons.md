@@ -101,9 +101,13 @@ D(z<sub>max</sub>) = D(z<sub>ref</sub>)/(PDD(z<sub>ref</sub>)/100) по клин
 - Нестандартные условия: пластиковые фантомы, выходные факторы, увеличенные РИП для тотального облучения кожи.
 - Бюджет неопределённости (TRS-398, табл. 24–25; Report 385, табл. 8–9).
 
-## Источники
+## Литература
 
-- IAEA TRS-398 Rev.1 (2024), глава 7, табл. 4, 5, 10, 19–22; использован русский перевод.
-- Muir B. et al. AAPM WGTG51 Report 385: Addendum to the AAPM's TG-51 protocol for clinical reference dosimetry of high-energy electron beams. Med. Phys. 51, 5840–5857 (2024).
-- Almond P.R. et al. AAPM's TG-51 protocol. Med. Phys. 26(9), 1847–1870 (1999), разд. VII, X.
-- Muir B. et al. AAPM WGTG51 Report 374 (2022).
+- Andreo P, Burns D T, Kapsch R-P, McEwen M and Vatnitsky S 2024 Absorbed dose determination in external beam radiotherapy: an international code of practice for dosimetry based on standards of absorbed dose to water. IAEA Technical Reports Series no. 398 (Rev. 1) (Vienna: International Atomic Energy Agency)  
+  Использованы глава 7, табл. 4, 5, 10, 19–22, русский перевод.
+- Muir B, Davis S, Dhanesar S, Hillman Y, Iakovenko V, Kim G G, Alves V G L, Lei Y, Lowenstein J, Renaud J, Sarfehnia A, Siebers J and Tantôt L 2024 AAPM WGTG51 Report 385: Addendum to the AAPM's TG-51 protocol for clinical reference dosimetry of high-energy electron beams. Med. Phys. 51 5840–57. doi:[10.1002/mp.17277](https://doi.org/10.1002/mp.17277)
+- Almond P R, Biggs P J, Coursey B M, Hanson W F, Huq M S, Nath R and Rogers D W O 1999 AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon and electron beams. Med. Phys. 26 1847–70. doi:[10.1118/1.598691](https://doi.org/10.1118/1.598691)  
+  Разд. VII, X — для сравнения.
+- Muir B, Culberson W, Davis S, Kim G G, Lee S-W, Lowenstein J, Renaud J, Sarfehnia A, Siebers J, Tantôt L and Tolani N 2022 AAPM WGTG51 Report 374: Guidance for TG-51 reference dosimetry. Med. Phys. 49 6739–64. doi:[10.1002/mp.15949](https://doi.org/10.1002/mp.15949)
+- Klein E E, Hanley J, Bayouth J, Yin F-F, Simon W, Dresser S, Serago C, Aguirre F, Ma L, Arjomandy B, Liu C, Sandin C and Holmes T 2009 Task Group 142 report: quality assurance of medical accelerators. Med. Phys. 36 4197–212. doi:[10.1118/1.3190392](https://doi.org/10.1118/1.3190392)  
+  TG-142: допуск на R₅₀ ±1 мм (по ссылке в Report 385).

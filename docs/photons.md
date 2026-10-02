@@ -158,10 +158,14 @@
 - Бюджет неопределённости.
 - Построение графика Яффе по серии показаний при разных напряжениях (сейчас метод описан в справке к k<sub>s</sub>).
 
-## Источники
+## Литература
 
-- Almond P.R. et al. AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon and electron beams. Med. Phys. 26(9), 1847–1870 (1999).
-- McEwen M. et al. Addendum to the AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon beams. Med. Phys. 41(4), 041501 (2014).
-- Muir B. et al. AAPM WGTG51 Report 374: Guidance for TG-51 reference dosimetry. Med. Phys. 49, 6739–6764 (2022).
-- Lloyd S.A.M. et al. TG-51 reference dosimetry for the Halcyon™: A clinical experience. J. Appl. Clin. Med. Phys. 19(4), 98–102 (2018).
-- IAEA TRS-398 Rev.1. Absorbed Dose Determination in External Beam Radiotherapy (2024); использован русский перевод.
+- Andreo P, Burns D T, Kapsch R-P, McEwen M and Vatnitsky S 2024 Absorbed dose determination in external beam radiotherapy: an international code of practice for dosimetry based on standards of absorbed dose to water. IAEA Technical Reports Series no. 398 (Rev. 1) (Vienna: International Atomic Energy Agency)  
+  Использован русский перевод.
+- Almond P R, Biggs P J, Coursey B M, Hanson W F, Huq M S, Nath R and Rogers D W O 1999 AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon and electron beams. Med. Phys. 26 1847–70. doi:[10.1118/1.598691](https://doi.org/10.1118/1.598691)
+- McEwen M, DeWerd L, Ibbott G, Followill D, Rogers D W O, Seltzer S and Seuntjens J 2014 Addendum to the AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon beams. Med. Phys. 41 041501. doi:[10.1118/1.4866223](https://doi.org/10.1118/1.4866223)
+- Muir B, Culberson W, Davis S, Kim G G, Lee S-W, Lowenstein J, Renaud J, Sarfehnia A, Siebers J, Tantôt L and Tolani N 2022 AAPM WGTG51 Report 374: Guidance for TG-51 reference dosimetry. Med. Phys. 49 6739–64. doi:[10.1002/mp.15949](https://doi.org/10.1002/mp.15949)
+- Lloyd S A M, Lim T Y, Fave X, Flores-Martinez E, Atwood T F and Moiseenko V 2018 TG-51 reference dosimetry for the Halcyon™: a clinical experience. J. Appl. Clin. Med. Phys. 19 98–102. doi:[10.1002/acm2.12349](https://doi.org/10.1002/acm2.12349)  
+  Пример Halcyon для автотестов.
+- Khan F M and Gibbons J P 2014 Khan's The Physics of Radiation Therapy 5th edn (Philadelphia, PA: Lippincott Williams & Wilkins)  
+  TPR и TMR, расчёт TMR из PDD (справка к TMR).

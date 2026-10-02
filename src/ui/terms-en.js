@@ -214,7 +214,7 @@ export const TERMS_EN = {
 <li>TMR(10) is noticeably larger than PDD(10)/100 at SSD 100 cm: for 6 MV by a factor of about (110/101.5)² ≈ 1.17, slightly less because of the difference in scatter.</li>
 <li>Do not confuse TMR(10) with TPR<sub>20,10</sub>: the latter is a beam quality index, the ratio of doses at depths of 20 and 10 cm.</li>
 </ul>
-<p class="src">TRS-398 Rev.1, Secs. 5.4.3 and 6.4.3; TG-51, Sec. IX.C; Report 374, Sec. 2.4.3; F. M. Khan, The Physics of Radiation Therapy (TPR and TMR).</p>`,
+<p class="src">TRS-398 Rev.1, Secs. 5.4.3 and 6.4.3; TG-51, Sec. IX.C; Report 374, Sec. 2.4.3; Khan and Gibbons, 2014 (TPR and TMR).</p>`,
   },
 
   timer: {

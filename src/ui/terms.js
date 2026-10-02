@@ -214,7 +214,7 @@ export const TERMS = {
 <li>TMR(10) заметно больше PDD(10)/100 при РИП 100 см: для 6 МВ примерно в (110/101,5)² ≈ 1,17 раза, чуть меньше из-за разницы в рассеянии.</li>
 <li>Не путайте TMR(10) с TPR<sub>20,10</sub>: это показатель качества пучка — отношение доз на глубинах 20 и 10 см.</li>
 </ul>
-<p class="src">TRS-398 Rev.1, разд. 5.4.3 и 6.4.3; TG-51, разд. IX.C; Report 374, разд. 2.4.3; F. M. Khan, The Physics of Radiation Therapy (TPR и TMR).</p>`,
+<p class="src">TRS-398 Rev.1, разд. 5.4.3 и 6.4.3; TG-51, разд. IX.C; Report 374, разд. 2.4.3; Khan и Gibbons, 2014 (TPR и TMR).</p>`,
   },
 
   timer: {
