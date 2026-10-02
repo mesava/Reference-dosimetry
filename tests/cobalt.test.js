@@ -8,6 +8,13 @@ const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''}
 const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
 const errorsOf = (r) => r.messages.filter((m) => m.level === 'error');
 
+/** Оба протокола на одних данных: расчёты по TRS-398 и по TG-51 по отдельности (режима «оба» в калькуляторе нет). */
+const both = (compute, form) => {
+  const a = compute({ ...form, protocol: 'trs' });
+  const b = compute({ ...form, protocol: 'tg51' });
+  return { ...a, tg51: b.tg51, messages: [...a.messages, ...b.messages], flags: { ...b.flags, ...a.flags } };
+};
+
 test('Ошибка таймера: прямая M = Ṁ·(t + τ)', () => {
   const r = timerError(['0,5', '1', '2'], [25 * 0.52, 25 * 1.02, 25 * 2.02].map(String));
   near(r.tau, 0.02, 1e-12);
@@ -40,16 +47,16 @@ test('Демо-набор ⁶⁰Co: TRS-398 совпадает с ручным �
 });
 
 test('TRS-398 ур. (16) совпадает с TG-51 ур. (11) для непрерывного пучка', () => {
-  const r = computeCobalt({ ...SAMPLE_COBALT, protocol: 'both', co_zref: '10', co_rec_trs: 'eq16', co_pdd: '55,6' });
+  const r = both(computeCobalt, { ...SAMPLE_COBALT, co_zref: '10', co_rec_trs: 'eq16', co_pdd: '55,6' });
   near(r.trs.ks, r.tg51.Pion, 1e-12);
   const n = 3;
   near(r.tg51.Pion, (1 - n * n) / (r.inputs.ratio12 - n * n), 1e-12);
 });
 
 test('TG-51 на глубине 5 см — предупреждение', () => {
-  const r = computeCobalt({ ...SAMPLE_COBALT, protocol: 'both' });
+  const r = computeCobalt({ ...SAMPLE_COBALT, protocol: 'tg51' });
   assert.equal(r.flags.co_zref, 'warn');
-  const r10 = computeCobalt({ ...SAMPLE_COBALT, protocol: 'both', co_zref: '10', co_pdd: '55,6' });
+  const r10 = computeCobalt({ ...SAMPLE_COBALT, protocol: 'tg51', co_zref: '10', co_pdd: '55,6' });
   assert.equal(r10.flags.co_zref, undefined);
 });
 

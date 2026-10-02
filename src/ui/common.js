@@ -139,7 +139,7 @@ export function renderFlags(root, flags, seriesBox) {
 
 /** Видимость по data-protocol, data-show и data-standalone внутри root. */
 export function applyShowRules(root, data, protocol) {
-  for (const el of $$('[data-protocol]', root)) el.hidden = !(protocol === 'both' || protocol === el.dataset.protocol);
+  for (const el of $$('[data-protocol]', root)) el.hidden = protocol !== el.dataset.protocol;
   for (const el of $$('[data-show]', root)) {
     el.hidden = !el.dataset.show.split(';').every((cond) => {
       const [key, vals] = cond.split(':');
@@ -207,9 +207,6 @@ export const correctedReadingLabel = (withVol = false) =>
   withVol
     ? L('Исправленное показание: M₁ с поправками на T и P, электрометр, полярность, рекомбинацию, утечку и объём, нКл', 'Corrected reading: M₁ corrected for T and P, electrometer, polarity, recombination, leakage and volume averaging, nC')
     : L('Исправленное показание: M₁ с поправками на T и P, электрометр, полярность, рекомбинацию и утечку, нКл', 'Corrected reading: M₁ corrected for T and P, electrometer, polarity, recombination and leakage, nC');
-
-/** Пометка к сравнению протоколов: реализация TG-51 приведена для сравнения. */
-export const tg51Note = () => L('Реализация TG-51 приведена для сравнения.', 'The TG-51 implementation is provided for comparison.');
 
 /**
  * Демонстрационные подписи (учреждение, аппарат, пучок, примечания) — на языке интерфейса:

@@ -111,6 +111,7 @@ const cap = (s) => (/^[a-z][_′]/.test(s) ? s : s[0].toUpperCase() + s.slice(1)
 
 export function normalizeCobalt(input) {
   const f = { ...CO_DEFAULTS, ...input };
+  if (f.protocol !== 'tg51') f.protocol = 'trs'; // режима «оба протокола» больше нет
   for (const k of ['co_M1', 'co_Mopp', 'co_M2']) if (!Array.isArray(f[k])) f[k] = isBlank(f[k]) ? ['', '', ''] : String(f[k]).trim().split(/[\s;]+/);
   for (const k of ['co_tt', 'co_tm']) if (!Array.isArray(f[k])) f[k] = ['', ''];
   for (const k of ['co_nx_M1', 'co_nx_Mn', 'co_Mc']) if (!Array.isArray(f[k])) f[k] = isBlank(f[k]) ? ['', '', ''] : String(f[k]).trim().split(/[\s;]+/);
@@ -210,8 +211,8 @@ export function computeCobalt(form) {
     else if (d > 0.001) add('info', scope, L(`Разброс показаний ${label} до ${pct} % от среднего: Report 374 советует повторять облучения, пока отклонение не станет меньше ±0,1 % без тренда.`, `Spread of readings ${label} up to ${pct} % of the mean: Report 374 recommends repeating exposures until the deviation is below ±0.1 % with no trend.`), `${REF.r374}, разд. 4.4.2`, key);
   };
 
-  const want51 = f.protocol === 'tg51' || f.protocol === 'both';
-  const wantTRS = f.protocol === 'trs' || f.protocol === 'both';
+  const want51 = f.protocol === 'tg51';
+  const wantTRS = !want51;
 
   // ------------------------------------------------------------ геометрия
   const distance = read('co_distance', L('Расстояние', 'Distance'));
@@ -528,8 +529,6 @@ export function computeCobalt(form) {
   if (trs.ctrl) trs.ctrl.blocked = trs.ctrl.blocked || trs.blocked;
   if (tg.ctrl) tg.ctrl.blocked = tg.ctrl.blocked || tg.blocked;
 
-  let comparison = null;
-  if (want51 && wantTRS && trs.ok && tg.ok && !trs.blocked && !tg.blocked) comparison = { dRel: (tg.D / trs.D - 1) * 100 };
 
   return {
     protocol: f.protocol,
@@ -542,7 +541,6 @@ export function computeCobalt(form) {
     depth,
     trs,
     tg51: tg,
-    comparison,
     messages,
     flags,
     hasErrors: messages.some((m) => m.level === 'error'),

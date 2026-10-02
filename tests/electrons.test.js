@@ -9,6 +9,13 @@ const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''}
 const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
 const errorsOf = (r, scope) => r.messages.filter((m) => m.level === 'error' && (!scope || m.scope === scope || m.scope === 'common'));
 
+/** Оба протокола на одних данных: расчёты по TRS-398 и по TG-51 по отдельности (режима «оба» в калькуляторе нет). */
+const both = (form) => {
+  const a = computeElectrons({ ...form, protocol: 'trs' });
+  const b = computeElectrons({ ...form, protocol: 'tg51' });
+  return { ...a, tg51: b.tg51, messages: [...a.messages, ...b.messages], flags: { ...b.flags, ...a.flags } };
+};
+
 test('TRS-398 табл. 20 / табл. 21: отношение постоянно для каждой камеры (k_Qint)', () => {
   // Известная особенность: PTW 30013 при R50 = 3,0 — отношение выпадает на 0,04 % (см. docs/electrons.md).
   const known = { PTW30013: [4] };
@@ -97,39 +104,9 @@ test('TG-51 + Report 385 совпадает с ручным расчётом', (
   near(r.tg51.D, M1 * PTP * Pion * Ppol * kQp * 0.901 * 0.05335, 1e-12);
 });
 
-test('Оба протокола, цилиндрическая камера: у TG-51 свой полный набор показаний на d_ref', () => {
-  const r = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'both' });
-  assert.ok(r.inputs.separate51);
-  assert.deepEqual(errorsOf(r), []);
-  const R50 = 1.029 * 4.8 - 0.06;
-  const kQ = (0.978 + 0.112 * Math.pow(R50, -0.816)) * 0.901;
-  const PTP = ((273.2 + 21.4) / 293.2) * (101.325 / 99.62);
-  const M = mean([19.88, 19.87, 19.89]);
-  const Mopp = mean([19.96, 19.95, 19.97]);
-  const M2 = mean([19.79, 19.78, 19.8]);
-  const Ppol = (M + Mopp) / (2 * M);
-  const Pion = (1 - 3) / (M / M2 - 3);
-  near(r.tg51.Ppol, Ppol, 1e-12, 'P_pol по набору TG-51');
-  near(r.tg51.Pion, Pion, 1e-12, 'P_ion по набору TG-51');
-  near(r.tg51.D, M * PTP * Ppol * Pion * kQ * 0.05335, 1e-12, 'D по TG-51');
-  // TRS-398 считается только по своему набору
-  const trsOnly = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'trs' });
-  near(r.trs.D, trsOnly.trs.D, 1e-15);
-  assert.ok(r.comparison);
-  // ошибка в наборе TG-51 не блокирует TRS-398, и наоборот
-  const bad51 = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'both', e_Mopp51: ['', '', ''] });
-  assert.ok(bad51.tg51.blocked && !bad51.trs.blocked);
-  const badTrs = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'both', e_M2: ['19,90', '19,90', '19,90'] });
-  assert.ok(badTrs.trs.blocked && !badTrs.tg51.blocked);
-  assert.equal(badTrs.flags.Pion, undefined, 'P_ion TG-51 не подсвечивается из-за набора TRS-398');
-  // плоскопараллельная Roos: положения совпадают, набор один
-  const pp = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'both', e_ch_model: 'ROOS' });
-  assert.ok(!pp.inputs.separate51);
-});
-
 test('Перекрёстная калибровка: TRS-398 ур. (44), Report 385 ур. (6)', () => {
-  const f = { ...SAMPLE_ELECTRONS, protocol: 'both', e_ch_model: 'ROOS', e_cal_route: 'cross', e_cross_ndw: '0,0801', e_cross_r50: '7,8', e_cross_kn: '0,0720' };
-  const r = computeElectrons(f);
+  const f = { ...SAMPLE_ELECTRONS, e_ch_model: 'ROOS', e_cal_route: 'cross', e_cross_ndw: '0,0801', e_cross_r50: '7,8', e_cross_kn: '0,0720' };
+  const r = both(f);
   assert.deepEqual(errorsOf(r), []);
   const roos = findEChamber('ROOS');
   const kQ = interpE(roos.trsT21, r.quality.r50).value / interpE(roos.trsT21, 7.8).value;
@@ -138,12 +115,12 @@ test('Перекрёстная калибровка: TRS-398 ур. (44), Report 
   near(r.trs.D, Mtrs * kQ * 0.0801, 1e-12);
   near(r.tg51.D, r.tg51.M * kQprime385(roos, r.quality.r50) * 0.072, 1e-12);
   // цилиндрическую камеру Report 385 перекрёстно не калибрует
-  const cyl = computeElectrons({ ...f, e_ch_model: 'PTW30013' });
+  const cyl = computeElectrons({ ...f, protocol: 'tg51', e_ch_model: 'PTW30013' });
   assert.ok(cyl.tg51.blocked);
 });
 
 test('Ограничения: цилиндрическая камера при R50 < 3 (TRS), диапазон Report 385, нет данных табл. 20', () => {
-  const low = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'both', e_i50: '2,5' });
+  const low = both({ ...SAMPLE_ELECTRONS, e_i50: '2,5' });
   assert.ok(low.trs.blocked, 'TRS: цилиндрическая при R50 < 3');
   assert.ok(!low.tg51.blocked, 'Report 385 допускает цилиндрическую камеру во всех пучках');
   const high = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'tg51', e_r50_method: 'r50', e_r50: '9,5' });
@@ -191,52 +168,11 @@ test('Режим «аппроксимация» и сравнение с таб�
   assert.ok(c.trsFit20);
 });
 
-test('Плоскопараллельная камера, оба протокола: отдельная серия, если положения различаются больше чем на 0,5 мм', () => {
-  const roos = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'both', e_ch_model: 'ROOS' });
-  assert.ok(!roos.inputs.separate51, 'Roos: 1,32 мм против 1,6 мм');
-  const a10 = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'both', e_ch_model: 'A10', e_kqtrs_mode: 'manual', e_kqtrs_manual: '0,91' });
-  assert.ok(a10.inputs.separate51, 'A10: 0,04 мм против 1,5 мм');
-});
-
 test('Перекрёстная калибровка: поправки лаборатории для ⁶⁰Co не применяются', () => {
   const f = { ...SAMPLE_ELECTRONS, protocol: 'trs', e_ch_model: 'ROOS', e_cal_route: 'cross', e_cross_ndw: '0,08', e_cross_r50: '7,8' };
   const a = computeElectrons(f);
   const b = computeElectrons({ ...f, e_lab_pol_applied: false, e_lab_kpol: '1,01', e_lab_ks_applied: false, e_lab_ks: '1,01' });
   near(a.trs.D, b.trs.D, 1e-15);
-});
-
-test('Контрольные измерения: оба протокола, два положения камеры', () => {
-  const S = SAMPLE_ELECTRONS;
-  // те же показания, что в разделе 5 — итог совпадает с «до калибровки»
-  const same = computeElectrons({ ...S, protocol: 'both', e_ctrl_M: S.e_M1, e_ctrl_M51: S.e_M51 });
-  assert.ok(same.inputs.separate51 && same.ctrl.on && same.ctrl.separate);
-  assert.deepEqual(errorsOf(same), []);
-  near(same.trs.ctrl.D, same.trs.D, 1e-12, 'TRS-398');
-  near(same.tg51.ctrl.D, same.tg51.D, 1e-12, 'TG-51 по положению Report 385');
-  near(same.ctrl.changePct, 0, 1e-9);
-  near(same.ctrl.changePct51, 0, 1e-9);
-  // показания на 1 % больше при вдвое большем числе МЕ: на МЕ — на 1 % больше
-  const up = (a) => a.map((v) => String(parseFloat(String(v).replace(',', '.')) * 2 * 1.01));
-  const r = computeElectrons({ ...S, protocol: 'both', e_ctrl_M: up(S.e_M1), e_ctrl_M51: up(S.e_M51), e_ctrl_mu: String(2 * parseFloat(S.e_mu)) });
-  assert.deepEqual(errorsOf(r), []);
-  near(r.trs.ctrl.DperMU, r.trs.DperMU * 1.01, 1e-9);
-  near(r.tg51.ctrl.DperMU, r.tg51.DperMU * 1.01, 1e-9);
-  near(r.ctrl.changePct, 1, 1e-9);
-  near(r.ctrl.changePct51, 1, 1e-9);
-  near(r.trs.ctrl.DcGy, r.trs.ctrl.D * 100, 1e-12);
-  // только одно положение — ошибка контрольных измерений, основной результат не блокируется
-  const one = computeElectrons({ ...S, protocol: 'both', e_ctrl_M: S.e_M1 });
-  assert.ok(one.messages.some((m) => m.level === 'error' && m.scope === 'ctrl' && /обоих положениях/.test(m.text)));
-  assert.ok(one.trs.ctrl.blocked && one.tg51.ctrl.blocked);
-  assert.ok(!one.trs.blocked && !one.tg51.blocked);
-  // один протокол — одна серия; другая полярность — ошибка
-  const trs = computeElectrons({ ...S, protocol: 'trs', e_ctrl_M: S.e_M1 });
-  assert.ok(!trs.ctrl.separate && !trs.trs.ctrl.blocked);
-  near(trs.trs.ctrl.D, trs.trs.D, 1e-12);
-  const neg = (a) => a.map((v) => `-${String(v).replace(/^[-+]/, '')}`);
-  const pos = (a) => a.map((v) => String(v).replace(/^[-+]/, ''));
-  const flip = computeElectrons({ ...S, protocol: 'trs', e_ctrl_M: /^-/.test(String(S.e_M1[0])) ? pos(S.e_M1) : neg(S.e_M1) });
-  assert.ok(flip.messages.some((m) => m.level === 'error' && m.scope === 'ctrl' && /полярности/.test(m.text)));
 });
 
 test('Электроны: доза в сГр и Гр; номинальный выход на z_max или на опорной глубине', () => {
@@ -265,25 +201,44 @@ test('Электроны: доза на МЕ вне 0,3–2 сГр/МЕ — пр
   assert.ok(typo.messages.some((m) => m.level === 'warn' && /вне обычного диапазона/.test(m.text)));
 });
 
-test('Электроны: калибровка ускорителя при отклонении больше ±2 % (раздел 9), два положения камеры', () => {
+test('Контрольные измерения: итог по ним с поправками из раздела 5 (TRS-398 и TG-51)', () => {
+  const S = SAMPLE_ELECTRONS;
+  for (const protocol of ['trs', 'tg51']) {
+    const key = protocol === 'trs' ? 'trs' : 'tg51';
+    // те же показания, что в разделе 5 — та же доза
+    const same = computeElectrons({ ...S, protocol, e_ctrl_M: S.e_M1 });
+    assert.deepEqual(errorsOf(same), []);
+    near(same[key].ctrl.D, same[key].D, 1e-12, protocol);
+    near(same.ctrl.changePct, 0, 1e-9);
+    // показания на 1 % больше при вдвое большем числе МЕ: на МЕ — на 1 % больше
+    const up = (a) => a.map((v) => String(parseFloat(String(v).replace(',', '.')) * 2 * 1.01));
+    const r = computeElectrons({ ...S, protocol, e_ctrl_M: up(S.e_M1), e_ctrl_mu: String(2 * parseFloat(S.e_mu)) });
+    assert.deepEqual(errorsOf(r), []);
+    near(r[key].ctrl.DperMU, r[key].DperMU * 1.01, 1e-9);
+    near(r.ctrl.changePct, 1, 1e-9);
+    near(r[key].ctrl.DcGy, r[key].ctrl.D * 100, 1e-12);
+  }
+  // другая полярность — ошибка контрольных измерений, основной результат не блокируется
+  const neg = (a) => a.map((v) => `-${String(v).replace(/^[-+]/, '')}`);
+  const pos = (a) => a.map((v) => String(v).replace(/^[-+]/, ''));
+  const flip = computeElectrons({ ...S, protocol: 'trs', e_ctrl_M: /^-/.test(String(S.e_M1[0])) ? pos(S.e_M1) : neg(S.e_M1) });
+  assert.ok(flip.messages.some((m) => m.level === 'error' && m.scope === 'ctrl' && /полярности/.test(m.text)));
+  assert.ok(flip.trs.ctrl.blocked && !flip.trs.blocked);
+});
+
+test('Электроны: калибровка ускорителя при отклонении больше ±2 % (раздел 9)', () => {
   const S = SAMPLE_ELECTRONS;
   const scale = (a, k) => a.map((v) => String(parseFloat(String(v).replace(',', '.')) * k));
-  // в допуске: раздел не нужен
-  const ok = computeElectrons({ ...S, protocol: 'trs', e_nominal: '1,000' });
-  assert.equal(ok.recal.needed, false);
-  // вне допуска (номинал 1,05)
-  const base = { ...S, protocol: 'both', e_nominal: '1,050', e_ctrl_M: S.e_M1, e_ctrl_M51: S.e_M51 };
-  const out = computeElectrons(base);
-  assert.ok(out.inputs.separate51 && out.recal.needed);
-  assert.ok(out.messages.some((m) => m.scope === 'recal'));
-  // только одно положение после калибровки — ошибка калибровки, итог прежний
-  const one = computeElectrons({ ...base, e_recal_needed: 'yes', e_recal_M: scale(S.e_M1, 1.05) });
-  assert.ok(one.messages.some((m) => m.level === 'error' && m.scope === 'recal' && /обоих положениях/.test(m.text)));
-  assert.ok(one.trs.recal.blocked && !one.trs.blocked);
-  // оба положения: итог по новым показаниям
-  const r = computeElectrons({ ...base, e_recal_needed: 'yes', e_recal_M: scale(S.e_M1, 1.05), e_recal_M51: scale(S.e_M51, 1.05) });
-  assert.deepEqual(errorsOf(r), []);
-  for (const x of [r.trs, r.tg51]) {
+  assert.equal(computeElectrons({ ...S, protocol: 'trs', e_nominal: '1,000' }).recal.needed, false);
+  for (const protocol of ['trs', 'tg51']) {
+    const key = protocol === 'trs' ? 'trs' : 'tg51';
+    const base = { ...S, protocol, e_nominal: '1,050', e_ctrl_M: S.e_M1 };
+    const out = computeElectrons(base);
+    assert.ok(out.recal.needed);
+    assert.ok(out.messages.some((m) => m.scope === 'recal'));
+    const r = computeElectrons({ ...base, e_recal_needed: 'yes', e_recal_M: scale(S.e_M1, 1.05) });
+    assert.deepEqual(errorsOf(r), []);
+    const x = r[key];
     near(x.recal.DperMU, x.ctrl.DperMU * 1.05, 1e-9);
     near(x.recal.preVsNew, (1 / 1.05 - 1) * 100, 1e-9);
     near(x.recal.pre.deviation, x.ctrl.deviation, 1e-12);

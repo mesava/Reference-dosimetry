@@ -8,7 +8,7 @@ import { PRESSURE_UNITS, NDW_UNITS, unitLabel } from '../core/units.js';
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, renderPairs, readPairs, setupPairs } from './widgets.js';
 import {
-  $, $$, tg51Note, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
+  $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
 } from './common.js';
 
@@ -255,15 +255,10 @@ function doseTableRows(t, g, result, z, tEff, own = [false, false], bold = true)
 }
 
 function renderReadout(result, data) {
-  const keys = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
+  const keys = [data.protocol];
   const pick = (k) => (k === 'trs' ? result.trs : result.tg51);
   $('#co-dose-rows').innerHTML = keys.map((k) => doseRow(k, pick(k), result)).join('');
 
-  const delta = $('#co-delta');
-  if (result.comparison) {
-    delta.hidden = false;
-    delta.innerHTML = L(`TG-51 относительно TRS-398: <b>${fmtSigned(result.comparison.dRel, 2)} %</b>`, `TG-51 relative to TRS-398: <b>${fmtSigned(result.comparison.dRel, 2)} %</b>`) + `<small>${tg51Note()}</small>`;
-  } else delta.hidden = true;
 
   const first = keys.map((k) => ({ k, x: pick(k) })).find((o) => !o.x.blocked && o.x.ok);
   const mv = $('#co-mobile-value');
@@ -332,7 +327,7 @@ function reportText(data, r) {
   const i = r.inputs;
   const z = zText(i.zref);
   out.push(L('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — ⁶⁰Co', 'REFERENCE DOSIMETRY REPORT — ⁶⁰Co'));
-  line(L('Протокол', 'Protocol'), data.protocol === 'both' ? L('TRS-398 Rev.1 и TG-51', 'TRS-398 Rev.1 and TG-51') : PROTO[data.protocol].name);
+  line(L('Протокол', 'Protocol'), PROTO[data.protocol].name);
   line(L('Учреждение', 'Institution'), data.co_institution || '—');
   line(L('Аппарат', 'Machine'), data.co_machine || '—');
   line(L('Дата', 'Date'), data.co_date || '—');
@@ -396,7 +391,7 @@ function reportText(data, r) {
     );
   }
   out.push('');
-  const blocks = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
+  const blocks = [data.protocol];
   for (const k of blocks) {
     const x = k === 'trs' ? r.trs : r.tg51;
     out.push(`— ${PROTO[k].name} —`);
@@ -443,7 +438,6 @@ function reportText(data, r) {
     }
     out.push('');
   }
-  if (r.comparison) out.push(L(`TG-51 относительно TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`, `TG-51 relative to TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`), tg51Note(), '');
   const msgs = r.messages.filter((m) => m.level !== 'info');
   if (msgs.length) {
     out.push(L('Замечания:', 'Messages:'));

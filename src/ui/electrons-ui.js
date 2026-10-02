@@ -7,13 +7,13 @@ import { localizeDecimals } from './i18n.js';
 import { PRESSURE_UNITS, NDW_UNITS, parseNumber, unitLabel } from '../core/units.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import {
-  $, $$, tg51Note, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
+  $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.electrons.v1';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'electrons', version: 1 };
-const SERIES_KEYS = ['e_M1', 'e_Mopp', 'e_M2', 'e_M51', 'e_Mopp51', 'e_M251', 'e_ctrl_M', 'e_ctrl_M51', 'e_recal_M', 'e_recal_M51'];
+const SERIES_KEYS = ['e_M1', 'e_Mopp', 'e_M2', 'e_ctrl_M', 'e_recal_M'];
 const ROOT = () => document.getElementById('module-electrons');
 let setStatus = () => {};
 export const electronsStatus = (text) => setStatus(text);
@@ -88,21 +88,17 @@ const zTxt = (z) => (Number.isFinite(z) ? fmt(z, 2) : 'z_ref');
 /** Раздел 9 «Требуется калибровка?»: появляется, если доза вне допуска ±2 % от номинала. */
 function renderRecal(data, r) {
   const rc = r.recal;
-  const sep = r.inputs.separate51;
   $('#e-recal-section').hidden = !rc.needed;
   $('#e-notes-step-no').textContent = rc.needed ? '10' : '9';
-  $('#e-recal-main-head').hidden = !sep;
-  $('#e-recal-grp51').hidden = !sep;
   if (!rc.needed) return;
   const x = data.protocol === 'tg51' ? r.tg51 : r.trs;
   const pre = preOf(x);
   const atMax = r.depth.nominalAt === 'zmax' && Number.isFinite(pre.DmaxPerMU);
   const preV = atMax ? pre.DmaxPerMU : pre.DperMU;
   const where = atMax ? L('на z_max', 'at z_max') : L(`на ${zTxt(r.quality.zref)} см`, `at ${zTxt(r.quality.zref)} cm`);
-  const proto = data.protocol === 'both' ? ' (TRS-398)' : '';
   $('#e-recal-hint').textContent = L(
-    `Доза ${fmt(preV, 4)} Гр на 100 МЕ ${where}${proto} отличается от номинального выхода ${fmt(r.depth.nominal, 3)} на ${fmtSigned(pre.deviation, 2)} % — больше допуска ±${fmt(rc.tolerance, 0)} %. Если ускоритель калибруют, выберите «Да» и введите показания после калибровки.`,
-    `The dose ${fmt(preV, 4)} Gy per 100 MU ${where}${proto} differs from the nominal output ${fmt(r.depth.nominal, 3)} by ${fmtSigned(pre.deviation, 2)} %, more than the ±${fmt(rc.tolerance, 0)} % tolerance. If the linac is being calibrated, choose "Yes" and enter the readings after calibration.`,
+    `Доза ${fmt(preV, 4)} Гр на 100 МЕ ${where} отличается от номинального выхода ${fmt(r.depth.nominal, 3)} на ${fmtSigned(pre.deviation, 2)} % — больше допуска ±${fmt(rc.tolerance, 0)} %. Если ускоритель калибруют, выберите «Да» и введите показания после калибровки.`,
+    `The dose ${fmt(preV, 4)} Gy per 100 MU ${where} differs from the nominal output ${fmt(r.depth.nominal, 3)} by ${fmtSigned(pre.deviation, 2)} %, more than the ±${fmt(rc.tolerance, 0)} % tolerance. If the linac is being calibrated, choose "Yes" and enter the readings after calibration.`,
   );
   $('#e-recal-pre').textContent = fmt(preV, 4);
   $('#e-recal-pre-sub').textContent = L(`${where}; от номинала ${fmtSigned(pre.deviation, 2)} %`, `${where}; from nominal ${fmtSigned(pre.deviation, 2)} %`);
@@ -118,32 +114,10 @@ function applyVisibility(data, r) {
   renderRecal(data, r);
   const c = r.chamber;
   const cross = data.e_cal_route === 'cross';
-  const sep = r.inputs.separate51;
-  $('#e-grp51').hidden = !sep;
-  $('#e-grp-main-head').hidden = !sep;
-  $('#e-ratio51').hidden = !sep;
-  $('#e-ctrl-main-head').hidden = !sep;
-  $('#e-ctrl-grp51').hidden = !sep;
-  $('#e-ctrl-change51').hidden = !sep;
-  $('#e-lbl-ctrl-change').textContent = sep ? L('Изменение относительно раздела 5 (TRS-398)', 'Change relative to section 5 (TRS-398)') : L('Изменение относительно раздела 5', 'Change relative to section 5');
   $('#e_nominal_at').disabled = !data.e_dd_on;
   $('#e-nominal-sub').textContent = !data.e_dd_on
     ? L('Без пересчёта на z_max номинальный выход относится к опорной глубине.', 'Without transfer to z_max the nominal output refers to the reference depth.')
     : L('Итог показывается на этой глубине; отклонение считается от номинала на ней.', 'The result is shown at this depth, and the deviation is calculated from the nominal output there.');
-  $('#e-lbl-ratio12').textContent = sep ? 'M₁/M₂ (TRS-398)' : 'M₁/M₂';
-  const p = r.positions;
-  const depth51 = p && Number.isFinite(p.tg51?.depth) ? ` = ${fmt(p.tg51.depth, 2)} ${L('см', 'cm')}` : '';
-  $('#e-grp51-hint').textContent = !sep
-    ? ''
-    : c?.type === 'cyl'
-      ? L(
-          `Центр камеры на глубине d_ref${depth51}, без сдвига. Те же МЕ и напряжения; P_pol и P_ion для TG-51 считаются по этим сериям.`,
-          `Chamber center at depth d_ref${depth51}, no shift. Same MU and voltages; P_pol and P_ion for TG-51 are calculated from these series.`,
-        )
-      : L(
-          'Камера в положении по Report 385 (см. «Положение камеры» в разделе 3). Те же МЕ и напряжения; P_pol и P_ion для TG-51 считаются по этим сериям.',
-          'Chamber positioned according to Report 385 (see "Chamber position" in section 3). Same MU and voltages; P_pol and P_ion for TG-51 are calculated from these series.',
-        );
   $('#e-opt-trs-table').textContent = cross
     ? L('по табл. 21: k_Q,Qint / k_Qcross,Qint (ур. 44)', 'from Table 21: k_Q,Qint / k_Qcross,Qint (Eq. 44)')
     : L('по табл. 20 с интерполяцией по R50', 'from Table 20, interpolated in R50');
@@ -190,7 +164,7 @@ function renderChamberInfo(r) {
     box.hidden = true;
     return;
   }
-  const keys = r.protocol === 'both' ? ['trs', 'tg51'] : [r.protocol];
+  const keys = [r.protocol];
   box.hidden = false;
   box.innerHTML = `<h4>${L('Положение камеры', 'Chamber position')}</h4><ul>${keys.map((k) => `<li><b>${PROTO[k].name}:</b> ${esc(p[k].text)}</li>`).join('')}</ul>`;
 }
@@ -273,14 +247,9 @@ function doseTableRows(t, g, r, z, units, own = [false, false], bold = true) {
 }
 
 function renderReadout(r, data) {
-  const keys = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
+  const keys = [data.protocol];
   const pick = (k) => (k === 'trs' ? r.trs : r.tg51);
   $('#e-dose-rows').innerHTML = keys.map((k) => doseRow(k, pick(k), r)).join('');
-  const delta = $('#e-delta');
-  if (r.comparison) {
-    delta.hidden = false;
-    delta.innerHTML = `${L('TG-51 относительно TRS-398', 'TG-51 relative to TRS-398')}: <b>${fmtSigned(r.comparison.dRel, 2)} %</b><small>${tg51Note()}</small>`;
-  } else delta.hidden = true;
 
   const first = keys.map((k) => ({ k, x: pick(k) })).find((o) => !o.x.blocked && o.x.ok);
   const mv = $('#e-mobile-value');
@@ -329,7 +298,6 @@ function renderReadout(r, data) {
   const muText = (u) => L(`${Number.isFinite(u) ? fmt(u, 0) : '—'} МЕ`, `${Number.isFinite(u) ? fmt(u, 0) : '—'} MU`);
   const i = r.inputs;
   const rawT = Math.abs(i.M1.mean);
-  const rawG = Math.abs(i.separate51 ? i.M51?.mean : i.M1.mean);
   const title = doseGroupTitle({ ctrlOn: r.ctrl.on, ctrlFinal, mainSec: 5, ctrlSec: 7, mainAmount: muText(r.inputs.mu), ctrlAmount: muText(r.ctrl.mu) });
   const tr = t.recal || {};
   const gr = g.recal || {};
@@ -341,7 +309,7 @@ function renderReadout(r, data) {
   const signed = (v) => (Number.isFinite(v) ? `${fmtSigned(v, 2)} %` : '—');
   if (recalFinal) {
     rows.push([L(`Поглощённая доза — после калибровки ускорителя (раздел 9), ${muText(r.recal.mu)}`, `Absorbed dose — after the linac calibration (section 9), ${muText(r.recal.mu)}`), [], [], 'group']);
-    rows.push([rawReadingLabel(), ['', r.recal.mean, 4], ['', r.recal.mean51, 4]]);
+    rows.push([rawReadingLabel(), ['', r.recal.mean, 4], ['', r.recal.mean, 4]]);
     rows.push([correctedReadingLabel(), ['M<sub>Q</sub>', tr.M, 4, true, rT], ['M', gr.M, 4, true, rG]]);
     rows.push(...doseTableRows(tr, gr, r, z, r.recal.mu, [rT, rG], true));
     const where = atMaxNom ? 'z<sub>max</sub>' : L(`${z} см`, `${z} cm`);
@@ -350,11 +318,11 @@ function renderReadout(r, data) {
   } else {
   rows.push([title, [], [], 'group']);
   if (ctrlFinal) {
-    rows.push([rawReadingLabel(), ['', r.ctrl.mean, 4], ['', r.ctrl.mean51, 4]]);
+    rows.push([rawReadingLabel(), ['', r.ctrl.mean, 4], ['', r.ctrl.mean, 4]]);
     rows.push([correctedReadingLabel(), ['M<sub>Q</sub>', tc.M, 4, true, bT], ['M', gc.M, 4, true, bG]]);
     rows.push(...doseTableRows(tc, gc, r, z, r.ctrl.mu, [bT, bG], true));
   } else {
-    rows.push([rawReadingLabel(), ['', rawT, 4], ['', rawG, 4]]);
+    rows.push([rawReadingLabel(), ['', rawT, 4], ['', rawT, 4]]);
     rows.push([correctedReadingLabel(), ['M<sub>Q</sub>', t.M, 4, true], ['M', g.M, 4, true]]);
     rows.push(...doseTableRows(t, g, r, z, i.mu, [false, false], true));
   }
@@ -378,7 +346,7 @@ function reportText(data, r) {
   const i = r.inputs;
   const mean = L('среднее', 'mean');
   out.push(L('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — ПУЧОК ЭЛЕКТРОНОВ', 'REFERENCE DOSIMETRY REPORT — ELECTRONS'));
-  line(L('Протокол', 'Protocol'), data.protocol === 'both' ? L('TRS-398 Rev.1 и TG-51 с Report 385', 'TRS-398 Rev.1 and TG-51 with Report 385') : PROTO[data.protocol].name);
+  line(L('Протокол', 'Protocol'), PROTO[data.protocol].name);
   line(L('Учреждение', 'Institution'), data.e_institution || '—');
   line(L('Аппарат', 'Machine'), data.e_machine || '—');
   const beamE = parseElectronBeam(data.e_beam).energy;
@@ -402,7 +370,7 @@ function reportText(data, r) {
       : '—',
   );
   if (r.positions) {
-    const keys = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
+    const keys = [data.protocol];
     keys.forEach((k) => line(L(`Положение (${PROTO[k].name})`, `Position (${PROTO[k].name})`), r.positions[k].text));
   }
   if (i.cross) {
@@ -418,31 +386,17 @@ function reportText(data, r) {
     `T = ${data.e_env_T} °C, P = ${data.e_env_P} ${unitLabel(PRESSURE_UNITS[data.e_env_P_unit])}${String(data.e_env_H ?? '').trim() ? L(`, относительная влажность ${data.e_env_H} %`, `, relative humidity ${data.e_env_H} %`) : ''}`,
   );
   line(L('Облучение', 'Irradiation'), L(`${data.e_mu} МЕ, V1 = ${data.e_V1} В, V2 = ${data.e_V2} В, обычная полярность ${data.e_polarity}`, `${data.e_mu} MU, V1 = ${data.e_V1} V, V2 = ${data.e_V2} V, normal polarity ${data.e_polarity}`));
-  const at = i.separate51 ? L(', положение по TRS-398', ', TRS-398 position') : '';
-  line(L(`M(V1, обычная${at}), нКл`, `M(V1, normal${at}), nC`), `${cells(data.e_M1)} → ${mean} ${fmt(Math.abs(i.M1.mean), 4)}`);
-  line(L(`M(V1, обратная${at}), нКл`, `M(V1, opposite${at}), nC`), `${cells(data.e_Mopp)} → ${mean} ${fmt(Math.abs(i.Mopp.mean), 4)}`);
-  line(L(`M(V2${at}), нКл`, `M(V2${at}), nC`), `${cells(data.e_M2)} → ${mean} ${fmt(Math.abs(i.M2.mean), 4)}`);
-  if (i.separate51) {
-    line(L('M(V1, обычная, положение по Report 385), нКл', 'M(V1, normal, Report 385 position), nC'), `${cells(data.e_M51)} → ${mean} ${fmt(Math.abs(i.M51?.mean), 4)}`);
-    line(L('M(V1, обратная, положение по Report 385), нКл', 'M(V1, opposite, Report 385 position), nC'), `${cells(data.e_Mopp51)} → ${mean} ${fmt(Math.abs(i.Mopp51?.mean), 4)}`);
-    line(L('M(V2, положение по Report 385), нКл', 'M(V2, Report 385 position), nC'), `${cells(data.e_M251)} → ${mean} ${fmt(Math.abs(i.M251?.mean), 4)}`);
-  }
-  if (r.ctrl.on) {
-    const forMu = L(`за ${fmt(r.ctrl.mu, 0)} МЕ`, `for ${fmt(r.ctrl.mu, 0)} MU`);
-    line(L(`Контрольные измерения M(V1${at}), нКл`, `Check measurements M(V1${at}), nC`), `${cells(data.e_ctrl_M)} → ${mean} ${fmt(r.ctrl.mean, 4)} ${forMu}`);
-    if (i.separate51) line(L('Контрольные измерения M(V1, положение по Report 385), нКл', 'Check measurements M(V1, Report 385 position), nC'), `${cells(data.e_ctrl_M51)} → ${mean} ${fmt(r.ctrl.mean51, 4)} ${forMu}`);
-  }
+  line(L('M(V1, обычная), нКл', 'M(V1, normal), nC'), `${cells(data.e_M1)} → ${mean} ${fmt(Math.abs(i.M1.mean), 4)}`);
+  line(L('M(V1, обратная), нКл', 'M(V1, opposite), nC'), `${cells(data.e_Mopp)} → ${mean} ${fmt(Math.abs(i.Mopp.mean), 4)}`);
+  line(L('M(V2), нКл', 'M(V2), nC'), `${cells(data.e_M2)} → ${mean} ${fmt(Math.abs(i.M2.mean), 4)}`);
+  if (r.ctrl.on) line(L('Контрольные измерения M(V1), нКл', 'Check measurements M(V1), nC'), `${cells(data.e_ctrl_M)} → ${mean} ${fmt(r.ctrl.mean, 4)} ${L(`за ${fmt(r.ctrl.mu, 0)} МЕ`, `for ${fmt(r.ctrl.mu, 0)} MU`)}`);
   if (r.recal.needed) {
     const ans = r.recal.answer === 'yes' ? L('да', 'yes') : r.recal.answer === 'no' ? L('нет', 'no') : L('не указано', 'not specified');
     line(L('Требуется калибровка (доза вне допуска ±2 %)', 'Calibration required (dose outside the ±2 % tolerance)'), ans);
   }
-  if (r.recal.on && (r.recal.M?.n > 0 || r.recal.M51?.n > 0)) {
-    const forMu = L(`за ${fmt(r.recal.mu, 0)} МЕ`, `for ${fmt(r.recal.mu, 0)} MU`);
-    line(L(`Показания после калибровки M(V1${at}), нКл`, `Readings after calibration M(V1${at}), nC`), `${cells(data.e_recal_M)} → ${mean} ${fmt(r.recal.mean, 4)} ${forMu}`);
-    if (i.separate51) line(L('Показания после калибровки M(V1, положение по Report 385), нКл', 'Readings after calibration M(V1, Report 385 position), nC'), `${cells(data.e_recal_M51)} → ${mean} ${fmt(r.recal.mean51, 4)} ${forMu}`);
-  }
+  if (r.recal.on && r.recal.M?.n > 0) line(L('Показания после калибровки M(V1), нКл', 'Readings after calibration M(V1), nC'), `${cells(data.e_recal_M)} → ${mean} ${fmt(r.recal.mean, 4)} ${L(`за ${fmt(r.recal.mu, 0)} МЕ`, `for ${fmt(r.recal.mu, 0)} MU`)}`);
   out.push('');
-  const blocks = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
+  const blocks = [data.protocol];
   for (const k of blocks) {
     const x = k === 'trs' ? r.trs : r.tg51;
     out.push(`— ${PROTO[k].name} —`);
@@ -494,7 +448,6 @@ function reportText(data, r) {
     }
     out.push('');
   }
-  if (r.comparison) out.push(`${L('TG-51 относительно TRS-398', 'TG-51 relative to TRS-398')}: ${fmtSigned(r.comparison.dRel, 2)} %`, tg51Note(), '');
   const msgs = r.messages.filter((m) => m.level !== 'info');
   if (msgs.length) {
     out.push(L('Замечания:', 'Messages:'));

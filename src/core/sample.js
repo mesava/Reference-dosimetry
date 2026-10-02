@@ -4,7 +4,7 @@ import { FORM_DEFAULTS } from './photons.js';
 
 export const SAMPLE_FORM = {
   ...FORM_DEFAULTS,
-  protocol: 'both',
+  protocol: 'trs',
   meta_institution: 'Пример',
   meta_machine: 'Линейный ускоритель (демо)',
   meta_beam: '6 МВ',

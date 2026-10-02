@@ -11,7 +11,7 @@ import { findChamber, chamberLabel, noteText } from './chambers.js';
 import { parseProfile, kvolFromProfile } from './profile.js';
 
 export const FORM_DEFAULTS = {
-  protocol: 'trs', // 'trs' | 'tg51' | 'both'
+  protocol: 'trs', // 'trs' | 'tg51'
 
   meta_institution: '',
   meta_machine: '',
@@ -120,6 +120,7 @@ const REF = {
 /** Приводит данные из старых сохранённых файлов к текущей форме. */
 export function normalizeForm(input) {
   const f = { ...FORM_DEFAULTS, ...input };
+  if (f.protocol !== 'tg51') f.protocol = 'trs'; // режима «оба протокола» больше нет
   const cells = (v) => (Array.isArray(v) ? v.map((x) => String(x ?? '')) : String(v ?? '').trim() === '' ? ['', '', ''] : String(v).replace(/,(?=\s)/g, ' ').trim().split(/[\s;]+/));
   f.rd_M1 = cells(f.rd_M1);
   f.rd_Mopp = cells(f.rd_Mopp);
@@ -213,8 +214,8 @@ export function computePhotons(form) {
     if (field) [].concat(field).forEach((k) => flag(k, level));
   };
 
-  const want51 = f.protocol === 'tg51' || f.protocol === 'both';
-  const wantTRS = f.protocol === 'trs' || f.protocol === 'both';
+  const want51 = f.protocol === 'tg51';
+  const wantTRS = !want51;
   const fff = !!f.meta_fff;
   const energy = parseNumber(f.meta_energy);
 
@@ -1179,8 +1180,6 @@ export function computePhotons(form) {
   if (trs.recal) trs.recal.blocked = trs.recal.blocked || trs.blocked;
   if (tg.recal) tg.recal.blocked = tg.recal.blocked || tg.blocked;
 
-  let comparison = null;
-  if (want51 && wantTRS && tg.ok && trs.ok && !tg.blocked && !trs.blocked) comparison = { dRel: (tg.D / trs.D - 1) * 100 };
 
   return {
     protocol: f.protocol,
@@ -1197,7 +1196,6 @@ export function computePhotons(form) {
     depth,
     trs,
     tg51: tg,
-    comparison,
     messages,
     flags,
     hasErrors: messages.some((m) => m.level === 'error'),

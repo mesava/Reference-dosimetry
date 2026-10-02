@@ -8,7 +8,7 @@ import { PRESSURE_UNITS, NDW_UNITS, parseBeamName, parseNumber, unitLabel } from
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import {
-  $, $$, tg51Note, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
+  $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
 } from './common.js';
 
@@ -135,10 +135,9 @@ function renderRecal(data, result) {
   const z = result.depth.zref;
   const zTxt = Number.isFinite(z) ? fmt(z, z % 1 ? 1 : 0) : '10';
   const where = atMax ? L('на d_max', 'at d_max') : L(`на ${zTxt} см`, `at ${zTxt} cm`);
-  const proto = data.protocol === 'both' ? ' (TRS-398)' : '';
   $('#recal-hint').textContent = L(
-    `Доза ${fmt(preV, 4)} Гр на 100 МЕ ${where}${proto} отличается от номинального выхода ${fmt(result.depth.nominal, 3)} на ${fmtSigned(pre.deviation, 2)} % — больше допуска ±${fmt(rc.tolerance, 0)} %. Если ускоритель калибруют, выберите «Да» и введите показания после калибровки.`,
-    `The dose ${fmt(preV, 4)} Gy per 100 MU ${where}${proto} differs from the nominal output ${fmt(result.depth.nominal, 3)} by ${fmtSigned(pre.deviation, 2)} %, more than the ±${fmt(rc.tolerance, 0)} % tolerance. If the linac is being calibrated, choose "Yes" and enter the readings after calibration.`,
+    `Доза ${fmt(preV, 4)} Гр на 100 МЕ ${where} отличается от номинального выхода ${fmt(result.depth.nominal, 3)} на ${fmtSigned(pre.deviation, 2)} % — больше допуска ±${fmt(rc.tolerance, 0)} %. Если ускоритель калибруют, выберите «Да» и введите показания после калибровки.`,
+    `The dose ${fmt(preV, 4)} Gy per 100 MU ${where} differs from the nominal output ${fmt(result.depth.nominal, 3)} by ${fmtSigned(pre.deviation, 2)} %, more than the ±${fmt(rc.tolerance, 0)} % tolerance. If the linac is being calibrated, choose "Yes" and enter the readings after calibration.`,
   );
   $('#recal-pre').textContent = fmt(preV, 4);
   $('#recal-pre-sub').textContent = L(`${where}; от номинала ${fmtSigned(pre.deviation, 2)} %`, `${where}; from nominal ${fmtSigned(pre.deviation, 2)} %`);
@@ -342,16 +341,9 @@ function doseTableRows(t, g, result, zTxt, units, own = [false, false], bold = t
 }
 
 function renderReadout(result, data) {
-  const keys = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
+  const keys = [data.protocol];
   $('#dose-rows').innerHTML = keys.map((k) => doseRow(k, k === 'trs' ? result.trs : result.tg51, result)).join('');
 
-  const delta = $('#delta');
-  if (result.comparison && !result.trs.blocked && !result.tg51.blocked) {
-    delta.hidden = false;
-    delta.innerHTML = L(`TG-51 относительно TRS-398: <b>${fmtSigned(result.comparison.dRel, 2)} %</b>`, `TG-51 relative to TRS-398: <b>${fmtSigned(result.comparison.dRel, 2)} %</b>`) + `<small>${tg51Note()}</small>`;
-  } else {
-    delta.hidden = true;
-  }
 
   const first = keys.map((k) => ({ k, x: k === 'trs' ? result.trs : result.tg51 })).find((o) => !o.x.blocked && o.x.ok);
   const mv = $('#mobile-value');
@@ -453,7 +445,7 @@ function reportText(data, r) {
   const line = (k, v) => out.push(`${k}: ${v}`);
   const cells = (a) => (Array.isArray(a) ? a.filter((x) => String(x).trim() !== '').join('; ') : a);
   out.push(L('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — МВ ФОТОНЫ', 'REFERENCE DOSIMETRY REPORT — MV PHOTONS'));
-  line(L('Протокол', 'Protocol'), data.protocol === 'both' ? L('TRS-398 Rev.1 и TG-51 (+ аддендум 2014)', 'TRS-398 Rev.1 and TG-51 (+ 2014 addendum)') : PROTO[data.protocol].name);
+  line(L('Протокол', 'Protocol'), PROTO[data.protocol].name);
   line(L('Учреждение', 'Institution'), data.meta_institution || '—');
   line(L('Аппарат', 'Machine'), data.meta_machine || '—');
   const beamE = parseBeamName(data.meta_beam).energy;
@@ -496,7 +488,7 @@ function reportText(data, r) {
   }
   if (r.recal.on && r.recal.M?.n > 0) line(L('Показания после калибровки M(V1), нКл', 'Readings after calibration M(V1), nC'), L(`${cells(data.recal_M)} → среднее ${fmt(r.recal.mean, 4)} за ${fmt(r.recal.mu, 0)} МЕ`, `${cells(data.recal_M)} → mean ${fmt(r.recal.mean, 4)} for ${fmt(r.recal.mu, 0)} MU`));
   out.push('');
-  const blocks = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
+  const blocks = [data.protocol];
   for (const k of blocks) {
     const x = k === 'trs' ? r.trs : r.tg51;
     out.push(`— ${PROTO[k].name} —`);
@@ -563,7 +555,6 @@ function reportText(data, r) {
     }
     out.push('');
   }
-  if (r.comparison) out.push(L(`TG-51 относительно TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`, `TG-51 relative to TRS-398: ${fmtSigned(r.comparison.dRel, 2)} %`), tg51Note(), '');
   const msgs = r.messages.filter((m) => m.level !== 'info');
   if (msgs.length) {
     out.push(L('Замечания:', 'Messages:'));
