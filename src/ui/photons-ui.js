@@ -8,7 +8,7 @@ import { PRESSURE_UNITS, NDW_UNITS, parseBeamName, parseNumber, unitLabel } from
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import {
-  $, $$, tg51Note, localizeDemo, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
+  $, $$, tg51Note, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
 } from './common.js';
 
@@ -258,11 +258,8 @@ function doseRow(key, x, result) {
   }
   const units = fromCtrl ? result.ctrl.mu : result.inputs.mu;
   const unitsTxt = Number.isFinite(units) ? fmt(units, 0) : '—';
-  const pre = atMax ? x.DmaxPerMU : x.DperMU;
-  const preDev = Number.isFinite(x.deviation) ? ` (${fmtSigned(x.deviation, 2)} %)` : '';
   const doseLine = (lbl, cgy, gy) => `${lbl} = ${fmt(cgy, 2)} ${L('сГр', 'cGy')} = ${fmt(gy, 4)} ${L('Гр', 'Gy')} ${L(`за ${unitsTxt} МЕ`, `for ${unitsTxt} MU`)}`;
   const secondary = [
-    L(`= ${fmt(main, 4)} сГр/МЕ ${where}`, `= ${fmt(main, 4)} cGy/MU ${where}`),
     doseLine(L(`D<sub>w</sub>(${zTxt} см)`, `D<sub>w</sub>(${zTxt} cm)`), p.DcGy, p.D),
     hasMax ? doseLine('D(d<sub>max</sub>)', p.DmaxcGy, p.Dmax) : null,
     hasMax
@@ -271,10 +268,10 @@ function doseRow(key, x, result) {
         : L(`На d<sub>max</sub>: ${fmt(p.DmaxPerMU, 4)} Гр на 100 МЕ`, `At d<sub>max</sub>: ${fmt(p.DmaxPerMU, 4)} Gy per 100 MU`)
       : null,
     fromCtrl
-      ? L(`До калибровки (раздел 4): ${fmt(pre, 4)} Гр на 100 МЕ${preDev}`, `Before calibration (section 4): ${fmt(pre, 4)} Gy per 100 MU${preDev}`)
+      ? null
       : result.ctrl.on
-        ? L('Контрольные измерения содержат ошибки — итог по разделу 4', 'Check measurements contain errors — result from section 4')
-        : L('Контрольные измерения не введены — итог по разделу 4', 'No check measurements entered — result from section 4'),
+        ? L('Контрольные измерения содержат ошибки — доза по показанию M₁ раздела 4', 'The check measurements contain errors — dose from reading M₁ of section 4')
+        : L('Контрольные измерения не введены — доза по показанию M₁ раздела 4', 'No check measurements entered — dose from reading M₁ of section 4'),
   ].filter(Boolean).join('<br>');
   return `<div class="dose-row ${x.blocked ? 'blocked' : ''}">
     <div class="proto"><span>${PROTO[key].name}${fromCtrl ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
@@ -284,19 +281,19 @@ function doseRow(key, x, result) {
 }
 
 /** Строки таблицы с дозой: сГр и Гр за отпущенные МЕ и Гр на 100 МЕ — на опорной глубине и на d_max. */
-function doseTableRows(t, g, result, zTxt, units, own = [false, false]) {
+function doseTableRows(t, g, result, zTxt, units, own = [false, false], bold = true) {
   const u = Number.isFinite(units) ? fmt(units, 0) : '—';
   const atMax = result.depth.nominalAt === 'dmax' && result.depth.on;
   const rows = [
     [L(`D<sub>w</sub>(${zTxt} см) за ${u} МЕ, сГр`, `D<sub>w</sub>(${zTxt} cm) for ${u} MU, cGy`), ['', t.DcGy, 2, true, own[0]], ['', g.DcGy, 2, true, own[1]]],
     [L(`D<sub>w</sub>(${zTxt} см) за ${u} МЕ, Гр`, `D<sub>w</sub>(${zTxt} cm) for ${u} MU, Gy`), ['', t.D, 4, true, own[0]], ['', g.D, 4, true, own[1]]],
-    [L(`На ${zTxt} см, Гр на 100 МЕ (= сГр/МЕ)`, `At ${zTxt} cm, Gy per 100 MU (= cGy/MU)`), ['', t.DperMU, 4, true, own[0]], ['', g.DperMU, 4, true, own[1]], atMax ? '' : 'total'],
+    [L(`На ${zTxt} см, Гр на 100 МЕ`, `At ${zTxt} cm, Gy per 100 MU`), ['', t.DperMU, 4, true, own[0]], ['', g.DperMU, 4, true, own[1]], bold && !atMax ? 'total' : ''],
   ];
   if (result.depth.on) {
     rows.push(
       [L(`D(d<sub>max</sub>) за ${u} МЕ, сГр`, `D(d<sub>max</sub>) for ${u} MU, cGy`), ['', t.DmaxcGy, 2, true, own[0]], ['', g.DmaxcGy, 2, true, own[1]]],
       [L(`D(d<sub>max</sub>) за ${u} МЕ, Гр`, `D(d<sub>max</sub>) for ${u} MU, Gy`), ['', t.Dmax, 4, true, own[0]], ['', g.Dmax, 4, true, own[1]]],
-      [L('На d<sub>max</sub>, Гр на 100 МЕ (= сГр/МЕ)', 'At d<sub>max</sub>, Gy per 100 MU (= cGy/MU)'), ['', t.DmaxPerMU, 4, true, own[0]], ['', g.DmaxPerMU, 4, true, own[1]], atMax ? 'total' : ''],
+      [L('На d<sub>max</sub>, Гр на 100 МЕ', 'At d<sub>max</sub>, Gy per 100 MU'), ['', t.DmaxPerMU, 4, true, own[0]], ['', g.DmaxPerMU, 4, true, own[1]], bold && atMax ? 'total' : ''],
     );
   }
   return rows;
@@ -345,25 +342,31 @@ function renderReadout(result, data) {
     [L('Рекомбинация', 'Recombination'), ['k<sub>s</sub>', t.ks, 4], ['P<sub>ion</sub>', g.Pion, 4]],
     [L('Утечка', 'Leakage'), ['k<sub>leak</sub>', t.kleak, 4], ['P<sub>leak</sub>', g.Pleak, 4]],
     [L('Усреднение по объёму', 'Volume averaging'), ['k<sub>vol</sub>', t.kvol, 4], ['P<sub>rp</sub>', g.Prp, 4]],
-    [L('Исправленное показание, нКл', 'Corrected reading, nC'), ['M<sub>Q</sub>', t.M, 4], ['M', g.M, 4]],
     [L('Качество пучка', 'Beam quality'), ['TPR<sub>20,10</sub>', t.tpr, 4], ['%dd(10)<sub>x</sub>', g.pdd10x, 2]],
     [L('Поправка на качество', 'Beam quality correction'), ['k<sub>Q</sub>', t.kQ, 4], ['k<sub>Q</sub>', g.kQ, 4]],
     [L('N<sub>D,w</sub>, Гр/нКл', 'N<sub>D,w</sub>, Gy/nC'), ['', result.inputs.ndw, 5], ['', result.inputs.ndw, 5]],
     [L('Поправочный множитель лаборатории', 'Laboratory correction multiplier'), [L('k<sub>лаб</sub>', 'k<sub>lab</sub>'), result.inputs.klab, 4], [L('k<sub>лаб</sub>', 'k<sub>lab</sub>'), result.inputs.klab, 4]],
   ];
   if (result.depth.on) rows.push([result.depth.label, ['', result.depth.factor, 4], ['', result.depth.factor, 4]]);
-  rows.push(...doseTableRows(t, g, result, zTxt, result.inputs.mu));
-  if (result.ctrl.on) {
-    const tc = t.ctrl || {};
-    const gc = g.ctrl || {};
-    const bT = !!tc.blocked;
-    const bG = !!gc.blocked;
-    const ctrlMu = Number.isFinite(result.ctrl.mu) ? fmt(result.ctrl.mu, 0) : '—';
-    const cz = L(`Контрольные измерения, ${ctrlMu} МЕ`, `Check measurements, ${ctrlMu} MU`);
-    rows.push([cz, [], [], 'group']);
-    rows.push([L('Исправленное показание, нКл', 'Corrected reading, nC'), ['M', tc.M, 4, true, bT], ['M', gc.M, 4, true, bG]]);
-    rows.push(...doseTableRows(tc, gc, result, zTxt, result.ctrl.mu, [bT, bG]));
+  const tc = t.ctrl || {};
+  const gc = g.ctrl || {};
+  const bT = !!tc.blocked;
+  const bG = !!gc.blocked;
+  const ctrlFinal = result.ctrl.on && ((showT && t.ctrl && !bT) || (showG && g.ctrl && !bG));
+  const muText = (u) => L(`${Number.isFinite(u) ? fmt(u, 0) : '—'} МЕ`, `${Number.isFinite(u) ? fmt(u, 0) : '—'} MU`);
+  const m1 = Math.abs(result.inputs.M1.mean);
+  const title = doseGroupTitle({ ctrlOn: result.ctrl.on, ctrlFinal, mainSec: 4, ctrlSec: 7, mainAmount: muText(result.inputs.mu), ctrlAmount: muText(result.ctrl.mu) });
+  rows.push([title, [], [], 'group']);
+  if (ctrlFinal) {
+    rows.push([rawReadingLabel(), ['', result.ctrl.mean, 4], ['', result.ctrl.mean, 4]]);
+    rows.push([correctedReadingLabel(true), ['M<sub>Q</sub>', tc.M, 4, true, bT], ['M', gc.M, 4, true, bG]]);
+    rows.push(...doseTableRows(tc, gc, result, zTxt, result.ctrl.mu, [bT, bG], true));
+  } else {
+    rows.push([rawReadingLabel(), ['', m1, 4], ['', m1, 4]]);
+    rows.push([correctedReadingLabel(true), ['M<sub>Q</sub>', t.M, 4, true], ['M', g.M, 4, true]]);
+    rows.push(...doseTableRows(t, g, result, zTxt, result.inputs.mu, [false, false], true));
   }
+
   const cell = ([sym, v, d, dose, own], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && (blocked || own) ? '—' : fmt(v, d)}</td>`;
   const span = 1 + showT + showG;
   $('#factors').innerHTML =
@@ -464,23 +467,23 @@ function reportText(data, r) {
           : '';
         out.push(
           L(
-            `${title}: M = ${fmt(y.M)} нКл; D_w(${z0} см) = ${fmt(y.DcGy, 2)} сГр = ${fmt(y.D)} Гр за ${u} МЕ; ${fmt(y.DperMU)} Гр на 100 МЕ (сГр/МЕ)${r.depth.nominalAt === 'zref' ? dev : ''}`,
-            `${title}: M = ${fmt(y.M)} nC; D_w(${z0} cm) = ${fmt(y.DcGy, 2)} cGy = ${fmt(y.D)} Gy for ${u} MU; ${fmt(y.DperMU)} Gy per 100 MU (cGy/MU)${r.depth.nominalAt === 'zref' ? dev : ''}`,
+            `${title}: M с поправками = ${fmt(y.M)} нКл; D_w(${z0} см) = ${fmt(y.DcGy, 2)} сГр = ${fmt(y.D)} Гр за ${u} МЕ; ${fmt(y.DperMU)} Гр на 100 МЕ${r.depth.nominalAt === 'zref' ? dev : ''}`,
+            `${title}: corrected M = ${fmt(y.M)} nC; D_w(${z0} cm) = ${fmt(y.DcGy, 2)} cGy = ${fmt(y.D)} Gy for ${u} MU; ${fmt(y.DperMU)} Gy per 100 MU${r.depth.nominalAt === 'zref' ? dev : ''}`,
           ),
         );
         if (r.depth.on && r.depth.ok) {
           out.push(
             L(
-              `  d_max = ${data.dd_zmax} см; ${r.depth.label} = ${fmt(r.depth.factor)}; D(d_max) = ${fmt(y.DmaxcGy, 2)} сГр = ${fmt(y.Dmax)} Гр за ${u} МЕ; ${fmt(y.DmaxPerMU)} Гр на 100 МЕ (сГр/МЕ)${r.depth.nominalAt === 'dmax' ? dev : ''}`,
-              `  d_max = ${data.dd_zmax} cm; ${r.depth.label} = ${fmt(r.depth.factor)}; D(d_max) = ${fmt(y.DmaxcGy, 2)} cGy = ${fmt(y.Dmax)} Gy for ${u} MU; ${fmt(y.DmaxPerMU)} Gy per 100 MU (cGy/MU)${r.depth.nominalAt === 'dmax' ? dev : ''}`,
+              `  d_max = ${data.dd_zmax} см; ${r.depth.label} = ${fmt(r.depth.factor)}; D(d_max) = ${fmt(y.DmaxcGy, 2)} сГр = ${fmt(y.Dmax)} Гр за ${u} МЕ; ${fmt(y.DmaxPerMU)} Гр на 100 МЕ${r.depth.nominalAt === 'dmax' ? dev : ''}`,
+              `  d_max = ${data.dd_zmax} cm; ${r.depth.label} = ${fmt(r.depth.factor)}; D(d_max) = ${fmt(y.DmaxcGy, 2)} cGy = ${fmt(y.Dmax)} Gy for ${u} MU; ${fmt(y.DmaxPerMU)} Gy per 100 MU${r.depth.nominalAt === 'dmax' ? dev : ''}`,
             ),
           );
         } else if (r.depth.on) {
           out.push(L('  Пересчёт на d_max не выполнен: исправьте данные раздела 8.', '  Transfer to d_max not performed: correct the data in section 8.'));
         }
       };
-      describe(x, L('До калибровки (раздел 4)', 'Before calibration (section 4)'), r.inputs.mu);
-      if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (итог)', 'From check measurements (final)'), r.ctrl.mu);
+      if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (раздел 7)', 'From check measurements (section 7)'), r.ctrl.mu);
+      else describe(x, r.ctrl.on ? L('По показанию M₁ раздела 4 (контрольные измерения содержат ошибки)', 'From reading M₁ of section 4 (the check measurements contain errors)') : L('По показанию M₁ раздела 4 (контрольные измерения не введены)', 'From reading M₁ of section 4 (no check measurements entered)'), r.inputs.mu);
     }
     out.push('');
   }

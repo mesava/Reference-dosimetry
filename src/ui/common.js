@@ -189,6 +189,25 @@ export function armButton(btn, idleText, armedText, action) {
  * Блок для печати и PDF после таблицы поправок: оговорка об ответственности и строки
  * «ФИО — подпись» по числу сотрудников, выполнявших измерения (пустая строка — для подписи от руки).
  */
+/**
+ * Заголовок группы таблицы с поглощённой дозой. Показания основного раздела (4 у фотонов, 5 у ⁶⁰Co и
+ * электронов) служат для расчёта поправок; доза считается по заряду контрольных измерений, а если их
+ * нет или в них ошибки — по показанию M₁ основного раздела.
+ */
+export function doseGroupTitle({ ctrlOn, ctrlFinal, mainSec, ctrlSec, mainAmount, ctrlAmount }) {
+  if (ctrlFinal) return L(`Поглощённая доза — по контрольным измерениям (раздел ${ctrlSec}), ${ctrlAmount}`, `Absorbed dose — from check measurements (section ${ctrlSec}), ${ctrlAmount}`);
+  return ctrlOn
+    ? L(`Поглощённая доза — по показанию M₁ раздела ${mainSec}, ${mainAmount}: контрольные измерения содержат ошибки`, `Absorbed dose — from reading M₁ of section ${mainSec}, ${mainAmount}: the check measurements contain errors`)
+    : L(`Поглощённая доза — по показанию M₁ раздела ${mainSec}, ${mainAmount} (контрольные измерения не введены)`, `Absorbed dose — from reading M₁ of section ${mainSec}, ${mainAmount} (no check measurements entered)`);
+}
+
+/** Подписи строк с показаниями в таблице. */
+export const rawReadingLabel = () => L('Среднее показание M₁ (без поправок), нКл', 'Mean reading M₁ (uncorrected), nC');
+export const correctedReadingLabel = (withVol = false) =>
+  withVol
+    ? L('Исправленное показание: M₁ с поправками на T и P, электрометр, полярность, рекомбинацию, утечку и объём, нКл', 'Corrected reading: M₁ corrected for T and P, electrometer, polarity, recombination, leakage and volume averaging, nC')
+    : L('Исправленное показание: M₁ с поправками на T и P, электрометр, полярность, рекомбинацию и утечку, нКл', 'Corrected reading: M₁ corrected for T and P, electrometer, polarity, recombination and leakage, nC');
+
 /** Пометка к сравнению протоколов: реализация TG-51 приведена для сравнения. */
 export const tg51Note = () => L('Реализация TG-51 приведена для сравнения.', 'The TG-51 implementation is provided for comparison.');
 
