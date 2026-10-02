@@ -7,7 +7,7 @@ import { localizeDecimals } from './i18n.js';
 import { PRESSURE_UNITS, NDW_UNITS, parseNumber, unitLabel } from '../core/units.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import {
-  $, $$, tg51Note, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
+  $, $$, tg51Note, localizeDemo, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
 } from './common.js';
 
@@ -473,6 +473,7 @@ function refreshForLang() {
   for (const [sel, v] of kept) if ([...sel.options].some((o) => o.value === v)) sel.value = v;
   $$('#e-sheet .cells').forEach((box) => renderCells(box, readCells(box)));
   renderStaff($('#e-staff-list'), readStaff($('#e-staff-list')), update);
+  localizeDemo(SAMPLE_ELECTRONS, SAMPLE_ELECTRONS_EN);
   localizeDecimals(ROOT());
   update();
 }
@@ -485,6 +486,7 @@ export function initElectrons() {
 
   const draft = loadDraft();
   writeForm(draft ? draft : sampleData());
+  localizeDemo(SAMPLE_ELECTRONS, SAMPLE_ELECTRONS_EN);
   update();
   if (!draft) setStatus(L('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.', 'Demo example loaded. Click "Clear" to enter your own data.'));
 

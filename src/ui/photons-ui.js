@@ -8,7 +8,7 @@ import { PRESSURE_UNITS, NDW_UNITS, parseBeamName, parseNumber, unitLabel } from
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import {
-  $, $$, tg51Note, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
+  $, $$, tg51Note, localizeDemo, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
 } from './common.js';
 
@@ -563,6 +563,7 @@ function refreshForLang() {
   for (const [sel, v] of kept) if ([...sel.options].some((o) => o.value === v)) sel.value = v;
   $$('#sheet .cells').forEach((box) => renderCells(box, readCells(box)));
   renderStaff($('#staff-list'), readStaff($('#staff-list')), update);
+  localizeDemo(SAMPLE_FORM, SAMPLE_FORM_EN);
   localizeDecimals(ROOT());
   update();
 }
@@ -575,6 +576,7 @@ export function initPhotons() {
 
   const draft = loadDraft();
   writeForm(draft ? draft : sampleData());
+  localizeDemo(SAMPLE_FORM, SAMPLE_FORM_EN);
   lastBeamFff = parseBeamName($('#meta_beam').value).fff;
   update();
   if (!draft) setStatus(L('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.', 'Demo example loaded. Click "Clear" to enter your own data.'));

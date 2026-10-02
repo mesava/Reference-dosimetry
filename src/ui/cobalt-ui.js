@@ -8,7 +8,7 @@ import { PRESSURE_UNITS, NDW_UNITS, unitLabel } from '../core/units.js';
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, renderPairs, readPairs, setupPairs } from './widgets.js';
 import {
-  $, $$, tg51Note, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
+  $, $$, tg51Note, localizeDemo, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
 } from './common.js';
 
@@ -505,6 +505,7 @@ function refreshForLang() {
   $$('#co-sheet .cells').forEach((box) => renderCells(box, readCells(box)));
   { const { a, b } = readPairs(pairsBox()); renderPairs(pairsBox(), a, b); }
   renderStaff($('#co-staff-list'), readStaff($('#co-staff-list')), update);
+  localizeDemo(SAMPLE_COBALT, SAMPLE_COBALT_EN);
   localizeDecimals(ROOT());
   update();
 }
@@ -519,6 +520,7 @@ export function initCobalt() {
 
   const draft = loadDraft();
   writeForm(draft ? draft : sampleData());
+  localizeDemo(SAMPLE_COBALT, SAMPLE_COBALT_EN);
   update();
   if (!draft) setStatus(L('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.', 'Demo example loaded. Press "Clear" to enter your own data.'));
 

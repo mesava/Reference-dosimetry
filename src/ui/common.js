@@ -189,9 +189,22 @@ export function armButton(btn, idleText, armedText, action) {
  * Блок для печати и PDF после таблицы поправок: оговорка об ответственности и строки
  * «ФИО — подпись» по числу сотрудников, выполнявших измерения (пустая строка — для подписи от руки).
  */
-/** Пометка к сравнению протоколов: калибровка — по TRS-398 Rev.1, TG-51 — только для сравнения. */
-export const tg51Note = () =>
-  L('Расчёт ведётся по TRS-398 Rev.1; TG-51 — только для сравнения, не для калибровки.', 'The calculation follows TRS-398 Rev.1; TG-51 is shown for comparison only, not for calibration.');
+/** Пометка к сравнению протоколов: реализация TG-51 приведена для сравнения. */
+export const tg51Note = () => L('Реализация TG-51 приведена для сравнения.', 'The TG-51 implementation is provided for comparison.');
+
+/**
+ * Демонстрационные подписи (учреждение, аппарат, пучок, примечания) — на языке интерфейса:
+ * если поле содержит демо-значение другого языка, оно заменяется; свои значения не трогаются.
+ */
+export function localizeDemo(ruSample, enOverlay) {
+  const en = getLang() === 'en';
+  for (const [key, enValue] of Object.entries(enOverlay)) {
+    const el = document.getElementById(key);
+    const ruValue = ruSample[key];
+    if (!el || typeof ruValue !== 'string') continue;
+    if (el.value === (en ? ruValue : enValue)) el.value = en ? enValue : ruValue;
+  }
+}
 
 export function renderSignBlock(el, staff) {
   if (!el) return;
