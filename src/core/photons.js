@@ -4,7 +4,7 @@
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
 import { L } from './i18n.js';
-import { temperaturePressure, polarity, environmentChecks } from './common.js';
+import { temperaturePressure, polarity, environmentChecks, outputPlausibility } from './common.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
 import { findChamber, chamberLabel, noteText } from './chambers.js';
@@ -1100,17 +1100,13 @@ export function computePhotons(form) {
   // отклонение от номинала оценивается по итоговому результату: по контрольным измерениям, если они есть
   const mainBlocked = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
   const final = (x, scope) => (mainBlocked(scope) ? {} : x.ctrl && !x.ctrl.blocked ? x.ctrl : x);
-  const devs = [wantTRS ? final(trs, 'trs').deviation : NaN, want51 ? final(tg, 'tg51').deviation : NaN].filter(Number.isFinite);
-  if (devs.some((d) => Math.abs(d) > 2)) {
-    add(
-      'warn',
-      'common',
-      L(
-        'Отклонение от номинального выхода больше 2 %: перед подстройкой ускорителя перепроверьте ввод и измерения.',
-        'The deviation from the nominal output exceeds 2%: recheck the input and the measurements before adjusting the linac.',
-      ),
-    );
+  const finals = [];
+  for (const [want, x, scope] of [[wantTRS, trs, 'trs'], [want51, tg, 'tg51']]) {
+    if (!want) continue;
+    const y = final(x, scope);
+    if (Number.isFinite(y.DperMU)) finals.push({ x: y, units: y.units });
   }
+  outputPlausibility(finals, { add, ru, muSections: L('разделы 4 и 7', 'sections 4 and 7'), zrefText: L(`(${ru(zref, 0)} см)`, `(${ru(zref, 0)} cm)`) });
 
   const hasError = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
   const noDose = () => L('Не удалось вычислить дозу: проверьте качество пучка и k_Q.', 'Could not calculate the dose: check the beam quality and k_Q.');

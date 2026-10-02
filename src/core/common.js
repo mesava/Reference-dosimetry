@@ -64,3 +64,48 @@ export function environmentChecks({ T, Hraw, keyT, keyH, parseNumber, isBlank, r
   }
   return { T, H, items };
 }
+
+/**
+ * Проверка правдоподобия итоговой дозы на МЕ и отклонения от номинала (для фотонов и электронов).
+ * Доза на опорной глубине у клинических пучков — порядка 0,5–1,2 сГр/МЕ; значение вне 0,3–2 сГр/МЕ
+ * почти всегда означает ошибку ввода (чаще всего — число МЕ с лишним или недостающим нулём).
+ * finals — итоговые результаты [{ x, units }], x.DperMU — сГр/МЕ на опорной глубине.
+ */
+export function outputPlausibility(finals, { add, ru, muSections, zrefText }) {
+  const bad = finals.find(({ x }) => Number.isFinite(x?.DperMU) && (x.DperMU < 0.3 || x.DperMU > 2));
+  if (bad) {
+    const v = ru(bad.x.DperMU, 3);
+    const n = ru(bad.units, 0);
+    const hint = bad.x.DperMU > 2
+      ? L('Похоже, число МЕ указано меньше отпущенного (например, 50 вместо 500).', 'The number of MU seems to be smaller than delivered (e.g. 50 instead of 500).')
+      : L('Похоже, число МЕ указано больше отпущенного (например, 500 вместо 50).', 'The number of MU seems to be larger than delivered (e.g. 500 instead of 50).');
+    add(
+      'warn',
+      'common',
+      L(
+        `Доза на опорной глубине ${zrefText} — ${v} Гр на 100 МЕ: вне обычного диапазона 0,3–2. ${hint} Проверьте число МЕ (${muSections}; сейчас ${n} МЕ), N_D,w и его единицы.`,
+        `The dose at the reference depth ${zrefText} is ${v} Gy per 100 MU, outside the usual range of 0.3–2. ${hint} Check the number of MU (${muSections}; now ${n} MU), N_D,w and its units.`,
+      ),
+    );
+  }
+  const devs = finals.map(({ x }) => x?.deviation).filter(Number.isFinite);
+  if (devs.some((d) => Math.abs(d) > 20)) {
+    add(
+      'warn',
+      'common',
+      L(
+        'Отклонение от номинального выхода больше 20 %: так бывает почти только из-за ошибки ввода. Проверьте число МЕ, на какой глубине задан номинальный выход (d_max или опорная глубина) и единицы N_D,w.',
+        'The deviation from the nominal output exceeds 20%: this almost always means an input error. Check the number of MU, the depth at which the nominal output is defined (d_max or the reference depth) and the units of N_D,w.',
+      ),
+    );
+  } else if (devs.some((d) => Math.abs(d) > 2)) {
+    add(
+      'warn',
+      'common',
+      L(
+        'Отклонение от номинального выхода больше 2 %: перед подстройкой ускорителя перепроверьте ввод и измерения.',
+        'The deviation from the nominal output exceeds 2%: recheck the input and the measurements before adjusting the linac.',
+      ),
+    );
+  }
+}

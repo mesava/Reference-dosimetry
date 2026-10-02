@@ -257,3 +257,10 @@ test('Электроны: доза в сГр и Гр; номинальный в�
   near(off.trs.deviation, (off.trs.DperMU / 0.98 - 1) * 100, 1e-9);
   assert.equal(off.trs.Dmax, undefined);
 });
+
+test('Электроны: доза на МЕ вне 0,3–2 сГр/МЕ — предупреждение о числе МЕ', () => {
+  const ok = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'trs' });
+  assert.ok(!ok.messages.some((m) => /вне обычного диапазона/.test(m.text)));
+  const typo = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'trs', e_mu: String(parseFloat(SAMPLE_ELECTRONS.e_mu) / 10) });
+  assert.ok(typo.messages.some((m) => m.level === 'warn' && /вне обычного диапазона/.test(m.text)));
+});

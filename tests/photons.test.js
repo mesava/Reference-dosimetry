@@ -407,3 +407,34 @@ test('k_лаб: поправочный множитель из протокол�
   const { ch_klab, ...old } = normalizeForm(SAMPLE_FORM);
   near(computePhotons(old).trs.D, base.trs.D, 1e-12);
 });
+
+test('Versa HD 6 FFF (рабочая книга, 25.08.2026): совпадение с ячейками H10, G10; проверка числа МЕ', () => {
+  const f = {
+    ...FORM_DEFAULTS, protocol: 'trs', meta_beam: '6 FFF', meta_fff: true, setup_geometry: 'SAD',
+    ch_model: 'PTW31010', ch_ndw: '0,297', ch_T0: '20', ch_P0: '101,325', el_kelec: '1',
+    env_T: '21,8', env_P: '1014,42', env_P_unit: 'hPa', rd_mu: '500', rd_V1: '400', rd_V2: '200',
+    rd_M1: ['16,67', '16,67', '16,66'], rd_Mopp: ['-16,65', '-16,66', '-16,66'], rd_M2: ['16,54', '16,55', '16,55'],
+    qtrs_method: 'pdd2010', qtrs_v20: '39,16', qtrs_v10: '67,22', kqtrs_mode: 'manual', kqtrs_manual: '0,9871',
+    prof_mode: 'formula22', prof_length: '6,5', prof_sdd: '100', dd_on: false, dd_nominal: '1,000',
+    ctrl_M: ['16,83', '16,83', '16,81'],
+  };
+  const r = computePhotons(f);
+  assert.deepEqual(errorsOf(r), []);
+  // L6: в таблице 273,2; в TRS-398 Rev.1, ур. (10) — 273,15 (разница 1e-6)
+  near(r.trs.kTP, 1.0049787050271242, 2e-6, 'L6');
+  near(r.trs.ks, 1.0070975468173424, 1e-9, 'O10 = G42');
+  near(r.trs.kpol, 0.9997, 1e-6, 'P10 = H42');
+  near(r.trs.tpr, 1.2661 * (39.16 / 67.22) - 0.0595, 1e-12, 'TPR20,10 через PDD, S10 = 0,6781');
+  near(r.trs.ctrl.DcGy, 499.15916502012834, 2e-3, 'H10, сГр за 500 МЕ (k_vol по текущему TPR — разница 1e-6)');
+  near(r.trs.ctrl.DperMU, 0.9983183300402567, 5e-6, 'G10, Гр на 100 МЕ');
+  // k_Q по формуле (34) = ячейка AC10 «Kq (тек.расч.)»
+  const formula = computePhotons({ ...f, kqtrs_mode: 'formula' });
+  // AC10 считается по округлённому TPR = 0,6781; калькулятор — по неокруглённому 0,678097
+  near(formula.trs.kQ, 0.9872586888502661, 1e-5, 'AC10');
+  // число МЕ с ошибкой в 10 раз: предупреждение с подсказкой
+  const typo = computePhotons({ ...f, rd_mu: '50' });
+  const w = typo.messages.filter((m) => m.level === 'warn').map((m) => m.text);
+  assert.ok(w.some((t) => /вне обычного диапазона/.test(t) && /50 вместо 500/.test(t) && /сейчас 50 МЕ/.test(t)), w.join(' | '));
+  assert.ok(w.some((t) => /больше 20 %/.test(t)));
+  assert.ok(!r.messages.some((m) => /вне обычного диапазона|больше 20 %/.test(m.text)), 'при 500 МЕ замечаний нет');
+});
