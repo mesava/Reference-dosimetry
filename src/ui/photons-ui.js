@@ -14,7 +14,7 @@ import {
 
 const DRAFT_KEY = 'reference-dosimetry.photons.v2';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'photons', version: 2 };
-const SERIES_KEYS = ['rd_M1', 'rd_Mopp', 'rd_M2', 'ctrl_M'];
+const SERIES_KEYS = ['rd_M1', 'rd_Mopp', 'rd_M2', 'ctrl_M', 'recal_M'];
 const CC_KEYS = ['cc_maker', 'cc_model', 'cc_volume', 'cc_length', 'cc_radius', 'cc_wall', 'cc_wall_thickness', 'cc_electrode', 'cc_waterproof', 'cc_analog', 'cc_a', 'cc_b'];
 const ROOT = () => document.getElementById('module-photons');
 let setStatus = () => {};
@@ -122,9 +122,37 @@ function fillCustomFields(saved) {
 }
 
 // ------------------------------------------------------------ видимость и подписи
+/** Раздел 9 «Требуется калибровка?»: появляется, если доза вне допуска ±2 % от номинала. */
+function renderRecal(data, result) {
+  const rc = result.recal;
+  $('#recal-section').hidden = !rc.needed;
+  $('#notes-step-no').textContent = rc.needed ? '10' : '9';
+  if (!rc.needed) return;
+  const x = data.protocol === 'tg51' ? result.tg51 : result.trs;
+  const pre = preOf(x);
+  const atMax = result.depth.nominalAt === 'dmax' && Number.isFinite(pre.DmaxPerMU);
+  const preV = atMax ? pre.DmaxPerMU : pre.DperMU;
+  const z = result.depth.zref;
+  const zTxt = Number.isFinite(z) ? fmt(z, z % 1 ? 1 : 0) : '10';
+  const where = atMax ? L('на d_max', 'at d_max') : L(`на ${zTxt} см`, `at ${zTxt} cm`);
+  const proto = data.protocol === 'both' ? ' (TRS-398)' : '';
+  $('#recal-hint').textContent = L(
+    `Доза ${fmt(preV, 4)} Гр на 100 МЕ ${where}${proto} отличается от номинального выхода ${fmt(result.depth.nominal, 3)} на ${fmtSigned(pre.deviation, 2)} % — больше допуска ±${fmt(rc.tolerance, 0)} %. Если ускоритель калибруют, выберите «Да» и введите показания после калибровки.`,
+    `The dose ${fmt(preV, 4)} Gy per 100 MU ${where}${proto} differs from the nominal output ${fmt(result.depth.nominal, 3)} by ${fmtSigned(pre.deviation, 2)} %, more than the ±${fmt(rc.tolerance, 0)} % tolerance. If the linac is being calibrated, choose "Yes" and enter the readings after calibration.`,
+  );
+  $('#recal-pre').textContent = fmt(preV, 4);
+  $('#recal-pre-sub').textContent = L(`${where}; от номинала ${fmtSigned(pre.deviation, 2)} %`, `${where}; from nominal ${fmtSigned(pre.deviation, 2)} %`);
+  const post = x.recal && !x.recal.blocked ? x.recal : null;
+  const postV = post ? (atMax ? post.DmaxPerMU : post.DperMU) : NaN;
+  $('#recal-post').textContent = post ? fmt(postV, 4) : '—';
+  $('#recal-post-sub').textContent = post && Number.isFinite(post.deviation) ? L(`${where}; от номинала ${fmtSigned(post.deviation, 2)} %`, `${where}; from nominal ${fmtSigned(post.deviation, 2)} %`) : '';
+  $('#recal-diff').textContent = post && Number.isFinite(post.preVsNew) ? `${fmtSigned(post.preVsNew, 2)} %` : '—';
+}
+
 function applyVisibility(data, result) {
   const p = data.protocol;
   applyShowRules(ROOT(), data, p);
+  renderRecal(data, result);
 
   $('#custom-chamber').hidden = !isCustom(data.ch_model);
   $('#btn-del-chamber').hidden = !String(data.ch_model).startsWith('MY:');
@@ -236,15 +264,18 @@ const PROTO = {
   },
 };
 
-/** Итог: по контрольным измерениям, если они введены и без ошибок, иначе по показаниям раздела 4. */
-const primaryOf = (x) => (x.ctrl && !x.ctrl.blocked && !x.blocked ? x.ctrl : x);
+/** Доза до калибровки: по контрольным измерениям, если они введены и без ошибок, иначе по M₁ раздела 4. */
+const preOf = (x) => (x.ctrl && !x.ctrl.blocked && !x.blocked ? x.ctrl : x);
+/** Итог: после калибровки ускорителя (раздел 9), если она проведена, иначе — доза до калибровки. */
+const primaryOf = (x) => (x.recal && !x.recal.blocked && !x.blocked ? x.recal : preOf(x));
 
 /** Итог показывается на глубине, где задан номинальный выход: на d_max или на опорной глубине. */
 const atMaxOf = (y, result) => result.depth.nominalAt === 'dmax' && Number.isFinite(y.DmaxPerMU);
 
 function doseRow(key, x, result) {
   const p = primaryOf(x);
-  const fromCtrl = p !== x;
+  const fromRecal = p === x.recal;
+  const fromCtrl = p === x.ctrl;
   const atMax = atMaxOf(p, result);
   const hasMax = Number.isFinite(p.DmaxPerMU);
   const main = atMax ? p.DmaxPerMU : p.DperMU;
@@ -256,7 +287,7 @@ function doseRow(key, x, result) {
     const cls = Math.abs(p.deviation) <= 1 ? 'good' : Math.abs(p.deviation) > 2 ? 'bad' : '';
     chip = `<span class="chip ${cls}" title="${L('Отклонение от номинального выхода', 'Deviation from the nominal output')}">${fmtSigned(p.deviation, 2)} %</span>`;
   }
-  const units = fromCtrl ? result.ctrl.mu : result.inputs.mu;
+  const units = fromRecal ? result.recal.mu : fromCtrl ? result.ctrl.mu : result.inputs.mu;
   const unitsTxt = Number.isFinite(units) ? fmt(units, 0) : '—';
   const doseLine = (lbl, cgy, gy) => `${lbl} = ${fmt(cgy, 2)} ${L('сГр', 'cGy')} = ${fmt(gy, 4)} ${L('Гр', 'Gy')} ${L(`за ${unitsTxt} МЕ`, `for ${unitsTxt} MU`)}`;
   const secondary = [
@@ -267,14 +298,25 @@ function doseRow(key, x, result) {
         ? L(`На ${zTxt} см: ${fmt(p.DperMU, 4)} Гр на 100 МЕ`, `At ${zTxt} cm: ${fmt(p.DperMU, 4)} Gy per 100 MU`)
         : L(`На d<sub>max</sub>: ${fmt(p.DmaxPerMU, 4)} Гр на 100 МЕ`, `At d<sub>max</sub>: ${fmt(p.DmaxPerMU, 4)} Gy per 100 MU`)
       : null,
-    fromCtrl
+    fromRecal && p.pre
+      ? L(
+          `До калибровки: ${fmt(atMax ? p.pre.DmaxPerMU : p.pre.DperMU, 4)} Гр на 100 МЕ (от номинала ${fmtSigned(p.pre.deviation, 2)} %; от дозы после калибровки ${fmtSigned(p.preVsNew, 2)} %)`,
+          `Before calibration: ${fmt(atMax ? p.pre.DmaxPerMU : p.pre.DperMU, 4)} Gy per 100 MU (from nominal ${fmtSigned(p.pre.deviation, 2)} %; from the dose after calibration ${fmtSigned(p.preVsNew, 2)} %)`,
+        )
+      : null,
+    fromRecal || fromCtrl
       ? null
       : result.ctrl.on
         ? L('Контрольные измерения содержат ошибки — доза по показанию M₁ раздела 4', 'The check measurements contain errors — dose from reading M₁ of section 4')
         : L('Контрольные измерения не введены — доза по показанию M₁ раздела 4', 'No check measurements entered — dose from reading M₁ of section 4'),
+    !fromRecal && result.recal.needed
+      ? result.recal.answer === 'no'
+        ? L('Вне допуска ±2 %; калибровка не проводилась', 'Outside the ±2 % tolerance; no calibration performed')
+        : L('Вне допуска ±2 % — см. раздел 9 «Требуется калибровка?»', 'Outside the ±2 % tolerance — see section 9 "Calibration required?"')
+      : null,
   ].filter(Boolean).join('<br>');
   return `<div class="dose-row ${x.blocked ? 'blocked' : ''}">
-    <div class="proto"><span>${PROTO[key].name}${fromCtrl ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
+    <div class="proto"><span>${PROTO[key].name}${fromRecal ? L(' · после калибровки', ' · after calibration') : fromCtrl ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
     <div class="dose-big">${x.blocked || !Number.isFinite(main) ? '—' : fmt(main, 4)}<small>${L('Гр на 100 МЕ', 'Gy per 100 MU')} ${where}</small></div>
     <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : secondary}</div>
   </div>`;
@@ -323,8 +365,8 @@ function renderReadout(result, data) {
   }
 
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
-  const scopeName = { common: '', depth: L('Пересчёт на d_max · ', 'Transfer to d_max · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
-  const list = result.messages.filter((m) => m.scope === 'common' || m.scope === 'depth' || m.scope === 'ctrl' || keys.includes(m.scope));
+  const scopeName = { common: '', depth: L('Пересчёт на d_max · ', 'Transfer to d_max · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), recal: L('Калибровка · ', 'Calibration · '), trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
+  const list = result.messages.filter((m) => ['common', 'depth', 'ctrl', 'recal'].includes(m.scope) || keys.includes(m.scope));
   $('#messages').innerHTML = list.length
     ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
     : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
@@ -356,6 +398,23 @@ function renderReadout(result, data) {
   const muText = (u) => L(`${Number.isFinite(u) ? fmt(u, 0) : '—'} МЕ`, `${Number.isFinite(u) ? fmt(u, 0) : '—'} MU`);
   const m1 = Math.abs(result.inputs.M1.mean);
   const title = doseGroupTitle({ ctrlOn: result.ctrl.on, ctrlFinal, mainSec: 4, ctrlSec: 7, mainAmount: muText(result.inputs.mu), ctrlAmount: muText(result.ctrl.mu) });
+  const tr = t.recal || {};
+  const gr = g.recal || {};
+  const rT = !!tr.blocked;
+  const rG = !!gr.blocked;
+  const recalFinal = result.recal.on && ((showT && t.recal && !rT) || (showG && g.recal && !rG));
+  const atMaxNom = result.depth.nominalAt === 'dmax' && result.depth.on;
+  const preAt = (y) => (y?.pre ? (atMaxNom ? y.pre.DmaxPerMU : y.pre.DperMU) : NaN);
+  const signed = (v) => (Number.isFinite(v) ? `${fmtSigned(v, 2)} %` : '—');
+  if (recalFinal) {
+    rows.push([L(`Поглощённая доза — после калибровки ускорителя (раздел 9), ${muText(result.recal.mu)}`, `Absorbed dose — after the linac calibration (section 9), ${muText(result.recal.mu)}`), [], [], 'group']);
+    rows.push([rawReadingLabel(), ['', result.recal.mean, 4], ['', result.recal.mean, 4]]);
+    rows.push([correctedReadingLabel(true), ['M<sub>Q</sub>', tr.M, 4, true, rT], ['M', gr.M, 4, true, rG]]);
+    rows.push(...doseTableRows(tr, gr, result, zTxt, result.recal.mu, [rT, rG], true));
+    const where = atMaxNom ? 'd<sub>max</sub>' : L(`${zTxt} см`, `${zTxt} cm`);
+    rows.push([L(`До калибровки, на ${where}, Гр на 100 МЕ (для справки)`, `Before calibration, at ${where}, Gy per 100 MU (for reference)`), ['', preAt(tr), 4], ['', preAt(gr), 4]]);
+    rows.push([L('Доза до калибровки относительно дозы после калибровки', 'Dose before calibration relative to the dose after calibration'), ['', signed(tr.preVsNew)], ['', signed(gr.preVsNew)]]);
+  } else {
   rows.push([title, [], [], 'group']);
   if (ctrlFinal) {
     rows.push([rawReadingLabel(), ['', result.ctrl.mean, 4], ['', result.ctrl.mean, 4]]);
@@ -366,8 +425,9 @@ function renderReadout(result, data) {
     rows.push([correctedReadingLabel(true), ['M<sub>Q</sub>', t.M, 4, true], ['M', g.M, 4, true]]);
     rows.push(...doseTableRows(t, g, result, zTxt, result.inputs.mu, [false, false], true));
   }
+  }
 
-  const cell = ([sym, v, d, dose, own], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && (blocked || own) ? '—' : fmt(v, d)}</td>`;
+  const cell = ([sym, v, d, dose, own], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && (blocked || own) ? '—' : typeof v === 'string' ? v : fmt(v, d)}</td>`;
   const span = 1 + showT + showG;
   $('#factors').innerHTML =
     `<thead><tr><th>${L('Величина', 'Quantity')}</th>${showT ? '<th>TRS-398</th>' : ''}${showG ? '<th>TG-51</th>' : ''}</tr></thead><tbody>` +
@@ -430,6 +490,11 @@ function reportText(data, r) {
   line(L('M(V1, обратная), нКл', 'M(V1, opposite), nC'), `${cells(data.rd_Mopp)} → ${mean} ${fmt(Math.abs(r.inputs.Mopp.mean), 4)}`);
   line(L('M(V2), нКл', 'M(V2), nC'), `${cells(data.rd_M2)} → ${mean} ${fmt(Math.abs(r.inputs.M2.mean), 4)}`);
   if (r.ctrl.on) line(L('Контрольные измерения M(V1), нКл', 'Check measurements M(V1), nC'), L(`${cells(data.ctrl_M)} → среднее ${fmt(r.ctrl.mean, 4)} за ${fmt(r.ctrl.mu, 0)} МЕ`, `${cells(data.ctrl_M)} → mean ${fmt(r.ctrl.mean, 4)} for ${fmt(r.ctrl.mu, 0)} MU`));
+  if (r.recal.needed) {
+    const ans = r.recal.answer === 'yes' ? L('да', 'yes') : r.recal.answer === 'no' ? L('нет', 'no') : L('не указано', 'not specified');
+    line(L('Требуется калибровка (доза вне допуска ±2 %)', 'Calibration required (dose outside the ±2 % tolerance)'), ans);
+  }
+  if (r.recal.on && r.recal.M?.n > 0) line(L('Показания после калибровки M(V1), нКл', 'Readings after calibration M(V1), nC'), L(`${cells(data.recal_M)} → среднее ${fmt(r.recal.mean, 4)} за ${fmt(r.recal.mu, 0)} МЕ`, `${cells(data.recal_M)} → mean ${fmt(r.recal.mean, 4)} for ${fmt(r.recal.mu, 0)} MU`));
   out.push('');
   const blocks = data.protocol === 'both' ? ['trs', 'tg51'] : [data.protocol];
   for (const k of blocks) {
@@ -482,7 +547,18 @@ function reportText(data, r) {
           out.push(L('  Пересчёт на d_max не выполнен: исправьте данные раздела 8.', '  Transfer to d_max not performed: correct the data in section 8.'));
         }
       };
-      if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (раздел 7)', 'From check measurements (section 7)'), r.ctrl.mu);
+      if (x.recal && !x.recal.blocked) {
+        describe(x.recal, L('После калибровки ускорителя (раздел 9)', 'After the linac calibration (section 9)'), r.recal.mu);
+        if (x.recal.pre) {
+          const preV = r.depth.nominalAt === 'dmax' ? x.recal.pre.DmaxPerMU : x.recal.pre.DperMU;
+          out.push(
+            L(
+              `  До калибровки: ${fmt(preV)} Гр на 100 МЕ; отклонение от номинала ${fmtSigned(x.recal.pre.deviation, 2)} %; от дозы после калибровки ${fmtSigned(x.recal.preVsNew, 2)} %`,
+              `  Before calibration: ${fmt(preV)} Gy per 100 MU; deviation from nominal ${fmtSigned(x.recal.pre.deviation, 2)} %; from the dose after calibration ${fmtSigned(x.recal.preVsNew, 2)} %`,
+            ),
+          );
+        }
+      } else if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (раздел 7)', 'From check measurements (section 7)'), r.ctrl.mu);
       else describe(x, r.ctrl.on ? L('По показанию M₁ раздела 4 (контрольные измерения содержат ошибки)', 'From reading M₁ of section 4 (the check measurements contain errors)') : L('По показанию M₁ раздела 4 (контрольные измерения не введены)', 'From reading M₁ of section 4 (no check measurements entered)'), r.inputs.mu);
     }
     out.push('');

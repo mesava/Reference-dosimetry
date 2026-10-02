@@ -438,3 +438,35 @@ test('Versa HD 6 FFF (рабочая книга, 25.08.2026): совпадени
   assert.ok(w.some((t) => /больше 20 %/.test(t)));
   assert.ok(!r.messages.some((m) => /вне обычного диапазона|больше 20 %/.test(m.text)), 'при 500 МЕ замечаний нет');
 });
+
+test('Калибровка ускорителя при отклонении больше ±2 %: раздел 9, доза после калибровки — итог', () => {
+  const f = {
+    ...FORM_DEFAULTS, protocol: 'trs', meta_beam: '6 FFF', meta_fff: true, setup_geometry: 'SAD',
+    ch_model: 'PTW31010', ch_ndw: '0,297', ch_T0: '20', ch_P0: '101,325', el_kelec: '1',
+    env_T: '21,8', env_P: '1014,42', env_P_unit: 'hPa', rd_mu: '500', rd_V1: '400', rd_V2: '200',
+    rd_M1: ['16,67', '16,67', '16,66'], rd_Mopp: ['-16,65', '-16,66', '-16,66'], rd_M2: ['16,54', '16,55', '16,55'],
+    qtrs_method: 'pdd2010', qtrs_v20: '39,16', qtrs_v10: '67,22', kqtrs_mode: 'manual', kqtrs_manual: '0,9871',
+    prof_mode: 'formula22', prof_length: '6,5', prof_sdd: '100', dd_on: false,
+    ctrl_M: ['16,83', '16,83', '16,81'],
+  };
+  // в допуске: раздел 9 не нужен, показания после калибровки не учитываются
+  const ok = computePhotons({ ...f, dd_nominal: '1,000', recal_needed: 'yes', recal_M: ['17', '17', '17'] });
+  assert.equal(ok.recal.needed, false);
+  assert.equal(ok.trs.recal, undefined);
+  // вне допуска (номинал 1,03 → −3,1 %)
+  const out = computePhotons({ ...f, dd_nominal: '1,030' });
+  assert.equal(out.recal.needed, true);
+  assert.ok(out.messages.some((m) => m.scope === 'recal' && /раздел/.test(m.text)));
+  assert.equal(computePhotons({ ...f, dd_nominal: '1,030', recal_needed: 'no' }).recal.on, false);
+  // «да» и новые показания: итог по ним, прежняя доза — для справки
+  const r = computePhotons({ ...f, dd_nominal: '1,030', recal_needed: 'yes', recal_M: ['17,34', '17,34', '17,32'] });
+  assert.deepEqual(errorsOf(r), []);
+  const c = r.trs.ctrl;
+  const n = r.trs.recal;
+  near(n.DperMU, c.DperMU * (mean([17.34, 17.34, 17.32]) / mean([16.83, 16.83, 16.81])), 1e-12, 'те же поправки, новый заряд');
+  near(n.deviation, (n.DperMU / 1.03 - 1) * 100, 1e-9);
+  near(n.pre.deviation, c.deviation, 1e-12);
+  near(n.preVsNew, (c.DperMU / n.DperMU - 1) * 100, 1e-9, 'доза до калибровки относительно новой');
+  assert.ok(Math.abs(n.deviation) < 2);
+  assert.ok(!r.messages.some((m) => /больше 2 %/.test(m.text)), 'после калибровки в допуске — без предупреждения');
+});

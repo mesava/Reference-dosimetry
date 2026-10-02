@@ -96,6 +96,10 @@ export const FORM_DEFAULTS = {
   // контрольные измерения: обычная полярность, V₁; поправки — из раздела 4
   ctrl_M: ['', '', ''],
   ctrl_mu: '', // пусто — столько же МЕ, сколько в разделе 4
+  // калибровка (подстройка) ускорителя, если доза вне ±2 % от номинала: ответ и показания после неё
+  recal_needed: '', // '' | 'yes' | 'no'
+  recal_M: ['', '', ''],
+  recal_mu: '', // пусто — как в разделе 7 (или 4)
 
   dd_on: true,
   dd_sad: 'tmr', // установка по РИО: 'tmr' | 'pdd' (PDD при РИП = 100 − z_ref)
@@ -105,6 +109,9 @@ export const FORM_DEFAULTS = {
   dd_nominal: '1,000',
   dd_nominal_at: 'dmax', // где задан номинальный выход: 'dmax' (после пересчёта) | 'zref' (аппарат калибруют на опорной глубине)
 };
+
+/** Допуск на отклонение дозы от номинального выхода, после которого предлагается калибровка, %. */
+export const RECAL_TOL = 2;
 
 const REF = {
   tg51: 'TG-51 (1999)',
@@ -121,6 +128,7 @@ export function normalizeForm(input) {
   f.rd_Mopp = cells(f.rd_Mopp);
   f.rd_M2 = cells(f.rd_M2);
   f.ctrl_M = cells(f.ctrl_M);
+  f.recal_M = cells(f.recal_M);
   if (!Array.isArray(f.meta_staff)) f.meta_staff = [String(f.meta_staff ?? '')];
   if (input && 'meta_physicist' in input && !('meta_staff' in input)) f.meta_staff = [String(input.meta_physicist ?? '')];
   if (f.meta_staff.length === 0) f.meta_staff = [''];
@@ -1100,10 +1108,62 @@ export function computePhotons(form) {
   // отклонение от номинала оценивается по итоговому результату: по контрольным измерениям, если они есть
   const mainBlocked = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
   const final = (x, scope) => (mainBlocked(scope) ? {} : x.ctrl && !x.ctrl.blocked ? x.ctrl : x);
+
+  // ---------------------------------------------- калибровка (подстройка) ускорителя
+  // Если доза (по контрольным измерениям, иначе по M₁ раздела 4) отличается от номинального выхода
+  // больше чем на ±2 %, предлагается калибровка. После подстройки снимают новые показания при V₁ и
+  // обычной полярности в той же геометрии; поправки те же, итог — по новым показаниям, прежний
+  // результат остаётся для справки.
+  const recal = { tolerance: RECAL_TOL, answer: f.recal_needed === 'yes' || f.recal_needed === 'no' ? f.recal_needed : '' };
+  const pre = { trs: wantTRS ? final(trs, 'trs') : {}, tg51: want51 ? final(tg, 'tg51') : {} };
+  recal.preDeviation = [pre.trs.deviation, pre.tg51.deviation].filter(Number.isFinite);
+  recal.needed = recal.preDeviation.some((d) => Math.abs(d) > RECAL_TOL);
+  recal.on = recal.needed && recal.answer === 'yes';
+  if (recal.needed && !recal.answer) {
+    add('info', 'recal', L('Доза отличается от номинального выхода больше чем на ±2 %: ответьте в разделе 9, требуется ли калибровка.', 'The dose differs from the nominal output by more than ±2%: answer in section 9 whether calibration is required.'), null, 'recal_needed');
+  }
+  if (recal.on) {
+    const s = parseCells(f.recal_M);
+    recal.M = s;
+    if (s.n === 0 && !s.error) {
+      add('info', 'recal', L('Введите показания после калибровки ускорителя (раздел 9): до этого итог — по прежним показаниям.', 'Enter the readings after the linac calibration (section 9); until then the result is based on the previous readings.'), null, 'recal_M');
+    } else {
+      if (s.error) add('error', 'recal', L(`«Показания после калибровки»: ${s.error}.`, `"Readings after calibration": ${s.error}.`), null, 'recal_M');
+      else if (s.mean === 0) add('error', 'recal', L('«Показания после калибровки»: среднее показание равно нулю.', '"Readings after calibration": the mean reading is zero.'), null, 'recal_M');
+      const d = maxRelDeviation(s);
+      const pct = ru(d * 100, 2);
+      if (d > 0.05) add('error', 'recal', L(`Показания после калибровки расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, `Readings after calibration deviate by ${pct}% from the mean: probably an input error.`), null, 'recal_M');
+      else if (d > 0.005) add('warn', 'recal', L(`Разброс показаний после калибровки до ${pct} % от среднего: повторите облучения.`, `Readings after calibration scatter by up to ${pct}% from the mean: repeat the irradiations.`), `${REF.r374}, разд. 4.4.2`, 'recal_M');
+      if (readingsOk && !s.error && s.mean !== 0 && Math.sign(s.mean) !== Math.sign(M1.mean)) {
+        add('error', 'recal', L('Показания после калибровки снимают при той же (обычной) полярности, что и M при V₁.', 'Readings after calibration are taken at the same (normal) polarity as M at V₁.'), null, 'recal_M');
+      }
+      recal.mu = isBlank(f.recal_mu) ? (ctrl.on && ctrl.mu > 0 ? ctrl.mu : mu) : parseNumber(f.recal_mu);
+      if (!isBlank(f.recal_mu) && !(recal.mu > 0)) add('error', 'recal', L('Число МЕ после калибровки должно быть больше нуля.', 'The number of MU after calibration must be greater than zero.'), null, 'recal_mu');
+      recal.mean = s.n > 0 && !s.error ? Math.abs(s.mean) : NaN;
+      const recalErr = messages.some((m) => m.level === 'error' && m.scope === 'recal');
+      const atNominal = (y) => (depth.nominalAt === 'dmax' ? y.DmaxPerMU : y.DperMU);
+      for (const [want, x, product, p] of [[wantTRS, trs, productTRS, pre.trs], [want51, tg, product51, pre.tg51]]) {
+        if (!want) continue;
+        finish((x.recal = {}), recal.mean * product, x.kQ, recal.mu);
+        x.recal.blocked = recalErr || !x.recal.ok;
+        if (Number.isFinite(p.DperMU)) {
+          x.recal.pre = { DperMU: p.DperMU, DmaxPerMU: p.DmaxPerMU, deviation: p.deviation, units: p.units, fromCtrl: p === x.ctrl };
+          const a = atNominal(p);
+          const b = atNominal(x.recal);
+          if (Number.isFinite(a) && Number.isFinite(b) && b > 0) x.recal.preVsNew = (a / b - 1) * 100;
+        }
+      }
+    }
+  }
+  // итог: после калибровки, если она проведена и без ошибок
+  const actual = (x, scope) => {
+    const y = final(x, scope);
+    return y === x.ctrl || y === x ? (x.recal && !x.recal.blocked ? x.recal : y) : y;
+  };
   const finals = [];
   for (const [want, x, scope] of [[wantTRS, trs, 'trs'], [want51, tg, 'tg51']]) {
     if (!want) continue;
-    const y = final(x, scope);
+    const y = actual(x, scope);
     if (Number.isFinite(y.DperMU)) finals.push({ x: y, units: y.units });
   }
   outputPlausibility(finals, { add, ru, muSections: L('разделы 4 и 7', 'sections 4 and 7'), zrefText: L(`(${ru(zref, 0)} см)`, `(${ru(zref, 0)} cm)`) });
@@ -1119,6 +1179,8 @@ export function computePhotons(form) {
   tg.blocked = want51 && hasError('tg51');
   if (trs.ctrl) trs.ctrl.blocked = trs.ctrl.blocked || trs.blocked;
   if (tg.ctrl) tg.ctrl.blocked = tg.ctrl.blocked || tg.blocked;
+  if (trs.recal) trs.recal.blocked = trs.recal.blocked || trs.blocked;
+  if (tg.recal) tg.recal.blocked = tg.recal.blocked || tg.blocked;
 
   let comparison = null;
   if (want51 && wantTRS && tg.ok && trs.ok && !tg.blocked && !trs.blocked) comparison = { dRel: (tg.D / trs.D - 1) * 100 };
@@ -1129,6 +1191,7 @@ export function computePhotons(form) {
     chamber,
     geometry: geo,
     ctrl,
+    recal,
     inputs: { H: env.H,
       T, P, T0, P0, mu, V1, V2, nV, ndw, ndwRaw, klab, ndwEff, kelec, kleak, energy, fff,
       M1, Mopp, M2, ratio12, lengthMm, sddCm,
