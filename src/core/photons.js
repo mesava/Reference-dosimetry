@@ -31,6 +31,7 @@ export const FORM_DEFAULTS = {
   ch_serial: '',
   ch_ndw: '',
   ch_ndw_unit: 'Gy/nC',
+  ch_klab: '1,000', // поправочный множитель K из протокола поверки (например, ВНИИФТРИ); пусто — 1
   ch_T0: '20',
   ch_P0: '101,325',
 
@@ -303,6 +304,13 @@ export function computePhotons(form) {
     const v = dec(ndw.toPrecision(4));
     add('warn', 'common', L(`N_D,w = ${v} Гр/нКл выглядит неправдоподобно: проверьте единицы.`, `N_D,w = ${v} Gy/nC looks implausible: check the units.`), null, 'ch_ndw');
   }
+  // Поправочный множитель из протокола поверки (в протоколах ВНИИФТРИ — «значение поправочного
+  // множителя K» рядом с N_D): калибровочный коэффициент умножается на него. Протоколы TG-51 и
+  // TRS-398 такой величины не вводят; пустое поле — 1.
+  const klab = isBlank(f.ch_klab) ? 1 : parseNumber(f.ch_klab);
+  if (!Number.isFinite(klab) || klab <= 0) add('error', 'common', L('Не удалось прочитать k_лаб: введите поправочный множитель из протокола поверки (обычно 1,000).', 'Could not read k_lab: enter the correction multiplier from the calibration certificate (usually 1.000).'), null, 'ch_klab');
+  else if (Math.abs(klab - 1) > 0.05) add('warn', 'common', L('k_лаб отличается от 1 больше чем на 5 %: проверьте протокол поверки.', 'k_lab differs from 1 by more than 5%: check the calibration certificate.'), null, 'ch_klab');
+  const ndwEff = ndw * klab; // N_D,w с поправочным множителем лаборатории
   const T0 = read('ch_T0', L('T₀ из сертификата', 'T₀ from the certificate'));
   const P0 = read('ch_P0', L('P₀ из сертификата', 'P₀ from the certificate'));
   if (Number.isFinite(T0) && (T0 < 15 || T0 > 25)) add('error', 'common', L('T₀ задаётся в °C (обычно 20 или 22).', 'T₀ is entered in °C (usually 20 or 22).'), null, 'ch_T0');
@@ -1062,7 +1070,7 @@ export function computePhotons(form) {
 
   const finish = (x, M, kQ, units = mu) => {
     x.M = M;
-    x.D = M * kQ * ndw; // Гр
+    x.D = M * kQ * ndwEff; // Гр
     x.DcGy = x.D * 100; // сГр за отпущенные МЕ
     x.units = units;
     x.DperMUGy = x.D / units; // Гр/МЕ
@@ -1126,7 +1134,7 @@ export function computePhotons(form) {
     geometry: geo,
     ctrl,
     inputs: { H: env.H,
-      T, P, T0, P0, mu, V1, V2, nV, ndw, ndwRaw, kelec, kleak, energy, fff,
+      T, P, T0, P0, mu, V1, V2, nV, ndw, ndwRaw, klab, ndwEff, kelec, kleak, energy, fff,
       M1, Mopp, M2, ratio12, lengthMm, sddCm,
     },
     profile: prof,

@@ -328,4 +328,8 @@ export const STATIC_EN = {
   "на z_max": "at z_max",
   "на z_ref": "at z_ref",
   "Литература": "References",
+  "k<sub>лаб</sub>": "k<sub>lab</sub>",
+  "Поправочный множитель лаборатории k_лаб": "Laboratory correction multiplier k_lab",
+  "поправочный множитель K из протокола поверки (ВНИИФТРИ); N<sub>D,w</sub> умножается на него; 1,000, если не указан": "correction multiplier K from the calibration certificate (e.g. VNIIFTRI); N<sub>D,w</sub> is multiplied by it; 1.000 if not given",
+  "лаб": "lab",
 };

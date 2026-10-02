@@ -390,3 +390,20 @@ test('Доза в сГр и Гр за отпущенные МЕ; номинал�
   assert.equal(off.depth.nominalAt, 'zref');
   near(off.trs.deviation, (off.trs.DperMU / 0.67 - 1) * 100, 1e-9);
 });
+
+test('k_лаб: поправочный множитель из протокола поверки умножает N_D,w', () => {
+  const base = computePhotons({ ...SAMPLE_FORM, protocol: 'both' });
+  assert.equal(base.inputs.klab, 1, 'по умолчанию 1');
+  const k = computePhotons({ ...SAMPLE_FORM, protocol: 'both', ch_klab: '1,0020' });
+  assert.deepEqual(errorsOf(k), []);
+  near(k.trs.D, base.trs.D * 1.002, 1e-12, 'TRS-398');
+  near(k.tg51.D, base.tg51.D * 1.002, 1e-12, 'TG-51');
+  near(k.inputs.ndwEff, k.inputs.ndw * 1.002, 1e-15);
+  // пустое поле — 1; нечисло — ошибка; большое отклонение — предупреждение
+  near(computePhotons({ ...SAMPLE_FORM, ch_klab: '' }).trs.D, base.trs.D, 1e-12);
+  assert.ok(errorsOf(computePhotons({ ...SAMPLE_FORM, ch_klab: 'abc' })).some((m) => /k_лаб/.test(m.text)));
+  assert.ok(computePhotons({ ...SAMPLE_FORM, ch_klab: '1,08' }).messages.some((m) => m.level === 'warn' && /k_лаб/.test(m.text)));
+  // старые файлы без поля
+  const { ch_klab, ...old } = normalizeForm(SAMPLE_FORM);
+  near(computePhotons(old).trs.D, base.trs.D, 1e-12);
+});

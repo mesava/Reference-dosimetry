@@ -349,6 +349,7 @@ function renderReadout(result, data) {
     [L('Качество пучка', 'Beam quality'), ['TPR<sub>20,10</sub>', t.tpr, 4], ['%dd(10)<sub>x</sub>', g.pdd10x, 2]],
     [L('Поправка на качество', 'Beam quality correction'), ['k<sub>Q</sub>', t.kQ, 4], ['k<sub>Q</sub>', g.kQ, 4]],
     [L('N<sub>D,w</sub>, Гр/нКл', 'N<sub>D,w</sub>, Gy/nC'), ['', result.inputs.ndw, 5], ['', result.inputs.ndw, 5]],
+    [L('Поправочный множитель лаборатории', 'Laboratory correction multiplier'), [L('k<sub>лаб</sub>', 'k<sub>lab</sub>'), result.inputs.klab, 4], [L('k<sub>лаб</sub>', 'k<sub>lab</sub>'), result.inputs.klab, 4]],
   ];
   if (result.depth.on) rows.push([result.depth.label, ['', result.depth.factor, 4], ['', result.depth.factor, 4]]);
   rows.push(...doseTableRows(t, g, result, zTxt, result.inputs.mu));
@@ -416,7 +417,7 @@ function reportText(data, r) {
     line(L('Камера', 'Chamber'), c ? L(`${chamberLabel(c)}, № ${data.ch_serial || '—'}`, `${chamberLabel(c)}, S/N ${data.ch_serial || '—'}`) : '—');
   }
   const ndwUnit = unitLabel(NDW_UNITS[data.ch_ndw_unit]);
-  line('N_D,w', L(`${data.ch_ndw} ${ndwUnit} (= ${fmt(r.inputs.ndw, 6)} Гр/нКл); T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} кПа`, `${data.ch_ndw} ${ndwUnit} (= ${fmt(r.inputs.ndw, 6)} Gy/nC); T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} kPa`));
+  line('N_D,w', L(`${data.ch_ndw} ${ndwUnit} (= ${fmt(r.inputs.ndw, 6)} Гр/нКл); k_лаб = ${fmt(r.inputs.klab, 4)}; T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} кПа`, `${data.ch_ndw} ${ndwUnit} (= ${fmt(r.inputs.ndw, 6)} Gy/nC); k_lab = ${fmt(r.inputs.klab, 4)}; T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} kPa`));
   line(L('Электрометр', 'Electrometer'), L(`${data.el_model || '—'}, № ${data.el_serial || '—'}, k_elec = ${data.el_kelec}`, `${data.el_model || '—'}, S/N ${data.el_serial || '—'}, k_elec = ${data.el_kelec}`));
   const hasH = String(data.env_H ?? '').trim();
   line(L('Условия', 'Conditions'), `T = ${data.env_T} °C, P = ${data.env_P} ${unitLabel(PRESSURE_UNITS[data.env_P_unit])}${hasH ? L(`, относительная влажность ${data.env_H} %`, `, relative humidity ${data.env_H} %`) : ''}`);

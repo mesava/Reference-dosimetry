@@ -177,6 +177,7 @@ export const TERMS_EN = {
     html: `
 <p>A coefficient in terms of absorbed dose to water, obtained at a calibration laboratory in a ⁶⁰Co beam. It is valid for the standard conditions stated in the certificate: temperature, pressure, voltage and polarity.</p>
 <p>If the laboratory did not apply polarity or recombination corrections, this must be stated in the certificate: they are then accounted for separately (section 2 of the form).</p>
+<p>If the calibration certificate gives a correction multiplier K next to N<sub>D,w</sub> (as in VNIIFTRI certificates), enter it in the k<sub>lab</sub> field: the calibration coefficient is multiplied by it. TG-51 and TRS-398 have no such quantity; with K = 1.000 it does not affect the result.</p>
 <p>TG-51: the chamber is calibrated on purchase, after repair, when checks raise doubts, and at least every two years.</p>
 <p class="src">TRS-398 Rev.1, Secs. 3, 4.4.3; TG-51, Sec. V, Eq. (7).</p>`,
   },
