@@ -264,3 +264,28 @@ test('Электроны: доза на МЕ вне 0,3–2 сГр/МЕ — пр
   const typo = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'trs', e_mu: String(parseFloat(SAMPLE_ELECTRONS.e_mu) / 10) });
   assert.ok(typo.messages.some((m) => m.level === 'warn' && /вне обычного диапазона/.test(m.text)));
 });
+
+test('Электроны: калибровка ускорителя при отклонении больше ±2 % (раздел 9), два положения камеры', () => {
+  const S = SAMPLE_ELECTRONS;
+  const scale = (a, k) => a.map((v) => String(parseFloat(String(v).replace(',', '.')) * k));
+  // в допуске: раздел не нужен
+  const ok = computeElectrons({ ...S, protocol: 'trs', e_nominal: '1,000' });
+  assert.equal(ok.recal.needed, false);
+  // вне допуска (номинал 1,05)
+  const base = { ...S, protocol: 'both', e_nominal: '1,050', e_ctrl_M: S.e_M1, e_ctrl_M51: S.e_M51 };
+  const out = computeElectrons(base);
+  assert.ok(out.inputs.separate51 && out.recal.needed);
+  assert.ok(out.messages.some((m) => m.scope === 'recal'));
+  // только одно положение после калибровки — ошибка калибровки, итог прежний
+  const one = computeElectrons({ ...base, e_recal_needed: 'yes', e_recal_M: scale(S.e_M1, 1.05) });
+  assert.ok(one.messages.some((m) => m.level === 'error' && m.scope === 'recal' && /обоих положениях/.test(m.text)));
+  assert.ok(one.trs.recal.blocked && !one.trs.blocked);
+  // оба положения: итог по новым показаниям
+  const r = computeElectrons({ ...base, e_recal_needed: 'yes', e_recal_M: scale(S.e_M1, 1.05), e_recal_M51: scale(S.e_M51, 1.05) });
+  assert.deepEqual(errorsOf(r), []);
+  for (const x of [r.trs, r.tg51]) {
+    near(x.recal.DperMU, x.ctrl.DperMU * 1.05, 1e-9);
+    near(x.recal.preVsNew, (1 / 1.05 - 1) * 100, 1e-9);
+    near(x.recal.pre.deviation, x.ctrl.deviation, 1e-12);
+  }
+});

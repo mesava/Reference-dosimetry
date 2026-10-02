@@ -4,7 +4,7 @@
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
 import { L } from './i18n.js';
-import { temperaturePressure, polarity, environmentChecks, outputPlausibility } from './common.js';
+import { temperaturePressure, polarity, environmentChecks, outputPlausibility, RECAL_TOL } from './common.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
 import { findChamber, chamberLabel, noteText } from './chambers.js';
@@ -109,9 +109,6 @@ export const FORM_DEFAULTS = {
   dd_nominal: '1,000',
   dd_nominal_at: 'dmax', // где задан номинальный выход: 'dmax' (после пересчёта) | 'zref' (аппарат калибруют на опорной глубине)
 };
-
-/** Допуск на отклонение дозы от номинального выхода, после которого предлагается калибровка, %. */
-export const RECAL_TOL = 2;
 
 const REF = {
   tg51: 'TG-51 (1999)',

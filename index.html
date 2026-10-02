@@ -1348,9 +1348,60 @@
       </div>
     </section>
 
-    <!-- 9 -->
+    <!-- 9: появляется, если доза вне допуска -->
+    <section class="step" aria-labelledby="e-s9r" id="e-recal-section" hidden>
+      <header><span class="step-no">9</span><h2 id="e-s9r">Требуется калибровка?</h2>
+        <p class="hint" id="e-recal-hint"></p></header>
+      <div class="grid">
+        <div class="field">
+          <label for="e_recal_needed">Калибровка ускорителя</label>
+          <select id="e_recal_needed"><option value="">— выберите —</option><option value="yes">Да</option><option value="no">Нет</option></select>
+        </div>
+        <div class="field out-cell"><span class="label">Доза до калибровки, Гр на 100 МЕ</span><output id="e-recal-pre"></output><span class="sub" id="e-recal-pre-sub"></span></div>
+      </div>
+      <div data-show="e_recal_needed:yes">
+        <p class="hint">После калибровки (подстройки) ускорителя снимите три показания при обычной полярности и рабочем напряжении V₁ в том же положении камеры. Поправки берутся из разделов 4–6; итоговой становится доза по этим показаниям, а доза до калибровки остаётся для справки.</p>
+        <div class="series">
+          <div class="series-group">
+            <h4 class="series-head" id="e-recal-main-head" hidden>Положение по TRS-398 — для расчёта по TRS-398</h4>
+          <div class="cells" data-series="e_recal_M" data-label="Показания после калибровки, M при V₁, обычная полярность">
+            <span class="label">M при V₁, обычная полярность, нКл</span>
+            <div class="cells-row">
+              <div class="cells-list"></div>
+              <div class="cells-tools">
+                <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+                <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+              </div>
+              <div class="cell-mean"><span>Среднее</span><output data-out="recal.M.mean" data-digits="4" data-abs="1"></output></div>
+            </div>
+          </div>
+          </div>
+          <div class="series-group" id="e-recal-grp51" hidden>
+            <h4 class="series-head">Положение по Report 385 — для расчёта по TG-51</h4>
+          <div class="cells" data-series="e_recal_M51" data-label="Показания после калибровки, M при V₁, обычная полярность, положение по Report 385">
+            <span class="label">M при V₁, обычная полярность, нКл</span>
+            <div class="cells-row">
+              <div class="cells-list"></div>
+              <div class="cells-tools">
+                <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+                <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+              </div>
+              <div class="cell-mean"><span>Среднее</span><output data-out="recal.M51.mean" data-digits="4" data-abs="1"></output></div>
+            </div>
+          </div>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="field"><label for="e_recal_mu">Облучение, МЕ</label><input type="text" id="e_recal_mu" class="num" inputmode="decimal"><span class="sub">если пусто — как в разделе 7</span></div>
+          <div class="field out-cell"><span class="label">Доза после калибровки, Гр на 100 МЕ</span><output id="e-recal-post"></output><span class="sub" id="e-recal-post-sub"></span></div>
+          <div class="field out-cell"><span class="label">Доза до калибровки относительно новой</span><output id="e-recal-diff"></output><span class="sub">отклонение прежней дозы от дозы после калибровки</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9/10 -->
     <section class="step" aria-labelledby="e-s8">
-      <header><span class="step-no">9</span><h2 id="e-s8">Примечания</h2></header>
+      <header><span class="step-no" id="e-notes-step-no">9</span><h2 id="e-s8">Примечания</h2></header>
       <div class="field"><label for="e_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="e_notes"></textarea></div>
     </section>
   </form>

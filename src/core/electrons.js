@@ -6,7 +6,7 @@
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
 import { L } from './i18n.js';
-import { temperaturePressure, polarity, environmentChecks, outputPlausibility } from './common.js';
+import { temperaturePressure, polarity, environmentChecks, outputPlausibility, RECAL_TOL } from './common.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
 import { findEChamber, eChamberLabel, interpE, kQprime385, trsFit, R385_RANGE } from './electron-chambers.js';
@@ -72,6 +72,11 @@ export const E_DEFAULTS = {
   e_ctrl_M: ['', '', ''], // положение по TRS-398 (или единственное положение)
   e_ctrl_M51: ['', '', ''], // «оба протокола», положения различаются: положение по Report 385 (для TG-51)
   e_ctrl_mu: '', // пусто — столько же МЕ, сколько в разделе 5
+  // калибровка (подстройка) ускорителя, если доза вне ±2 % от номинала: ответ и показания после неё
+  e_recal_needed: '', // '' | 'yes' | 'no'
+  e_recal_M: ['', '', ''],
+  e_recal_M51: ['', '', ''], // «оба протокола», положения различаются: положение по Report 385
+  e_recal_mu: '', // пусто — как в разделе 7 (или 5)
   e_kleak: '1,000',
 
   e_kqtrs_mode: 'table', // 'table' (табл. 20 или 21) | 'formula' (прил. II, табл. 47 или 48) | 'manual'
@@ -117,7 +122,7 @@ export const zrefFromR50 = (r50) => 0.6 * r50 - 0.1;
 
 export function normalizeElectrons(input) {
   const f = { ...E_DEFAULTS, ...input };
-  for (const k of ['e_M1', 'e_Mopp', 'e_M2', 'e_M51', 'e_Mopp51', 'e_M251', 'e_ctrl_M', 'e_ctrl_M51']) {
+  for (const k of ['e_M1', 'e_Mopp', 'e_M2', 'e_M51', 'e_Mopp51', 'e_M251', 'e_ctrl_M', 'e_ctrl_M51', 'e_recal_M', 'e_recal_M51']) {
     if (!Array.isArray(f[k])) f[k] = isBlank(f[k]) ? ['', '', ''] : String(f[k]).trim().split(/[\s;]+/);
   }
   if (!Array.isArray(f.e_staff) || f.e_staff.length === 0) f.e_staff = [''];
@@ -720,10 +725,76 @@ export function computeElectrons(form) {
   // отклонение от номинала — по итоговому результату: по контрольным измерениям, если они есть
   const mainBlocked = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
   const final = (x, scope) => (mainBlocked(scope) ? {} : x.ctrl && !x.ctrl.blocked ? x.ctrl : x);
+
+  // ---------------------------------------------- калибровка (подстройка) ускорителя
+  // Если доза (по контрольным измерениям, иначе по M₁ раздела 5) отличается от номинального выхода
+  // больше чем на ±2 %, предлагается калибровка. После подстройки снимают новые показания при V₁ и
+  // обычной полярности (в обоих положениях камеры, если они различаются); поправки те же, итог —
+  // по новым показаниям, прежний результат остаётся для справки.
+  const recal = { tolerance: RECAL_TOL, separate: separate51, answer: f.e_recal_needed === 'yes' || f.e_recal_needed === 'no' ? f.e_recal_needed : '' };
+  const pre = { trs: wantTRS ? final(trs, 'trs') : {}, tg51: want51 ? final(tg, 'tg51') : {} };
+  recal.preDeviation = [pre.trs.deviation, pre.tg51.deviation].filter(Number.isFinite);
+  recal.needed = recal.preDeviation.some((d) => Math.abs(d) > RECAL_TOL);
+  recal.on = recal.needed && recal.answer === 'yes';
+  if (recal.needed && !recal.answer) {
+    add('info', 'recal', L('Доза отличается от номинального выхода больше чем на ±2 %: ответьте в разделе 9, требуется ли калибровка.', 'The dose differs from the nominal output by more than ±2%: answer in section 9 whether calibration is required.'), null, 'e_recal_needed');
+  }
+  if (recal.on) {
+    const recalSeries = (key, label, ref) => {
+      const s = parseCells(f[key]);
+      if (s.n === 0 && !s.error) return null;
+      if (s.error) add('error', 'recal', L(`«${label.ru}»: ${s.error}.`, `"${label.en}": ${s.error}.`), null, key);
+      else if (s.mean === 0) add('error', 'recal', L(`«${label.ru}»: среднее показание равно нулю.`, `"${label.en}": the mean reading is zero.`), null, key);
+      const d = maxRelDeviation(s);
+      const pct = ru(d * 100, 2);
+      if (d > 0.05) add('error', 'recal', L(`Показания после калибровки расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, `Readings after calibration differ from the mean by up to ${pct} %: probably an input error.`), null, key);
+      else if (d > 0.005) add('warn', 'recal', L(`Разброс показаний после калибровки до ${pct} % от среднего: повторите облучения.`, `Readings after calibration scatter by up to ${pct} % from the mean: repeat the irradiations.`), `${REF.r374}, разд. 4.4.2`, key);
+      if (!s.error && s.mean !== 0 && seriesOk(ref) && Math.sign(s.mean) !== Math.sign(ref.mean)) {
+        add('error', 'recal', L('Показания после калибровки снимают при той же (обычной) полярности, что и M при V₁.', 'Readings after calibration are taken at the same (normal) polarity as M at V₁.'), null, key);
+      }
+      return s;
+    };
+    const rMain = recalSeries('e_recal_M', separate51
+      ? { ru: 'Показания после калибровки, положение по TRS-398', en: 'Readings after calibration, TRS-398 position' }
+      : { ru: 'Показания после калибровки', en: 'Readings after calibration' }, M1);
+    const r51 = separate51 ? recalSeries('e_recal_M51', { ru: 'Показания после калибровки, положение по Report 385', en: 'Readings after calibration, Report 385 position' }, set51?.M1) : rMain;
+    if (!rMain && !r51) {
+      add('info', 'recal', L('Введите показания после калибровки ускорителя (раздел 9): до этого итог — по прежним показаниям.', 'Enter the readings after the linac calibration (section 9); until then the result is based on the previous readings.'), null, 'e_recal_M');
+    } else {
+      if (separate51 && (!rMain || !r51)) {
+        add('error', 'recal', L('При расчёте по обоим протоколам показания после калибровки нужны в обоих положениях камеры.', 'When both protocols are used, readings after calibration are needed in both chamber positions.'), null, rMain ? 'e_recal_M51' : 'e_recal_M');
+      }
+      recal.mu = isBlank(f.e_recal_mu) ? (ctrl.on && ctrl.mu > 0 ? ctrl.mu : mu) : parseNumber(f.e_recal_mu);
+      if (!isBlank(f.e_recal_mu) && !(recal.mu > 0)) add('error', 'recal', L('Число МЕ после калибровки должно быть больше нуля.', 'The number of MU after calibration must be greater than zero.'), null, 'e_recal_mu');
+      const meanOfR = (s) => (s && s.n > 0 && !s.error ? Math.abs(s.mean) : NaN);
+      recal.M = rMain;
+      recal.M51 = separate51 ? r51 : null;
+      recal.mean = meanOfR(rMain);
+      recal.mean51 = meanOfR(r51);
+      const recalErr = messages.some((m) => m.level === 'error' && m.scope === 'recal');
+      const atNominal = (y) => (depth.nominalAt === 'zmax' ? y.DmaxPerMU : y.DperMU);
+      for (const [want, x, M, product, p] of [[wantTRS, trs, recal.mean, productTRS, pre.trs], [want51, tg, recal.mean51, product51, pre.tg51]]) {
+        if (!want) continue;
+        finish((x.recal = {}), M * product, x.kQ, x.coefficient, recal.mu);
+        x.recal.blocked = recalErr || !x.recal.ok;
+        if (Number.isFinite(p.DperMU)) {
+          x.recal.pre = { DperMU: p.DperMU, DmaxPerMU: p.DmaxPerMU, deviation: p.deviation, units: p.units, fromCtrl: p === x.ctrl };
+          const a = atNominal(p);
+          const b = atNominal(x.recal);
+          if (Number.isFinite(a) && Number.isFinite(b) && b > 0) x.recal.preVsNew = (a / b - 1) * 100;
+        }
+      }
+    }
+  }
+  // итог: после калибровки, если она проведена и без ошибок
+  const actual = (x, scope) => {
+    const y = final(x, scope);
+    return y === x.ctrl || y === x ? (x.recal && !x.recal.blocked ? x.recal : y) : y;
+  };
   const finals = [];
   for (const [want, x, scope] of [[wantTRS, trs, 'trs'], [want51, tg, 'tg51']]) {
     if (!want) continue;
-    const y = final(x, scope);
+    const y = actual(x, scope);
     if (Number.isFinite(y.DperMU)) finals.push({ x: y, units: y.units });
   }
   outputPlausibility(finals, { add, ru, muSections: L('разделы 5 и 7', 'sections 5 and 7'), zrefText: Number.isFinite(zref) ? L(`(${ru(zref, 2)} см)`, `(${ru(zref, 2)} cm)`) : 'z_ref' });
@@ -739,6 +810,8 @@ export function computeElectrons(form) {
   tg.blocked = want51 && hasError('tg51');
   if (trs.ctrl) trs.ctrl.blocked = trs.ctrl.blocked || trs.blocked;
   if (tg.ctrl) tg.ctrl.blocked = tg.ctrl.blocked || tg.blocked;
+  if (trs.recal) trs.recal.blocked = trs.recal.blocked || trs.blocked;
+  if (tg.recal) tg.recal.blocked = tg.recal.blocked || tg.blocked;
 
   let comparison = null;
   if (want51 && wantTRS && trs.ok && tg.ok && !trs.blocked && !tg.blocked) comparison = { dRel: (tg.D / trs.D - 1) * 100 };
@@ -756,6 +829,7 @@ export function computeElectrons(form) {
     },
     depth,
     ctrl,
+    recal,
     trs,
     tg51: tg,
     comparison,

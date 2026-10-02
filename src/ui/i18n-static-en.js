@@ -344,4 +344,6 @@ export const STATIC_EN = {
   "Доза до калибровки относительно новой": "Dose before calibration relative to the new one",
   "отклонение прежней дозы от дозы после калибровки": "deviation of the previous dose from the dose after calibration",
   "Да": "Yes",
+  "После калибровки (подстройки) ускорителя снимите три показания при обычной полярности и рабочем напряжении V₁ в том же положении камеры. Поправки берутся из разделов 4–6; итоговой становится доза по этим показаниям, а доза до калибровки остаётся для справки.": "After the linac calibration (adjustment), take three readings at normal polarity and operating voltage V₁ in the same chamber position. The corrections are taken from sections 4–6; the dose from these readings becomes the final result, and the dose before calibration is kept for reference.",
+  "Показания после калибровки, M при V₁, обычная полярность, положение по Report 385": "Readings after calibration, M at V₁, normal polarity, Report 385 position",
 };
