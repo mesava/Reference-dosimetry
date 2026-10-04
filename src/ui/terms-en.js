@@ -59,7 +59,8 @@ export const TERMS_EN = {
 <li>TRS-398: k<sub>s</sub> = a₀ + a₁·(M₁/M₂) + a₂·(M₁/M₂)², with coefficients from Table 10 for V₁/V₂ = 2…5; ideally V₁/V₂ ≥ 3. For other ratios, Eq. (14), accurate to 0.1% for k<sub>s</sub> &lt; 1.03.</li>
 <li>TG-51: P<sub>ion</sub> = (1 − V₁/V₂)/(M₁/M₂ − V₁/V₂); V₂ at least a factor of two lower than V₁.</li>
 <li>The correction is measured at every calibration: it depends on the dose per pulse, i.e. on the pulse repetition frequency and the dose rate.</li>
-<li>If the correction exceeds 1.05, the method is not applicable and a different chamber is needed.</li>
+<li>If the correction exceeds 1.05, the method is not applicable and a different chamber is needed. The threshold applies to k<sub>s</sub> measured in your beam; if the laboratory did not apply a recombination correction, the ratio k<sub>s,Q</sub>/k<sub>s,Q₀</sub> (Eq. 18) is used in the calculation, and it may be less than 1.</li>
+<li>Polarity. M₁ and M₂ are taken at the normal polarity. TRS-398 (Sec. 4.4.3.4) notes that, strictly speaking, the polarity effect may depend on the voltage, and M₁ and M₂ should each be corrected for it (Eq. 11). The calculator assumes k<sub>pol</sub>(V₂) = k<sub>pol</sub>(V₁), so the correction cancels in the ratio M₁/M₂. As a check, k<sub>s</sub> can be determined separately at each polarity: a noticeable difference indicates a chamber problem.</li>
 </ul>
 <h4>Jaffé method: checking that the two-voltage method is applicable</h4>
 <p>The two-voltage method assumes that in a pulsed beam 1/M depends linearly on 1/V. For some chambers, especially plane-parallel ones, this does not hold over the voltage range used. Therefore, when the dosimetry system is commissioned, a <b>Jaffé plot</b> — 1/M versus 1/V — is obtained:</p>

@@ -132,3 +132,16 @@ test('Версия калькулятора совпадает с package.json',
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(APP_VERSION, pkg.version);
 });
+
+test('⁶⁰Co: k_s лаборатории чуть больше измеренного — отношение < 1, расчёт не блокируется', () => {
+  for (const protocol of ['trs', 'tg51']) {
+    const base = computeCobalt({ ...SAMPLE_COBALT, protocol });
+    const x0 = protocol === 'trs' ? base.trs : base.tg51;
+    const raw = protocol === 'trs' ? x0.ksRaw : x0.PionRaw;
+    const lab = (raw + 0.0005).toFixed(4).replace('.', ',');
+    const r = computeCobalt({ ...SAMPLE_COBALT, protocol, co_lab_ks_applied: false, co_lab_ks: lab });
+    assert.deepEqual(errorsOf(r), [], `${protocol}: k_s = ${raw}, лаборатория ${lab}`);
+    const x = protocol === 'trs' ? r.trs : r.tg51;
+    assert.ok((protocol === 'trs' ? x.ks : x.Pion) < 1);
+  }
+});

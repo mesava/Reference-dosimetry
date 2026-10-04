@@ -508,25 +508,27 @@ export function computePhotons(form) {
       if (nV < 3 - 1e-9) add('info', 'trs', L('TRS-398 рекомендует отношение напряжений V₁/V₂ ≥ 3.', 'TRS-398 recommends a voltage ratio V₁/V₂ ≥ 3.'), `${REF.trs}, разд. 4.4.3.4`);
       trs.ks = r.value / ksQ0;
       trs.ksQ0 = ksQ0;
-      if (trs.ks > 1.05) {
+      // Пороги относятся к рекомбинации в пучке пользователя, то есть к измеренному k_s. Отношение k_s,Q/k_s,Q₀
+      // (если лаборатория не вносила поправку) может законно быть и меньше 1.
+      if (trs.ksRaw > 1.05) {
         add(
           'error',
           'trs',
           L(
-            `k_s = ${ru(trs.ks, 4)} > 1,05: метод двух напряжений неприменим, нужна другая камера или другой метод.`,
-            `k_s = ${ru(trs.ks, 4)} > 1.05: the two-voltage method is not applicable; another chamber or another method is needed.`,
+            `k_s = ${ru(trs.ksRaw, 4)} > 1,05: метод двух напряжений неприменим, нужна другая камера или другой метод.`,
+            `k_s = ${ru(trs.ksRaw, 4)} > 1.05: the two-voltage method is not applicable; another chamber or another method is needed.`,
           ),
           `${REF.trs}, табл. 3`,
           'ks',
         );
       }
-      if (ratio12 >= 1 && trs.ks < 1) {
+      if (ratio12 >= 1 && trs.ksRaw < 1) {
         add(
           'error',
           'trs',
           L(
-            `k_s = ${ru(trs.ks, 4)} < 1: так быть не может, проверьте показания и поправку лаборатории.`,
-            `k_s = ${ru(trs.ks, 4)} < 1: this is impossible; check the readings and the laboratory correction.`,
+            `k_s = ${ru(trs.ksRaw, 4)} < 1: так быть не может, проверьте показания и напряжения.`,
+            `k_s = ${ru(trs.ksRaw, 4)} < 1: this is impossible; check the readings and the voltages.`,
           ),
           `${REF.trs}, разд. 4.4.3.4`,
           'ks',
@@ -749,13 +751,13 @@ export function computePhotons(form) {
       }
       tg.Pion = tg.PionRaw / ksQ0;
       tg.PionQ0 = ksQ0;
-      if (ratio12 >= 1 && tg.Pion < 1) {
+      if (ratio12 >= 1 && tg.PionRaw < 1) {
         add(
           'error',
           'tg51',
           L(
-            `P_ion = ${ru(tg.Pion, 4)} < 1: так быть не может, проверьте показания и поправку лаборатории.`,
-            `P_ion = ${ru(tg.Pion, 4)} < 1: this is impossible; check the readings and the laboratory correction.`,
+            `P_ion = ${ru(tg.PionRaw, 4)} < 1: так быть не может, проверьте показания и напряжения.`,
+            `P_ion = ${ru(tg.PionRaw, 4)} < 1: this is impossible; check the readings and the voltages.`,
           ),
           `${REF.tg51}, разд. VII.D`,
           'Pion',
@@ -800,7 +802,10 @@ export function computePhotons(form) {
       add(
         'warn',
         'tg51',
-        L('Для всех пучков БВФ, в том числе ниже 10 МВ, %dd(10) измеряют со свинцовой фольгой.', 'For all FFF beams, including those below 10 MV, %dd(10) is measured with the lead foil.'),
+        L(
+          'Для всех пучков БВФ, в том числе ниже 10 МВ, %dd(10) измеряют со свинцовой фольгой. Расчёт без фольги — отступление от прямых рекомендаций аддендума TG-51 и Report 374: результат можно использовать только для сравнения.',
+          'For all FFF beams, including those below 10 MV, %dd(10) is measured with the lead foil. A calculation without the foil departs from the explicit recommendations of the TG-51 addendum and Report 374: the result may be used for comparison only.',
+        ),
         `${REF.add}, разд. 4.K(3); ${REF.r374}, разд. 3.3`,
         'q51_method',
         L('%dd(10) пучка БВФ без свинцовой фольги', '%dd(10) of an FFF beam without the lead foil'),

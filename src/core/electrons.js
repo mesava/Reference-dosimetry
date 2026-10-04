@@ -431,8 +431,9 @@ export function computeElectrons(form) {
       r.notes.forEach((n) => add('warn', 'trs', cap(n) + '.', `${REF.trs}, разд. 4.4.3.4`, 'ks'));
       if (nV < 3 - 1e-9) add('info', 'trs', L('TRS-398 рекомендует отношение напряжений V₁/V₂ ≥ 3.', 'TRS-398 recommends a voltage ratio V₁/V₂ ≥ 3.'), `${REF.trs}, разд. 4.4.3.4`);
       trs.ks = r.value / ksQ0;
-      if (trs.ks > 1.05) add('error', 'trs', L(`k_s = ${ru(trs.ks, 4)} > 1,05: метод двух напряжений неприменим.`, `k_s = ${ru(trs.ks, 4)} > 1.05: the two-voltage method is not applicable.`), `${REF.trs}, табл. 3`, 'ks');
-      if (ratio12 >= 1 && trs.ks < 1) add('error', 'trs', L(`k_s = ${ru(trs.ks, 4)} < 1: так быть не может, проверьте показания и поправку лаборатории.`, `k_s = ${ru(trs.ks, 4)} < 1 is impossible: check the readings and the calibration laboratory correction.`), `${REF.trs}, разд. 4.4.3.4`, 'ks');
+      // пороги — по измеренному k_s (рекомбинация в пучке пользователя); отношение k_s,Q/k_s,Q₀ может быть < 1
+      if (trs.ksRaw > 1.05) add('error', 'trs', L(`k_s = ${ru(trs.ksRaw, 4)} > 1,05: метод двух напряжений неприменим.`, `k_s = ${ru(trs.ksRaw, 4)} > 1.05: the two-voltage method is not applicable.`), `${REF.trs}, табл. 3`, 'ks');
+      if (ratio12 >= 1 && trs.ksRaw < 1) add('error', 'trs', L(`k_s = ${ru(trs.ksRaw, 4)} < 1: так быть не может, проверьте показания и напряжения.`, `k_s = ${ru(trs.ksRaw, 4)} < 1 is impossible: check the readings and the voltages.`), `${REF.trs}, разд. 4.4.3.4`, 'ks');
     } else trs.ks = NaN;
 
     // k_Q,Q₀: таблица (табл. 20/21, линейная интерполяция) и аппроксимация прил. II (табл. 47/48) — рядом для сравнения
@@ -516,8 +517,8 @@ export function computeElectrons(form) {
       tg.PionRaw = TG51.pIon({ mH: M1.mean, mL: M2.mean, vH: Math.abs(V1), vL: Math.abs(V2), beam: 'pulsed' });
       if (nV < 2 - 1e-9) add('warn', 'tg51', L('TG-51: пониженное напряжение должно быть меньше рабочего как минимум вдвое.', 'TG-51: the reduced voltage must be at most half the operating voltage.'), `${REF.tg51}, разд. VII.D.2`, ['e_V1', 'e_V2']);
       tg.Pion = tg.PionRaw / ksQ0;
-      if (tg.Pion > 1.05) add('error', 'tg51', L(`P_ion = ${ru(tg.Pion, 4)} > 1,05: нужна другая камера.`, `P_ion = ${ru(tg.Pion, 4)} > 1.05: use a different chamber.`), `${REF.tg51}, разд. VII.D.1`, 'Pion');
-      if (ratio12 >= 1 && tg.Pion < 1) add('error', 'tg51', L(`P_ion = ${ru(tg.Pion, 4)} < 1: так быть не может, проверьте показания и поправку лаборатории.`, `P_ion = ${ru(tg.Pion, 4)} < 1 is impossible: check the readings and the calibration laboratory correction.`), `${REF.tg51}, разд. VII.D`, 'Pion');
+      if (tg.PionRaw > 1.05) add('error', 'tg51', L(`P_ion = ${ru(tg.PionRaw, 4)} > 1,05: нужна другая камера.`, `P_ion = ${ru(tg.PionRaw, 4)} > 1.05: use a different chamber.`), `${REF.tg51}, разд. VII.D.1`, 'Pion');
+      if (ratio12 >= 1 && tg.PionRaw < 1) add('error', 'tg51', L(`P_ion = ${ru(tg.PionRaw, 4)} < 1: так быть не может, проверьте показания и напряжения.`, `P_ion = ${ru(tg.PionRaw, 4)} < 1 is impossible: check the readings and the voltages.`), `${REF.tg51}, разд. VII.D`, 'Pion');
     } else tg.Pion = NaN;
 
     if (f.e_kq51_mode === 'manual') {

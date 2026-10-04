@@ -273,10 +273,26 @@ test('Глубина d_max обязательна для пересчёта, н�
   assert.equal(noNominal.trs.deviation, undefined);
 });
 
-test('P_ion < 1 после деления на поправку лаборатории блокирует TG-51', () => {
-  const r = computeP({ ...SAMPLE, protocol: 'tg51', lab_ks_applied: false, lab_ks: '1,005' });
-  assert.ok(r.tg51.blocked);
-  assert.equal(r.flags.Pion, 'error');
+test('Лаборатория не вносила поправку на рекомбинацию: пороги — по измеренному k_s, отношение может быть < 1', () => {
+  // измеренный P_ion ≈ 1,003; у лаборатории 1,005 — отношение < 1 законно, расчёт не блокируется
+  for (const protocol of ['trs', 'tg51']) {
+    const r = computeP({ ...SAMPLE, protocol, lab_ks_applied: false, lab_ks: '1,005' });
+    assert.deepEqual(errorsOf(r), [], protocol);
+    const x = protocol === 'trs' ? r.trs : r.tg51;
+    const raw = protocol === 'trs' ? x.ksRaw : x.PionRaw;
+    const eff = protocol === 'trs' ? x.ks : x.Pion;
+    assert.ok(eff < 1 && raw > 1, `${protocol}: ${raw} / 1,005 = ${eff}`);
+    near(eff, raw / 1.005, 1e-12);
+  }
+  // измеренный k_s > 1,05 — ошибка, даже если после деления на k_s,Q₀ отношение меньше 1,05
+  const big = { ...SAMPLE, rd_M2: ['11,2', '11,2', '11,2'], lab_ks_applied: false, lab_ks: '1,02' };
+  for (const protocol of ['trs', 'tg51']) {
+    const r = computeP({ ...big, protocol });
+    const x = protocol === 'trs' ? r.trs : r.tg51;
+    const raw = protocol === 'trs' ? x.ksRaw : x.PionRaw;
+    assert.ok(raw > 1.05 && raw / 1.02 < 1.05, `${protocol}: ${raw}`);
+    assert.ok(errorsOf(r).some((m) => /> 1,05/.test(m.text)), protocol);
+  }
 });
 
 test('Большой разброс показаний: предупреждение или ошибка', () => {
