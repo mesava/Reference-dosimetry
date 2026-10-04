@@ -10,6 +10,7 @@ import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, 
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
+  renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.cobalt.v1';
@@ -191,9 +192,30 @@ function applyVisibility(data, result) {
 // ------------------------------------------------------------ вывод
 /** Итог: по контрольным измерениям, если они введены и без ошибок, иначе по основным показаниям. */
 const primaryOf = (x) => (x.ctrl && !x.ctrl.blocked && !x.blocked ? x.ctrl : x);
+/** Контрольные измерения введены, но с ошибками: итога нет (подменять его показанием M₁ нельзя). */
+const ctrlFailed = (x) => !x.blocked && !!x.ctrl?.blocked;
 /** Итог показывается на глубине, где задано значение для сравнения: на z_max или на опорной глубине. */
 const atMaxOf = (x, depth) => depth.expectedAt === 'zmax' && Number.isFinite(x.rateMax);
 const rateAt = (x, depth) => (atMaxOf(x, depth) ? x.rateMax : x.rate);
+
+/** Итог для сохранения в файл и сверки при открытии файла. */
+function snapshot(result) {
+  const num = (v) => (Number.isFinite(v) ? v : null);
+  const x = result.protocol === 'tg51' ? result.tg51 : result.trs;
+  if (x.blocked || ctrlFailed(x)) return { protocol: result.protocol, value: null };
+  const p = primaryOf(x);
+  return {
+    protocol: result.protocol,
+    source: p === x.ctrl ? 'ctrl' : 'main',
+    value: num(rateAt(p, result.depth)),
+    rate: num(p.rate),
+    rateMax: num(p.rateMax),
+    D: num(p.D),
+    deviation: num(p.deviation),
+    compliance: result.compliance?.status ?? null,
+  };
+}
+const SNAP_CMP = { keys: ['value', 'rate', 'rateMax', 'D'], main: 'value', digits: 2, get unit() { return L('сГр/мин', 'cGy/min'); } };
 
 function doseRow(key, x, result) {
   const p = primaryOf(x);
@@ -204,8 +226,10 @@ function doseRow(key, x, result) {
   const mainGy = atMax ? p.rateMaxGy : p.rateGy;
   const z = zText(result.inputs.zref);
   const where = atMax ? L('на z<sub>max</sub>', 'at z<sub>max</sub>') : L(`на ${z} г/см²`, `at ${z} g/cm²`);
+  const failed = ctrlFailed(x);
+  const none = x.blocked || failed;
   let chip = '';
-  if (Number.isFinite(p.deviation) && !x.blocked) {
+  if (Number.isFinite(p.deviation) && !none) {
     const cls = Math.abs(p.deviation) <= 1 ? 'good' : Math.abs(p.deviation) > 2 ? 'bad' : '';
     chip = `<span class="chip ${cls}" title="${L('Отклонение от ожидаемой мощности дозы', 'Deviation from the expected dose rate')}">${fmtSigned(p.deviation, 2)} %</span>`;
   }
@@ -222,16 +246,12 @@ function doseRow(key, x, result) {
         ? L(`На ${z} г/см²: ${fmt(p.rate, 2)} сГр/мин`, `At ${z} g/cm²: ${fmt(p.rate, 2)} cGy/min`)
         : L(`На z<sub>max</sub>: ${fmt(p.rateMax, 2)} сГр/мин`, `At z<sub>max</sub>: ${fmt(p.rateMax, 2)} cGy/min`)
       : null,
-    fromCtrl
-      ? null
-      : c.on
-        ? L('Контрольные измерения содержат ошибки — мощность дозы по показанию M₁ раздела 5', 'The check measurements contain errors — dose rate from reading M₁ of section 5')
-        : L('Контрольные измерения не введены — мощность дозы по показанию M₁ раздела 5', 'No check measurements entered — dose rate from reading M₁ of section 5'),
+    fromCtrl ? null : L('Контрольные измерения не введены — мощность дозы по показанию M₁ раздела 5', 'No check measurements entered — dose rate from reading M₁ of section 5'),
   ].filter(Boolean).join('<br>');
-  return `<div class="dose-row ${x.blocked ? 'blocked' : ''}">
-    <div class="proto"><span>${PROTO[key].name}${fromCtrl ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
-    <div class="dose-big">${x.blocked || !Number.isFinite(main) ? '—' : fmt(main, 2)}<small>${L('сГр/мин', 'cGy/min')} ${where}</small></div>
-    <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : secondary}</div>
+  return `<div class="dose-row ${none ? 'blocked' : ''}">
+    <div class="proto"><span>${PROTO[key].name}${fromCtrl || failed ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
+    <div class="dose-big">${none || !Number.isFinite(main) ? '—' : fmt(main, 2)}<small>${L('сГр/мин', 'cGy/min')} ${where}</small></div>
+    <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : failed ? ctrlErrorText(6, 5) : secondary}</div>
   </div>`;
 }
 
@@ -258,9 +278,9 @@ function renderReadout(result, data) {
   const keys = [data.protocol];
   const pick = (k) => (k === 'trs' ? result.trs : result.tg51);
   $('#co-dose-rows').innerHTML = keys.map((k) => doseRow(k, pick(k), result)).join('');
+  renderCompliance($('#co-compliance'), result.compliance, PROTO[data.protocol].name);
 
-
-  const first = keys.map((k) => ({ k, x: pick(k) })).find((o) => !o.x.blocked && o.x.ok);
+  const first = keys.map((k) => ({ k, x: pick(k) })).find((o) => !o.x.blocked && o.x.ok && !ctrlFailed(o.x));
   const mv = $('#co-mobile-value');
   if (first) {
     const p = primaryOf(first.x);
@@ -302,7 +322,8 @@ function renderReadout(result, data) {
   const m1 = Math.abs(i.M1.mean);
   const title = doseGroupTitle({ ctrlOn: result.ctrl.on, ctrlFinal, mainSec: 5, ctrlSec: 6, mainAmount: tText(i.tSet), ctrlAmount: tText(result.ctrl.t) });
   rows.push([title, [], [], 'group']);
-  if (ctrlFinal) {
+  if (result.ctrl.on) {
+    // контрольные измерения с ошибками: строки остаются, значения — прочерки
     rows.push([rawReadingLabel(), ['', result.ctrl.mean, 4], ['', result.ctrl.mean, 4]]);
     rows.push([correctedReadingLabel(), ['M', tc.M, 4, true, bT], ['M', gc.M, 4, true, bG]]);
     rows.push(...doseTableRows(tc, gc, result, z, result.ctrl.tEff, [bT, bG], true));
@@ -328,6 +349,7 @@ function reportText(data, r) {
   const z = zText(i.zref);
   out.push(L('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — ⁶⁰Co', 'REFERENCE DOSIMETRY REPORT — ⁶⁰Co'));
   line(L('Протокол', 'Protocol'), PROTO[data.protocol].name);
+  line(L('Калькулятор', 'Calculator'), versionText());
   line(L('Учреждение', 'Institution'), data.co_institution || '—');
   line(L('Аппарат', 'Machine'), data.co_machine || '—');
   line(L('Дата', 'Date'), data.co_date || '—');
@@ -434,7 +456,10 @@ function reportText(data, r) {
         }
       };
       if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (раздел 6)', 'From check measurements (section 6)'));
-      else describe(x, r.ctrl.on ? L('По показанию M₁ раздела 5 (контрольные измерения содержат ошибки)', 'From reading M₁ of section 5 (the check measurements contain errors)') : L('По показанию M₁ раздела 5 (контрольные измерения не введены)', 'From reading M₁ of section 5 (no check measurements entered)'));
+      else if (r.ctrl.on) out.push(L('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: в контрольных измерениях (раздел 6) ошибки (см. замечания).', 'RESULT NOT CALCULATED: the check measurements (section 6) contain errors (see Messages).'));
+      else describe(x, L('По показанию M₁ раздела 5 (контрольные измерения не введены)', 'From reading M₁ of section 5 (no check measurements entered)'));
+      const cl = complianceLine(r.compliance, PROTO[k].name);
+      if (cl) out.push(cl);
     }
     out.push('');
   }
@@ -468,6 +493,7 @@ function loadDraft() {
 /** Загрузка данных из файла или буфера обмена. Бросает ошибку, если файл не от этого модуля. */
 export function importCobalt(obj) {
   if (!obj || obj.app !== FILE_TAG.app || typeof obj.form !== 'object') throw new Error(L('Это не файл калькулятора референсной дозиметрии.', 'This is not a reference dosimetry calculator file.'));
+  checkFileFormat(obj, FILE_TAG);
   if (obj.module !== FILE_TAG.module) {
     throw new Error(
       L(
@@ -477,11 +503,14 @@ export function importCobalt(obj) {
     );
   }
   writeForm(obj.form);
+  openedFile = obj;
   update();
 }
 
 // ------------------------------------------------------------ цикл
 let current = { data: null, result: null };
+/** Открытый файл: пока форму не меняли, итог сверяется с сохранённым в файле. */
+let openedFile = null;
 function update() {
   const data = readForm();
   const result = computeCobalt(data);
@@ -491,6 +520,7 @@ function update() {
   renderFlags(ROOT(), result.flags, seriesBox);
   renderReadout(result, result.form);
   $('#co-demo-flag').hidden = !isDemo(data);
+  renderFileNote($('#co-file-note'), openedFile ? compareWithFile(openedFile, snapshot(result), SNAP_CMP) : null);
   saveDraft(result.form);
   renderSignBlock($('#co-sign'), result.form.co_staff);
 }
@@ -524,8 +554,12 @@ export function initCobalt() {
   if (!draft) setStatus(L('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.', 'Demo example loaded. Press "Clear" to enter your own data.'));
 
   const sheet = $('#co-sheet');
-  sheet.addEventListener('input', update);
+  sheet.addEventListener('input', () => {
+    openedFile = null;
+    update();
+  });
   sheet.addEventListener('change', (e) => {
+    openedFile = null;
     if (e.target.id === 'co_ch_model') {
       const id = e.target.value;
       if (id.startsWith('MY:')) fillCustomFields(getMyChambers().find((c) => c.id === id));
@@ -589,17 +623,19 @@ export function initCobalt() {
   }
 
   $('#co-btn-sample').addEventListener('click', () => {
+    openedFile = null;
     writeForm(sampleData());
     update();
     setStatus(L('Загружен демонстрационный пример (вымышленные данные).', 'Demo example loaded (fictitious data).'));
   });
   armButton($('#co-btn-clear'), () => L('Очистить', 'Clear'), () => L('Точно очистить?', 'Clear everything?'), () => {
     writeForm({ ...CO_DEFAULTS, co_date: today() });
+    openedFile = null;
     update();
     setStatus(L('Форма очищена.', 'The form has been cleared.'));
   });
 
-  const payload = () => JSON.stringify({ ...FILE_TAG, savedAt: new Date().toISOString(), form: current.data }, null, 2);
+  const payload = () => JSON.stringify({ ...FILE_TAG, ...fileStamp(snapshot(current.result)), savedAt: new Date().toISOString(), form: current.data }, null, 2);
   $('#co-btn-save').addEventListener('click', () => {
     const name = ['Co60', current.data.co_machine, current.data.co_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-');
     downloadText(payload(), `dosimetry_${name}.json`);

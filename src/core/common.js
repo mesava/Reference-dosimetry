@@ -2,8 +2,47 @@
 
 import { L } from './i18n.js';
 
-/** Допуск на отклонение дозы от номинального выхода, после которого предлагается калибровка ускорителя, %. */
+/** Допуск на отклонение дозы от номинального выхода по умолчанию, %: после него предлагается калибровка ускорителя. */
 export const RECAL_TOL = 2;
+
+/**
+ * Допуск учреждения на отклонение от номинального выхода, %. Пустое поле — значение по умолчанию (2 %).
+ * Нечисловое или вне (0; 10] — предупреждение и значение по умолчанию.
+ */
+export function readTolerance(raw, { add, parseNumber, isBlank, field }) {
+  if (isBlank(raw)) return RECAL_TOL;
+  const v = parseNumber(raw);
+  if (Number.isFinite(v) && v > 0 && v <= 10) return v;
+  add(
+    'warn',
+    'common',
+    L(
+      `Допуск на отклонение от номинала не распознан (нужно число больше 0 и не больше 10 %): используется ${RECAL_TOL} %.`,
+      `The tolerance for the deviation from nominal was not recognized (a number above 0 and up to 10 % is required): ${RECAL_TOL} % is used.`,
+    ),
+    null,
+    field,
+  );
+  return RECAL_TOL;
+}
+
+/**
+ * Соответствие референсным условиям выбранного протокола.
+ * standard — отступлений не найдено; nonstandard — доза посчитана, но есть отступления от условий протокола
+ * (результат нельзя считать референсной дозиметрией по нему); invalid — итог не вычислен.
+ * Причины — краткие тексты из замечаний с признаком nonstd (общие и выбранного протокола).
+ */
+export function complianceOf(messages, scope, hasResult) {
+  if (!hasResult) return { status: 'invalid', reasons: [] };
+  const seen = new Set();
+  const reasons = [];
+  for (const m of messages) {
+    if (!m.nonstd || (m.scope !== 'common' && m.scope !== scope) || seen.has(m.nonstd)) continue;
+    seen.add(m.nonstd);
+    reasons.push({ text: m.nonstd, ref: m.ref });
+  }
+  return { status: reasons.length ? 'nonstandard' : 'standard', reasons };
+}
 
 const REF = {
   add: 'аддендум TG-51 (2014)',
@@ -74,7 +113,7 @@ export function environmentChecks({ T, Hraw, keyT, keyH, parseNumber, isBlank, r
  * почти всегда означает ошибку ввода (чаще всего — число МЕ с лишним или недостающим нулём).
  * finals — итоговые результаты [{ x, units }], x.DperMU — сГр/МЕ на опорной глубине.
  */
-export function outputPlausibility(finals, { add, ru, muSections, zrefText }) {
+export function outputPlausibility(finals, { add, ru, muSections, zrefText, tol = RECAL_TOL }) {
   const bad = finals.find(({ x }) => Number.isFinite(x?.DperMU) && (x.DperMU < 0.3 || x.DperMU > 2));
   if (bad) {
     const v = ru(bad.x.DperMU, 3);
@@ -101,13 +140,13 @@ export function outputPlausibility(finals, { add, ru, muSections, zrefText }) {
         'The deviation from the nominal output exceeds 20%: this almost always means an input error. Check the number of MU, the depth at which the nominal output is defined (d_max or the reference depth) and the units of N_D,w.',
       ),
     );
-  } else if (devs.some((d) => Math.abs(d) > 2)) {
+  } else if (devs.some((d) => Math.abs(d) > tol)) {
     add(
       'warn',
       'common',
       L(
-        'Отклонение от номинального выхода больше 2 %: перед подстройкой ускорителя перепроверьте ввод и измерения.',
-        'The deviation from the nominal output exceeds 2%: recheck the input and the measurements before adjusting the linac.',
+        `Отклонение от номинального выхода больше ${ru(tol, tol % 1 ? 1 : 0)} %: перед подстройкой ускорителя перепроверьте ввод и измерения.`,
+        `The deviation from the nominal output exceeds ${ru(tol, tol % 1 ? 1 : 0)}%: recheck the input and the measurements before adjusting the linac.`,
       ),
     );
   }

@@ -10,6 +10,7 @@ import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff }
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
+  renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.photons.v2';
@@ -122,7 +123,10 @@ function fillCustomFields(saved) {
 }
 
 // ------------------------------------------------------------ видимость и подписи
-/** Раздел 9 «Требуется калибровка?»: появляется, если доза вне допуска ±2 % от номинала. */
+/** Допуск учреждения на отклонение от номинала, % — для подписей. */
+const tolText = (result) => fmt(result.recal.tolerance, result.recal.tolerance % 1 ? 1 : 0);
+
+/** Раздел 9 «Требуется калибровка?»: появляется, если доза вне допуска (по умолчанию ±2 %) от номинала. */
 function renderRecal(data, result) {
   const rc = result.recal;
   $('#recal-section').hidden = !rc.needed;
@@ -136,8 +140,8 @@ function renderRecal(data, result) {
   const zTxt = Number.isFinite(z) ? fmt(z, z % 1 ? 1 : 0) : '10';
   const where = atMax ? L('на d_max', 'at d_max') : L(`на ${zTxt} см`, `at ${zTxt} cm`);
   $('#recal-hint').textContent = L(
-    `Доза ${fmt(preV, 4)} Гр на 100 МЕ ${where} отличается от номинального выхода ${fmt(result.depth.nominal, 3)} на ${fmtSigned(pre.deviation, 2)} % — больше допуска ±${fmt(rc.tolerance, 0)} %. Если ускоритель калибруют, выберите «Да» и введите показания после калибровки.`,
-    `The dose ${fmt(preV, 4)} Gy per 100 MU ${where} differs from the nominal output ${fmt(result.depth.nominal, 3)} by ${fmtSigned(pre.deviation, 2)} %, more than the ±${fmt(rc.tolerance, 0)} % tolerance. If the linac is being calibrated, choose "Yes" and enter the readings after calibration.`,
+    `Доза ${fmt(preV, 4)} Гр на 100 МЕ ${where} отличается от номинального выхода ${fmt(result.depth.nominal, 3)} на ${fmtSigned(pre.deviation, 2)} % — больше допуска ±${tolText(result)} %. Если ускоритель калибруют, выберите «Да» и введите показания после калибровки.`,
+    `The dose ${fmt(preV, 4)} Gy per 100 MU ${where} differs from the nominal output ${fmt(result.depth.nominal, 3)} by ${fmtSigned(pre.deviation, 2)} %, more than the ±${tolText(result)} % tolerance. If the linac is being calibrated, choose "Yes" and enter the readings after calibration.`,
   );
   $('#recal-pre').textContent = fmt(preV, 4);
   $('#recal-pre-sub').textContent = L(`${where}; от номинала ${fmtSigned(pre.deviation, 2)} %`, `${where}; from nominal ${fmtSigned(pre.deviation, 2)} %`);
@@ -265,11 +269,32 @@ const PROTO = {
 
 /** Доза до калибровки: по контрольным измерениям, если они введены и без ошибок, иначе по M₁ раздела 4. */
 const preOf = (x) => (x.ctrl && !x.ctrl.blocked && !x.blocked ? x.ctrl : x);
+/** Контрольные измерения введены, но с ошибками: итога нет (подменять его показанием M₁ нельзя). */
+const ctrlFailed = (x) => !x.blocked && !!x.ctrl?.blocked;
 /** Итог: после калибровки ускорителя (раздел 9), если она проведена, иначе — доза до калибровки. */
 const primaryOf = (x) => (x.recal && !x.recal.blocked && !x.blocked ? x.recal : preOf(x));
 
 /** Итог показывается на глубине, где задан номинальный выход: на d_max или на опорной глубине. */
 const atMaxOf = (y, result) => result.depth.nominalAt === 'dmax' && Number.isFinite(y.DmaxPerMU);
+
+/** Итог для сохранения в файл и сверки при открытии файла. */
+function snapshot(result) {
+  const num = (v) => (Number.isFinite(v) ? v : null);
+  const x = result.protocol === 'tg51' ? result.tg51 : result.trs;
+  if (x.blocked || ctrlFailed(x)) return { protocol: result.protocol, value: null };
+  const p = primaryOf(x);
+  return {
+    protocol: result.protocol,
+    source: p === x.recal ? 'recal' : p === x.ctrl ? 'ctrl' : 'main',
+    value: num(atMaxOf(p, result) ? p.DmaxPerMU : p.DperMU),
+    DperMU: num(p.DperMU),
+    DmaxPerMU: num(p.DmaxPerMU),
+    deviation: num(p.deviation),
+    kQ: num(x.kQ),
+    compliance: result.compliance?.status ?? null,
+  };
+}
+const SNAP_CMP = { keys: ['value', 'DperMU', 'DmaxPerMU', 'kQ'], main: 'value', get unit() { return L('Гр на 100 МЕ', 'Gy per 100 MU'); } };
 
 function doseRow(key, x, result) {
   const p = primaryOf(x);
@@ -281,9 +306,11 @@ function doseRow(key, x, result) {
   const z = result.depth.zref;
   const zTxt = Number.isFinite(z) ? fmt(z, z % 1 ? 1 : 0) : '10';
   const where = atMax ? L('на d<sub>max</sub>', 'at d<sub>max</sub>') : L(`на ${zTxt} см`, `at ${zTxt} cm`);
+  const failed = ctrlFailed(x);
+  const none = x.blocked || failed;
   let chip = '';
-  if (Number.isFinite(p.deviation) && !x.blocked) {
-    const cls = Math.abs(p.deviation) <= 1 ? 'good' : Math.abs(p.deviation) > 2 ? 'bad' : '';
+  if (Number.isFinite(p.deviation) && !none) {
+    const cls = Math.abs(p.deviation) <= 1 ? 'good' : Math.abs(p.deviation) > result.recal.tolerance ? 'bad' : '';
     chip = `<span class="chip ${cls}" title="${L('Отклонение от номинального выхода', 'Deviation from the nominal output')}">${fmtSigned(p.deviation, 2)} %</span>`;
   }
   const units = fromRecal ? result.recal.mu : fromCtrl ? result.ctrl.mu : result.inputs.mu;
@@ -303,21 +330,17 @@ function doseRow(key, x, result) {
           `Before calibration: ${fmt(atMax ? p.pre.DmaxPerMU : p.pre.DperMU, 4)} Gy per 100 MU (from nominal ${fmtSigned(p.pre.deviation, 2)} %; from the dose after calibration ${fmtSigned(p.preVsNew, 2)} %)`,
         )
       : null,
-    fromRecal || fromCtrl
-      ? null
-      : result.ctrl.on
-        ? L('Контрольные измерения содержат ошибки — доза по показанию M₁ раздела 4', 'The check measurements contain errors — dose from reading M₁ of section 4')
-        : L('Контрольные измерения не введены — доза по показанию M₁ раздела 4', 'No check measurements entered — dose from reading M₁ of section 4'),
+    fromRecal || fromCtrl ? null : L('Контрольные измерения не введены — доза по показанию M₁ раздела 4', 'No check measurements entered — dose from reading M₁ of section 4'),
     !fromRecal && result.recal.needed
       ? result.recal.answer === 'no'
-        ? L('Вне допуска ±2 %; калибровка не проводилась', 'Outside the ±2 % tolerance; no calibration performed')
-        : L('Вне допуска ±2 % — см. раздел 9 «Требуется калибровка?»', 'Outside the ±2 % tolerance — see section 9 "Calibration required?"')
+        ? L(`Вне допуска ±${tolText(result)} %; калибровка не проводилась`, `Outside the ±${tolText(result)} % tolerance; no calibration performed`)
+        : L(`Вне допуска ±${tolText(result)} % — см. раздел 9 «Требуется калибровка?»`, `Outside the ±${tolText(result)} % tolerance — see section 9 "Calibration required?"`)
       : null,
   ].filter(Boolean).join('<br>');
-  return `<div class="dose-row ${x.blocked ? 'blocked' : ''}">
-    <div class="proto"><span>${PROTO[key].name}${fromRecal ? L(' · после калибровки', ' · after calibration') : fromCtrl ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
-    <div class="dose-big">${x.blocked || !Number.isFinite(main) ? '—' : fmt(main, 4)}<small>${L('Гр на 100 МЕ', 'Gy per 100 MU')} ${where}</small></div>
-    <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : secondary}</div>
+  return `<div class="dose-row ${none ? 'blocked' : ''}">
+    <div class="proto"><span>${PROTO[key].name}${fromRecal ? L(' · после калибровки', ' · after calibration') : fromCtrl || failed ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
+    <div class="dose-big">${none || !Number.isFinite(main) ? '—' : fmt(main, 4)}<small>${L('Гр на 100 МЕ', 'Gy per 100 MU')} ${where}</small></div>
+    <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : failed ? ctrlErrorText(7, 4) : secondary}</div>
   </div>`;
 }
 
@@ -343,9 +366,9 @@ function doseTableRows(t, g, result, zTxt, units, own = [false, false], bold = t
 function renderReadout(result, data) {
   const keys = [data.protocol];
   $('#dose-rows').innerHTML = keys.map((k) => doseRow(k, k === 'trs' ? result.trs : result.tg51, result)).join('');
+  renderCompliance($('#compliance'), result.compliance, PROTO[data.protocol].name);
 
-
-  const first = keys.map((k) => ({ k, x: k === 'trs' ? result.trs : result.tg51 })).find((o) => !o.x.blocked && o.x.ok);
+  const first = keys.map((k) => ({ k, x: k === 'trs' ? result.trs : result.tg51 })).find((o) => !o.x.blocked && o.x.ok && !ctrlFailed(o.x));
   const mv = $('#mobile-value');
   if (first) {
     const p = primaryOf(first.x);
@@ -408,7 +431,8 @@ function renderReadout(result, data) {
     rows.push([L('Доза до калибровки относительно дозы после калибровки', 'Dose before calibration relative to the dose after calibration'), ['', signed(tr.preVsNew)], ['', signed(gr.preVsNew)]]);
   } else {
   rows.push([title, [], [], 'group']);
-  if (ctrlFinal) {
+  if (result.ctrl.on) {
+    // контрольные измерения с ошибками: строки остаются, значения — прочерки
     rows.push([rawReadingLabel(), ['', result.ctrl.mean, 4], ['', result.ctrl.mean, 4]]);
     rows.push([correctedReadingLabel(true), ['M<sub>Q</sub>', tc.M, 4, true, bT], ['M', gc.M, 4, true, bG]]);
     rows.push(...doseTableRows(tc, gc, result, zTxt, result.ctrl.mu, [bT, bG], true));
@@ -446,6 +470,7 @@ function reportText(data, r) {
   const cells = (a) => (Array.isArray(a) ? a.filter((x) => String(x).trim() !== '').join('; ') : a);
   out.push(L('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — МВ ФОТОНЫ', 'REFERENCE DOSIMETRY REPORT — MV PHOTONS'));
   line(L('Протокол', 'Protocol'), PROTO[data.protocol].name);
+  line(L('Калькулятор', 'Calculator'), versionText());
   line(L('Учреждение', 'Institution'), data.meta_institution || '—');
   line(L('Аппарат', 'Machine'), data.meta_machine || '—');
   const beamE = parseBeamName(data.meta_beam).energy;
@@ -484,7 +509,7 @@ function reportText(data, r) {
   if (r.ctrl.on) line(L('Контрольные измерения M(V1), нКл', 'Check measurements M(V1), nC'), L(`${cells(data.ctrl_M)} → среднее ${fmt(r.ctrl.mean, 4)} за ${fmt(r.ctrl.mu, 0)} МЕ`, `${cells(data.ctrl_M)} → mean ${fmt(r.ctrl.mean, 4)} for ${fmt(r.ctrl.mu, 0)} MU`));
   if (r.recal.needed) {
     const ans = r.recal.answer === 'yes' ? L('да', 'yes') : r.recal.answer === 'no' ? L('нет', 'no') : L('не указано', 'not specified');
-    line(L('Требуется калибровка (доза вне допуска ±2 %)', 'Calibration required (dose outside the ±2 % tolerance)'), ans);
+    line(L(`Требуется калибровка (доза вне допуска ±${tolText(r)} %)`, `Calibration required (dose outside the ±${tolText(r)} % tolerance)`), ans);
   }
   if (r.recal.on && r.recal.M?.n > 0) line(L('Показания после калибровки M(V1), нКл', 'Readings after calibration M(V1), nC'), L(`${cells(data.recal_M)} → среднее ${fmt(r.recal.mean, 4)} за ${fmt(r.recal.mu, 0)} МЕ`, `${cells(data.recal_M)} → mean ${fmt(r.recal.mean, 4)} for ${fmt(r.recal.mu, 0)} MU`));
   out.push('');
@@ -551,7 +576,10 @@ function reportText(data, r) {
           );
         }
       } else if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (раздел 7)', 'From check measurements (section 7)'), r.ctrl.mu);
-      else describe(x, r.ctrl.on ? L('По показанию M₁ раздела 4 (контрольные измерения содержат ошибки)', 'From reading M₁ of section 4 (the check measurements contain errors)') : L('По показанию M₁ раздела 4 (контрольные измерения не введены)', 'From reading M₁ of section 4 (no check measurements entered)'), r.inputs.mu);
+      else if (r.ctrl.on) out.push(L('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: в контрольных измерениях (раздел 7) ошибки (см. замечания).', 'RESULT NOT CALCULATED: the check measurements (section 7) contain errors (see Messages).'));
+      else describe(x, L('По показанию M₁ раздела 4 (контрольные измерения не введены)', 'From reading M₁ of section 4 (no check measurements entered)'), r.inputs.mu);
+      const cl = complianceLine(r.compliance, PROTO[k].name);
+      if (cl) out.push(cl);
     }
     out.push('');
   }
@@ -585,6 +613,7 @@ function loadDraft() {
 /** Загрузка данных из файла или буфера обмена. Бросает ошибку, если файл не от этого модуля. */
 export function importPhotons(obj) {
   if (!obj || obj.app !== FILE_TAG.app || typeof obj.form !== 'object') throw new Error(L('Это не файл калькулятора референсной дозиметрии.', 'This is not a reference dosimetry calculator file.'));
+  checkFileFormat(obj, FILE_TAG);
   if (obj.module !== FILE_TAG.module) {
     throw new Error(
       L(
@@ -594,11 +623,14 @@ export function importPhotons(obj) {
     );
   }
   writeForm(obj.form);
+  openedFile = obj;
   update();
 }
 
 // ------------------------------------------------------------ цикл
 let current = { data: null, result: null };
+/** Открытый файл: пока форму не меняли, итог сверяется с сохранённым в файле. */
+let openedFile = null;
 function update() {
   // формула (22) и табл. 11 требуют TPR20,10, то есть протокол TRS-398
   if (currentProtocol() === 'tg51' && ['formula22', 'table11'].includes($('#prof_mode').value)) {
@@ -611,6 +643,7 @@ function update() {
   renderInline(result, result.form);
   renderReadout(result, result.form);
   $('#demo-flag').hidden = !isDemo(data);
+  renderFileNote($('#file-note'), openedFile ? compareWithFile(openedFile, snapshot(result), SNAP_CMP) : null);
   saveDraft(result.form);
   renderSignBlock($('#sign'), result.form.meta_staff);
 }
@@ -654,10 +687,12 @@ export function initPhotons() {
 
   const sheet = $('#sheet');
   sheet.addEventListener('input', (e) => {
+    openedFile = null;
     if (e.target.id === 'meta_beam') onBeamInput();
     update();
   });
   sheet.addEventListener('change', (e) => {
+    openedFile = null;
     if (e.target.id === 'ch_model') {
       const id = e.target.value;
       if (id.startsWith('MY:')) fillCustomFields(getMyChambers().find((c) => c.id === id));
@@ -717,6 +752,7 @@ export function initPhotons() {
   });
 
   $('#btn-sample').addEventListener('click', () => {
+    openedFile = null;
     writeForm(sampleData());
     update();
     setStatus(L('Загружен демонстрационный пример (вымышленные данные).', 'Demo example loaded (fictitious data).'));
@@ -724,12 +760,13 @@ export function initPhotons() {
 
   armButton($('#btn-clear'), () => L('Очистить', 'Clear'), () => L('Точно очистить?', 'Clear everything?'), () => {
     writeForm({ ...FORM_DEFAULTS, meta_date: today() });
+    openedFile = null;
     lastBeamFff = null;
     update();
     setStatus(L('Форма очищена.', 'Form cleared.'));
   });
 
-  const payload = () => JSON.stringify({ ...FILE_TAG, savedAt: new Date().toISOString(), form: current.data }, null, 2);
+  const payload = () => JSON.stringify({ ...FILE_TAG, ...fileStamp(snapshot(current.result)), savedAt: new Date().toISOString(), form: current.data }, null, 2);
 
   $('#btn-save').addEventListener('click', () => {
     const name = [current.data.meta_machine, current.data.meta_beam, current.data.meta_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-') || 'photons';

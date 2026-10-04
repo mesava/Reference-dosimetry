@@ -2,9 +2,9 @@
 // Принимает значения полей формы (строки и массивы строк, как их ввёл пользователь) и возвращает
 // все промежуточные поправки, итоговую дозу, замечания с источниками и флаги для подсветки полей.
 
-import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
+import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec, parseBeamName } from './units.js';
 import { L } from './i18n.js';
-import { temperaturePressure, polarity, environmentChecks, outputPlausibility, RECAL_TOL } from './common.js';
+import { temperaturePressure, polarity, environmentChecks, outputPlausibility, readTolerance, complianceOf } from './common.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
 import { findChamber, chamberLabel, noteText } from './chambers.js';
@@ -107,6 +107,7 @@ export const FORM_DEFAULTS = {
   dd_pdd: '',
   dd_tmr: '',
   dd_nominal: '1,000',
+  dd_tol: '2', // допуск учреждения на отклонение от номинала, %
   dd_nominal_at: 'dmax', // где задан номинальный выход: 'dmax' (после пересчёта) | 'zref' (аппарат калибруют на опорной глубине)
 };
 
@@ -209,15 +210,30 @@ export function computePhotons(form) {
   const flag = (key, level) => {
     if (!flags[key] || rank[level] > rank[flags[key]]) flags[key] = level;
   };
-  const add = (level, scope, text, ref = null, field = null) => {
-    messages.push({ level, scope, text, ref });
+  // nonstd — краткая причина, если замечание означает отступление от референсных условий протокола
+  const add = (level, scope, text, ref = null, field = null, nonstd = null) => {
+    messages.push(nonstd ? { level, scope, text, ref, nonstd } : { level, scope, text, ref });
     if (field) [].concat(field).forEach((k) => flag(k, level));
   };
 
   const want51 = f.protocol === 'tg51';
   const wantTRS = !want51;
   const fff = !!f.meta_fff;
-  const energy = parseNumber(f.meta_energy);
+  // номинальная энергия: из поля, а если оно пустое — из названия пучка (в интерфейсе поле заполняется так же)
+  const energy = Number.isFinite(parseNumber(f.meta_energy)) ? parseNumber(f.meta_energy) : parseBeamName(f.meta_beam).energy;
+  // Признак БВФ ставится по названию пучка; если название о фильтре ничего не говорит, напоминаем проверить флажок
+  if (!fff && parseBeamName(f.meta_beam).fff === null) {
+    add(
+      'info',
+      'common',
+      L(
+        'Пучок считается пучком с выравнивающим фильтром. Если это пучок без фильтра (БВФ), отметьте флажок в разделе 1: от него зависят поправка k_vol и проверки качества пучка.',
+        'The beam is treated as a beam with a flattening filter. If it is a flattening-filter-free (FFF) beam, select the checkbox in section 1: the k_vol correction and the beam quality checks depend on it.',
+      ),
+      null,
+      'meta_fff',
+    );
+  }
 
   const emptyField = (label) => L(`Не заполнено поле «${label}».`, `Field "${label}" is empty.`);
   const unreadable = (label) => L(`Не удалось прочитать число в поле «${label}».`, `Could not read a number in field "${label}".`);
@@ -251,6 +267,7 @@ export function computePhotons(form) {
         ),
         `${REF.trs}, табл. 14–15; ${REF.tg51}, разд. IX.A`,
         'setup_ssd',
+        wantTRS ? L(`РИП ${ru(geo.ssd, geo.ssd % 1 ? 1 : 0)} см вместо 100 см`, `SSD ${ru(geo.ssd, geo.ssd % 1 ? 1 : 0)} cm instead of 100 cm`) : null,
       );
     }
     if (!Number.isFinite(geo.field)) read('setup_field', L('Размер поля', 'Field size'));
@@ -266,6 +283,7 @@ export function computePhotons(form) {
         ),
         `${REF.trs}, табл. 15; ${REF.tg51}, разд. IX.A`,
         'setup_field',
+        L(`поле ${ru(geo.field, geo.field % 1 ? 1 : 0)} × ${ru(geo.field, geo.field % 1 ? 1 : 0)} см вместо 10 × 10 см`, `${ru(geo.field, geo.field % 1 ? 1 : 0)} × ${ru(geo.field, geo.field % 1 ? 1 : 0)} cm field instead of 10 × 10 cm`),
       );
     }
     if (!Number.isFinite(geo.depth)) read('setup_depth', L('Глубина камеры', 'Chamber depth'));
@@ -281,6 +299,7 @@ export function computePhotons(form) {
         ),
         `${REF.trs}, табл. 15; ${REF.tg51}, разд. IX.A`,
         'setup_depth',
+        L(`глубина ${ru(geo.depth, geo.depth % 1 ? 1 : 0)} см вместо 10 см`, `depth ${ru(geo.depth, geo.depth % 1 ? 1 : 0)} cm instead of 10 cm`),
       );
     }
   }
@@ -408,6 +427,7 @@ export function computePhotons(form) {
       ),
       `${REF.add}, табл. III; ${REF.trs}, табл. 3`,
       'rd_kleak',
+      L('утечка больше 0,1 %: камера не отвечает критерию эталонного класса', 'leakage above 0.1%: the chamber does not meet the reference-class criterion'),
     );
   }
 
@@ -428,6 +448,7 @@ export function computePhotons(form) {
         ),
         `${REF.trs}, табл. 3; ${REF.add}, табл. III`,
         'kpol',
+        L(`k_pol = ${ru(kpolRaw, 4)}: эффект полярности больше 0,4 % (критерий эталонного класса)`, `k_pol = ${ru(kpolRaw, 4)}: polarity effect above 0.4% (reference-class criterion)`),
       );
     }
     if (Math.abs(kpolRaw - 1) > 0.003 && Number.isFinite(energy) && energy <= 6 && f.lab_pol_applied && want51) {
@@ -560,7 +581,18 @@ export function computePhotons(form) {
     }
     trs.tpr = tpr;
     if (fff && Number.isFinite(energy) && energy > 10) {
-      add('warn', 'trs', L('TRS-398 Rev.1 распространяется на пучки БВФ только до ~10 МВ.', 'TRS-398 Rev.1 covers FFF beams only up to ~10 MV.'), `${REF.trs}, разд. 6.1`);
+      add('warn', 'trs', L('TRS-398 Rev.1 распространяется на пучки БВФ только до ~10 МВ.', 'TRS-398 Rev.1 covers FFF beams only up to ~10 MV.'), `${REF.trs}, разд. 6.1`, null, L(`пучок БВФ ${ru(energy, energy % 1 ? 1 : 0)} МВ: выше ~10 МВ`, `${ru(energy, energy % 1 ? 1 : 0)} MV FFF beam: above ~10 MV`));
+    } else if (fff && !Number.isFinite(energy)) {
+      add(
+        'warn',
+        'trs',
+        L(
+          'Укажите номинальную энергию пучка (раздел 1): TRS-398 Rev.1 распространяется на пучки БВФ только до ~10 МВ, без энергии это не проверить.',
+          'Enter the nominal beam energy (section 1): TRS-398 Rev.1 covers FFF beams only up to ~10 MV, and this cannot be checked without the energy.',
+        ),
+        `${REF.trs}, разд. 6.1`,
+        'meta_energy',
+      );
     }
 
     // оценка TPR20,10 для БВФ по PDD(10) — только для сравнения
@@ -659,11 +691,28 @@ export function computePhotons(form) {
             ),
             `${REF.trs}, разд. 6.5`,
             'kQtrs',
+            L(`k_Q по камере-аналогу ${an}: в TRS-398 Rev.1 нет данных для этой камеры`, `k_Q from the analogue chamber ${an}: TRS-398 Rev.1 has no data for this chamber`),
           );
         }
       }
     }
-    if (!chamber?.custom) (chamber?.notes || []).filter((n) => n.scope === 'trs').forEach((n) => add(n.level, 'trs', noteText(n)));
+    // Камеры, включённые в TRS-398 Rev.1 только для пучков БВФ (табл. 4; табл. 16, прим. b): в пучке БВФ — справка,
+    // в пучке с выравнивающим фильтром — отступление от протокола.
+    if (!chamber?.custom) {
+      for (const n of (chamber?.notes || []).filter((x) => x.scope === 'trs')) {
+        if (n.fffOnly && fff) add('info', 'trs', noteText(n), null, null);
+        else if (n.fffOnly) {
+          add(
+            'warn',
+            'trs',
+            `${noteText(n)} ${L('Для пучков с выравнивающим фильтром TRS-398 Rev.1 её не предусматривает: для них нужна камера эталонного класса.', 'TRS-398 Rev.1 does not provide for it in beams with a flattening filter: a reference-class chamber is needed for them.')}`,
+            `${REF.trs}, табл. 4, 16`,
+            'ch_model',
+            L(`${chamberLabel(chamber)} в пучке с выравнивающим фильтром: камера включена в протокол только для БВФ`, `${chamberLabel(chamber)} in a beam with a flattening filter: the chamber is included in the protocol for FFF beams only`),
+          );
+        } else add(n.level, 'trs', noteText(n));
+      }
+    }
   }
 
   // ------------------------------------------------------------- TG-51
@@ -754,6 +803,7 @@ export function computePhotons(form) {
         L('Для всех пучков БВФ, в том числе ниже 10 МВ, %dd(10) измеряют со свинцовой фольгой.', 'For all FFF beams, including those below 10 MV, %dd(10) is measured with the lead foil.'),
         `${REF.add}, разд. 4.K(3); ${REF.r374}, разд. 3.3`,
         'q51_method',
+        L('%dd(10) пучка БВФ без свинцовой фольги', '%dd(10) of an FFF beam without the lead foil'),
       );
     } else if (f.q51_method === 'interim' && !q.error) {
       add(
@@ -1020,6 +1070,10 @@ export function computePhotons(form) {
   if (!isBlank(f.dd_nominal) && !(depth.nominal > 0)) {
     add('warn', 'common', L('Номинальный выход не распознан: отклонение от номинала не считается.', 'Nominal output not recognized: the deviation from nominal is not calculated.'), null, 'dd_nominal');
   }
+  // допуск учреждения на отклонение от номинала (по умолчанию 2 %)
+  depth.tolerance = readTolerance(f.dd_tol, { add, parseNumber, isBlank, field: 'dd_tol' });
+  const tol = depth.tolerance;
+  const tolTxt = ru(tol, tol % 1 ? 1 : 0);
 
   // ------------------------------------------------------- контрольные измерения
   // Показания при обычной полярности и V₁ после определения поправок (и, возможно, подстройки
@@ -1103,22 +1157,23 @@ export function computePhotons(form) {
     for (const x of [trs.ctrl, tg.ctrl]) if (x) x.blocked = ctrlBlocked || !x.ok;
   }
 
-  // отклонение от номинала оценивается по итоговому результату: по контрольным измерениям, если они есть
+  // Отклонение от номинала оценивается по итоговому результату: по контрольным измерениям, если они есть.
+  // Если контрольные измерения введены, но содержат ошибки, итога нет: подменять его показанием M₁ раздела 4 нельзя.
   const mainBlocked = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
-  const final = (x, scope) => (mainBlocked(scope) ? {} : x.ctrl && !x.ctrl.blocked ? x.ctrl : x);
+  const final = (x, scope) => (mainBlocked(scope) ? {} : x.ctrl ? (x.ctrl.blocked ? {} : x.ctrl) : x);
 
   // ---------------------------------------------- калибровка (подстройка) ускорителя
   // Если доза (по контрольным измерениям, иначе по M₁ раздела 4) отличается от номинального выхода
-  // больше чем на ±2 %, предлагается калибровка. После подстройки снимают новые показания при V₁ и
+  // больше допуска (по умолчанию ±2 %), предлагается калибровка. После подстройки снимают новые показания при V₁ и
   // обычной полярности в той же геометрии; поправки те же, итог — по новым показаниям, прежний
   // результат остаётся для справки.
-  const recal = { tolerance: RECAL_TOL, answer: f.recal_needed === 'yes' || f.recal_needed === 'no' ? f.recal_needed : '' };
+  const recal = { tolerance: tol, answer: f.recal_needed === 'yes' || f.recal_needed === 'no' ? f.recal_needed : '' };
   const pre = { trs: wantTRS ? final(trs, 'trs') : {}, tg51: want51 ? final(tg, 'tg51') : {} };
   recal.preDeviation = [pre.trs.deviation, pre.tg51.deviation].filter(Number.isFinite);
-  recal.needed = recal.preDeviation.some((d) => Math.abs(d) > RECAL_TOL);
+  recal.needed = recal.preDeviation.some((d) => Math.abs(d) > tol);
   recal.on = recal.needed && recal.answer === 'yes';
   if (recal.needed && !recal.answer) {
-    add('info', 'recal', L('Доза отличается от номинального выхода больше чем на ±2 %: ответьте в разделе 9, требуется ли калибровка.', 'The dose differs from the nominal output by more than ±2%: answer in section 9 whether calibration is required.'), null, 'recal_needed');
+    add('info', 'recal', L(`Доза отличается от номинального выхода больше чем на ±${tolTxt} %: ответьте в разделе 9, требуется ли калибровка.`, `The dose differs from the nominal output by more than ±${tolTxt}%: answer in section 9 whether calibration is required.`), null, 'recal_needed');
   }
   if (recal.on) {
     const s = parseCells(f.recal_M);
@@ -1164,7 +1219,7 @@ export function computePhotons(form) {
     const y = actual(x, scope);
     if (Number.isFinite(y.DperMU)) finals.push({ x: y, units: y.units });
   }
-  outputPlausibility(finals, { add, ru, muSections: L('разделы 4 и 7', 'sections 4 and 7'), zrefText: L(`(${ru(zref, 0)} см)`, `(${ru(zref, 0)} cm)`) });
+  outputPlausibility(finals, { add, ru, tol, muSections: L('разделы 4 и 7', 'sections 4 and 7'), zrefText: L(`(${ru(zref, 0)} см)`, `(${ru(zref, 0)} cm)`) });
 
   const hasError = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
   const noDose = () => L('Не удалось вычислить дозу: проверьте качество пучка и k_Q.', 'Could not calculate the dose: check the beam quality and k_Q.');
@@ -1180,6 +1235,10 @@ export function computePhotons(form) {
   if (trs.recal) trs.recal.blocked = trs.recal.blocked || trs.blocked;
   if (tg.recal) tg.recal.blocked = tg.recal.blocked || tg.blocked;
 
+  // соответствие референсным условиям выбранного протокола
+  const activeKey = wantTRS ? 'trs' : 'tg51';
+  const shown = actual(wantTRS ? trs : tg, activeKey);
+  const compliance = complianceOf(messages, activeKey, Number.isFinite(shown.DperMU));
 
   return {
     protocol: f.protocol,
@@ -1188,6 +1247,7 @@ export function computePhotons(form) {
     geometry: geo,
     ctrl,
     recal,
+    compliance,
     inputs: { H: env.H,
       T, P, T0, P0, mu, V1, V2, nV, ndw, ndwRaw, klab, ndwEff, kelec, kleak, energy, fff,
       M1, Mopp, M2, ratio12, lengthMm, sddCm,

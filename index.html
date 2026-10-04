@@ -417,7 +417,9 @@
     <section class="display" aria-live="polite">
       <h2>Мощность поглощённой дозы в воде</h2>
       <p class="demo-flag" id="co-demo-flag" hidden>Сейчас загружен демонстрационный пример: значения вымышленные.</p>
+      <p class="file-note" id="co-file-note" hidden></p>
       <div class="dose-rows" id="co-dose-rows"></div>
+      <div class="compliance" id="co-compliance" hidden></div>
     </section>
 
     <section class="panel">
@@ -860,6 +862,7 @@
           <select id="dd_nominal_at"><option value="dmax">на d_max (после пересчёта)</option><option value="zref">на опорной глубине — аппарат калибруют на 10 см</option></select>
           <span class="sub" id="dd-nominal-sub"></span>
         </div>
+        <div class="field"><label for="dd_tol">Допуск, ±&nbsp;%</label><input type="text" id="dd_tol" class="num" inputmode="decimal" placeholder="2"><span class="sub">на отклонение от номинала; по умолчанию 2 %, при большем отклонении появится раздел 9</span></div>
       </div>
     </section>
 
@@ -908,7 +911,9 @@
     <section class="display" aria-live="polite">
       <h2 id="display-title">Поглощённая доза в воде</h2>
       <p class="demo-flag" id="demo-flag" hidden>Сейчас загружен демонстрационный пример: значения вымышленные.</p>
+      <p class="file-note" id="file-note" hidden></p>
       <div class="dose-rows" id="dose-rows"></div>
+      <div class="compliance" id="compliance" hidden></div>
     </section>
 
     <section class="panel">
@@ -1287,6 +1292,7 @@
           <select id="e_nominal_at"><option value="zmax">на z_max (после пересчёта)</option><option value="zref">на опорной глубине z_ref</option></select>
           <span class="sub" id="e-nominal-sub"></span>
         </div>
+        <div class="field"><label for="e_tol">Допуск, ±&nbsp;%</label><input type="text" id="e_tol" class="num" inputmode="decimal" placeholder="2"><span class="sub">на отклонение от номинала; по умолчанию 2 %, при большем отклонении появится раздел 9</span></div>
       </div>
     </section>
 
@@ -1337,7 +1343,9 @@
     <section class="display" aria-live="polite">
       <h2>Поглощённая доза в воде</h2>
       <p class="demo-flag" id="e-demo-flag" hidden>Сейчас загружен демонстрационный пример: значения вымышленные.</p>
+      <p class="file-note" id="e-file-note" hidden></p>
       <div class="dose-rows" id="e-dose-rows"></div>
+      <div class="compliance" id="e-compliance" hidden></div>
     </section>
     <section class="panel">
       <h2>Замечания</h2>

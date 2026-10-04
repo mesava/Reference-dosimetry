@@ -1,5 +1,6 @@
 // Общие вспомогательные функции интерфейса.
 import { L, getLang } from '../core/i18n.js';
+import { APP_VERSION, APP_DATE } from '../core/version.js';
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -197,8 +198,46 @@ export function armButton(btn, idleText, armedText, action) {
 export function doseGroupTitle({ ctrlOn, ctrlFinal, mainSec, ctrlSec, mainAmount, ctrlAmount }) {
   if (ctrlFinal) return L(`Поглощённая доза — по контрольным измерениям (раздел ${ctrlSec}), ${ctrlAmount}`, `Absorbed dose — from check measurements (section ${ctrlSec}), ${ctrlAmount}`);
   return ctrlOn
-    ? L(`Поглощённая доза — по показанию M₁ раздела ${mainSec}, ${mainAmount}: контрольные измерения содержат ошибки`, `Absorbed dose — from reading M₁ of section ${mainSec}, ${mainAmount}: the check measurements contain errors`)
+    ? L(`Поглощённая доза — по контрольным измерениям (раздел ${ctrlSec}): не вычислена, в контрольных измерениях ошибки`, `Absorbed dose — from check measurements (section ${ctrlSec}): not calculated, the check measurements contain errors`)
     : L(`Поглощённая доза — по показанию M₁ раздела ${mainSec}, ${mainAmount} (контрольные измерения не введены)`, `Absorbed dose — from reading M₁ of section ${mainSec}, ${mainAmount} (no check measurements entered)`);
+}
+
+/** Текст под итогом, когда контрольные измерения введены с ошибками: итог не показывается. */
+export const ctrlErrorText = (ctrlSec, mainSec) =>
+  L(
+    `В контрольных измерениях (раздел ${ctrlSec}) ошибки — итог не показан, пока их не исправить. Поправки по разделу ${mainSec} посчитаны.`,
+    `The check measurements (section ${ctrlSec}) contain errors — the result is not shown until they are corrected. The corrections from section ${mainSec} have been calculated.`,
+  );
+
+/**
+ * Блок «соответствие протоколу» под итоговой дозой: нет отступлений / нестандартные условия со списком причин.
+ * Если итога нет (ошибки), блок скрыт.
+ */
+export function renderCompliance(el, compliance, protoName) {
+  if (!el) return;
+  const c = compliance || { status: 'invalid', reasons: [] };
+  el.hidden = c.status === 'invalid';
+  if (el.hidden) return;
+  if (c.status === 'standard') {
+    el.className = 'compliance ok';
+    el.innerHTML = `<b>${L('Референсные условия', 'Reference conditions')}</b>: ${esc(L(`отступлений от условий ${protoName} не найдено.`, `no deviations from the ${protoName} conditions were found.`))}`;
+  } else {
+    el.className = 'compliance nonstd';
+    el.innerHTML =
+      `<b>${L('Нестандартные условия', 'Non-standard conditions')}</b>: ${esc(L(`результат нельзя считать референсной дозиметрией по ${protoName}.`, `the result cannot be regarded as reference dosimetry per ${protoName}.`))}` +
+      `<ul>${c.reasons.map((r) => `<li>${esc(r.text)}</li>`).join('')}</ul>`;
+  }
+}
+
+/** Строка протокола (текст и PDF) о соответствии референсным условиям. */
+export function complianceLine(compliance, protoName) {
+  const c = compliance || { status: 'invalid', reasons: [] };
+  if (c.status === 'invalid') return null;
+  if (c.status === 'standard') return L(`Референсные условия: отступлений от условий ${protoName} не найдено`, `Reference conditions: no deviations from the ${protoName} conditions were found`);
+  return L(
+    `НЕСТАНДАРТНЫЕ УСЛОВИЯ — результат нельзя считать референсной дозиметрией по ${protoName}: ${c.reasons.map((r) => r.text).join('; ')}`,
+    `NON-STANDARD CONDITIONS — the result cannot be regarded as reference dosimetry per ${protoName}: ${c.reasons.map((r) => r.text).join('; ')}`,
+  );
 }
 
 /** Подписи строк с показаниями в таблице. */
@@ -222,12 +261,21 @@ export function localizeDemo(ruSample, enOverlay) {
   }
 }
 
+/** Версия калькулятора с датой выпуска — для протокола и сохранённых файлов. */
+export const versionText = () => L(`версия ${APP_VERSION} от ${dateText(APP_DATE)}`, `version ${APP_VERSION} of ${dateText(APP_DATE)}`);
+const dateText = (iso) => {
+  const [y, m, d] = String(iso).split('-');
+  return getLang() === 'en' ? `${y}-${m}-${d}` : `${d}.${m}.${y}`;
+};
+
 export function renderSignBlock(el, staff) {
   if (!el) return;
   const note = document.querySelector('.page-foot p')?.textContent?.trim() ?? '';
   const names = Array.isArray(staff) && staff.length ? staff : [''];
+  const ver = L(`Расчёт: калькулятор «Референсная дозиметрия», ${versionText()}, https://mesava.github.io/Reference-dosimetry/`, `Calculation: Reference Dosimetry calculator, ${versionText()}, https://mesava.github.io/Reference-dosimetry/`);
   el.innerHTML =
     (note ? `<p class="disclaimer">${esc(note)}</p>` : '') +
+    `<p class="disclaimer">${esc(ver)}</p>` +
     '<table><tbody>' +
     names
       .map(
@@ -252,4 +300,65 @@ export function printToPdf(fileTitle, setStatus) {
   };
   window.addEventListener('afterprint', restore);
   window.print();
+}
+
+// ------------------------------------------------------------ сохранённые файлы: версия и итог
+/** Поля, которые добавляются в сохраняемый файл: версия калькулятора и итоговый результат на момент сохранения. */
+export const fileStamp = (snapshot) => ({ appVersion: APP_VERSION, appDate: APP_DATE, result: snapshot });
+
+/** Файл сохранён более новым форматом, чем понимает эта версия: открывать нельзя, чтобы не истолковать данные неверно. */
+export function checkFileFormat(obj, tag) {
+  const v = Number(obj.version);
+  if (Number.isFinite(v) && v > tag.version) {
+    throw new Error(
+      L(
+        `Файл сохранён более новой версией калькулятора (формат файла ${v}, эта страница понимает до ${tag.version}): обновите страницу (Ctrl+F5) и откройте файл снова.`,
+        `The file was saved by a newer version of the calculator (file format ${v}; this page supports up to ${tag.version}): reload the page (Ctrl+F5) and open the file again.`,
+      ),
+    );
+  }
+}
+
+/**
+ * Сравнение итога из файла с пересчётом текущей версией.
+ * keys — величины для сравнения; main — главная из них (для текста); unit — подпись единиц.
+ * Возвращает { kind: 'same' | 'diff' | 'none', text }.
+ */
+export function compareWithFile(obj, now, { keys, main, unit, digits = 4 }) {
+  const ver = obj.appVersion ? L(`версией ${obj.appVersion}${obj.appDate ? ` от ${dateText(obj.appDate)}` : ''}`, `by version ${obj.appVersion}${obj.appDate ? ` of ${dateText(obj.appDate)}` : ''}`) : L('ранней версией калькулятора', 'by an early version of the calculator');
+  const saved = obj.result;
+  if (!saved || typeof saved !== 'object') {
+    return { kind: 'none', text: L(`Файл сохранён ${ver} без итогового результата: показан пересчёт текущей версией (${APP_VERSION}), сравнить его с сохранённым нельзя.`, `The file was saved ${ver} without the final result: the recalculation by the current version (${APP_VERSION}) is shown and cannot be compared with a saved value.`) };
+  }
+  const fin = (v) => typeof v === 'number' && Number.isFinite(v);
+  if (!fin(saved[main]) || !fin(now?.[main])) {
+    if (!fin(saved[main]) && !fin(now?.[main])) return { kind: 'same', text: L(`Файл сохранён ${ver}. Итог не вычислен ни при сохранении, ни сейчас.`, `The file was saved ${ver}. The result was not calculated either when saved or now.`) };
+    return {
+      kind: 'diff',
+      text: fin(saved[main])
+        ? L(`Файл сохранён ${ver} с итогом ${fmt(saved[main], digits)} ${unit}; текущая версия (${APP_VERSION}) итог не вычислила — см. замечания.`, `The file was saved ${ver} with the result ${fmt(saved[main], digits)} ${unit}; the current version (${APP_VERSION}) did not calculate a result — see Messages.`)
+        : L(`Файл сохранён ${ver} без итога (были ошибки); текущая версия (${APP_VERSION}) итог вычислила.`, `The file was saved ${ver} without a result (there were errors); the current version (${APP_VERSION}) calculated a result.`),
+    };
+  }
+  const changed = keys.filter((k) => fin(saved[k]) !== fin(now[k]) || (fin(saved[k]) && Math.abs(now[k] / saved[k] - 1) > 1e-9));
+  if (!changed.length) return { kind: 'same', text: L(`Файл сохранён ${ver}. Пересчёт текущей версией (${APP_VERSION}) совпадает с сохранённым итогом.`, `The file was saved ${ver}. The recalculation by the current version (${APP_VERSION}) matches the saved result.`) };
+  const a = saved[main];
+  const b = now[main];
+  const d = (b / a - 1) * 100;
+  return {
+    kind: 'diff',
+    text:
+      Math.abs(b / a - 1) > 1e-9
+        ? L(`Файл сохранён ${ver}. Пересчёт текущей версией (${APP_VERSION}) отличается: было ${fmt(a, digits)}, стало ${fmt(b, digits)} ${unit} (${fmtSigned(d, 3)} %). Расчёт в новой версии изменился — проверьте замечания и при необходимости историю изменений.`, `The file was saved ${ver}. The recalculation by the current version (${APP_VERSION}) differs: it was ${fmt(a, digits)}, now ${fmt(b, digits)} ${unit} (${fmtSigned(d, 3)} %). The calculation has changed in the new version — check the messages and, if needed, the change history.`)
+        : L(`Файл сохранён ${ver}. Итог совпадает, но изменились промежуточные величины (${changed.join(', ')}).`, `The file was saved ${ver}. The result matches, but intermediate quantities changed (${changed.join(', ')}).`),
+  };
+}
+
+/** Заметка о сверке открытого файла: показывается, пока форму не меняли. */
+export function renderFileNote(el, note) {
+  if (!el) return;
+  el.hidden = !note;
+  if (!note) return;
+  el.className = `file-note ${note.kind}`;
+  el.textContent = note.text;
 }

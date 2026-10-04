@@ -312,6 +312,8 @@ export const STATIC_EN = {
   "<button type=\"button\" class=\"term\" data-term=\"pdd\">Пересчёт на d<sub>max</sub></button> и номинальный выход": "<button type=\"button\" class=\"term\" data-term=\"pdd\">Transfer to d<sub>max</sub></button> and nominal output",
   "Номинальный выход, Гр на 100 МЕ": "Nominal output, Gy per 100 MU",
   "= сГр/МЕ; для отклонения, можно не заполнять": "= cGy/MU; for the deviation, optional",
+  "Допуск, ±&nbsp;%": "Tolerance, ±&nbsp;%",
+  "на отклонение от номинала; по умолчанию 2 %, при большем отклонении появится раздел 9": "for the deviation from nominal; 2 % by default, a larger deviation brings up section 9",
   "Номинальный выход задан": "Nominal output is defined",
   "на d_max (после пересчёта)": "at d_max (after transfer)",
   "на опорной глубине — аппарат калибруют на 10 см": "at the reference depth — the machine is calibrated at 10 cm",

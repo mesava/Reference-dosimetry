@@ -293,12 +293,19 @@ details.more[open] summary { margin-bottom: 10px; }
 .display h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--display-dim); font-weight: 500; }
 .dose-rows { display: grid; gap: 16px; }
 .demo-flag { margin: 0; font-size: 12px; color: var(--amber); border: 1px dashed currentColor; border-radius: var(--radius); padding: 4px 8px; }
+.file-note { margin: 0; font-size: 12px; color: var(--display-dim); border: 1px solid currentColor; border-radius: var(--radius); padding: 4px 8px; }
+.file-note.diff { color: var(--amber); }
 .dose-row { display: grid; gap: 4px; }
 .dose-row .proto { font: 500 13px var(--font-display); color: var(--display-dim); display: flex; justify-content: space-between; gap: 8px; }
 .dose-big { font: 500 34px/1.1 var(--font-mono); color: var(--amber); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .dose-big small { font-size: 14px; color: var(--display-dim); margin-left: 8px; letter-spacing: 0; }
 .dose-row .secondary { font: 13px var(--font-mono); color: var(--display-dim); font-variant-numeric: tabular-nums; }
 .dose-row.blocked .dose-big { color: var(--display-dim); }
+.compliance { font: 12.5px/1.45 var(--font-body); padding: 6px 10px; border-left: 3px solid currentColor; border-radius: 4px; background: rgba(255, 255, 255, 0.04); }
+.compliance b { font-weight: 600; }
+.compliance ul { margin: 4px 0 0; padding-left: 18px; }
+.compliance.ok { color: #7ee0a8; }
+.compliance.nonstd { color: var(--amber); }
 .chip {
   display: inline-block;
   font: 500 12px var(--font-mono);
@@ -396,6 +403,8 @@ footer.page-foot p { max-width: 90ch; }
   input, select, textarea { border: 0; padding: 0; background: none; height: auto; }
   .print-only { display: block; }
   .demo-flag { color: #000; }
+  .file-note { color: #000 !important; }
+  .compliance { color: #000 !important; background: none; border-left-color: #777; }
   /* компактная раскладка: меньше пустого места и страниц */
   /* сетка мешает разрывам страниц внутри разделов — в печати блоки идут потоком */
   .sheet, .readout { display: block; }

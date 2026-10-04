@@ -6,7 +6,7 @@
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
 import { L } from './i18n.js';
-import { temperaturePressure, polarity, environmentChecks } from './common.js';
+import { temperaturePressure, polarity, environmentChecks, complianceOf } from './common.js';
 import { resolveCoChamber, matchCoChamberByName } from './co60-chambers.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
@@ -186,8 +186,9 @@ export function computeCobalt(form) {
   const flag = (key, level) => {
     if (!flags[key] || rank[level] > rank[flags[key]]) flags[key] = level;
   };
-  const add = (level, scope, text, ref = null, field = null) => {
-    messages.push({ level, scope, text, ref });
+  // nonstd — краткая причина, если замечание означает отступление от референсных условий протокола
+  const add = (level, scope, text, ref = null, field = null, nonstd = null) => {
+    messages.push(nonstd ? { level, scope, text, ref, nonstd } : { level, scope, text, ref });
     if (field) [].concat(field).forEach((k) => flag(k, level));
   };
   const read = (key, label, scope = 'common') => {
@@ -219,12 +220,12 @@ export function computeCobalt(form) {
   if (Number.isFinite(distance)) {
     if (distance < 50 || distance > 150) add('error', 'common', L('Расстояние задаётся в сантиметрах (обычно 80 или 100).', 'The distance is entered in centimeters (usually 80 or 100).'), null, 'co_distance');
     else if (distance !== 80 && distance !== 100) {
-      add('info', 'common', L('TRS-398 задаёт РИП или РИК 80 или 100 см — то, что используется клинически.', 'TRS-398 specifies an SSD or SCD of 80 or 100 cm, whichever is used clinically.'), `${REF.trs}, табл. 12`, 'co_distance');
+      add('info', 'common', L('TRS-398 задаёт РИП или РИК 80 или 100 см — то, что используется клинически.', 'TRS-398 specifies an SSD or SCD of 80 or 100 cm, whichever is used clinically.'), `${REF.trs}, табл. 12`, 'co_distance', wantTRS ? L(`расстояние ${ru(distance, distance % 1 ? 1 : 0)} см вместо 80 или 100 см`, `distance ${ru(distance, distance % 1 ? 1 : 0)} cm instead of 80 or 100 cm`) : null);
     }
   }
   const zref = parseNumber(f.co_zref);
   if (want51 && zref !== 10) {
-    add('warn', 'tg51', L('TG-51 определяет дозу на глубине 10 см: для z_ref = 5 г/см² считайте по TRS-398 или выберите 10 г/см².', 'TG-51 specifies the dose at a depth of 10 cm: for z_ref = 5 g/cm², use TRS-398 or select 10 g/cm².'), `${REF.tg51}, разд. IX.A`, 'co_zref');
+    add('warn', 'tg51', L('TG-51 определяет дозу на глубине 10 см: для z_ref = 5 г/см² считайте по TRS-398 или выберите 10 г/см².', 'TG-51 specifies the dose at a depth of 10 cm: for z_ref = 5 g/cm², use TRS-398 or select 10 g/cm².'), `${REF.tg51}, разд. IX.A`, 'co_zref', L(`z_ref = ${ru(zref, 0)} г/см² вместо 10 г/см²`, `z_ref = ${ru(zref, 0)} g/cm² instead of 10 g/cm²`));
   }
 
   // ---------------------------------------------------------------- камера
@@ -234,7 +235,7 @@ export function computeCobalt(form) {
     add('info', 'trs', L('Плоскопараллельную камеру можно использовать в пучке ⁶⁰Co, если она откалибрована в пучке того же качества. Опорная точка — внутренняя поверхность входного окна, в центре окна.', 'A plane-parallel chamber may be used in a ⁶⁰Co beam if it was calibrated in a beam of the same quality. The reference point is the inner surface of the entrance window, at its center.'), `${REF.trs}, разд. 5.2.1, сноска 29`);
   }
   if (chamber?.sleeve) add('info', 'common', L('Камера не водонепроницаема: используйте тот же чехол (ПММА ≤ 1 мм), что и при калибровке.', 'The chamber is not waterproof: use the same waterproofing sleeve (PMMA ≤ 1 mm) as at calibration.'), `${REF.trs}, разд. 4.2.4; ${REF.tg51}, разд. V.A`);
-  if (chamber?.notReferenceClass) add('info', 'common', L('По TRS-398 Rev.1 (табл. 4) камера не отвечает спецификации эталонного класса: для калибровки пучка лучше использовать камеру эталонного класса.', 'According to TRS-398 Rev.1 (Table 4), this chamber does not meet the reference-class specification: a reference-class chamber is preferable for beam calibration.'), `${REF.trs}, табл. 4`);
+  if (chamber?.notReferenceClass) add('info', 'common', L('По TRS-398 Rev.1 (табл. 4) камера не отвечает спецификации эталонного класса: для калибровки пучка лучше использовать камеру эталонного класса.', 'According to TRS-398 Rev.1 (Table 4), this chamber does not meet the reference-class specification: a reference-class chamber is preferable for beam calibration.'), `${REF.trs}, табл. 4`, null, L('камера не эталонного класса (TRS-398 Rev.1, табл. 4)', 'chamber not of reference class (TRS-398 Rev.1, Table 4)'));
   const ndwRaw = read('co_ndw', 'N_D,w');
   const ndw = Number.isFinite(ndwRaw) ? ndwToGyPerNC(ndwRaw, f.co_ndw_unit) : NaN;
   if (Number.isFinite(ndw) && (ndw < 1e-3 || ndw > 5)) {
@@ -317,7 +318,7 @@ export function computeCobalt(form) {
   spread(Mopp, L('обратной полярности', 'at opposite polarity'), 'co_Mopp');
   spread(M2, L('при V₂', 'at V₂'), 'co_M2');
   const kleak = read('co_kleak', L('Поправка на утечку', 'Leakage correction'));
-  if (Number.isFinite(kleak) && Math.abs(kleak - 1) > 0.001) add('warn', 'common', L('Утечка больше 0,1 % показания: причину нужно выяснить.', 'Leakage exceeds 0.1 % of the reading: the cause must be found.'), `${REF.add}, табл. III; ${REF.trs}, табл. 3`, 'co_kleak');
+  if (Number.isFinite(kleak) && Math.abs(kleak - 1) > 0.001) add('warn', 'common', L('Утечка больше 0,1 % показания: причину нужно выяснить.', 'Leakage exceeds 0.1 % of the reading: the cause must be found.'), `${REF.add}, табл. III; ${REF.trs}, табл. 3`, 'co_kleak', L('утечка больше 0,1 %: камера не отвечает критерию эталонного класса', 'leakage above 0.1 %: the chamber does not meet the reference-class criterion'));
 
   const readingsOk = M1.n > 0 && !M1.error && M1.mean !== 0;
   const m1 = readingsOk ? Math.abs(M1.mean) : NaN;
@@ -325,7 +326,7 @@ export function computeCobalt(form) {
   if (readingsOk && Mopp.n > 0 && !Mopp.error) {
     kpolRaw = polarity(M1.mean, Mopp.mean);
     if (Math.abs(kpolRaw - 1) > 0.004) {
-      add('warn', 'common', L(`k_pol = ${ru(kpolRaw, 4)} выходит за пределы 1 ± 0,004: для камеры эталонного класса эффект полярности должен быть меньше 0,4 %.`, `k_pol = ${ru(kpolRaw, 4)} is outside 1 ± 0.004: for a reference-class chamber the polarity effect should be below 0.4 %.`), `${REF.trs}, табл. 3; ${REF.add}, табл. III`, 'kpol');
+      add('warn', 'common', L(`k_pol = ${ru(kpolRaw, 4)} выходит за пределы 1 ± 0,004: для камеры эталонного класса эффект полярности должен быть меньше 0,4 %.`, `k_pol = ${ru(kpolRaw, 4)} is outside 1 ± 0.004: for a reference-class chamber the polarity effect should be below 0.4 %.`), `${REF.trs}, табл. 3; ${REF.add}, табл. III`, 'kpol', L(`k_pol = ${ru(kpolRaw, 4)}: эффект полярности больше 0,4 % (критерий эталонного класса)`, `k_pol = ${ru(kpolRaw, 4)}: polarity effect above 0.4 % (reference-class criterion)`));
     }
   }
   let kpolQ0 = 1;
@@ -529,11 +530,17 @@ export function computeCobalt(form) {
   if (trs.ctrl) trs.ctrl.blocked = trs.ctrl.blocked || trs.blocked;
   if (tg.ctrl) tg.ctrl.blocked = tg.ctrl.blocked || tg.blocked;
 
+  // соответствие референсным условиям выбранного протокола; если контрольные измерения введены с ошибками, итога нет
+  const activeKey = wantTRS ? 'trs' : 'tg51';
+  const ax = wantTRS ? trs : tg;
+  const shown = ax.blocked ? {} : ctrl.on ? (ax.ctrl && !ax.ctrl.blocked ? ax.ctrl : {}) : ax;
+  const compliance = complianceOf(messages, activeKey, Number.isFinite(shown.rate));
 
   return {
     protocol: f.protocol,
     form: f,
     chamber,
+    compliance,
     inputs: { T, P, H: env.H, T0, P0, V1, V2, nV, ndw, kelec, kleak, M1, Mopp, M2, ratio12, tSet, tEff, tEffMin, unitLabel, distance, zref },
     timer,
     ctrl,

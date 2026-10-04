@@ -6,7 +6,7 @@
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
 import { L } from './i18n.js';
-import { temperaturePressure, polarity, environmentChecks, outputPlausibility, RECAL_TOL } from './common.js';
+import { temperaturePressure, polarity, environmentChecks, outputPlausibility, readTolerance, complianceOf } from './common.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
 import { findEChamber, eChamberLabel, interpE, kQprime385, trsFit, R385_RANGE } from './electron-chambers.js';
@@ -82,6 +82,7 @@ export const E_DEFAULTS = {
   e_zmax: '',
   e_pdd: '',
   e_nominal: '1,000',
+  e_tol: '2', // допуск учреждения на отклонение от номинала, %
   e_nominal_at: 'zmax', // где задан номинальный выход: 'zmax' (после пересчёта) | 'zref'
 };
 
@@ -202,8 +203,9 @@ export function computeElectrons(form) {
   const flag = (key, level) => {
     if (!flags[key] || rank[level] > rank[flags[key]]) flags[key] = level;
   };
-  const add = (level, scope, text, ref = null, field = null) => {
-    messages.push({ level, scope, text, ref });
+  // nonstd — краткая причина, если замечание означает отступление от референсных условий протокола
+  const add = (level, scope, text, ref = null, field = null, nonstd = null) => {
+    messages.push(nonstd ? { level, scope, text, ref, nonstd } : { level, scope, text, ref });
     if (field) [].concat(field).forEach((k) => flag(k, level));
   };
   const read = (key, label, scope = 'common') => {
@@ -230,8 +232,9 @@ export function computeElectrons(form) {
   if (Number.isFinite(ssd)) {
     if (ssd < 50 || ssd > 150) add('error', 'common', L('РИП задаётся в сантиметрах (обычно 100).', 'SSD is entered in centimeters (usually 100).'), null, 'e_ssd');
     else {
-      if (wantTRS && Math.abs(ssd - 100) > 1e-9) add('warn', 'trs', L('TRS-398 задаёт РИП 100 см.', 'TRS-398 specifies an SSD of 100 cm.'), `${REF.trs}, табл. 19`, 'e_ssd');
-      if (want51 && (ssd < 90 || ssd > 110)) add('warn', 'tg51', L('Report 385 допускает для референсных измерений РИП от 90 до 110 см.', 'Report 385 allows an SSD of 90 to 110 cm for reference measurements.'), `${REF.r385}, разд. 3`, 'e_ssd');
+      const ssdTxt = ru(ssd, ssd % 1 ? 1 : 0);
+      if (wantTRS && Math.abs(ssd - 100) > 1e-9) add('warn', 'trs', L('TRS-398 задаёт РИП 100 см.', 'TRS-398 specifies an SSD of 100 cm.'), `${REF.trs}, табл. 19`, 'e_ssd', L(`РИП ${ssdTxt} см вместо 100 см`, `SSD ${ssdTxt} cm instead of 100 cm`));
+      if (want51 && (ssd < 90 || ssd > 110)) add('warn', 'tg51', L('Report 385 допускает для референсных измерений РИП от 90 до 110 см.', 'Report 385 allows an SSD of 90 to 110 cm for reference measurements.'), `${REF.r385}, разд. 3`, 'e_ssd', L(`РИП ${ssdTxt} см вне 90–110 см`, `SSD ${ssdTxt} cm outside 90–110 cm`));
       else if (want51 && Math.abs(ssd - 100) > 1e-9) {
         add('info', 'tg51', L(
           'РИП должно совпадать с тем, при котором вводилась в эксплуатацию система планирования; R50 всё равно измеряют при РИП 100 см.',
@@ -243,7 +246,7 @@ export function computeElectrons(form) {
   const field = read('e_field', L('Размер поля', 'Field size'));
   if (Number.isFinite(field)) {
     if (field < 2 || field > 40) add('error', 'common', L('Размер поля задаётся одним числом в сантиметрах, например 10.', 'Field size is entered as a single number in centimeters, e.g. 10.'), null, 'e_field');
-    else if (field < 10) add('warn', 'common', L('Поле на поверхности фантома должно быть не меньше 10 × 10 см.', 'The field at the phantom surface must be at least 10 × 10 cm.'), `${REF.trs}, табл. 19; ${REF.r385}, разд. 3`, 'e_field');
+    else if (field < 10) add('warn', 'common', L('Поле на поверхности фантома должно быть не меньше 10 × 10 см.', 'The field at the phantom surface must be at least 10 × 10 cm.'), `${REF.trs}, табл. 19; ${REF.r385}, разд. 3`, 'e_field', L(`поле ${ru(field, field % 1 ? 1 : 0)} × ${ru(field, field % 1 ? 1 : 0)} см меньше 10 × 10 см`, `${ru(field, field % 1 ? 1 : 0)} × ${ru(field, field % 1 ? 1 : 0)} cm field smaller than 10 × 10 cm`));
   }
 
   // ---------------------------------------------------------- качество пучка
@@ -282,7 +285,7 @@ export function computeElectrons(form) {
     add('warn', 'common', L(
       'Для камеры не из списка k_Q берётся только вручную (например, измеренный в лаборатории). Report 385 не рекомендует для электронов камеры, которых нет в его таблицах.',
       'For a chamber not in the list, k_Q can only be entered manually (e.g. measured by a calibration laboratory). Report 385 does not recommend chambers absent from its tables for electron beams.',
-    ), `${REF.r385}, разд. 6.6; ${REF.trs}, табл. 20–21`);
+    ), `${REF.r385}, разд. 6.6; ${REF.trs}, табл. 20–21`, null, want51 ? L('камера не из таблиц Report 385', 'chamber not in the Report 385 tables') : null);
     if (chamber.type === 'cyl' && !Number.isFinite(chamber.trsRcylMm) && wantTRS) {
       add('warn', 'trs', L(
         'Укажите радиус полости: по TRS-398 центр цилиндрической камеры ставят на 0,5·r_cyl глубже z_ref.',
@@ -380,12 +383,12 @@ export function computeElectrons(form) {
     else if (d > 0.001) add('info', scope, L(`Разброс показаний ${label} до ${pct} % от среднего: Report 374 советует повторять облучения, пока отклонение не станет меньше ±0,1 % без тренда.`, `Spread of readings ${label} up to ${pct} % of the mean: Report 374 recommends repeating exposures until the deviation is below ±0.1 % with no trend.`), `${REF.r374}, разд. 4.4.2`, key);
   }
   const kleak = read('e_kleak', L('Поправка на утечку', 'Leakage correction'));
-  if (Number.isFinite(kleak) && Math.abs(kleak - 1) > 0.001) add('warn', 'common', L('Утечка больше 0,1 % показания: причину нужно выяснить.', 'Leakage exceeds 0.1 % of the reading: the cause must be found.'), `${REF.r385}, табл. A1; ${REF.trs}, табл. 3`, 'e_kleak');
+  if (Number.isFinite(kleak) && Math.abs(kleak - 1) > 0.001) add('warn', 'common', L('Утечка больше 0,1 % показания: причину нужно выяснить.', 'Leakage exceeds 0.1 % of the reading: the cause must be found.'), `${REF.r385}, табл. A1; ${REF.trs}, табл. 3`, 'e_kleak', L('утечка больше 0,1 %: камера не отвечает критерию эталонного класса', 'leakage above 0.1 %: the chamber does not meet the reference-class criterion'));
 
   const seriesOk = (x) => x && x.n > 0 && !x.error && x.mean !== 0;
   const checkPolarity = (value, name, scope, flagKey) => {
     const d = Math.abs(value - 1);
-    if (d > 0.02) add('warn', scope, L(`${name} = ${ru(value, 4)}: эффект полярности больше 2 % — больше, чем допускает Report 385 для камеры эталонного класса. Проверьте камеру, кабель и время стабилизации.`, `${name} = ${ru(value, 4)}: the polarity effect exceeds 2 %, more than Report 385 allows for a reference-class chamber. Check the chamber, the cable and the stabilization time.`), `${REF.r385}, табл. A1; ${REF.trs}, табл. 3`, flagKey);
+    if (d > 0.02) add('warn', scope, L(`${name} = ${ru(value, 4)}: эффект полярности больше 2 % — больше, чем допускает Report 385 для камеры эталонного класса. Проверьте камеру, кабель и время стабилизации.`, `${name} = ${ru(value, 4)}: the polarity effect exceeds 2 %, more than Report 385 allows for a reference-class chamber. Check the chamber, the cable and the stabilization time.`), `${REF.r385}, табл. A1; ${REF.trs}, табл. 3`, flagKey, L(`${name} = ${ru(value, 4)}: эффект полярности больше 2 %`, `${name} = ${ru(value, 4)}: polarity effect above 2 %`));
     else if (d > 0.004) add('info', scope, L(`${name} = ${ru(value, 4)}: в пучках электронов эффект полярности бывает больше, чем в фотонных, — до 2 % по Report 385; TRS-398 задаёт для камер эталонного класса менее 0,4 %. Поправку обязательно измерять.`, `${name} = ${ru(value, 4)}: in electron beams the polarity effect can be larger than in photon beams, up to 2 % according to Report 385; TRS-398 specifies less than 0.4 % for reference-class chambers. The correction must always be measured.`), `${REF.r385}, прил. A; ${REF.trs}, табл. 3`, flagKey);
   };
   const readingsOk = seriesOk(M1);
@@ -522,6 +525,13 @@ export function computeElectrons(form) {
       if (Number.isFinite(tg.kQ) && (tg.kQ < 0.8 || tg.kQ > 1.2)) add('warn', 'tg51', L('Введённый k_Q необычен: проверьте значение.', 'The entered k_Q is unusual: check the value.'), null, 'e_kq51_manual');
       tg.kQSource = cross ? L('k′_Q введён вручную', 'k′_Q entered manually') : L('введён вручную', 'entered manually');
       if (cross) tg.kQprime = tg.kQ;
+      // камера из списка, но без данных Report 385: ручной k_Q не делает расчёт расчётом по Report 385 (разд. 6.6)
+      if (chamber && !chamber.other && !chamber.r385) {
+        add('warn', 'tg51', L(
+          `Для ${eChamberLabel(chamber)} в Report 385 нет данных: такие камеры пока не рекомендуется использовать для референсной дозиметрии электронов. С введённым вручную k_Q расчёт не является расчётом по Report 385.`,
+          `Report 385 gives no data for ${eChamberLabel(chamber)}: such chambers are not yet recommended for electron reference dosimetry. With a manually entered k_Q, the calculation is not a Report 385 calculation.`,
+        ), `${REF.r385}, разд. 6.6`, ['e_ch_model', 'e_kq51_manual'], L(`${eChamberLabel(chamber)}: нет данных Report 385, k_Q введён вручную`, `${eChamberLabel(chamber)}: no Report 385 data, k_Q entered manually`));
+      }
     } else if (!chamber || chamber.other || !chamber.r385) {
       if (chamber && (chamber.other || !chamber.r385)) add('error', 'tg51', L(
         `Для ${chamber.other ? 'этой камеры' : eChamberLabel(chamber)} в Report 385 нет данных: такие камеры не рекомендуется использовать для электронов; при необходимости введите k_Q вручную.`,
@@ -580,6 +590,10 @@ export function computeElectrons(form) {
   depth.nominal = parseNumber(f.e_nominal);
   depth.nominalAt = depth.on && f.e_nominal_at !== 'zref' ? 'zmax' : 'zref';
   if (!isBlank(f.e_nominal) && !(depth.nominal > 0)) add('warn', 'common', L('Номинальный выход не распознан: отклонение не считается.', 'Nominal output not recognized: the deviation is not calculated.'), null, 'e_nominal');
+  // допуск учреждения на отклонение от номинала (по умолчанию 2 %)
+  depth.tolerance = readTolerance(f.e_tol, { add, parseNumber, isBlank, field: 'e_tol' });
+  const tol = depth.tolerance;
+  const tolTxt = ru(tol, tol % 1 ? 1 : 0);
 
   // ------------------------------------------------------- контрольные измерения
   // Показания при обычной полярности и V₁ после определения поправок (и, возможно, подстройки
@@ -639,21 +653,22 @@ export function computeElectrons(form) {
     if (want51) finish((tg.ctrl = {}), ctrl.mean * product51, tg.kQ, tg.coefficient, ctrl.mu);
     for (const x of [trs.ctrl, tg.ctrl]) if (x) x.blocked = ctrlBlocked || !x.ok;
   }
-  // отклонение от номинала — по итоговому результату: по контрольным измерениям, если они есть
+  // Отклонение от номинала — по итоговому результату: по контрольным измерениям, если они есть.
+  // Если контрольные измерения введены, но содержат ошибки, итога нет: подменять его показанием M₁ раздела 5 нельзя.
   const mainBlocked = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
-  const final = (x, scope) => (mainBlocked(scope) ? {} : x.ctrl && !x.ctrl.blocked ? x.ctrl : x);
+  const final = (x, scope) => (mainBlocked(scope) ? {} : x.ctrl ? (x.ctrl.blocked ? {} : x.ctrl) : x);
 
   // ---------------------------------------------- калибровка (подстройка) ускорителя
   // Если доза (по контрольным измерениям, иначе по M₁ раздела 5) отличается от номинального выхода
-  // больше чем на ±2 %, предлагается калибровка. После подстройки снимают новые показания при V₁ и
+  // больше допуска (по умолчанию ±2 %), предлагается калибровка. После подстройки снимают новые показания при V₁ и
   // обычной полярности; поправки те же, итог — по новым показаниям, прежний результат остаётся для справки.
-  const recal = { tolerance: RECAL_TOL, answer: f.e_recal_needed === 'yes' || f.e_recal_needed === 'no' ? f.e_recal_needed : '' };
+  const recal = { tolerance: tol, answer: f.e_recal_needed === 'yes' || f.e_recal_needed === 'no' ? f.e_recal_needed : '' };
   const pre = { trs: wantTRS ? final(trs, 'trs') : {}, tg51: want51 ? final(tg, 'tg51') : {} };
   recal.preDeviation = [pre.trs.deviation, pre.tg51.deviation].filter(Number.isFinite);
-  recal.needed = recal.preDeviation.some((d) => Math.abs(d) > RECAL_TOL);
+  recal.needed = recal.preDeviation.some((d) => Math.abs(d) > tol);
   recal.on = recal.needed && recal.answer === 'yes';
   if (recal.needed && !recal.answer) {
-    add('info', 'recal', L('Доза отличается от номинального выхода больше чем на ±2 %: ответьте в разделе 9, требуется ли калибровка.', 'The dose differs from the nominal output by more than ±2%: answer in section 9 whether calibration is required.'), null, 'e_recal_needed');
+    add('info', 'recal', L(`Доза отличается от номинального выхода больше чем на ±${tolTxt} %: ответьте в разделе 9, требуется ли калибровка.`, `The dose differs from the nominal output by more than ±${tolTxt}%: answer in section 9 whether calibration is required.`), null, 'e_recal_needed');
   }
   if (recal.on) {
     const recalSeries = (key, label, ref) => {
@@ -705,7 +720,7 @@ export function computeElectrons(form) {
     const y = actual(x, scope);
     if (Number.isFinite(y.DperMU)) finals.push({ x: y, units: y.units });
   }
-  outputPlausibility(finals, { add, ru, muSections: L('разделы 5 и 7', 'sections 5 and 7'), zrefText: Number.isFinite(zref) ? L(`(${ru(zref, 2)} см)`, `(${ru(zref, 2)} cm)`) : 'z_ref' });
+  outputPlausibility(finals, { add, ru, tol, muSections: L('разделы 5 и 7', 'sections 5 and 7'), zrefText: Number.isFinite(zref) ? L(`(${ru(zref, 2)} см)`, `(${ru(zref, 2)} cm)`) : 'z_ref' });
 
   const hasError = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
   if (wantTRS && !trs.ok && !hasError('trs')) add('error', 'trs', L('Не удалось вычислить дозу: проверьте R50 и k_Q.', 'Could not calculate the dose: check R50 and k_Q.'));
@@ -721,6 +736,10 @@ export function computeElectrons(form) {
   if (trs.recal) trs.recal.blocked = trs.recal.blocked || trs.blocked;
   if (tg.recal) tg.recal.blocked = tg.recal.blocked || tg.blocked;
 
+  // соответствие референсным условиям выбранного протокола
+  const activeKey = wantTRS ? 'trs' : 'tg51';
+  const shown = actual(wantTRS ? trs : tg, activeKey);
+  const compliance = complianceOf(messages, activeKey, Number.isFinite(shown.DperMU));
 
   return {
     protocol: f.protocol,
@@ -728,6 +747,7 @@ export function computeElectrons(form) {
     chamber,
     positions: pos,
     quality,
+    compliance,
     inputs: { H: env.H,
       T, P, T0, P0, mu, V1, V2, nV, ndw, ndwRaw, crossNdw, crossR50, crossKN, kelec, kleak, energy, ssd, field,
       M1, Mopp, M2, ratio12, cross,
