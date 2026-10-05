@@ -1,6 +1,6 @@
 {
   "name": "reference-dosimetry",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Калькулятор референсной дозиметрии по TG-51 и TRS-398 Rev.1",
   "license": "MIT",

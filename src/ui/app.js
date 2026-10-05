@@ -32,6 +32,31 @@ const store = {
   },
 };
 
+// ------------------------------------------------------------ тема: как в системе / светлая / тёмная
+const THEME_KEY = 'reference-dosimetry.theme';
+const THEMES = ['auto', 'light', 'dark'];
+let theme = 'auto';
+function applyTheme(t) {
+  theme = THEMES.includes(t) ? t : 'auto';
+  if (theme === 'auto') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+  const btn = $('#theme-toggle');
+  if (!btn) return;
+  btn.dataset.state = theme;
+  const label = { auto: L('Тема: как в системе', 'Theme: system'), light: L('Тема: светлая', 'Theme: light'), dark: L('Тема: тёмная', 'Theme: dark') }[theme];
+  btn.title = `${label}. ${L('Нажмите, чтобы переключить', 'Click to switch')}`;
+  btn.setAttribute('aria-label', label);
+}
+function initTheme() {
+  applyTheme(store.get(THEME_KEY));
+  $('#theme-toggle')?.addEventListener('click', () => {
+    const next = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+    store.set(THEME_KEY, next);
+    applyTheme(next);
+  });
+  document.addEventListener('langchange', () => applyTheme(theme));
+}
+
 function showModule(name) {
   if (!MODULES[name]) name = 'co60';
   for (const key of Object.keys(MODULES)) {
@@ -163,6 +188,7 @@ function initLang() {
 
 function init() {
   initLang();
+  initTheme();
   initProtocol();
   initTerms();
   initCobalt();

@@ -9,7 +9,7 @@ import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff }
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
-  renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag,
+  renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.electrons.v1';
@@ -484,6 +484,7 @@ function reportText(data, r) {
     out.push('');
   }
   if (data.e_notes) out.push(`${L('Примечания', 'Notes')}: ${data.e_notes}`);
+  out.push('', precisionNote());
   return out.join('\n');
 }
 

@@ -145,3 +145,13 @@ test('⁶⁰Co: k_s лаборатории чуть больше измерен�
     assert.ok((protocol === 'trs' ? x.ks : x.Pion) < 1);
   }
 });
+
+test('Большая подстройка выхода: напоминание перемерить k_s, если менялась доза за импульс', () => {
+  const base = { ...VERSA, dd_nominal: '1,030', recal_needed: 'yes' };
+  const big = computePhotons({ ...base, recal_M: ['17,34', '17,34', '17,32'] }); // ≈ −3 %
+  assert.ok(Math.abs(big.trs.recal.preVsNew) > 2);
+  assert.ok(big.messages.some((m) => m.scope === 'recal' && /перемерьте k_s/.test(m.text)));
+  const small = computePhotons({ ...base, recal_M: ['17,0', '17,0', '17,0'] }); // ≈ −1 %
+  assert.ok(Math.abs(small.trs.recal.preVsNew) < 2);
+  assert.ok(!small.messages.some((m) => /перемерьте k_s/.test(m.text)));
+});

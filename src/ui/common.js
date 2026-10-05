@@ -261,6 +261,13 @@ export function localizeDemo(ruSample, enOverlay) {
   }
 }
 
+/** Оговорка о числе знаков: точность вычислений, а не измерения. */
+export const precisionNote = () =>
+  L(
+    'Значения приводятся с четырьмя знаками после запятой, чтобы не накапливать ошибки округления: это точность вычислений, а не измерения. Неопределённость результата здесь не оценивается.',
+    'Values are given with four decimals to avoid round-off errors: this is computational precision, not measurement accuracy. The uncertainty of the result is not evaluated here.',
+  );
+
 /** Версия калькулятора с датой выпуска — для протокола и сохранённых файлов. */
 export const versionText = () => L(`версия ${APP_VERSION} от ${dateText(APP_DATE)}`, `version ${APP_VERSION} of ${dateText(APP_DATE)}`);
 const dateText = (iso) => {
@@ -275,7 +282,7 @@ export function renderSignBlock(el, staff) {
   const ver = L(`Расчёт: калькулятор «Референсная дозиметрия», ${versionText()}, https://mesava.github.io/Reference-dosimetry/`, `Calculation: Reference Dosimetry calculator, ${versionText()}, https://mesava.github.io/Reference-dosimetry/`);
   el.innerHTML =
     (note ? `<p class="disclaimer">${esc(note)}</p>` : '') +
-    `<p class="disclaimer">${esc(ver)}</p>` +
+    `<p class="disclaimer">${esc(precisionNote())} ${esc(ver)}</p>` +
     '<table><tbody>' +
     names
       .map(

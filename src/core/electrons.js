@@ -708,6 +708,19 @@ export function computeElectrons(form) {
           if (Number.isFinite(a) && Number.isFinite(b) && b > 0) x.recal.preVsNew = (a / b - 1) * 100;
         }
       }
+      // большая подстройка: если менялась доза за импульс (а не только калибровка мониторной камеры), k_s нужно перемерить
+      const shift = [trs.recal, tg.recal].map((y) => y?.preVsNew).find(Number.isFinite);
+      if (Number.isFinite(shift) && Math.abs(shift) > 2) {
+        add(
+          'info',
+          'recal',
+          L(
+            `Выход после подстройки изменился на ${ru(Math.abs(shift), 1)} %. Если при этом менялась доза за импульс (ток пушки, частота импульсов), а не только калибровка мониторной камеры, перемерьте k_s (P_ion): рекомбинация зависит от дозы за импульс.`,
+            `The output changed by ${ru(Math.abs(shift), 1)}% after the adjustment. If the dose per pulse changed (gun current, pulse repetition frequency) and not only the monitor chamber calibration, remeasure k_s (P_ion): recombination depends on the dose per pulse.`,
+          ),
+          `${REF.trs}, разд. 4.4.3.4; ${REF.r374}, разд. 4.4.4`,
+        );
+      }
     }
   }
   // итог: после калибровки, если она проведена и без ошибок
