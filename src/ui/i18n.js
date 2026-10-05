@@ -125,9 +125,15 @@ export function applyLang(lang) {
 /** Десятичный разделитель в числовых полях: запятая по-русски, точка по-английски. */
 export function localizeDecimals(root) {
   if (!root) return;
-  const en = getLang() === 'en';
-  for (const el of root.querySelectorAll('input.num')) {
-    const v = el.value;
-    if (/^\s*[+\-−]?\d+[.,]\d+\s*$/.test(v)) el.value = en ? v.replace(',', '.') : v.replace('.', ',');
-  }
+  for (const el of root.querySelectorAll('input.num')) localizeDecimal(el);
+}
+
+/** Одно число в поле — с десятичным разделителем языка интерфейса (12.76 → 12,76 по-русски). Возвращает true, если значение изменилось. */
+export function localizeDecimal(el) {
+  const v = el.value;
+  if (!/^\s*[+\-−]?\d+[.,]\d+\s*$/.test(v)) return false;
+  const next = getLang() === 'en' ? v.replace(',', '.') : v.replace('.', ',');
+  if (next === v) return false;
+  el.value = next;
+  return true;
 }

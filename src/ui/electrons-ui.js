@@ -9,7 +9,7 @@ import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff }
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
-  renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText,
+  renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.electrons.v1';
@@ -530,6 +530,7 @@ function update() {
   renderChamberInfo(result);
   renderReadout(result, result.form);
   $('#e-demo-flag').hidden = !isDemo(data);
+  renderNotesFlag($('#e-notes-flag'), data.e_notes, [SAMPLE_ELECTRONS.e_notes, SAMPLE_ELECTRONS_EN.e_notes], isDemo(data));
   renderFileNote($('#e-file-note'), openedFile ? compareWithFile(openedFile, snapshot(result), SNAP_CMP) : null);
   saveDraft(result.form);
   renderSignBlock($('#e-sign'), result.form.e_staff);

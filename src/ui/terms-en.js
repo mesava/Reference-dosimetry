@@ -235,6 +235,22 @@ export const TERMS_EN = {
 <p class="src">TRS-398 Rev.1, Sec. 5.4.2 and worksheet 5.8; TG-51, Sec. VII ("shutter timing error").</p>`,
   },
 
+  gcm2: {
+    title: 'g/cm² — depth in units of mass thickness',
+    html: `
+<p>In TRS-398, depths and ranges are given in g/cm². This is the mass (water-equivalent) thickness: the geometric thickness in centimeters multiplied by the density of the material in g/cm³.</p>
+<p class="formula">d [g/cm²] = d [cm] · ρ [g/cm³]</p>
+<p>The density of water is 1 g/cm³, so in a water phantom <b>1 g/cm² = 1 cm of depth</b>, and the numbers are the same: R<sub>50</sub> = 2.40 g/cm² is 2.40 cm, z<sub>ref</sub> = 1.34 g/cm² is 1.34 cm below the water surface. The calculator works for water only, so these values can be entered and read as centimeters.</p>
+<h4>Why these units</h4>
+<p>Attenuation and scatter of the beam depend on the mass of material in its path, not on the geometric thickness. Mass thickness lets depths be written in the same way for different materials. TG-51 and Report 385 give the same depths in centimeters of water — they are the same numbers.</p>
+<h4>When centimeters and g/cm² differ</h4>
+<ul>
+<li><b>Chamber entrance window and phantom wall</b>: they are accounted for by their water-equivalent thickness. For example, the Roos window is 132 mg/cm², i.e. 1.32 mm of water, although it is 1.13 mm thick geometrically; a PMMA phantom window of thickness t gives t·1.19 g/cm².</li>
+<li><b>Plastic phantom</b>: the depth in plastic is converted to the equivalent depth in water with a depth-scaling factor (TRS-398, Sec. 7.8). The calculator does not do this — water phantoms only.</li>
+</ul>
+<p class="src">TRS-398 Rev.1, Table 1 (note a), Secs. 4.2.5 and 7.8; Report 385, Sec. 3.</p>`,
+  },
+
   r50: {
     title: 'R<sub>50</sub> — electron beam quality specifier',
     html: `

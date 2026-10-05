@@ -354,6 +354,17 @@ export function compareWithFile(obj, now, { keys, main, unit, digits = 4 }) {
   };
 }
 
+/**
+ * В «Примечаниях» остался текст демонстрационного примера, хотя данные уже свои: напоминание над результатом
+ * (иначе фраза «демонстрационные данные» попадёт в настоящий протокол).
+ */
+export function renderNotesFlag(el, notes, demoNotes, isDemo) {
+  if (!el) return;
+  const left = !isDemo && demoNotes.includes(String(notes ?? '').trim());
+  el.hidden = !left;
+  if (left) el.textContent = L('В «Примечаниях» остался текст демонстрационного примера — удалите или замените его перед печатью протокола.', 'The Notes still contain the demo text — delete or replace it before printing the report.');
+}
+
 /** Заметка о сверке открытого файла: показывается, пока форму не меняли. */
 export function renderFileNote(el, note) {
   if (!el) return;

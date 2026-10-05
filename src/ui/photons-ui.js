@@ -10,7 +10,7 @@ import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff }
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
-  renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText,
+  renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.photons.v2';
@@ -643,6 +643,7 @@ function update() {
   renderInline(result, result.form);
   renderReadout(result, result.form);
   $('#demo-flag').hidden = !isDemo(data);
+  renderNotesFlag($('#notes-flag'), data.meta_notes, [SAMPLE_FORM.meta_notes, SAMPLE_FORM_EN.meta_notes], isDemo(data));
   renderFileNote($('#file-note'), openedFile ? compareWithFile(openedFile, snapshot(result), SNAP_CMP) : null);
   saveDraft(result.form);
   renderSignBlock($('#sign'), result.form.meta_staff);

@@ -2,7 +2,7 @@
 import { TERMS } from './terms.js';
 import { TERMS_EN } from './terms-en.js';
 import { L, setLang, getLang } from '../core/i18n.js';
-import { initialLang, saveLang, applyLang, translateStatic } from './i18n.js';
+import { initialLang, saveLang, applyLang, translateStatic, localizeDecimal } from './i18n.js';
 import { $, $$, setActiveModule, getActiveModule, PROTOCOL_KEY, applyProtocol } from './common.js';
 import { initCobalt, importCobalt, cobaltStatus } from './cobalt-ui.js';
 import { initPhotons, importPhotons, photonsStatus } from './photons-ui.js';
@@ -107,6 +107,17 @@ function initProtocol() {
   });
 }
 
+// ------------------------------------------------------------ десятичный разделитель
+// Число, введённое с точкой в русском интерфейсе (или с запятой в английском), после ввода приводится
+// к разделителю языка: так оно выглядит в протоколе и PDF как остальные. Значение при этом не меняется.
+function initDecimals() {
+  document.addEventListener('change', (e) => {
+    const el = e.target;
+    if (!(el instanceof HTMLInputElement) || !el.matches('input.num')) return;
+    if (localizeDecimal(el)) el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
 // ------------------------------------------------------------ вставка данных из буфера
 function initPaste() {
   document.addEventListener('paste', (e) => {
@@ -158,6 +169,7 @@ function init() {
   initPhotons();
   initElectrons();
   initPaste();
+  initDecimals();
   translateStatic(document.body);
   showModule(moduleFromHash() ?? store.get(TAB_KEY) ?? 'co60');
   window.addEventListener('hashchange', () => {

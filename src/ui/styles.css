@@ -396,7 +396,7 @@ footer.page-foot p { max-width: 90ch; }
   .sheet, .readout { zoom: 0.8; }
   .readout { position: static; max-height: none; overflow: visible; margin-top: 12px; }
   .step, .panel { border-color: #999; }
-  .panel, .sign-block { break-inside: avoid; }
+  .panel, .sign-block, .display { break-inside: avoid; }
   .display { background: #fff; color: #000; border: 1px solid #999; }
   .display h2, .dose-row .proto, .dose-row .secondary, .delta { color: #000 !important; }
   .dose-big, .display .chip, .delta b { color: #000 !important; }

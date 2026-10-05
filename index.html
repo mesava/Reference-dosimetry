@@ -417,6 +417,7 @@
     <section class="display" aria-live="polite">
       <h2>Мощность поглощённой дозы в воде</h2>
       <p class="demo-flag" id="co-demo-flag" hidden>Сейчас загружен демонстрационный пример: значения вымышленные.</p>
+      <p class="demo-flag" id="co-notes-flag" hidden></p>
       <p class="file-note" id="co-file-note" hidden></p>
       <div class="dose-rows" id="co-dose-rows"></div>
       <div class="compliance" id="co-compliance" hidden></div>
@@ -911,6 +912,7 @@
     <section class="display" aria-live="polite">
       <h2 id="display-title">Поглощённая доза в воде</h2>
       <p class="demo-flag" id="demo-flag" hidden>Сейчас загружен демонстрационный пример: значения вымышленные.</p>
+      <p class="demo-flag" id="notes-flag" hidden></p>
       <p class="file-note" id="file-note" hidden></p>
       <div class="dose-rows" id="dose-rows"></div>
       <div class="compliance" id="compliance" hidden></div>
@@ -981,31 +983,8 @@
     </section>
 
     <!-- 2 -->
-    <section class="step" aria-labelledby="e-s2">
-      <header><span class="step-no">2</span><h2 id="e-s2">Качество пучка: <button type="button" class="term" data-term="r50">R<sub>50</sub></button> и опорная глубина</h2>
-        <p class="hint" id="e-epom-hint">Кривую ионизации измеряют при РИП 100 см и поле не меньше 10 × 10 см.</p></header>
-      <div class="grid">
-        <div class="field span-2">
-          <label for="e_r50_method">Как получен R<sub>50</sub></label>
-          <select id="e_r50_method">
-            <option value="i50">по глубине 50 % ионизации R50,ion (I50)</option>
-            <option value="r50">R50 известен (детектор, отвечающий дозе)</option>
-          </select>
-        </div>
-        <div class="field" data-show="e_r50_method:i50"><label for="e_i50">R<sub>50,ion</sub> (I<sub>50</sub>), г/см²</label><input type="text" id="e_i50" class="num" inputmode="decimal" placeholder="4,80"></div>
-        <div class="field" data-show="e_r50_method:r50"><label for="e_r50">R<sub>50</sub>, г/см²</label><input type="text" id="e_r50" class="num" inputmode="decimal"></div>
-      </div>
-      <div class="grid four">
-        <div class="field out-cell"><span class="label">R<sub>50</sub>, г/см²</span><output data-out="quality.r50" data-digits="3"></output></div>
-        <div class="field out-cell used"><span class="label">z<sub>ref</sub> = d<sub>ref</sub>, г/см²</span><output data-out="quality.zref" data-digits="3"></output></div>
-        <div class="field out-cell"><span class="label">E₀ ≈ 2,33·R<sub>50</sub>, МэВ</span><output data-out="quality.E0" data-digits="1"></output></div>
-      </div>
-      <p class="eq"><span data-out-text="quality.equation"></span>. <span>z<sub>ref</sub> = 0,6·R<sub>50</sub> − 0,1 г/см²: TRS-398, ур. (39); Report 385, ур. (2).</span></p>
-    </section>
-
-    <!-- 3 -->
     <section class="step" aria-labelledby="e-s3">
-      <header><span class="step-no">3</span><h2 id="e-s3">Камера и электрометр</h2>
+      <header><span class="step-no">2</span><h2 id="e-s3">Камера и электрометр</h2>
         <p class="hint">TRS-398 рекомендует плоскопараллельные камеры для всех пучков и обязательно — при R<sub>50</sub> &lt; 3 г/см². Report 385 допускает цилиндрические камеры во всех пучках от 4 до 22 МэВ.</p></header>
       <div class="grid two">
         <div class="field span-all">
@@ -1095,6 +1074,29 @@
           </div>
         </div>
       </details>
+    </section>
+
+    <!-- 3 -->
+    <section class="step" aria-labelledby="e-s2">
+      <header><span class="step-no">3</span><h2 id="e-s2">Качество пучка: <button type="button" class="term" data-term="r50">R<sub>50</sub></button> и опорная глубина</h2>
+        <p class="hint" id="e-epom-hint">Кривую ионизации измеряют при РИП 100 см и поле не меньше 10 × 10 см.</p></header>
+      <div class="grid">
+        <div class="field span-2">
+          <label for="e_r50_method">Как получен R<sub>50</sub></label>
+          <select id="e_r50_method">
+            <option value="i50">по глубине 50 % ионизации R50,ion (I50)</option>
+            <option value="r50">R50 известен (детектор, отвечающий дозе)</option>
+          </select>
+        </div>
+        <div class="field" data-show="e_r50_method:i50"><span class="label" id="e-lbl-i50">R<sub>50,ion</sub> (I<sub>50</sub>), <button type="button" class="term" data-term="gcm2">г/см²</button></span><input type="text" id="e_i50" class="num" inputmode="decimal" placeholder="4,80" aria-labelledby="e-lbl-i50"></div>
+        <div class="field" data-show="e_r50_method:r50"><span class="label" id="e-lbl-r50">R<sub>50</sub>, <button type="button" class="term" data-term="gcm2">г/см²</button></span><input type="text" id="e_r50" class="num" inputmode="decimal" aria-labelledby="e-lbl-r50"></div>
+      </div>
+      <div class="grid four">
+        <div class="field out-cell"><span class="label">R<sub>50</sub>, <button type="button" class="term" data-term="gcm2">г/см²</button></span><output data-out="quality.r50" data-digits="3"></output></div>
+        <div class="field out-cell used"><span class="label">z<sub>ref</sub> = d<sub>ref</sub>, <button type="button" class="term" data-term="gcm2">г/см²</button></span><output data-out="quality.zref" data-digits="3"></output></div>
+        <div class="field out-cell"><span class="label">E₀ ≈ 2,33·R<sub>50</sub>, МэВ</span><output data-out="quality.E0" data-digits="1"></output></div>
+      </div>
+      <p class="eq"><span data-out-text="quality.equation"></span>. <span>z<sub>ref</sub> = 0,6·R<sub>50</sub> − 0,1 <button type="button" class="term" data-term="gcm2">г/см²</button>: TRS-398, ур. (39); Report 385, ур. (2).</span></p>
     </section>
 
     <!-- 4 -->
@@ -1343,6 +1345,7 @@
     <section class="display" aria-live="polite">
       <h2>Поглощённая доза в воде</h2>
       <p class="demo-flag" id="e-demo-flag" hidden>Сейчас загружен демонстрационный пример: значения вымышленные.</p>
+      <p class="demo-flag" id="e-notes-flag" hidden></p>
       <p class="file-note" id="e-file-note" hidden></p>
       <div class="dose-rows" id="e-dose-rows"></div>
       <div class="compliance" id="e-compliance" hidden></div>

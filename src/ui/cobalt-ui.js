@@ -10,7 +10,7 @@ import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, 
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
-  renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText,
+  renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.cobalt.v1';
@@ -520,6 +520,7 @@ function update() {
   renderFlags(ROOT(), result.flags, seriesBox);
   renderReadout(result, result.form);
   $('#co-demo-flag').hidden = !isDemo(data);
+  renderNotesFlag($('#co-notes-flag'), data.co_notes, [SAMPLE_COBALT.co_notes, SAMPLE_COBALT_EN.co_notes], isDemo(data));
   renderFileNote($('#co-file-note'), openedFile ? compareWithFile(openedFile, snapshot(result), SNAP_CMP) : null);
   saveDraft(result.form);
   renderSignBlock($('#co-sign'), result.form.co_staff);
