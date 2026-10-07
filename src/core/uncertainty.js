@@ -401,8 +401,15 @@ export function uncertaintyBudget(o) {
       // лабораторная часть: TRS-398 — три строки этапа 1 заменяются одной строкой из свидетельства;
       // TG-51 — значение строки N_D,w
       if (cert && spec.lab && tpl.stages) {
+        // не учитывается: вместо трёх строк этапа 1 — одна строка «N_D,w из свидетельства» (U/k)
         row.replaced = true;
         row.value = NaN;
+        row.how = spec.key === 'lab_psdl'
+          ? L(
+              'Три строки этапа 1 — то, что входит в неопределённость N_D,w из свидетельства. Вы ввели U из свидетельства (раздел 2), поэтому вместо них в расчёт идёт строка «N_D,w из свидетельства о калибровке (U/k)» ниже. Значения образца оставлены для сравнения; чтобы вернуть их в расчёт, очистите поле «U из свидетельства».',
+              'The three rows of step 1 make up the N_D,w uncertainty stated in the certificate. You entered U from the certificate (section 2), so the “N_D,w from the calibration certificate (U/k)” row below is used instead. The example values are kept for comparison; to use them again, clear the “U from the certificate” field.',
+            )
+          : '';
       } else {
         row.value = spec.def;
         if (cert && spec.lab) {

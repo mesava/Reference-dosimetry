@@ -63,8 +63,9 @@ function typeTag(r) {
 }
 
 function rowHtml(r) {
-  const input = r.id
-    ? `<input type="text" class="num unc-in" id="${esc(r.id)}" data-unc-key="${esc(r.key)}" inputmode="decimal" autocomplete="off" placeholder=" " aria-label="${esc(L(`Своё значение, %: ${r.label}`, `Your value, %: ${r.label}`))}"${r.replaced ? ' disabled' : ''}>`
+  // строки, заменённые свидетельством, в расчёт не идут — своего значения у них нет
+  const input = r.id && !r.replaced
+    ? `<input type="text" class="num unc-in" id="${esc(r.id)}" data-unc-key="${esc(r.key)}" inputmode="decimal" autocomplete="off" placeholder=" " aria-label="${esc(L(`Своё значение, %: ${r.label}`, `Your value, %: ${r.label}`))}">`
     : '';
   return `<tr data-key="${esc(r.key)}" class="${r.replaced ? 'replaced' : ''}">
     <td class="unc-name"><span class="unc-label">${rich(r.label)}</span> <span class="unc-type"></span>
@@ -119,7 +120,7 @@ export function renderBudget(box, b, { hidden, doseText = '' }) {
     if (!tr) return;
     tr.querySelector('[data-def]').textContent = num(r.def);
     tr.querySelector('[data-used]').textContent = r.replaced ? '—' : num(r.value);
-    tr.querySelector('.unc-type').textContent = r.replaced ? L('заменена свидетельством', 'replaced by the certificate') : typeTag(r);
+    tr.querySelector('.unc-type').textContent = r.replaced ? L('не учитывается — вместо неё U из свидетельства', 'not used — U from the certificate instead') : typeTag(r);
     tr.querySelector('.unc-how').innerHTML = r.how ? rich(r.how) : '';
     tr.classList.toggle('own', !!r.over);
     tr.classList.toggle('from-a', !!r.fromTypeA);

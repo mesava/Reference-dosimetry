@@ -703,7 +703,10 @@ table.unc-table td.unc-name { min-width: 0; }
 input.unc-in { width: 100%; min-width: 3.6em; height: 32px; padding: 3px 6px; text-align: right; }
 table.unc-table tr.own td[data-used] { color: var(--accent); font-weight: 600; }
 table.unc-table tr.from-a td[data-used] { color: var(--warn); font-weight: 600; }
-table.unc-table tr.replaced .unc-label, table.unc-table tr.replaced td[data-def] { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+/* строки этапа 1, заменённые свидетельством: приглушены, в расчёт не идут (значения образца — для сравнения) */
+table.unc-table tr.replaced .unc-label, table.unc-table tr.replaced td[data-def] { color: var(--muted); }
+table.unc-table tr.replaced .unc-type { color: var(--warn); }
+table.unc-table tr.replaced + tr:not(.replaced) .unc-label { color: var(--accent); }
 table.unc-table tr.sub td { font-style: italic; color: var(--muted); }
 table.unc-table tr.total td { border-bottom: 1px solid var(--rule); }
 table.unc-table tr.total + tr.total td { border-bottom: 0; }
