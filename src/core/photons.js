@@ -9,6 +9,7 @@ import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
 import { findChamber, chamberLabel, noteText } from './chambers.js';
 import { parseProfile, kvolFromProfile } from './profile.js';
+import { uncertaintyBudget, typeAOf, mergeBudgetMessages } from './uncertainty.js';
 
 export const FORM_DEFAULTS = {
   protocol: 'trs', // 'trs' | 'tg51'
@@ -115,6 +116,14 @@ export const FORM_DEFAULTS = {
   dd_nominal: '1,000',
   dd_tol: '2', // допуск учреждения на отклонение от номинала, %
   dd_nominal_at: 'dmax', // где задан номинальный выход: 'dmax' (после пересчёта) | 'zref' (аппарат калибруют на опорной глубине)
+
+  // бюджет неопределённости (uncertainty.js): U N_D,w из свидетельства и его k, пример TG-51 (i)/(ii),
+  // N_D,w получен перекрёстной калибровкой в ⁶⁰Co, свои значения строк (JSON { ключ: значение })
+  unc_cert_U: '',
+  unc_cert_k: '2',
+  unc_sit: 'i',
+  unc_cross: false,
+  unc_over: '',
 };
 
 const REF = {
@@ -150,6 +159,7 @@ export function normalizeForm(input) {
     f.qtrs_v10 = input.qtrs_pdd10;
   }
   if (input && 'kqtrs_manual_on' in input && !('kqtrs_mode' in input)) f.kqtrs_mode = input.kqtrs_manual_on ? 'manual' : 'formula';
+  if (f.unc_over && typeof f.unc_over === 'object') f.unc_over = JSON.stringify(f.unc_over);
   if (f.prof_mode === 'generic') f.prof_mode = 'formula22';
   if (f.prof_mode === 'none') {
     // раньше «не применяется» означало k_vol = 1 — сохраняем это явно
@@ -1289,6 +1299,17 @@ export function computePhotons(form) {
   if (wantTRS && !trs.ok && !hasError('trs')) add('error', 'trs', noDose());
   if (want51 && !tg.ok && !hasError('tg51')) add('error', 'tg51', noDose());
 
+  // ---------------------------------------------- бюджет неопределённости (на итог дозы не влияет)
+  // Повторяемость (тип А) — по той серии, по которой посчитан итог.
+  const xAct = wantTRS ? trs : tg;
+  const yAct = actual(xAct, wantTRS ? 'trs' : 'tg51');
+  const doseSeries = yAct === xAct.recal ? recal.M : yAct === xAct.ctrl ? ctrl.M : M1;
+  const unc = uncertaintyBudget({
+    beam: 'photons', protocol: f.protocol, crossQ: cross, crossCo: !cross && !!f.unc_cross, situation: f.unc_sit,
+    certU: f.unc_cert_U, certK: f.unc_cert_k, over: f.unc_over, typeA: typeAOf(doseSeries), prefix: '',
+  });
+  mergeBudgetMessages(unc, add);
+
   const order = { error: 0, warn: 1, info: 2 };
   messages.sort((a, b) => order[a.level] - order[b.level]);
   trs.blocked = wantTRS && hasError('trs');
@@ -1319,6 +1340,7 @@ export function computePhotons(form) {
     depth,
     trs,
     tg51: tg,
+    unc,
     messages,
     flags,
     hasErrors: messages.some((m) => m.level === 'error'),

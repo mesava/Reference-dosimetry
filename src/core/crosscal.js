@@ -814,12 +814,13 @@ export function crossCalTargets(r) {
     patch: {
       ...coChamberPatch(f), co_ch_serial: f.cc_fld_serial, co_ndw: transferNumber(r.trs.N), co_ndw_unit: 'Gy/nC', co_T0: f.cc_T0, co_P0: f.cc_P0,
       co_el_model: f.cc_fld_el_model, co_el_serial: f.cc_fld_el_serial, co_kelec: f.cc_fld_kelec, co_lab_pol_applied: true, co_lab_ks_applied: true,
+      co_unc_cross: true, // бюджет неопределённости: N_D,w получен перекрёстной калибровкой
     },
   }];
   if (r.fld?.type === 'cyl') {
     out.push({
       target: 'photons',
-      patch: { ...photonChamberPatch(f), ...common, ch_cal_route: 'co60', ch_ndw: transferNumber(r.trs.N), ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', lab_pol_applied: true, lab_ks_applied: true },
+      patch: { ...photonChamberPatch(f), ...common, ch_cal_route: 'co60', ch_ndw: transferNumber(r.trs.N), ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', lab_pol_applied: true, lab_ks_applied: true, unc_cross: true },
     });
   }
   return out;

@@ -412,9 +412,28 @@
       </div>
     </section>
 
+    <!-- неопределённость -->
+    <section class="step" aria-labelledby="co-s-unc" id="co_unc-section">
+      <header><span class="step-no" id="co-unc-step-no">8</span><h2 id="co-s-unc"><button type="button" class="term" data-term="unc">Неопределённость</button></h2>
+        <p class="hint">Бюджет неопределённости составляет пользователь (TRS-398, разд. 5.7, 6.8, 7.10; аддендум TG-51, разд. 5). Образец — пример из протокола; замените его значения своими.</p>
+        <ol class="hint steps">
+          <li>Введите расширенную неопределённость N<sub>D,w</sub> из свидетельства о калибровке (поверке) камеры — она заменит лабораторную часть бюджета.</li>
+          <li>Пройдите по строкам: под каждой написано, откуда взять значение. Пустое поле «Своё» — значение образца.</li>
+          <li>Итог U (k = 2) появится рядом с дозой и в протоколе.</li>
+        </ol>
+        <p class="hint">Значения — относительные стандартные неопределённости в процентах (k = 1). Составляющие считаются независимыми и складываются в квадратуре, U = 2·u<sub>c</sub> (TRS-398, прил. IV).</p></header>
+      <div class="grid">
+        <div class="field"><label for="co_unc_cert_U">U из свидетельства, %</label><input type="text" id="co_unc_cert_U" class="num" inputmode="decimal"><span class="sub">расширенная неопределённость N<sub>D,w</sub>; пусто — значения образца</span></div>
+        <div class="field"><label for="co_unc_cert_k">Коэффициент охвата k</label><input type="text" id="co_unc_cert_k" class="num" inputmode="decimal"><span class="sub">как в свидетельстве, обычно 2</span></div>
+      </div>
+      <label class="check"><input type="checkbox" id="co_unc_cross"> <span>N<sub>D,w</sub> получен перекрёстной калибровкой рабочей камеры в ⁶⁰Co (по опорной камере)</span></label>
+      <input type="hidden" id="co_unc_over">
+      <div class="unc-budget" id="co_unc-budget" data-i18n-skip></div>
+    </section>
+
     <!-- 7 -->
     <section class="step" aria-labelledby="co-s7">
-      <header><span class="step-no">8</span><h2 id="co-s7">Примечания</h2></header>
+      <header><span class="step-no">9</span><h2 id="co-s7">Примечания</h2></header>
       <div class="field"><label for="co_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="co_notes"></textarea></div>
     </section>
   </form>
@@ -933,9 +952,29 @@
       </div>
     </section>
 
+    <!-- неопределённость -->
+    <section class="step" aria-labelledby="s-unc" id="unc-section">
+      <header><span class="step-no" id="unc-step-no">9</span><h2 id="s-unc"><button type="button" class="term" data-term="unc">Неопределённость</button></h2>
+        <p class="hint">Бюджет неопределённости составляет пользователь (TRS-398, разд. 5.7, 6.8, 7.10; аддендум TG-51, разд. 5). Образец — пример из протокола; замените его значения своими.</p>
+        <ol class="hint steps">
+          <li>Введите расширенную неопределённость N<sub>D,w</sub> из свидетельства о калибровке (поверке) камеры — она заменит лабораторную часть бюджета.</li>
+          <li>Пройдите по строкам: под каждой написано, откуда взять значение. Пустое поле «Своё» — значение образца.</li>
+          <li>Итог U (k = 2) появится рядом с дозой и в протоколе.</li>
+        </ol>
+        <p class="hint">Значения — относительные стандартные неопределённости в процентах (k = 1). Составляющие считаются независимыми и складываются в квадратуре, U = 2·u<sub>c</sub> (TRS-398, прил. IV).</p></header>
+      <div class="grid">
+        <div class="field"><label for="unc_cert_U">U из свидетельства, %</label><input type="text" id="unc_cert_U" class="num" inputmode="decimal"><span class="sub">расширенная неопределённость N<sub>D,w</sub>; пусто — значения образца</span></div>
+        <div class="field"><label for="unc_cert_k">Коэффициент охвата k</label><input type="text" id="unc_cert_k" class="num" inputmode="decimal"><span class="sub">как в свидетельстве, обычно 2</span></div>
+        <div class="field span-2" data-protocol="tg51"><label for="unc_sit">Пример аддендума TG-51</label><select id="unc_sit"><option value="i">(i) всё оценено, оборудование эталонного класса</option><option value="ii">(ii) типичные допущения, оборудование не проверялось</option></select><span class="sub">меняет только столбец «Образец»</span></div>
+      </div>
+      <label class="check" data-show="ch_cal_route:co60"><input type="checkbox" id="unc_cross"> <span>N<sub>D,w</sub> получен перекрёстной калибровкой рабочей камеры в ⁶⁰Co (по опорной камере)</span></label>
+      <input type="hidden" id="unc_over">
+      <div class="unc-budget" id="unc-budget" data-i18n-skip></div>
+    </section>
+
     <!-- 9/10 -->
     <section class="step" aria-labelledby="s8">
-      <header><span class="step-no" id="notes-step-no">9</span><h2 id="s8">Примечания</h2></header>
+      <header><span class="step-no" id="notes-step-no">10</span><h2 id="s8">Примечания</h2></header>
       <div class="field"><label for="meta_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="meta_notes"></textarea></div>
     </section>
   </form>
@@ -1366,9 +1405,29 @@
       </div>
     </section>
 
+    <!-- неопределённость -->
+    <section class="step" aria-labelledby="e-s-unc" id="e_unc-section">
+      <header><span class="step-no" id="e-unc-step-no">9</span><h2 id="e-s-unc"><button type="button" class="term" data-term="unc">Неопределённость</button></h2>
+        <p class="hint">Бюджет неопределённости составляет пользователь (TRS-398, разд. 5.7, 6.8, 7.10; аддендум TG-51, разд. 5). Образец — пример из протокола; замените его значения своими.</p>
+        <ol class="hint steps">
+          <li>Введите расширенную неопределённость N<sub>D,w</sub> из свидетельства о калибровке (поверке) камеры — она заменит лабораторную часть бюджета.</li>
+          <li>Пройдите по строкам: под каждой написано, откуда взять значение. Пустое поле «Своё» — значение образца.</li>
+          <li>Итог U (k = 2) появится рядом с дозой и в протоколе.</li>
+        </ol>
+        <p class="hint">Значения — относительные стандартные неопределённости в процентах (k = 1). Составляющие считаются независимыми и складываются в квадратуре, U = 2·u<sub>c</sub> (TRS-398, прил. IV).</p></header>
+      <div class="grid">
+        <div class="field"><label for="e_unc_cert_U">U из свидетельства, %</label><input type="text" id="e_unc_cert_U" class="num" inputmode="decimal"><span class="sub">расширенная неопределённость N<sub>D,w</sub>; пусто — значения образца</span></div>
+        <div class="field"><label for="e_unc_cert_k">Коэффициент охвата k</label><input type="text" id="e_unc_cert_k" class="num" inputmode="decimal"><span class="sub">как в свидетельстве, обычно 2</span></div>
+        <div class="field span-2" data-protocol="tg51"><label for="e_unc_sit">Пример Report 385</label><select id="e_unc_sit"><option value="i">(i) всё оценено, оборудование эталонного класса</option><option value="ii">(ii) типичные допущения, оборудование не проверялось</option></select><span class="sub">меняет только столбец «Образец»</span></div>
+      </div>
+      <label class="check" data-show="e_cal_route:co60"><input type="checkbox" id="e_unc_cross"> <span>N<sub>D,w</sub> получен перекрёстной калибровкой рабочей камеры в ⁶⁰Co (по опорной камере)</span></label>
+      <input type="hidden" id="e_unc_over">
+      <div class="unc-budget" id="e_unc-budget" data-i18n-skip></div>
+    </section>
+
     <!-- 9/10 -->
     <section class="step" aria-labelledby="e-s8">
-      <header><span class="step-no" id="e-notes-step-no">9</span><h2 id="e-s8">Примечания</h2></header>
+      <header><span class="step-no" id="e-notes-step-no">10</span><h2 id="e-s8">Примечания</h2></header>
       <div class="field"><label for="e_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="e_notes"></textarea></div>
     </section>
   </form>

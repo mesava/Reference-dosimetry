@@ -7,6 +7,7 @@ import { CHAMBERS, chamberLabel, chamberNote } from '../core/chambers.js';
 import { PRESSURE_UNITS, NDW_UNITS, parseBeamName, parseNumber, unitLabel } from '../core/units.js';
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
+import { setupBudget, renderBudget, doseUncLine, budgetDoseText, budgetFactorRows, budgetReportLines } from './uncertainty-ui.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
@@ -124,6 +125,9 @@ function fillCustomFields(saved) {
 }
 
 // ------------------------------------------------------------ видимость и подписи
+/** Номер раздела «Неопределённость»: после раздела 9 «Требуется калибровка?», если он показан. */
+const uncSectionNo = (result) => (result.recal.needed ? 10 : 9);
+
 /** Допуск учреждения на отклонение от номинала, % — для подписей. */
 const tolText = (result) => fmt(result.recal.tolerance, result.recal.tolerance % 1 ? 1 : 0);
 
@@ -131,7 +135,8 @@ const tolText = (result) => fmt(result.recal.tolerance, result.recal.tolerance %
 function renderRecal(data, result) {
   const rc = result.recal;
   $('#recal-section').hidden = !rc.needed;
-  $('#notes-step-no').textContent = rc.needed ? '10' : '9';
+  $('#unc-step-no').textContent = String(uncSectionNo(result));
+  $('#notes-step-no').textContent = String(uncSectionNo(result) + 1);
   if (!rc.needed) return;
   const x = data.protocol === 'tg51' ? result.tg51 : result.trs;
   const pre = preOf(x);
@@ -342,7 +347,24 @@ function doseRow(key, x, result) {
     <div class="proto"><span>${PROTO[key].name}${fromRecal ? L(' · после калибровки', ' · after calibration') : fromCtrl || failed ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
     <div class="dose-big">${none || !Number.isFinite(main) ? '—' : fmt(main, 4)}<small>${L('Гр на 100 МЕ', 'Gy per 100 MU')} ${where}</small></div>
     <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : failed ? ctrlErrorText(7, 4) : secondary}</div>
+    ${none || !Number.isFinite(main) ? '' : doseUncLine(result.unc, main, L('Гр на 100 МЕ', 'Gy per 100 MU'), 's-unc', uncSectionNo(result))}
   </div>`;
+}
+
+/** Итог для бюджета неопределённости: значение и где оно задано (или NaN, если итога нет). */
+function uncTarget(result) {
+  const x = result.protocol === 'tg51' ? result.tg51 : result.trs;
+  if (x.blocked || ctrlFailed(x)) return { value: NaN, where: '' };
+  const p = primaryOf(x);
+  const atMax = atMaxOf(p, result);
+  const z = result.depth.zref;
+  const zTxt = Number.isFinite(z) ? fmt(z, z % 1 ? 1 : 0) : '10';
+  return { value: atMax ? p.DmaxPerMU : p.DperMU, where: atMax ? L('на d<sub>max</sub>', 'at d<sub>max</sub>') : L(`на ${zTxt} см`, `at ${zTxt} cm`) };
+}
+
+function renderUnc(result) {
+  const t = uncTarget(result);
+  renderBudget($('#unc-budget'), result.unc, { hidden: $('#unc_over'), doseText: budgetDoseText(result.unc, t.value, L('Гр на 100 МЕ', 'Gy per 100 MU'), t.where) });
 }
 
 /** Строки таблицы с дозой: сГр и Гр за отпущенные МЕ и Гр на 100 МЕ — на опорной глубине и на d_max. */
@@ -381,8 +403,8 @@ function renderReadout(result, data) {
   }
 
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
-  const scopeName = { common: '', depth: L('Пересчёт на d_max · ', 'Transfer to d_max · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), recal: L('Калибровка · ', 'Calibration · '), trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
-  const list = result.messages.filter((m) => ['common', 'depth', 'ctrl', 'recal'].includes(m.scope) || keys.includes(m.scope));
+  const scopeName = { common: '', depth: L('Пересчёт на d_max · ', 'Transfer to d_max · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), recal: L('Калибровка · ', 'Calibration · '), unc: L('Неопределённость · ', 'Uncertainty · '), trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
+  const list = result.messages.filter((m) => ['common', 'depth', 'ctrl', 'recal', 'unc'].includes(m.scope) || keys.includes(m.scope));
   $('#messages').innerHTML = list.length
     ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
     : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
@@ -446,6 +468,8 @@ function renderReadout(result, data) {
     rows.push(...doseTableRows(t, g, result, zTxt, result.inputs.mu, [false, false], true));
   }
   }
+
+  if (!(showT ? t : g).blocked) rows.push(...budgetFactorRows(result.unc));
 
   const cell = ([sym, v, d, dose, own], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && (blocked || own) ? '—' : typeof v === 'string' ? v : fmt(v, d)}</td>`;
   const span = 1 + showT + showG;
@@ -595,6 +619,8 @@ function reportText(data, r) {
     }
     out.push('');
   }
+  const ut = uncTarget(r);
+  if (Number.isFinite(ut.value)) out.push(...budgetReportLines(r.unc, ut.value, L('Гр на 100 МЕ', 'Gy per 100 MU')), '');
   const msgs = r.messages.filter((m) => m.level !== 'info');
   if (msgs.length) {
     out.push(L('Замечания:', 'Messages:'));
@@ -662,6 +688,7 @@ function update() {
   const result = computePhotons(data);
   current = { data: result.form, result };
   applyVisibility(result.form, result);
+  renderUnc(result);
   renderInline(result, result.form);
   renderReadout(result, result.form);
   $('#demo-flag').hidden = !isDemo(data);
@@ -701,6 +728,7 @@ export function initPhotons() {
   fillSelects();
   $$('#sheet .cells').forEach((box) => setupCells(box, update));
   $$('#sheet > section .combo').forEach((c) => makeCombo(c));
+  setupBudget($('#unc-budget'), $('#unc_over'));
 
   const draft = loadDraft();
   writeForm(draft ? draft : sampleData());

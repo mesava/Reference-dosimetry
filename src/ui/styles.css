@@ -684,3 +684,60 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; }
 .cc-type-field { margin-bottom: 14px; }
 .cc-type-field .segmented { align-self: flex-start; }
 .transfer-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ------------------------------------------------------------ бюджет неопределённости */
+.step ol.hint.steps { margin: 0; padding-left: 20px; display: grid; gap: 2px; }
+.unc-budget { display: grid; gap: 8px; margin-top: 10px; min-width: 0; }
+.unc-budget p { margin: 0; }
+.unc-tpl { font-size: 13.5px; }
+.unc-note { font-size: 12.5px; color: var(--warn); background: var(--warn-soft); border-radius: var(--radius); padding: 6px 10px; }
+table.unc-table th.v, table.unc-table td.v { text-align: right; }
+table.unc-table th.unc-own, table.unc-table td.unc-own { width: 5.6em; }
+table.unc-table td.unc-name { min-width: 0; }
+.unc-label { font-weight: 500; }
+.unc-type { font: 500 11px var(--font-body); color: var(--muted); white-space: nowrap; }
+.unc-type::before { content: '· '; }
+.unc-how { display: block; margin-top: 2px; font-size: 12px; line-height: 1.4; color: var(--muted); }
+.unc-how:empty { display: none; }
+.unc-ref { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); font-style: italic; }
+.unc-ref:empty { display: none; }
+input.unc-in { width: 100%; min-width: 3.6em; height: 32px; padding: 3px 6px; text-align: right; }
+table.unc-table tr.own td[data-used] { color: var(--accent); font-weight: 600; }
+table.unc-table tr.from-a td[data-used] { color: var(--warn); font-weight: 600; }
+table.unc-table tr.replaced .unc-label, table.unc-table tr.replaced td[data-def] { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+table.unc-table tr.sub td { font-style: italic; color: var(--muted); }
+table.unc-table tr.total td { border-bottom: 1px solid var(--rule); }
+table.unc-table tr.total + tr.total td { border-bottom: 0; }
+.unc-dose { font-size: 13.5px; font-weight: 500; }
+.unc-actions { display: flex; justify-content: flex-end; }
+.unc-reset { border: 0; background: none; padding: 2px 0; color: var(--accent); font: 500 13px var(--font-body); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.unc-line { display: flex; flex-wrap: wrap; gap: 2px 8px; margin-top: 4px; padding-top: 6px; border-top: 1px solid #2a3538; font: 13px var(--font-body); color: var(--display-dim); }
+.unc-line b { font: 500 14px var(--font-mono); color: var(--display-ink); }
+.unc-src { font-size: 12px; }
+.unc-goto { border: 0; background: none; padding: 0; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+/* телефон: каждая составляющая — карточка: название и пояснение во всю ширину, под ними «Образец», поле «Своё» и «Принято» */
+@media (max-width: 560px) {
+  table.unc-table, table.unc-table tbody { display: block; width: 100%; }
+  table.unc-table thead { display: none; }
+  table.unc-table tr { display: grid; grid-template-columns: minmax(0, 1fr) 4.4em minmax(0, 1fr); align-items: center; gap: 6px 8px; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+  table.unc-table td { display: block; border: 0 !important; padding: 0; }
+  table.unc-table tr > td:first-child { grid-column: 1 / -1; }
+  table.unc-table td.v { text-align: left; }
+  table.unc-table td[data-used] { text-align: right; }
+  table.unc-table td.v { font-size: 13px; }
+  table.unc-table td.v::before { content: attr(data-cap); font: 400 11px var(--font-body); color: var(--muted); margin-right: 4px; }
+  table.unc-table th.unc-own, table.unc-table td.unc-own { width: auto; }
+  table.unc-table tr.group { border-bottom: 0; padding-bottom: 0; }
+  table.unc-table tr.total + tr.total { border-bottom: 0; }
+  .unc-how { font-size: 12px; }
+}
+@media print {
+  .unc-how, .unc-actions, .step ol.hint.steps { display: none !important; }
+  .unc-line { color: #000 !important; border-top-color: #999; }
+  .unc-line b { color: #000 !important; }
+  .unc-note { background: none; color: #000; padding: 0; }
+  input.unc-in { height: auto; padding: 0 4px; text-align: right; }
+  input.unc-in:placeholder-shown { visibility: hidden; }
+  table.unc-table { font-size: 10px; }
+  table.unc-table tr { break-inside: avoid; }
+}

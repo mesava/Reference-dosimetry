@@ -416,7 +416,7 @@ function reportText(data, r) {
     msgs.forEach((m) => out.push(`- ${m.text}${m.ref ? ` [${refText(m.ref)}]` : ''}`));
   }
   if (data.cc_notes) out.push('', `${L('Примечания', 'Notes')}: ${data.cc_notes}`);
-  out.push('', precisionNote());
+  out.push('', precisionNote(false));
   return out.join('\n');
 }
 
@@ -464,7 +464,7 @@ function update() {
   renderNotesFlag($('#cc-notes-flag'), data.cc_notes, demoNotes, isDemo(data));
   renderFileNote($('#cc-file-note'), openedFile ? compareWithFile(openedFile, snapshot(result), SNAP_CMP) : null);
   saveDraft(result.form);
-  renderSignBlock($('#cc-sign'), result.form.cc_staff);
+  renderSignBlock($('#cc-sign'), result.form.cc_staff, false);
   notifyUpdate(ROOT());
 }
 

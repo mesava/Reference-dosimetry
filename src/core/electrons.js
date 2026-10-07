@@ -10,6 +10,7 @@ import { temperaturePressure, polarity, environmentChecks, outputPlausibility, r
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
 import { findEChamber, eChamberLabel, interpE, kQprime385, trsFit, R385_RANGE } from './electron-chambers.js';
+import { uncertaintyBudget, typeAOf, mergeBudgetMessages } from './uncertainty.js';
 
 export const E_DEFAULTS = {
   protocol: 'trs',
@@ -84,6 +85,13 @@ export const E_DEFAULTS = {
   e_nominal: '1,000',
   e_tol: '2', // допуск учреждения на отклонение от номинала, %
   e_nominal_at: 'zmax', // где задан номинальный выход: 'zmax' (после пересчёта) | 'zref'
+
+  // бюджет неопределённости (uncertainty.js) — как у фотонов
+  e_unc_cert_U: '',
+  e_unc_cert_k: '2',
+  e_unc_sit: 'i',
+  e_unc_cross: false,
+  e_unc_over: '',
 };
 
 const REF = {
@@ -122,6 +130,7 @@ export function normalizeElectrons(input) {
     if (!Array.isArray(f[k])) f[k] = isBlank(f[k]) ? ['', '', ''] : String(f[k]).trim().split(/[\s;]+/);
   }
   if (!Array.isArray(f.e_staff) || f.e_staff.length === 0) f.e_staff = [''];
+  if (f.e_unc_over && typeof f.e_unc_over === 'object') f.e_unc_over = JSON.stringify(f.e_unc_over);
   return f;
 }
 
@@ -741,6 +750,18 @@ export function computeElectrons(form) {
   if (want51 && !tg.ok && !hasError('tg51')) add('error', 'tg51', L('Не удалось вычислить дозу: проверьте R50 и k_Q.', 'Could not calculate the dose: check R50 and k_Q.'));
   // P_pol считается по тем же показаниям, что и k_pol: подсветка общая
   if (flags.kpol) flags.Ppol = flags.kpol;
+
+  // бюджет неопределённости (на итог дозы не влияет); тип А — по серии, по которой посчитан итог
+  const xAct = wantTRS ? trs : tg;
+  const yAct = actual(xAct, wantTRS ? 'trs' : 'tg51');
+  const doseSeries = yAct === xAct.recal ? recal.M : yAct === xAct.ctrl ? ctrl.M : M1;
+  const crossE = f.e_cal_route === 'cross';
+  const unc = uncertaintyBudget({
+    beam: 'electrons', protocol: f.protocol, chamberType: chamber?.type === 'cyl' ? 'cyl' : 'pp', crossE, crossCo: !crossE && !!f.e_unc_cross,
+    r50: quality.r50, situation: f.e_unc_sit, certU: f.e_unc_cert_U, certK: f.e_unc_cert_k, over: f.e_unc_over, typeA: typeAOf(doseSeries), prefix: 'e_',
+  });
+  mergeBudgetMessages(unc, add);
+
   const order = { error: 0, warn: 1, info: 2 };
   messages.sort((a, b) => order[a.level] - order[b.level]);
   trs.blocked = wantTRS && hasError('trs');
@@ -771,6 +792,7 @@ export function computeElectrons(form) {
     recal,
     trs,
     tg51: tg,
+    unc,
     messages,
     flags,
     hasErrors: messages.some((m) => m.level === 'error'),

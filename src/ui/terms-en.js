@@ -333,4 +333,27 @@ export const TERMS_EN = {
 <p>The “Transfer to the … tab” button fills the Chamber and electrometer section of the relevant tab: the chamber, the calibration route, the coefficient, the quality of the cross-calibration beam, T₀, P₀ and the electrometer. The coefficient is valid with the same T₀, P₀ and k<sub>elec</sub>. The dose uncertainty with a cross-calibrated chamber is slightly larger: TRS-398 estimates the addition at about 0.2 % for photons (Sec. 6.8) and treats electrons separately (Sec. 7.10, Eq. 47).</p>
 <p class="src">TRS-398 Rev.1, Sec. 4.5, 5.5, 6.6, 6.8, 7.6, 7.10, Eqs. (25)–(30), (32), (36), (41)–(44), (47), Tables 16, 20–21; TG-51, Sec. X.C; Report 385, Sec. 5.3.2, Eqs. (5)–(6).</p>`,
   },
+  unc: {
+    title: 'Uncertainty of the absorbed dose',
+    html: `
+<p>Uncertainty is a parameter characterizing the dispersion of the values that could reasonably be attributed to the measurand once all known corrections have been applied. It is usually an estimated standard deviation and has no sign.</p>
+<h4>Type A and type B</h4>
+<ul>
+<li><b>Type A</b> — from the statistics of a series of observations. For the mean of n readings u<sub>A</sub> = s/√n, where s is the standard deviation of a single reading (App. IV, Eqs 106–109). The calculator evaluates it from the series used for the dose and compares it with the “reading relative to the monitor” row (TRS-398) or the “linac stability” row (TG-51): the larger value is used.</li>
+<li><b>Type B</b> — everything else: laboratory and literature data, corrections, estimates from experience. If only limits ±a are known: for a rectangular distribution u = a/√3, for a triangular one a/√6; if the limits correspond to roughly 95% confidence, u = a/2 (Eqs 110–112).</li>
+<li>There is no point in stating type B uncertainties to more than one, at most two, significant digits.</li>
+</ul>
+<h4>Combination</h4>
+<p class="formula">u<sub>c</sub> = √(Σ u<sub>i</sub>²), U = k · u<sub>c</sub>, k = 2</p>
+<p>The components are assumed independent and are added in quadrature (Eq. 113). The expanded uncertainty with coverage factor k = 2 corresponds to a confidence level of about 95% (App. IV.5).</p>
+<h4>Calibration certificate</h4>
+<p>Certificates usually state the expanded uncertainty U (k = 2). For the budget, divide it by k: for example, U = 1.2% at k = 2 gives a standard uncertainty of 0.6%. This value replaces the laboratory part of the example (step 1 of TRS-398 or the N<sub>D,w</sub> row of TG-51).</p>
+<h4>Typical totals of the examples (k = 1)</h4>
+<ul>
+<li>TRS-398: ⁶⁰Co — 0.8% (Table 13); MV photons — 1.0% (Table 17); electrons — 1.1% for a cylindrical and 1.2% for a plane-parallel chamber (Table 24). With a cross-calibrated field instrument, about 0.2% more (Sec. 5.7, 6.8).</li>
+<li>TG-51 addendum, Table II: 0.9% in example (i) and 2.1% in example (ii); Report 385: 0.9 and 2.0% (Table 8), 1.1 and 2.5% for a cross-calibrated plane-parallel chamber (Table 9).</li>
+</ul>
+<p>The budget is the user's responsibility and should be re-evaluated whenever the procedure or equipment changes significantly (TG-51 addendum, Sec. 5).</p>
+<p class="src">TRS-398 Rev.1, Sec. 1.4.3, 5.7, 6.8, 7.10, App. IV, Tables 13, 17, 24; TG-51 addendum (2014), Sec. 5, Table II; Report 385, Sec. 8, Tables 8, 9.</p>`,
+  },
 };
