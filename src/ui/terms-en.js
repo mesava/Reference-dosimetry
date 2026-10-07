@@ -339,7 +339,7 @@ export const TERMS_EN = {
 <p>Uncertainty is a parameter characterizing the dispersion of the values that could reasonably be attributed to the measurand once all known corrections have been applied. It is usually an estimated standard deviation and has no sign.</p>
 <h4>Type A and type B</h4>
 <ul>
-<li><b>Type A</b> — from the statistics of a series of observations. For the mean of n readings u<sub>A</sub> = s/√n, where s is the standard deviation of a single reading (App. IV, Eqs 106–109). The calculator evaluates it from the series used for the dose and compares it with the “reading relative to the monitor” row (TRS-398) or the “linac stability” row (TG-51): the larger value is used.</li>
+<li><b>Type A</b> — from the statistics of a series of observations. For the mean of n readings u<sub>A</sub> = s/√n, where s is the standard deviation of a single reading (App. IV, Eqs 106–109). The calculator evaluates it from the entered series of readings (taken from a dosimetry tab, it is the series used for the dose) and compares it with the “reading relative to the monitor” row (TRS-398) or the “linac stability” row (TG-51): the larger value is used.</li>
 <li><b>Type B</b> — everything else: laboratory and literature data, corrections, estimates from experience. If only limits ±a are known: for a rectangular distribution u = a/√3, for a triangular one a/√6; if the limits correspond to roughly 95% confidence, u = a/2 (Eqs 110–112).</li>
 <li>There is no point in stating type B uncertainties to more than one, at most two, significant digits.</li>
 </ul>

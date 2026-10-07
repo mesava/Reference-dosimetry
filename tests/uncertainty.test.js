@@ -4,6 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { uncertaintyBudget, pickTemplate, typeAOf, quad, parseOverrides } from '../src/core/uncertainty.js';
 import { parseCells } from '../src/core/units.js';
+import { computeUncertaintyTool, normalizeUncTool, UT_DEFAULTS } from '../src/core/uncertainty-tool.js';
+import { SAMPLE_UNC } from '../src/core/sample-uncertainty.js';
 import { computePhotons } from '../src/core/photons.js';
 import { computeElectrons } from '../src/core/electrons.js';
 import { computeCobalt } from '../src/core/cobalt.js';
@@ -145,39 +147,65 @@ test('повторяемость показаний (тип А): s/√n; в ра
   assert.equal(row(uncertaintyBudget({ beam: 'photons', protocol: 'trs', typeA: { n: 3, pct: 0.45 }, over: { 't17.st_read': '0,25' } }), 't17.st_read').value, 0.25);
 });
 
-test('вкладки: бюджет в результате, тип А по серии итога, на дозу и соответствие условиям не влияет', () => {
-  const p = computePhotons(SAMPLE_FORM);
-  assert.equal(p.unc.template.id, 't17');
-  near(p.unc.typeA.pct, typeAOf(parseCells(SAMPLE_FORM.rd_M1)).pct, 1e-12, 'контрольных измерений нет — по M₁ раздела 4');
-  const p2 = computePhotons({ ...SAMPLE_FORM, unc_cert_U: 'abc', unc_over: JSON.stringify({ 't17.st_kq': '0,3' }) });
-  assert.equal(p2.trs.DperMU, p.trs.DperMU);
-  assert.equal(p2.compliance.status, p.compliance.status);
-  assert.ok(p2.messages.some((m) => m.scope === 'unc' && m.level === 'warn'));
-  assert.equal(p2.flags.unc_cert_U, 'warn');
-  assert.ok(!p2.messages.some((m) => m.scope === 'unc' && m.level === 'error'));
-  // контрольные измерения: тип А по ним
-  const pc = computePhotons({ ...SAMPLE_FORM, ctrl_M: ['20,10', '20,20', '20,30'] });
-  near(pc.unc.typeA.pct, typeAOf(parseCells(['20,10', '20,20', '20,30'])).pct, 1e-12);
-  // TG-51 и пример (ii)
-  assert.equal(computePhotons({ ...SAMPLE_FORM, protocol: 'tg51', unc_sit: 'ii' }).unc.template.id, 'add2');
-  // перекрёстная калибровка в ⁶⁰Co отмечена — строка в бюджете
-  assert.ok(computePhotons({ ...SAMPLE_FORM, unc_cross: true }).unc.rows.some((r) => r.cross));
-
-  const e = computeElectrons(SAMPLE_ELECTRONS);
-  assert.ok(e.unc && Number.isFinite(e.unc.UPct));
-  assert.equal(e.unc.template.family, 't24');
-  assert.equal(computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'tg51' }).unc.template.id, 'r385t8');
-
-  const c = computeCobalt(SAMPLE_COBALT);
-  assert.equal(c.unc.template.id, 't13');
-  assert.equal(r1(c.unc.ucPct), 0.8);
-  const c2 = computeCobalt({ ...SAMPLE_COBALT, co_unc_cert_U: '1,4' });
-  near(c2.unc.groups[0].subtotal.value, 0.7, 1e-12);
-  assert.equal(c2.trs.rate, c.trs.rate);
+test('инструмент «Неопределённость»: демонстрационный пример — табл. 17, U из свидетельства, U в единицах итога', () => {
+  const r = computeUncertaintyTool(SAMPLE_UNC);
+  assert.deepEqual(r.messages.filter((m) => m.level !== 'info').map((m) => m.text), []);
+  assert.equal(r.budget.template.id, 't17');
+  near(r.budget.groups[0].subtotal.value, 0.6, 1e-12, 'этап 1 из свидетельства: 1,2 %/2');
+  near(r.typeA.pct, typeAOf(parseCells(SAMPLE_UNC.unc_M)).pct, 1e-12);
+  near(r.abs, (1.0045 * r.UPct) / 100, 1e-15);
+  near(r.UPct, 2 * r.ucPct, 1e-12);
+  // пустая форма: образец без своих значений, U в единицах дозы нет
+  const e = computeUncertaintyTool({ ...UT_DEFAULTS });
+  assert.equal(r1(e.ucPct), 1.0);
+  assert.ok(Number.isNaN(e.abs));
+  assert.equal(e.budget.custom, false);
 });
 
-test('перенос из «Инструментов» (⁶⁰Co): в бюджете отмечается перекрёстная калибровка рабочей камеры', () => {
-  const t = crossCalTargets(computeCrossCal(SAMPLE_CROSSCAL_CO60));
-  assert.equal(t.find((x) => x.target === 'co60').patch.co_unc_cross, true);
-  assert.equal(t.find((x) => x.target === 'photons').patch.unc_cross, true);
+test('инструмент: пучок, протокол, тип камеры и способ калибровки выбирают образец', () => {
+  const t = (o) => computeUncertaintyTool({ ...UT_DEFAULTS, ...o });
+  assert.equal(t({ unc_beam_type: 'co60' }).budget.template.id, 't13');
+  assert.equal(t({ unc_beam_type: 'co60', protocol: 'tg51' }).budget.template.id, 't13');
+  assert.equal(t({ unc_beam_type: 'photons', protocol: 'tg51', unc_sit: 'ii' }).budget.template.id, 'add2');
+  assert.equal(r1(t({ unc_beam_type: 'photons', protocol: 'tg51', unc_sit: 'ii' }).ucPct), 2.1);
+  assert.equal(t({ unc_beam_type: 'electrons', unc_ch_type: 'pp' }).budget.template.id, 't24pp');
+  assert.equal(t({ unc_beam_type: 'electrons', unc_ch_type: 'pp', unc_route: 'crossQ' }).budget.template.id, 't24x');
+  assert.equal(t({ unc_beam_type: 'electrons', unc_ch_type: 'pp', unc_route: 'crossQ', protocol: 'tg51' }).budget.template.id, 'r385t9');
+  // перекрёстная калибровка в ⁶⁰Co или в пучке Q_cross — строка 0,6 %
+  assert.ok(t({ unc_beam_type: 'co60', unc_route: 'crossCo' }).budget.rows.some((r) => r.cross));
+  assert.ok(t({ unc_beam_type: 'photons', unc_route: 'crossQ' }).budget.rows.some((r) => r.cross));
+  // способ, недопустимый для пучка, заменяется на «в лаборатории»
+  assert.equal(normalizeUncTool({ unc_beam_type: 'co60', unc_route: 'crossQ' }).unc_route, 'lab');
+  // сочетания, которых протоколы не описывают, — предупреждения
+  assert.ok(t({ unc_beam_type: 'photons', unc_route: 'crossQ', protocol: 'tg51' }).flags.unc_route === 'warn');
+  assert.ok(t({ unc_beam_type: 'electrons', unc_ch_type: 'cyl', unc_route: 'crossQ', protocol: 'tg51' }).flags.unc_ch_type === 'warn');
+  // R50: плоскопараллельная камера при R50 < 2 г/см² — k_Q 0,8 %; цилиндрическая при R50 < 3 по TRS-398 — предупреждение
+  assert.equal(row(t({ unc_beam_type: 'electrons', unc_ch_type: 'pp', unc_r50: '1,8' }).budget, 't24.st_kq').def, 0.8);
+  assert.equal(t({ unc_beam_type: 'electrons', unc_ch_type: 'cyl', unc_r50: '2,5' }).flags.unc_r50, 'warn');
+  assert.equal(t({ unc_beam_type: 'electrons', unc_r50: 'abc' }).flags.unc_r50, 'warn');
+});
+
+test('инструмент: проверки показаний и итога; ошибки ввода — предупреждения, бюджет считается', () => {
+  const t = (o) => computeUncertaintyTool({ ...UT_DEFAULTS, ...o });
+  assert.equal(t({ unc_M: ['1', 'x', ''] }).flags.unc_M, 'warn');
+  assert.equal(t({ unc_M: ['10', '10,8', '10'] }).flags.unc_M, 'warn', 'разброс больше 5 %');
+  assert.equal(t({ unc_M: ['10', '10,1', '10'] }).flags.unc_M, 'info', 'разброс больше 0,5 %');
+  assert.equal(t({ unc_M: ['10', '', ''] }).typeA, null);
+  const big = t({ unc_M: ['10', '10,1', '10'] });
+  assert.ok(big.typeA.pct > 0.3);
+  assert.equal(row(big.budget, 't17.st_read').value, big.typeA.pct, 'большой разброс заменяет значение образца');
+  const bad = t({ unc_value: '—' });
+  assert.equal(bad.flags.unc_value, 'warn');
+  assert.ok(Number.isNaN(bad.abs));
+  assert.ok(Number.isFinite(bad.UPct));
+  assert.ok(!bad.hasErrors);
+  assert.equal(t({ unc_cert_U: 'abc' }).flags.unc_cert_U, 'warn');
+  assert.equal(t({ unc_over: JSON.stringify({ 't17.st_ki': 'x' }) }).flags['unc_ov_t17.st_ki'], 'warn');
+});
+
+test('вкладки дозиметрии бюджета не содержат; перенос из перекрёстной калибровки его не касается', () => {
+  assert.equal(computePhotons(SAMPLE_FORM).unc, undefined);
+  assert.equal(computeElectrons(SAMPLE_ELECTRONS).unc, undefined);
+  assert.equal(computeCobalt(SAMPLE_COBALT).unc, undefined);
+  for (const x of crossCalTargets(computeCrossCal(SAMPLE_CROSSCAL_CO60))) assert.ok(!Object.keys(x.patch).some((k) => /unc/.test(k)));
 });

@@ -6,7 +6,6 @@ import { L, getLang, refText } from '../core/i18n.js';
 import { localizeDecimals } from './i18n.js';
 import { PRESSURE_UNITS, NDW_UNITS, parseNumber, unitLabel } from '../core/units.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
-import { setupBudget, renderBudget, doseUncLine, budgetDoseText, budgetFactorRows, budgetReportLines } from './uncertainty-ui.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
@@ -88,9 +87,6 @@ function writeForm(values) {
 // ------------------------------------------------------------ видимость и подписи
 const zTxt = (z) => (Number.isFinite(z) ? fmt(z, 2) : 'z_ref');
 
-/** Номер раздела «Неопределённость»: после раздела 9 «Требуется калибровка?», если он показан. */
-const uncSectionNo = (r) => (r.recal.needed ? 10 : 9);
-
 /** Допуск учреждения на отклонение от номинала, % — для подписей. */
 const tolText = (r) => fmt(r.recal.tolerance, r.recal.tolerance % 1 ? 1 : 0);
 
@@ -98,8 +94,7 @@ const tolText = (r) => fmt(r.recal.tolerance, r.recal.tolerance % 1 ? 1 : 0);
 function renderRecal(data, r) {
   const rc = r.recal;
   $('#e-recal-section').hidden = !rc.needed;
-  $('#e-unc-step-no').textContent = String(uncSectionNo(r));
-  $('#e-notes-step-no').textContent = String(uncSectionNo(r) + 1);
+  $('#e-notes-step-no').textContent = rc.needed ? '10' : '9';
   if (!rc.needed) return;
   const x = data.protocol === 'tg51' ? r.tg51 : r.trs;
   const pre = preOf(x);
@@ -253,22 +248,7 @@ function doseRow(key, x, r) {
     <div class="proto"><span>${PROTO[key].name}${fromRecal ? L(' · после калибровки', ' · after calibration') : fromCtrl || failed ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
     <div class="dose-big">${none || !Number.isFinite(main) ? '—' : fmt(main, 4)}<small>${L('Гр на 100 МЕ', 'Gy per 100 MU')} ${where}</small></div>
     <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : failed ? ctrlErrorText(7, 5) : secondary}</div>
-    ${none || !Number.isFinite(main) ? '' : doseUncLine(r.unc, main, L('Гр на 100 МЕ', 'Gy per 100 MU'), 'e-s-unc', uncSectionNo(r))}
   </div>`;
-}
-
-/** Итог для бюджета неопределённости: значение и где оно задано (или NaN, если итога нет). */
-function uncTarget(r) {
-  const x = r.protocol === 'tg51' ? r.tg51 : r.trs;
-  if (x.blocked || ctrlFailed(x)) return { value: NaN, where: '' };
-  const p = primaryOf(x);
-  const atMax = atMaxOf(p, r);
-  return { value: atMax ? p.DmaxPerMU : p.DperMU, where: atMax ? L('на z<sub>max</sub>', 'at z<sub>max</sub>') : L(`на ${zTxt(r.quality.zref)} см`, `at ${zTxt(r.quality.zref)} cm`) };
-}
-
-function renderUnc(r) {
-  const t = uncTarget(r);
-  renderBudget($('#e_unc-budget'), r.unc, { hidden: $('#e_unc_over'), doseText: budgetDoseText(r.unc, t.value, L('Гр на 100 МЕ', 'Gy per 100 MU'), t.where) });
 }
 
 /** Строки таблицы с дозой: сГр и Гр за отпущенные МЕ и Гр на 100 МЕ — на опорной глубине и на z_max. */
@@ -308,8 +288,8 @@ function renderReadout(r, data) {
   }
 
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
-  const scopeName = { common: '', depth: L('Пересчёт на z_max · ', 'Transfer to z_max · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), recal: L('Калибровка · ', 'Calibration · '), unc: L('Неопределённость · ', 'Uncertainty · '), trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
-  const list = r.messages.filter((m) => ['common', 'depth', 'ctrl', 'recal', 'unc'].includes(m.scope) || keys.includes(m.scope));
+  const scopeName = { common: '', depth: L('Пересчёт на z_max · ', 'Transfer to z_max · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), recal: L('Калибровка · ', 'Calibration · '), trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
+  const list = r.messages.filter((m) => ['common', 'depth', 'ctrl', 'recal'].includes(m.scope) || keys.includes(m.scope));
   $('#e-messages').innerHTML = list.length
     ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
     : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
@@ -373,8 +353,6 @@ function renderReadout(r, data) {
     rows.push(...doseTableRows(t, g, r, z, i.mu, [false, false], true));
   }
   }
-
-  if (!(showT ? t : g).blocked) rows.push(...budgetFactorRows(r.unc));
 
   const cell = ([sym, v, d, dose, own], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && (blocked || own) ? '—' : typeof v === 'string' ? v : fmt(v, d)}</td>`;
   const span = 1 + showT + showG;
@@ -500,8 +478,6 @@ function reportText(data, r) {
     }
     out.push('');
   }
-  const ut = uncTarget(r);
-  if (Number.isFinite(ut.value)) out.push(...budgetReportLines(r.unc, ut.value, L('Гр на 100 МЕ', 'Gy per 100 MU')), '');
   const msgs = r.messages.filter((m) => m.level !== 'info');
   if (msgs.length) {
     out.push(L('Замечания:', 'Messages:'));
@@ -544,6 +520,28 @@ export function importElectrons(obj) {
 
 // ------------------------------------------------------------ цикл
 let current = { data: null, result: null };
+
+/**
+ * Данные вкладки для инструмента «Неопределённость» (кнопка «Взять данные с вкладки»): тип камеры, способ
+ * калибровки, R50, серия показаний итога, итог и сведения об аппарате. Сама вкладка бюджет не показывает.
+ */
+export function electronsUncSource() {
+  const { data, result } = current;
+  if (!result) return null;
+  const x = result.protocol === 'tg51' ? result.tg51 : result.trs;
+  const none = x.blocked || ctrlFailed(x);
+  const p = primaryOf(x);
+  return {
+    beam: 'electrons',
+    route: data.e_cal_route === 'cross' ? 'crossQ' : 'co60',
+    chamberType: result.chamber?.type === 'cyl' ? 'cyl' : 'pp',
+    r50: result.quality?.r50,
+    M: p === x.recal ? data.e_recal_M : p === x.ctrl ? data.e_ctrl_M : data.e_M1,
+    value: none ? NaN : atMaxOf(p, result) ? p.DmaxPerMU : p.DperMU,
+    unit: 'Gy100MU',
+    meta: { institution: data.e_institution, machine: data.e_machine, beam: data.e_beam, date: data.e_date, staff: data.e_staff },
+  };
+}
 /** Открытый файл: пока форму не меняли, итог сверяется с сохранённым в файле. */
 let openedFile = null;
 function update() {
@@ -551,7 +549,6 @@ function update() {
   const result = computeElectrons(data);
   current = { data: result.form, result };
   applyVisibility(result.form, result);
-  renderUnc(result);
   renderOutputs(ROOT(), result);
   renderFlags(ROOT(), result.flags, seriesBox);
   renderChamberInfo(result);
@@ -594,7 +591,6 @@ export function initElectrons() {
   fillSelects();
   $$('#e-sheet .cells').forEach((box) => setupCells(box, update));
   $$('#e-sheet > section .combo').forEach((c) => makeCombo(c));
-  setupBudget($('#e_unc-budget'), $('#e_unc_over'));
 
   const draft = loadDraft();
   writeForm(draft ? draft : sampleData());

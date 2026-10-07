@@ -284,14 +284,14 @@ export function localizeDemo(ruSample, enOverlay) {
 }
 
 /**
- * Оговорка о числе знаков: точность вычислений, а не измерения. На вкладках с бюджетом неопределённости —
- * ссылка на него; в «Инструментах» неопределённость не оценивается.
+ * Оговорка о числе знаков: точность вычислений, а не измерения. На вкладках дозиметрии — где оценить
+ * неопределённость (инструмент «Неопределённость»); в перекрёстной калибровке — что она не оценивается.
  */
 export const precisionNote = (withBudget = true) =>
   withBudget
     ? L(
-        'Значения приводятся с четырьмя знаками после запятой, чтобы не накапливать ошибки округления: это точность вычислений, а не измерения. Неопределённость результата — U (k = 2) по бюджету из раздела «Неопределённость».',
-        'Values are given with four decimals to avoid round-off errors: this is computational precision, not measurement accuracy. The uncertainty of the result is U (k = 2) from the budget in the Uncertainty section.',
+        'Значения приводятся с четырьмя знаками после запятой, чтобы не накапливать ошибки округления: это точность вычислений, а не измерения. Неопределённость результата здесь не оценивается: бюджет неопределённости составляется во вкладке «Инструменты» → «Неопределённость».',
+        'Values are given with four decimals to avoid round-off errors: this is computational precision, not measurement accuracy. The uncertainty of the result is not evaluated here: the uncertainty budget is set up under Tools → Uncertainty.',
       )
     : L(
         'Значения приводятся с четырьмя знаками после запятой, чтобы не накапливать ошибки округления: это точность вычислений, а не измерения. Неопределённость результата здесь не оценивается.',
@@ -305,14 +305,15 @@ const dateText = (iso) => {
   return getLang() === 'en' ? `${y}-${m}-${d}` : `${d}.${m}.${y}`;
 };
 
-export function renderSignBlock(el, staff, withBudget = true) {
+/** extra: true/false — оговорка о точности для вкладок дозиметрии / перекрёстной калибровки, строка — свой текст. */
+export function renderSignBlock(el, staff, extra = true) {
   if (!el) return;
   const note = document.querySelector('.page-foot p')?.textContent?.trim() ?? '';
   const names = Array.isArray(staff) && staff.length ? staff : [''];
   const ver = L(`Расчёт: калькулятор «Референсная дозиметрия», ${versionText()}, https://mesava.github.io/Reference-dosimetry/`, `Calculation: Reference Dosimetry calculator, ${versionText()}, https://mesava.github.io/Reference-dosimetry/`);
   el.innerHTML =
     (note ? `<p class="disclaimer">${esc(note)}</p>` : '') +
-    `<p class="disclaimer">${esc(precisionNote(withBudget))} ${esc(ver)}</p>` +
+    `<p class="disclaimer">${esc(typeof extra === 'string' ? extra : precisionNote(extra))} ${esc(ver)}</p>` +
     '<table><tbody>' +
     names
       .map(

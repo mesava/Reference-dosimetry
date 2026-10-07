@@ -412,28 +412,9 @@
       </div>
     </section>
 
-    <!-- неопределённость -->
-    <section class="step" aria-labelledby="co-s-unc" id="co_unc-section">
-      <header><span class="step-no" id="co-unc-step-no">8</span><h2 id="co-s-unc"><button type="button" class="term" data-term="unc">Неопределённость</button></h2>
-        <p class="hint">Бюджет неопределённости составляет пользователь (TRS-398, разд. 5.7, 6.8, 7.10; аддендум TG-51, разд. 5). Образец — пример из протокола; замените его значения своими.</p>
-        <ol class="hint steps">
-          <li>Введите расширенную неопределённость N<sub>D,w</sub> из свидетельства о калибровке (поверке) камеры — она заменит лабораторную часть бюджета.</li>
-          <li>Пройдите по строкам: под каждой написано, откуда взять значение. Пустое поле «Своё» — значение образца.</li>
-          <li>Итог U (k = 2) появится рядом с дозой и в протоколе.</li>
-        </ol>
-        <p class="hint">Значения — относительные стандартные неопределённости в процентах (k = 1). Составляющие считаются независимыми и складываются в квадратуре, U = 2·u<sub>c</sub> (TRS-398, прил. IV).</p></header>
-      <div class="grid">
-        <div class="field"><label for="co_unc_cert_U">U из свидетельства, %</label><input type="text" id="co_unc_cert_U" class="num" inputmode="decimal"><span class="sub">расширенная неопределённость N<sub>D,w</sub>; пусто — значения образца</span></div>
-        <div class="field"><label for="co_unc_cert_k">Коэффициент охвата k</label><input type="text" id="co_unc_cert_k" class="num" inputmode="decimal"><span class="sub">как в свидетельстве, обычно 2</span></div>
-      </div>
-      <label class="check"><input type="checkbox" id="co_unc_cross"> <span>N<sub>D,w</sub> получен перекрёстной калибровкой рабочей камеры в ⁶⁰Co (по опорной камере)</span></label>
-      <input type="hidden" id="co_unc_over">
-      <div class="unc-budget" id="co_unc-budget" data-i18n-skip></div>
-    </section>
-
     <!-- 7 -->
     <section class="step" aria-labelledby="co-s7">
-      <header><span class="step-no">9</span><h2 id="co-s7">Примечания</h2></header>
+      <header><span class="step-no">8</span><h2 id="co-s7">Примечания</h2></header>
       <div class="field"><label for="co_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="co_notes"></textarea></div>
     </section>
   </form>
@@ -952,29 +933,9 @@
       </div>
     </section>
 
-    <!-- неопределённость -->
-    <section class="step" aria-labelledby="s-unc" id="unc-section">
-      <header><span class="step-no" id="unc-step-no">9</span><h2 id="s-unc"><button type="button" class="term" data-term="unc">Неопределённость</button></h2>
-        <p class="hint">Бюджет неопределённости составляет пользователь (TRS-398, разд. 5.7, 6.8, 7.10; аддендум TG-51, разд. 5). Образец — пример из протокола; замените его значения своими.</p>
-        <ol class="hint steps">
-          <li>Введите расширенную неопределённость N<sub>D,w</sub> из свидетельства о калибровке (поверке) камеры — она заменит лабораторную часть бюджета.</li>
-          <li>Пройдите по строкам: под каждой написано, откуда взять значение. Пустое поле «Своё» — значение образца.</li>
-          <li>Итог U (k = 2) появится рядом с дозой и в протоколе.</li>
-        </ol>
-        <p class="hint">Значения — относительные стандартные неопределённости в процентах (k = 1). Составляющие считаются независимыми и складываются в квадратуре, U = 2·u<sub>c</sub> (TRS-398, прил. IV).</p></header>
-      <div class="grid">
-        <div class="field"><label for="unc_cert_U">U из свидетельства, %</label><input type="text" id="unc_cert_U" class="num" inputmode="decimal"><span class="sub">расширенная неопределённость N<sub>D,w</sub>; пусто — значения образца</span></div>
-        <div class="field"><label for="unc_cert_k">Коэффициент охвата k</label><input type="text" id="unc_cert_k" class="num" inputmode="decimal"><span class="sub">как в свидетельстве, обычно 2</span></div>
-        <div class="field span-2" data-protocol="tg51"><label for="unc_sit">Пример аддендума TG-51</label><select id="unc_sit"><option value="i">(i) всё оценено, оборудование эталонного класса</option><option value="ii">(ii) типичные допущения, оборудование не проверялось</option></select><span class="sub">меняет только столбец «Образец»</span></div>
-      </div>
-      <label class="check" data-show="ch_cal_route:co60"><input type="checkbox" id="unc_cross"> <span>N<sub>D,w</sub> получен перекрёстной калибровкой рабочей камеры в ⁶⁰Co (по опорной камере)</span></label>
-      <input type="hidden" id="unc_over">
-      <div class="unc-budget" id="unc-budget" data-i18n-skip></div>
-    </section>
-
     <!-- 9/10 -->
     <section class="step" aria-labelledby="s8">
-      <header><span class="step-no" id="notes-step-no">10</span><h2 id="s8">Примечания</h2></header>
+      <header><span class="step-no" id="notes-step-no">9</span><h2 id="s8">Примечания</h2></header>
       <div class="field"><label for="meta_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="meta_notes"></textarea></div>
     </section>
   </form>
@@ -1405,29 +1366,9 @@
       </div>
     </section>
 
-    <!-- неопределённость -->
-    <section class="step" aria-labelledby="e-s-unc" id="e_unc-section">
-      <header><span class="step-no" id="e-unc-step-no">9</span><h2 id="e-s-unc"><button type="button" class="term" data-term="unc">Неопределённость</button></h2>
-        <p class="hint">Бюджет неопределённости составляет пользователь (TRS-398, разд. 5.7, 6.8, 7.10; аддендум TG-51, разд. 5). Образец — пример из протокола; замените его значения своими.</p>
-        <ol class="hint steps">
-          <li>Введите расширенную неопределённость N<sub>D,w</sub> из свидетельства о калибровке (поверке) камеры — она заменит лабораторную часть бюджета.</li>
-          <li>Пройдите по строкам: под каждой написано, откуда взять значение. Пустое поле «Своё» — значение образца.</li>
-          <li>Итог U (k = 2) появится рядом с дозой и в протоколе.</li>
-        </ol>
-        <p class="hint">Значения — относительные стандартные неопределённости в процентах (k = 1). Составляющие считаются независимыми и складываются в квадратуре, U = 2·u<sub>c</sub> (TRS-398, прил. IV).</p></header>
-      <div class="grid">
-        <div class="field"><label for="e_unc_cert_U">U из свидетельства, %</label><input type="text" id="e_unc_cert_U" class="num" inputmode="decimal"><span class="sub">расширенная неопределённость N<sub>D,w</sub>; пусто — значения образца</span></div>
-        <div class="field"><label for="e_unc_cert_k">Коэффициент охвата k</label><input type="text" id="e_unc_cert_k" class="num" inputmode="decimal"><span class="sub">как в свидетельстве, обычно 2</span></div>
-        <div class="field span-2" data-protocol="tg51"><label for="e_unc_sit">Пример Report 385</label><select id="e_unc_sit"><option value="i">(i) всё оценено, оборудование эталонного класса</option><option value="ii">(ii) типичные допущения, оборудование не проверялось</option></select><span class="sub">меняет только столбец «Образец»</span></div>
-      </div>
-      <label class="check" data-show="e_cal_route:co60"><input type="checkbox" id="e_unc_cross"> <span>N<sub>D,w</sub> получен перекрёстной калибровкой рабочей камеры в ⁶⁰Co (по опорной камере)</span></label>
-      <input type="hidden" id="e_unc_over">
-      <div class="unc-budget" id="e_unc-budget" data-i18n-skip></div>
-    </section>
-
     <!-- 9/10 -->
     <section class="step" aria-labelledby="e-s8">
-      <header><span class="step-no" id="e-notes-step-no">10</span><h2 id="e-s8">Примечания</h2></header>
+      <header><span class="step-no" id="e-notes-step-no">9</span><h2 id="e-s8">Примечания</h2></header>
       <div class="field"><label for="e_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="e_notes"></textarea></div>
     </section>
   </form>
@@ -1474,7 +1415,11 @@
 <div class="module" id="module-tools" role="tabpanel" aria-labelledby="tab-tools" hidden>
 <main class="layout">
   <form id="cc-sheet" class="sheet" autocomplete="off" novalidate>
-    <p class="intro">Инструменты для работы вокруг референсной дозиметрии. Сейчас здесь <button type="button" class="term" data-term="crosscal">перекрёстная калибровка</button> рабочей камеры по опорной камере, откалиброванной в ⁶⁰Co, — в пучке ⁶⁰Co, в клиническом пучке МВ фотонов или в пучке электронов (TRS-398 Rev.1, разд. 4.5, 5.5, 6.6, 7.6; для электронов — также Report 385, разд. 5.3.2). Результат переносится кнопкой в раздел «Камера и электрометр» нужной вкладки.</p>
+    <nav class="subtools" aria-label="Инструменты">
+      <a href="#tools" data-module="tools" aria-current="page">Перекрёстная калибровка</a>
+      <a href="#uncertainty" data-module="uncertainty">Неопределённость</a>
+    </nav>
+    <p class="intro"><button type="button" class="term" data-term="crosscal">Перекрёстная калибровка</button> рабочей камеры по опорной камере, откалиброванной в ⁶⁰Co, — в пучке ⁶⁰Co, в клиническом пучке МВ фотонов или в пучке электронов (TRS-398 Rev.1, разд. 4.5, 5.5, 6.6, 7.6; для электронов — также Report 385, разд. 5.3.2). Результат переносится кнопкой в раздел «Камера и электрометр» нужной вкладки.</p>
 
     <!-- 1 -->
     <section class="step" aria-labelledby="cc-s1">
@@ -1941,6 +1886,154 @@
   </aside>
 </main>
 <div class="mobile-result"><span id="cc-mobile-value">—</span><a href="#cc-readout">к результату</a></div>
+</div>
+
+<div class="module" id="module-uncertainty" role="tabpanel" aria-labelledby="tab-tools" hidden>
+<main class="layout">
+  <form id="unc-sheet" class="sheet" autocomplete="off" novalidate>
+    <nav class="subtools" aria-label="Инструменты">
+      <a href="#tools" data-module="tools">Перекрёстная калибровка</a>
+      <a href="#uncertainty" data-module="uncertainty" aria-current="page">Неопределённость</a>
+    </nav>
+    <p class="intro">Бюджет <button type="button" class="term" data-term="unc">неопределённости</button> поглощённой дозы в воде на опорной глубине. Образец — пример из протокола (TRS-398 Rev.1, табл. 13, 17, 24; аддендум TG-51, табл. II; Report 385, табл. 8, 9); его значения заменяются своими. Данные можно взять с вкладки дозиметрии кнопкой в разделе 1.</p>
+
+    <!-- 1 -->
+    <section class="step" aria-labelledby="unc-s1">
+      <header><span class="step-no">1</span><h2 id="unc-s1">Пучок и камера</h2>
+        <p class="hint">От пучка, протокола в шапке, типа камеры и способа её калибровки зависит образец бюджета.</p></header>
+      <div class="pull">
+        <span class="label" id="unc-pull-label">Взять данные с вкладки</span>
+        <div class="pull-btns" role="group" aria-labelledby="unc-pull-label">
+          <button type="button" data-pull="co60">⁶⁰Co</button>
+          <button type="button" data-pull="photons">МВ фотоны</button>
+          <button type="button" data-pull="electrons">Электроны</button>
+        </div>
+        <span class="sub">пучок, тип камеры, способ калибровки, R<sub>50</sub>, показания, итог и сведения об аппарате; свидетельство и свои значения бюджета не меняются</span>
+      </div>
+      <div class="field cc-type-field">
+        <span class="label" id="unc-type-label">Пучок</span>
+        <div class="segmented" role="radiogroup" aria-labelledby="unc-type-label">
+          <label><input type="radio" name="unc_beam_type" id="unc_beam_type_co60" value="co60"><span>⁶⁰Co</span></label>
+          <label><input type="radio" name="unc_beam_type" id="unc_beam_type_photons" value="photons" checked><span>МВ фотоны</span></label>
+          <label><input type="radio" name="unc_beam_type" id="unc_beam_type_electrons" value="electrons"><span>Электроны</span></label>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="field span-2">
+          <label for="unc_route">Калибровка камеры</label>
+          <select id="unc_route"></select>
+          <span class="sub" id="unc-route-sub"></span>
+        </div>
+        <div class="field" data-show="unc_beam_type:electrons">
+          <label for="unc_ch_type">Тип камеры</label>
+          <select id="unc_ch_type"><option value="cyl">цилиндрическая</option><option value="pp">плоскопараллельная</option></select>
+        </div>
+        <div class="field" data-show="unc_beam_type:electrons"><label for="unc_r50">R<sub>50</sub>, г/см²</label><input type="text" id="unc_r50" class="num" inputmode="decimal"><span class="sub">по желанию: при R<sub>50</sub> &lt; 2 г/см² у плоскопараллельной камеры k<sub>Q</sub> — 0,8 % (TRS-398, табл. 24)</span></div>
+        <div class="field span-2" data-protocol="tg51" data-show="unc_beam_type:photons,electrons">
+          <label for="unc_sit">Пример TG-51</label>
+          <select id="unc_sit"><option value="i">(i) всё оценено, оборудование эталонного класса</option><option value="ii">(ii) типичные допущения, оборудование не проверялось</option></select>
+          <span class="sub">меняет только столбец «Образец»</span>
+        </div>
+      </div>
+      <div class="grid subgrid">
+        <div class="field"><label for="unc_institution">Учреждение</label><div class="combo" data-list="institutions"><input type="text" id="unc_institution"></div></div>
+        <div class="field"><label for="unc_machine">Аппарат</label><input type="text" id="unc_machine" placeholder="Модель, заводской №"></div>
+        <div class="field"><label for="unc_beam">Пучок</label><input type="text" id="unc_beam"></div>
+        <div class="field"><label for="unc_date">Дата</label><input type="date" id="unc_date"></div>
+        <div class="field span-2">
+          <span class="label" id="unc-staff-label">Сотрудник, составивший бюджет</span>
+          <div id="unc-staff-list" class="staff-list" data-prefix="unc_staff" role="group" aria-labelledby="unc-staff-label"></div>
+          <button type="button" class="link-btn" id="unc-btn-add-staff"><span aria-hidden="true">+</span> Добавить сотрудника</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section class="step" aria-labelledby="unc-s2">
+      <header><span class="step-no">2</span><h2 id="unc-s2">Свидетельство о калибровке</h2>
+        <p class="hint">Расширенная неопределённость N<sub>D,w</sub> из свидетельства о калибровке (поверке) камеры заменяет лабораторную часть образца: этап 1 TRS-398 или строку N<sub>D,w</sub> TG-51. Для перекрёстно откалиброванной камеры — из свидетельства опорной камеры.</p></header>
+      <div class="grid">
+        <div class="field"><label for="unc_cert_U">U из свидетельства, %</label><input type="text" id="unc_cert_U" class="num" inputmode="decimal"><span class="sub">пусто — значения образца</span></div>
+        <div class="field"><label for="unc_cert_k">Коэффициент охвата k</label><input type="text" id="unc_cert_k" class="num" inputmode="decimal"><span class="sub">как в свидетельстве, обычно 2</span></div>
+        <div class="field out-cell"><span class="label">Стандартная, U/k</span><output data-out="budget.cert.u" data-digits="2" data-suffix=" %"></output></div>
+      </div>
+    </section>
+
+    <!-- 3 -->
+    <section class="step" aria-labelledby="unc-s3">
+      <header><span class="step-no">3</span><h2 id="unc-s3">Показания и итог</h2>
+        <p class="hint">Показания, по которым посчитан итог (контрольные измерения или M₁ при обычной полярности), — для повторяемости (тип А): стандартное отклонение среднего s/√n. Она сравнивается со строкой бюджета «показания относительно монитора» (TRS-398) или «стабильность ускорителя» (TG-51), в расчёт идёт большее. Итог нужен, чтобы выразить U в единицах дозы.</p></header>
+      <div class="series">
+        <div class="cells" data-series="unc_M" data-label="Показания, нКл">
+          <span class="label">Показания, нКл</span>
+          <div class="cells-row">
+            <div class="cells-list"></div>
+            <div class="cells-tools">
+              <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+              <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+            </div>
+            <div class="cell-mean"><span>Среднее</span><output data-out="series.mean" data-digits="4" data-abs="1"></output></div>
+          </div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="field out-cell"><span class="label">Повторяемость (тип А), %</span><output data-out="typeA.pct" data-digits="3"></output><span class="sub" id="unc-typea-sub"></span></div>
+        <div class="field"><label for="unc_value">Итог</label><input type="text" id="unc_value" class="num" inputmode="decimal"><span class="sub">по желанию</span></div>
+        <div class="field"><label for="unc_unit">Единицы итога</label><select id="unc_unit"></select></div>
+      </div>
+    </section>
+
+    <!-- 4 -->
+    <section class="step" aria-labelledby="unc-s4">
+      <header><span class="step-no">4</span><h2 id="unc-s4">Бюджет</h2>
+        <p class="hint">Под каждой строкой написано, откуда взять значение. Пустое поле «Своё» — значение образца. Значения — относительные стандартные неопределённости в процентах (k = 1); составляющие считаются независимыми и складываются в квадратуре, U = 2·u<sub>c</sub> (TRS-398, прил. IV).</p></header>
+      <input type="hidden" id="unc_over">
+      <div class="unc-budget" id="unc-budget" data-i18n-skip></div>
+    </section>
+
+    <!-- 5 -->
+    <section class="step" aria-labelledby="unc-s5">
+      <header><span class="step-no">5</span><h2 id="unc-s5">Примечания</h2></header>
+      <div class="field"><label for="unc_notes" class="muted">Откуда взяты свои значения, принятые решения</label><textarea id="unc_notes"></textarea></div>
+    </section>
+  </form>
+
+  <aside class="readout" id="unc-readout" aria-label="Результат: неопределённость">
+    <section class="display" aria-live="polite">
+      <h2>Неопределённость поглощённой дозы</h2>
+      <p class="demo-flag" id="unc-demo-flag" hidden>Сейчас загружен демонстрационный пример: значения вымышленные.</p>
+      <p class="demo-flag" id="unc-notes-flag" hidden></p>
+      <p class="file-note" id="unc-file-note" hidden></p>
+      <div class="dose-rows" id="unc-result"></div>
+    </section>
+    <section class="panel">
+      <h2>Замечания</h2>
+      <ul class="messages" id="unc-messages"></ul>
+    </section>
+    <section class="panel">
+      <h2>Сводка</h2>
+      <div class="table-wrap"><table class="factors" id="unc-factors"></table></div>
+    </section>
+
+    <section class="print-only sign-block" id="unc-sign" aria-hidden="true"></section>
+    <section class="panel no-print">
+      <h2>Данные</h2>
+      <div class="actions">
+        <button type="button" class="primary" id="unc-btn-sample">Загрузить пример</button>
+        <button type="button" id="unc-btn-clear">Очистить</button>
+        <button type="button" id="unc-btn-save" data-standalone>Сохранить данные (.json)</button>
+        <button type="button" id="unc-btn-load">Открыть файл</button>
+        <button type="button" id="unc-btn-copy-json">Копировать данные</button>
+        <button type="button" id="unc-btn-copy-report">Копировать протокол</button>
+        <button type="button" id="unc-btn-pdf" data-standalone>Сохранить в PDF</button>
+        <button type="button" id="unc-btn-print" data-standalone>Печать</button>
+      </div>
+      <input type="file" id="unc-file-input" accept="application/json,.json" hidden>
+      <p class="status-line" id="unc-status" role="status"></p>
+    </section>
+  </aside>
+</main>
+<div class="mobile-result"><span id="unc-mobile-value">—</span><a href="#unc-readout">к результату</a></div>
 </div>
 
 <footer class="page-foot">

@@ -4,19 +4,24 @@ import { TERMS_EN } from './terms-en.js';
 import { L, setLang, getLang } from '../core/i18n.js';
 import { initialLang, saveLang, applyLang, translateStatic, localizeDecimal } from './i18n.js';
 import { $, $$, setActiveModule, getActiveModule, PROTOCOL_KEY, applyProtocol } from './common.js';
-import { initCobalt, importCobalt, cobaltStatus, applyCobaltPatch } from './cobalt-ui.js';
-import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch } from './photons-ui.js';
-import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch } from './electrons-ui.js';
+import { initCobalt, importCobalt, cobaltStatus, applyCobaltPatch, cobaltUncSource } from './cobalt-ui.js';
+import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch, photonsUncSource } from './photons-ui.js';
+import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch, electronsUncSource } from './electrons-ui.js';
 import { initCrossCal, importCrossCal, crossCalStatus, setCrossCalTransfer } from './crosscal-ui.js';
+import { initUncTool, importUncTool, uncToolStatus, setUncSources } from './uncertainty-tool-ui.js';
 import { initSectionNavs, refreshSectionNav } from './section-nav.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
+const TOOL_KEY = 'reference-dosimetry.tool'; // последний открытый подраздел «Инструментов»
+// tab — вкладка в шапке, к которой относится модуль (подразделы «Инструментов» — к вкладке tools)
 const MODULES = {
   co60: { title: () => L('⁶⁰Co — референсная дозиметрия', '⁶⁰Co — reference dosimetry'), file: 'cobalt', importData: importCobalt, status: cobaltStatus },
   photons: { title: () => L('МВ фотоны — референсная дозиметрия', 'MV photons — reference dosimetry'), file: 'photons', importData: importPhotons, status: photonsStatus },
   electrons: { title: () => L('Электроны — референсная дозиметрия', 'Electrons — reference dosimetry'), file: 'electrons', importData: importElectrons, status: electronsStatus },
-  tools: { title: () => L('Инструменты — перекрёстная калибровка', 'Tools — cross-calibration'), file: 'crosscal', importData: importCrossCal, status: crossCalStatus },
+  tools: { title: () => L('Инструменты — перекрёстная калибровка', 'Tools — cross-calibration'), file: 'crosscal', importData: importCrossCal, status: crossCalStatus, tab: 'tools' },
+  uncertainty: { title: () => L('Инструменты — неопределённость', 'Tools — uncertainty'), file: 'uncertainty', importData: importUncTool, status: uncToolStatus, tab: 'tools' },
 };
+const tabOf = (name) => MODULES[name]?.tab ?? name;
 
 const store = {
   get(key) {
@@ -62,16 +67,20 @@ function initTheme() {
 
 function showModule(name) {
   if (!MODULES[name]) name = 'co60';
-  for (const key of Object.keys(MODULES)) {
-    const on = key === name;
-    $(`#module-${key}`).hidden = !on;
-    const tab = $(`#tab-${key}`);
-    if (on) tab.setAttribute('aria-current', 'page');
-    else tab.removeAttribute('aria-current');
+  for (const key of Object.keys(MODULES)) $(`#module-${key}`).hidden = key !== name;
+  // вкладка в шапке и переключатель подразделов «Инструментов»
+  for (const a of $$('.modules a[data-module]')) {
+    if (a.dataset.module === tabOf(name)) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  }
+  for (const a of $$('.subtools a[data-module]')) {
+    if (a.dataset.module === name) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
   }
   setActiveModule(name);
   document.title = MODULES[name].title();
   store.set(TAB_KEY, name);
+  if (tabOf(name) === 'tools') store.set(TOOL_KEY, name);
   refreshSectionNav($(`#module-${name}`));
 }
 
@@ -223,6 +232,8 @@ function init() {
   initPhotons();
   initElectrons();
   initCrossCal();
+  initUncTool();
+  setUncSources({ co60: cobaltUncSource, photons: photonsUncSource, electrons: electronsUncSource });
   initTransfer();
   initPaste();
   initDecimals();
@@ -238,10 +249,13 @@ function init() {
       window.scrollTo({ top: 0 });
     }
   });
-  for (const a of $$('.modules a[data-module]')) {
+  for (const a of $$('.modules a[data-module], .subtools a[data-module]')) {
     a.addEventListener('click', (e) => {
       e.preventDefault();
-      switchTo(a.dataset.module);
+      // «Инструменты» в шапке открывают подраздел, с которым работали последним
+      const top = a.closest('.modules') && a.dataset.module === 'tools';
+      const last = store.get(TOOL_KEY);
+      switchTo(top && MODULES[last] && tabOf(last) === 'tools' ? last : a.dataset.module);
       window.scrollTo({ top: 0 });
     });
   }

@@ -10,7 +10,6 @@ import { temperaturePressure, polarity, environmentChecks, complianceOf } from '
 import { resolveCoChamber, matchCoChamberByName } from './co60-chambers.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
-import { uncertaintyBudget, typeAOf, mergeBudgetMessages } from './uncertainty.js';
 
 export const CO_DEFAULTS = {
   protocol: 'trs',
@@ -84,12 +83,6 @@ export const CO_DEFAULTS = {
   co_ref_rate: '', // сГр/мин при вводе в эксплуатацию или предыдущей калибровке
   co_ref_at: 'zmax', // на какой глубине задано значение для сравнения: 'zmax' | 'zref'
   co_ref_date: '', // дата, к которой относится co_ref_rate; пусто — дата установки источника, если указана
-
-  // бюджет неопределённости (uncertainty.js): образец — TRS-398, табл. 13 (TG-51 бюджета для ⁶⁰Co не даёт)
-  co_unc_cert_U: '',
-  co_unc_cert_k: '2',
-  co_unc_cross: false,
-  co_unc_over: '',
 };
 
 export const ACTIVITY_UNITS = { Ci: { label: 'Ки', labelEn: 'Ci', toTBq: 0.037 }, TBq: { label: 'ТБк', labelEn: 'TBq', toTBq: 1 } };
@@ -121,7 +114,6 @@ export function normalizeCobalt(input) {
   if (f.protocol !== 'tg51') f.protocol = 'trs'; // режима «оба протокола» больше нет
   for (const k of ['co_M1', 'co_Mopp', 'co_M2']) if (!Array.isArray(f[k])) f[k] = isBlank(f[k]) ? ['', '', ''] : String(f[k]).trim().split(/[\s;]+/);
   for (const k of ['co_tt', 'co_tm']) if (!Array.isArray(f[k])) f[k] = ['', ''];
-  if (f.co_unc_over && typeof f.co_unc_over === 'object') f.co_unc_over = JSON.stringify(f.co_unc_over);
   for (const k of ['co_nx_M1', 'co_nx_Mn', 'co_Mc']) if (!Array.isArray(f[k])) f[k] = isBlank(f[k]) ? ['', '', ''] : String(f[k]).trim().split(/[\s;]+/);
   // до появления списка камер модель вводилась текстом, а тип — отдельно
   if (!isBlank(f.co_ch_model) && !resolveCoChamber(f) && !String(f.co_ch_model).startsWith('MY:')) {
@@ -532,14 +524,6 @@ export function computeCobalt(form) {
   const hasError = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
   if (wantTRS && !trs.ok && !hasError('trs')) add('error', 'trs', L('Не удалось вычислить дозу: проверьте ввод.', 'Could not calculate the dose: check the input.'));
   if (want51 && !tg.ok && !hasError('tg51')) add('error', 'tg51', L('Не удалось вычислить дозу: проверьте ввод.', 'Could not calculate the dose: check the input.'));
-
-  // бюджет неопределённости (на итог не влияет); тип А — по серии, по которой посчитан итог
-  const unc = uncertaintyBudget({
-    beam: 'co60', protocol: f.protocol, crossCo: !!f.co_unc_cross, certU: f.co_unc_cert_U, certK: f.co_unc_cert_k, over: f.co_unc_over,
-    typeA: typeAOf(ctrl.on ? ctrl.M : M1), prefix: 'co_',
-  });
-  mergeBudgetMessages(unc, add);
-
   const order = { error: 0, warn: 1, info: 2 };
   messages.sort((a, b) => order[a.level] - order[b.level]);
   trs.blocked = wantTRS && hasError('trs');
@@ -565,7 +549,6 @@ export function computeCobalt(form) {
     depth,
     trs,
     tg51: tg,
-    unc,
     messages,
     flags,
     hasErrors: messages.some((m) => m.level === 'error'),

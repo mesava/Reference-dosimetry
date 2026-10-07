@@ -7,7 +7,6 @@ import { coChamberGroups } from '../core/co60-chambers.js';
 import { PRESSURE_UNITS, NDW_UNITS, unitLabel } from '../core/units.js';
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, renderPairs, readPairs, setupPairs } from './widgets.js';
-import { setupBudget, renderBudget, doseUncLine, budgetDoseText, budgetFactorRows, budgetReportLines } from './uncertainty-ui.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
@@ -254,22 +253,7 @@ function doseRow(key, x, result) {
     <div class="proto"><span>${PROTO[key].name}${fromCtrl || failed ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
     <div class="dose-big">${none || !Number.isFinite(main) ? '—' : fmt(main, 2)}<small>${L('сГр/мин', 'cGy/min')} ${where}</small></div>
     <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : failed ? ctrlErrorText(6, 5) : secondary}</div>
-    ${none || !Number.isFinite(main) ? '' : doseUncLine(result.unc, main, L('сГр/мин', 'cGy/min'), 'co-s-unc', 8)}
   </div>`;
-}
-
-/** Итог для бюджета неопределённости: мощность дозы и где она задана (или NaN, если итога нет). */
-function uncTarget(result) {
-  const x = result.protocol === 'tg51' ? result.tg51 : result.trs;
-  if (x.blocked || ctrlFailed(x)) return { value: NaN, where: '' };
-  const p = primaryOf(x);
-  const atMax = atMaxOf(p, result.depth);
-  return { value: rateAt(p, result.depth), where: atMax ? L('на z<sub>max</sub>', 'at z<sub>max</sub>') : L(`на ${zText(result.inputs.zref)} г/см²`, `at ${zText(result.inputs.zref)} g/cm²`) };
-}
-
-function renderUnc(result) {
-  const t = uncTarget(result);
-  renderBudget($('#co_unc-budget'), result.unc, { hidden: $('#co_unc_over'), doseText: budgetDoseText(result.unc, t.value, L('сГр/мин', 'cGy/min'), t.where) });
 }
 
 /** Строки таблицы с дозой за облучение (сГр и Гр) и мощностью дозы на опорной глубине и на z_max. */
@@ -308,8 +292,8 @@ function renderReadout(result, data) {
   }
 
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
-  const scopeName = { common: '', depth: L('Пересчёт на z_max · ', 'Transfer to z_max · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), source: L('Источник · ', 'Source · '), unc: L('Неопределённость · ', 'Uncertainty · '), trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
-  const list = result.messages.filter((m) => ['common', 'depth', 'ctrl', 'source', 'unc'].includes(m.scope) || keys.includes(m.scope));
+  const scopeName = { common: '', depth: L('Пересчёт на z_max · ', 'Transfer to z_max · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), source: L('Источник · ', 'Source · '), trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
+  const list = result.messages.filter((m) => ['common', 'depth', 'ctrl', 'source'].includes(m.scope) || keys.includes(m.scope));
   $('#co-messages').innerHTML = list.length
     ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
     : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
@@ -349,8 +333,6 @@ function renderReadout(result, data) {
     rows.push([correctedReadingLabel(), ['M', t.M, 4, true], ['M', g.M, 4, true]]);
     rows.push(...doseTableRows(t, g, result, z, i.tEff, [false, false], true));
   }
-
-  if (!(showT ? t : g).blocked) rows.push(...budgetFactorRows(result.unc));
 
   const cell = ([sym, v, d, dose, own], blocked) => `<td class="v">${sym ? `<i>${sym}</i> ` : ''}${dose && (blocked || own) ? '—' : fmt(v, d)}</td>`;
   $('#co-factors').innerHTML =
@@ -482,8 +464,6 @@ function reportText(data, r) {
     }
     out.push('');
   }
-  const ut = uncTarget(r);
-  if (Number.isFinite(ut.value)) out.push(...budgetReportLines(r.unc, ut.value, L('сГр/мин', 'cGy/min')), '');
   const msgs = r.messages.filter((m) => m.level !== 'info');
   if (msgs.length) {
     out.push(L('Замечания:', 'Messages:'));
@@ -531,6 +511,27 @@ export function importCobalt(obj) {
 
 // ------------------------------------------------------------ цикл
 let current = { data: null, result: null };
+
+/**
+ * Данные вкладки для инструмента «Неопределённость» (кнопка «Взять данные с вкладки»): серия показаний итога,
+ * мощность дозы и сведения об аппарате. Сама вкладка бюджет не показывает.
+ */
+export function cobaltUncSource() {
+  const { data, result } = current;
+  if (!result) return null;
+  const x = result.protocol === 'tg51' ? result.tg51 : result.trs;
+  const none = x.blocked || ctrlFailed(x);
+  const p = primaryOf(x);
+  return {
+    beam: 'co60',
+    route: 'co60',
+    chamberType: result.chamber?.type === 'pp' ? 'pp' : 'cyl',
+    M: p === x.ctrl ? data.co_Mc : data.co_M1,
+    value: none ? NaN : rateAt(p, result.depth),
+    unit: 'cGymin',
+    meta: { institution: data.co_institution, machine: data.co_machine, beam: '⁶⁰Co', date: data.co_date, staff: data.co_staff },
+  };
+}
 /** Открытый файл: пока форму не меняли, итог сверяется с сохранённым в файле. */
 let openedFile = null;
 
@@ -547,7 +548,6 @@ function update() {
   const result = computeCobalt(data);
   current = { data: result.form, result };
   applyVisibility(result.form, result);
-  renderUnc(result);
   renderOutputs(ROOT(), result);
   renderFlags(ROOT(), result.flags, seriesBox);
   renderReadout(result, result.form);
@@ -580,7 +580,6 @@ export function initCobalt() {
   $$('#co-sheet .cells').forEach((box) => setupCells(box, update));
   setupPairs(pairsBox(), update);
   $$('#co-sheet > section .combo').forEach((c) => makeCombo(c));
-  setupBudget($('#co_unc-budget'), $('#co_unc_over'));
 
   const draft = loadDraft();
   writeForm(draft ? draft : sampleData());

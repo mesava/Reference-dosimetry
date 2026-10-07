@@ -1,5 +1,5 @@
-// Раздел «Неопределённость» на вкладках ⁶⁰Co, МВ фотонов и электронов: таблица бюджета с полями «Своё»,
-// строка с U рядом с дозой, строки для таблицы поправок и для протокола текстом.
+// Таблица бюджета неопределённости с полями «Своё» и строки бюджета для протокола текстом
+// (инструмент «Неопределённость» во вкладке «Инструменты»).
 // Расчёт — в core/uncertainty.js; свои значения строк хранятся в скрытом поле формы (JSON), чтобы
 // сохраняться в черновике и файле вместе с остальными полями.
 import { L, getLang, refText } from '../core/i18n.js';
@@ -51,18 +51,6 @@ export function setupBudget(box, hidden) {
     hidden.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
-
-/** Переход к разделу по кнопке в строке с U (без смены адреса: адрес страницы выбирает вкладку). */
-document.addEventListener('click', (e) => {
-  const b = e.target.closest?.('[data-goto]');
-  if (!b) return;
-  const h = document.getElementById(b.dataset.goto);
-  const sec = h?.closest('section');
-  if (!sec) return;
-  sec.scrollIntoView({ behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
-  if (!h.hasAttribute('tabindex')) h.setAttribute('tabindex', '-1');
-  h.focus({ preventScroll: true });
-});
 
 // подписи значений для телефонной раскладки (там строки таблицы — карточки без шапки)
 const capDef = () => `data-cap="${esc(L('Образец', 'Example'))}"`;
@@ -155,25 +143,6 @@ export function renderBudget(box, b, { hidden, doseText = '' }) {
   dose.innerHTML = doseText;
 }
 
-/**
- * Строка под дозой: U (k = 2) в процентах и в единицах дозы, откуда бюджет.
- * @param {object} b — бюджет
- * @param {number} value — итоговое значение
- * @param {string} unit — подпись единиц (HTML)
- * @param {string} gotoId — id заголовка раздела «Неопределённость»
- * @param {string|number} sectionNo — номер раздела
- */
-export function doseUncLine(b, value, unit, gotoId, sectionNo) {
-  if (!b || !Number.isFinite(b.UPct)) return '';
-  const abs = Number.isFinite(value) ? (Math.abs(value) * b.UPct) / 100 : NaN;
-  const absTxt = Number.isFinite(abs) ? ` = ±${fmt2sig(abs)} ${unit}` : '';
-  const link = `<button type="button" class="unc-goto" data-goto="${esc(gotoId)}">${L(`раздел ${sectionNo}`, `section ${sectionNo}`)}</button>`;
-  const src = b.custom
-    ? L(`ваш бюджет — ${link}`, `your budget — ${link}`)
-    : L(`по образцу ${esc(refText(b.template.ref))} — проверьте ${link}`, `per the ${esc(refText(b.template.ref))} example — check ${link}`);
-  return `<div class="unc-line"><span>${L('Неопределённость', 'Uncertainty')}: <b>U = ±${fmt(b.UPct, 1)} %</b> (k = 2)${absTxt}</span><span class="unc-src">${src}</span></div>`;
-}
-
 /** Строка под таблицей бюджета: U в единицах итоговой величины. */
 export function budgetDoseText(b, value, unit, where) {
   if (!b || !Number.isFinite(value)) return '';
@@ -182,16 +151,6 @@ export function budgetDoseText(b, value, unit, where) {
     `Для итога ${fmt(value, value >= 10 ? 2 : 4)} ${unit}${where ? ` ${where}` : ''}: U = ±${fmt2sig(abs)} ${unit} (k = 2).`,
     `For the result ${fmt(value, value >= 10 ? 2 : 4)} ${unit}${where ? ` ${where}` : ''}: U = ±${fmt2sig(abs)} ${unit} (k = 2).`,
   );
-}
-
-/** Строки для таблицы «Поправки и промежуточные величины» (видны и в PDF). */
-export function budgetFactorRows(b) {
-  if (!b) return [];
-  return [
-    [L('Неопределённость (образец: ', 'Uncertainty (example: ') + esc(refText(b.template.ref)) + (b.custom ? L('; со своими значениями)', '; with your values)') : ')'), [], [], 'group'],
-    [L('Суммарная стандартная неопределённость u<sub>c</sub> (k = 1), %', 'Combined standard uncertainty u<sub>c</sub> (k = 1), %'), ['', b.ucPct, 2], ['', b.ucPct, 2]],
-    [L('Расширенная неопределённость U (k = 2), %', 'Expanded uncertainty U (k = 2), %'), ['', b.UPct, 1], ['', b.UPct, 1], 'total'],
-  ];
 }
 
 /** Протокол текстом: бюджет построчно и итог. */
