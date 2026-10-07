@@ -10,6 +10,7 @@ import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch, e
 import { initCrossCal, importCrossCal, crossCalStatus, setCrossCalTransfer } from './crosscal-ui.js';
 import { initUncTool, importUncTool, uncToolStatus, setUncSources } from './uncertainty-tool-ui.js';
 import { initJaffe, importJaffe, jaffeStatus } from './jaffe-ui.js';
+import { initEdepth, importEdepth, edepthStatus, setEdepthTransfer } from './edepth-ui.js';
 import { initSectionNavs, refreshSectionNav } from './section-nav.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
@@ -22,6 +23,7 @@ const MODULES = {
   tools: { title: () => L('Инструменты — перекрёстная калибровка', 'Tools — cross-calibration'), file: 'crosscal', importData: importCrossCal, status: crossCalStatus, tab: 'tools' },
   uncertainty: { title: () => L('Инструменты — неопределённость', 'Tools — uncertainty'), file: 'uncertainty', importData: importUncTool, status: uncToolStatus, tab: 'tools' },
   jaffe: { title: () => L('Инструменты — график Яффе', 'Tools — Jaffé plot'), file: 'jaffe', importData: importJaffe, status: jaffeStatus, tab: 'tools' },
+  edepth: { title: () => L('Инструменты — кривая дозы электронов', 'Tools — electron depth dose'), file: 'edepth', importData: importEdepth, status: edepthStatus, tab: 'tools' },
 };
 const tabOf = (name) => MODULES[name]?.tab ?? name;
 
@@ -111,6 +113,18 @@ const TRANSFER = {
   co60: { apply: (p) => applyCobaltPatch(p), section: '#co-s2', status: (t) => cobaltStatus(t), sec: 2 },
 };
 function initTransfer() {
+  // кривая дозы электронов → вкладка «Электроны»: качество пучка (раздел 3) и пересчёт на z_max (раздел 8)
+  setEdepthTransfer((patch) => {
+    switchTo('electrons');
+    applyElectronsPatch(patch);
+    $('#e-s2')?.closest('section')?.scrollIntoView({ behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    electronsStatus(
+      L(
+        `Из «Кривой дозы электронов» перенесены ${patch.e_r50_method === 'i50' ? 'R50,ion (I50)' : 'R50'}${patch.e_pdd ? ', PDD(z_ref)' : ''}${patch.e_zmax ? ' и z_max' : ''}; подсвечены заполненные поля.`,
+        `Transferred from Electron depth dose: ${patch.e_r50_method === 'i50' ? 'R50,ion (I50)' : 'R50'}${patch.e_pdd ? ', PDD(z_ref)' : ''}${patch.e_zmax ? ' and z_max' : ''}; the filled fields are highlighted.`,
+      ),
+    );
+  });
   setCrossCalTransfer((target, patch) => {
     const t = TRANSFER[target];
     if (!t) return;
@@ -247,6 +261,7 @@ function init() {
   initCrossCal();
   initUncTool();
   initJaffe();
+  initEdepth();
   setUncSources({ co60: cobaltUncSource, photons: photonsUncSource, electrons: electronsUncSource });
   initTransfer();
   initPaste();

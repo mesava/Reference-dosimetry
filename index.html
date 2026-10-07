@@ -1419,6 +1419,7 @@
       <a href="#tools" data-module="tools" aria-current="page">Перекрёстная калибровка</a>
       <a href="#uncertainty" data-module="uncertainty">Неопределённость</a>
       <a href="#jaffe" data-module="jaffe">График Яффе</a>
+      <a href="#edepth" data-module="edepth">Кривая дозы электронов</a>
     </nav>
     <p class="intro"><button type="button" class="term" data-term="crosscal">Перекрёстная калибровка</button> рабочей камеры по опорной камере, откалиброванной в ⁶⁰Co, — в пучке ⁶⁰Co, в клиническом пучке МВ фотонов или в пучке электронов (TRS-398 Rev.1, разд. 4.5, 5.5, 6.6, 7.6; для электронов — также Report 385, разд. 5.3.2). Результат переносится кнопкой в раздел «Камера и электрометр» нужной вкладки.</p>
     <details class="howto" data-howto="crosscal" open>
@@ -1919,6 +1920,7 @@
       <a href="#tools" data-module="tools">Перекрёстная калибровка</a>
       <a href="#uncertainty" data-module="uncertainty" aria-current="page">Неопределённость</a>
       <a href="#jaffe" data-module="jaffe">График Яффе</a>
+      <a href="#edepth" data-module="edepth">Кривая дозы электронов</a>
     </nav>
     <p class="intro">Бюджет <button type="button" class="term" data-term="unc">неопределённости</button> поглощённой дозы в воде на опорной глубине. Образец — пример из протокола (TRS-398 Rev.1, табл. 13, 17, 24; аддендум TG-51, табл. II; Report 385, табл. 8, 9); его значения заменяются своими. Данные можно взять с вкладки дозиметрии кнопкой в разделе 1.</p>
     <details class="howto" data-howto="uncertainty" open>
@@ -2088,6 +2090,7 @@
       <a href="#tools" data-module="tools">Перекрёстная калибровка</a>
       <a href="#uncertainty" data-module="uncertainty">Неопределённость</a>
       <a href="#jaffe" data-module="jaffe" aria-current="page">График Яффе</a>
+      <a href="#edepth" data-module="edepth">Кривая дозы электронов</a>
     </nav>
     <p class="intro"><b>График Яффе</b> — проверка системы камера — кабель — электрометр при вводе в эксплуатацию: показания при ряде напряжений, <button type="button" class="term" data-term="ks">рекомбинация</button> (k<sub>s</sub>, P<sub>ion</sub>), напряжение начала умножения заряда, проверка метода двух напряжений и полярности, зависимость от дозы за импульс (TRS-398 Rev.1, разд. 4.4.3.4, табл. 3; WGTG51 Report 374, разд. 4.4.4, прил. A; аддендум TG-51, табл. III).</p>
     <details class="howto" data-howto="jaffe" open>
@@ -2274,6 +2277,169 @@
   </aside>
 </main>
 <div class="mobile-result"><span id="jf-mobile-value">—</span><a href="#jf-readout">к результату</a></div>
+</div>
+
+<div class="module" id="module-edepth" role="tabpanel" aria-labelledby="tab-tools" hidden>
+<main class="layout">
+  <form id="ed-sheet" class="sheet" autocomplete="off" novalidate>
+    <nav class="subtools" aria-label="Инструменты">
+      <a href="#tools" data-module="tools">Перекрёстная калибровка</a>
+      <a href="#uncertainty" data-module="uncertainty">Неопределённость</a>
+      <a href="#jaffe" data-module="jaffe">График Яффе</a>
+      <a href="#edepth" data-module="edepth" aria-current="page">Кривая дозы электронов</a>
+    </nav>
+    <p class="intro">Пересчёт кривой ионизации, измеренной камерой в пучке электронов, в кривую глубинной дозы: сдвиг к точке измерения, <button type="button" class="term" data-term="r50">R<sub>50</sub></button> по I<sub>50</sub>, умножение на s<sub>w,air</sub>(z), параметры пучка и PDD на опорной глубине (TRS-398 Rev.1, разд. 7.3, 7.7.1, табл. 22; Report 385, разд. 4). Результат переносится кнопкой во вкладку «Электроны».</p>
+    <details class="howto" data-howto="edepth" open>
+      <summary>Как проводить и как считается</summary>
+      <div class="howto-body">
+        <h3>Что откуда берётся</h3>
+      <ul>
+        <li><b>Кривая</b> — центральная ось в воде, РИП 100 см, поле на поверхности не меньше 10 × 10 см. Предпочтительна плоскопараллельная камера; цилиндрическая — при R<sub>50</sub> не меньше 3 г/см² (TRS-398, табл. 19). При вертикальном пучке сканируют к поверхности.</li>
+        <li><b>Данные</b> (раздел 3) — два столбца из экспорта сканера: глубина и показание, в любых единицах. Подходят CSV, TXT и PTW .mcc (берётся первая кривая); заголовки и комментарии пропускаются.</li>
+        <li><b>Глубина в данных</b> (раздел 2) — глубина опорной точки камеры: центра цилиндрической камеры или наружной поверхности входного окна плоскопараллельной. Если программа сканера уже пересчитала глубину на точку измерения, выберите «сдвиг уже учтён».</li>
+        <li><b>Детектор дозы</b> (диод, алмаз) — если сравнением с камерой подтверждено, что он отвечает дозе: тогда кривая уже кривая дозы, пересчёта нет.</li>
+      </ul>
+        <h3>Как считается</h3>
+      <ol>
+        <li>Глубина точки измерения z = z<sub>данных</sub> + Δ. TRS-398: цилиндрическая камера — Δ = −0,5·r<sub>cyl</sub> (табл. 4), плоскопараллельная — Δ = водоэквивалентная толщина окна (табл. 5). TG-51 с Report 385 — сдвиги для каждой камеры (табл. 2 и 3).</li>
+        <li>I<sub>50</sub> — глубина, где ионизация на спаде падает до 50 % максимума (линейная интерполяция между точками). R<sub>50</sub> = 1,029·I<sub>50</sub> − 0,06 г/см² при I<sub>50</sub> ≤ 10 г/см², иначе 1,059·I<sub>50</sub> − 0,37 (TRS-398, ур. 37; Report 385, ур. 3).</li>
+        <li>Доза D(z) ∝ M(z)·s<sub>w,air</sub>(R<sub>50</sub>, z) (TRS-398, разд. 7.7.1, табл. 22), затем нормировка на максимум. s<sub>w,air</sub> — выражение Burns et al. (1996) для z/R<sub>50</sub> от 0,02 до 1,2; ближе к поверхности и глубже берутся значения на краях. Изменение поправки на возмущение с глубиной не учитывается: у камер эталонного класса оно сдвигает R<sub>50</sub> меньше чем на 0,05 г/см².</li>
+        <li>По кривой дозы: R<sub>100</sub> — вершина параболы по точкам не ниже 98 %; R<sub>90</sub>, R<sub>80</sub>, R<sub>50</sub> — глубины, где доза на спаде падает до 90, 80 и 50 %; R<sub>p</sub> — пересечение касательной к спаду (прямая по точкам от 70 до 30 %) с линией тормозного фона; D<sub>x</sub> — фон на R<sub>p</sub>.</li>
+        <li>z<sub>ref</sub> = 0,6·R<sub>50</sub> − 0,1 г/см² (ур. 39), PDD(z<sub>ref</sub>) — интерполяцией по кривой дозы; E<sub>0</sub> ≈ 2,33·R<sub>50</sub> МэВ. Кнопка переноса заполняет во вкладке «Электроны» R<sub>50,ion</sub> (или R<sub>50</sub>), PDD(z<sub>ref</sub>) и z<sub>max</sub> = R<sub>100</sub>.</li>
+      </ol>
+      </div>
+    </details>
+
+    <!-- 1 -->
+    <section class="step" aria-labelledby="ed-s1">
+      <header><span class="step-no">1</span><h2 id="ed-s1">Пучок и детектор</h2>
+        <p class="hint">От детектора зависят сдвиг глубины и то, нужен ли пересчёт ионизации в дозу.</p></header>
+      <div class="field cc-type-field">
+        <span class="label" id="ed-det-label">Детектор</span>
+        <div class="segmented" role="radiogroup" aria-labelledby="ed-det-label">
+          <label><input type="radio" name="ed_detector" id="ed_detector_chamber" value="chamber" checked><span>Ионизационная камера</span></label>
+          <label><input type="radio" name="ed_detector" id="ed_detector_dose" value="dose"><span>Детектор дозы</span></label>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="field span-2" data-show="ed_detector:chamber"><label for="ed_ch_model">Камера</label><select id="ed_ch_model"></select></div>
+        <div class="field" data-show="ed_detector:chamber;ed_ch_model:OTHER">
+          <label for="ed_other_type">Тип камеры</label>
+          <select id="ed_other_type"><option value="pp">плоскопараллельная</option><option value="cyl">цилиндрическая</option></select>
+        </div>
+        <div class="field" data-show="ed_detector:chamber;ed_ch_model:OTHER;ed_other_type:cyl"><label for="ed_other_r">Радиус полости r<sub>cyl</sub>, мм</label><input type="text" id="ed_other_r" class="num" inputmode="decimal"></div>
+        <div class="field" data-show="ed_detector:chamber;ed_ch_model:OTHER;ed_other_type:pp"><label for="ed_other_wet">Водный эквивалент окна, мм</label><input type="text" id="ed_other_wet" class="num" inputmode="decimal"><span class="sub">толщина × плотность, мг/см² ÷ 100</span></div>
+      </div>
+      <div class="grid subgrid">
+        <div class="field"><label for="ed_institution">Учреждение</label><div class="combo" data-list="institutions"><input type="text" id="ed_institution"></div></div>
+        <div class="field"><label for="ed_machine">Аппарат</label><input type="text" id="ed_machine" placeholder="Модель, заводской №"></div>
+        <div class="field"><label for="ed_beam">Пучок</label><input type="text" id="ed_beam" placeholder="12 МэВ"></div>
+        <div class="field"><label for="ed_date">Дата</label><input type="date" id="ed_date"></div>
+        <div class="field"><label for="ed_ssd">РИП, см</label><input type="text" id="ed_ssd" class="num" inputmode="decimal"></div>
+        <div class="field"><label for="ed_field">Поле (аппликатор), см</label><input type="text" id="ed_field" placeholder="20×20"></div>
+        <div class="field span-2">
+          <span class="label" id="ed-staff-label">Сотрудник, проводивший измерения</span>
+          <div id="ed-staff-list" class="staff-list" data-prefix="ed_staff" role="group" aria-labelledby="ed-staff-label"></div>
+          <button type="button" class="link-btn" id="ed-btn-add-staff"><span aria-hidden="true">+</span> Добавить сотрудника</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section class="step" aria-labelledby="ed-s2">
+      <header><span class="step-no">2</span><h2 id="ed-s2">Глубина в данных</h2>
+        <p class="hint">Сканер записывает глубину опорной точки детектора: центра цилиндрической камеры или наружной поверхности окна плоскопараллельной. Сдвиг переводит её в глубину точки измерения; он зависит от камеры и протокола в шапке.</p></header>
+      <div class="grid">
+        <div class="field">
+          <span class="label" id="ed-unit-label">Единицы глубины</span>
+          <div class="segmented" role="radiogroup" aria-labelledby="ed-unit-label">
+            <label><input type="radio" name="ed_unit" id="ed_unit_mm" value="mm" checked><span>мм</span></label>
+            <label><input type="radio" name="ed_unit" id="ed_unit_cm" value="cm"><span>см</span></label>
+          </div>
+        </div>
+        <div class="field span-2">
+          <label for="ed_shift_mode">Сдвиг глубины</label>
+          <select id="ed_shift_mode"><option value="auto">по протоколу для камеры</option><option value="none">сдвиг уже учтён в данных</option><option value="manual">вручную</option></select>
+          <span class="sub" id="ed-shift-sub"></span>
+        </div>
+        <div class="field" data-show="ed_shift_mode:manual"><label for="ed_shift_manual">Сдвиг Δ, мм</label><input type="text" id="ed_shift_manual" class="num" inputmode="decimal"><span class="sub">«+» — точка измерения глубже, чем глубина в данных</span></div>
+        <div class="field out-cell"><span class="label">Принятый сдвиг Δ, мм</span><output id="ed-shift-out"></output></div>
+      </div>
+    </section>
+
+    <!-- 3 -->
+    <section class="step" aria-labelledby="ed-s3">
+      <header><span class="step-no">3</span><h2 id="ed-s3">Кривая</h2>
+        <p class="hint">Вставьте два столбца из экспорта сканера (глубина и показание) или откройте файл. Порядок строк не важен, одинаковые глубины усредняются.</p></header>
+      <div class="field">
+        <label for="ed_data">Глубина и показание</label>
+        <textarea id="ed_data" class="curve-data" spellcheck="false" placeholder="0.0&#9;91.2&#10;1.0&#9;92.4&#10;…"></textarea>
+        <span class="sub" id="ed-data-sub"></span>
+      </div>
+      <div class="row-tools">
+        <button type="button" class="link-btn" id="ed-btn-file">Открыть файл кривой (.csv, .txt, .mcc)</button>
+        <input type="file" id="ed-curve-input" accept=".csv,.txt,.mcc,.dat,.asc,text/plain,text/csv" hidden>
+      </div>
+    </section>
+
+    <!-- 4 -->
+    <section class="step" aria-labelledby="ed-s4">
+      <header><span class="step-no">4</span><h2 id="ed-s4">Кривые ионизации и дозы</h2>
+        <p class="hint">Обе кривые — в процентах от своего максимума, по глубине точки измерения. Наведите курсор на график, чтобы увидеть значения; все точки — в файле CSV.</p></header>
+      <div class="chart-box" id="ed-chart" data-i18n-skip></div>
+      <div class="chart-legend" id="ed-legend" data-i18n-skip></div>
+      <div class="row-tools">
+        <button type="button" class="link-btn" id="ed-btn-csv">Скачать кривую дозы (.csv)</button>
+      </div>
+    </section>
+
+    <!-- 5 -->
+    <section class="step" aria-labelledby="ed-s5">
+      <header><span class="step-no">5</span><h2 id="ed-s5">Примечания</h2></header>
+      <div class="field"><label for="ed_notes" class="muted">Сканер, шаг, поправки на полярность и рекомбинацию по глубине, сглаживание</label><textarea id="ed_notes"></textarea></div>
+    </section>
+  </form>
+
+  <aside class="readout" id="ed-readout" aria-label="Результат: кривая дозы электронов">
+    <section class="display" aria-live="polite">
+      <h2>Качество пучка электронов</h2>
+      <p class="demo-flag" id="ed-demo-flag" hidden>Сейчас загружен демонстрационный пример: значения вымышленные.</p>
+      <p class="demo-flag" id="ed-notes-flag" hidden></p>
+      <p class="file-note" id="ed-file-note" hidden></p>
+      <div class="dose-rows" id="ed-result"></div>
+      <div class="transfer">
+        <div class="transfer-btns"><button type="button" class="primary" id="ed-btn-transfer">Перенести во вкладку «Электроны»</button></div>
+        <p class="transfer-note" id="ed-transfer-note"></p>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Замечания</h2>
+      <ul class="messages" id="ed-messages"></ul>
+    </section>
+    <section class="panel">
+      <h2>Параметры пучка</h2>
+      <div class="table-wrap"><table class="factors" id="ed-factors"></table></div>
+    </section>
+
+    <section class="print-only sign-block" id="ed-sign" aria-hidden="true"></section>
+    <section class="panel no-print">
+      <h2>Данные</h2>
+      <div class="actions">
+        <button type="button" class="primary" id="ed-btn-sample">Загрузить пример</button>
+        <button type="button" id="ed-btn-clear">Очистить</button>
+        <button type="button" id="ed-btn-save" data-standalone>Сохранить данные (.json)</button>
+        <button type="button" id="ed-btn-load">Открыть файл</button>
+        <button type="button" id="ed-btn-copy-json">Копировать данные</button>
+        <button type="button" id="ed-btn-copy-report">Копировать протокол</button>
+        <button type="button" id="ed-btn-pdf" data-standalone>Сохранить в PDF</button>
+        <button type="button" id="ed-btn-print" data-standalone>Печать</button>
+      </div>
+      <input type="file" id="ed-file-input" accept="application/json,.json" hidden>
+      <p class="status-line" id="ed-status" role="status"></p>
+    </section>
+  </aside>
+</main>
+<div class="mobile-result"><span id="ed-mobile-value">—</span><a href="#ed-readout">к результату</a></div>
 </div>
 
 <footer class="page-foot">

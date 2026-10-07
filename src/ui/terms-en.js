@@ -302,7 +302,7 @@ export const TERMS_EN = {
 <p class="formula">D(z<sub>max</sub>) = D(z<sub>ref</sub>) / (PDD(z<sub>ref</sub>)/100)</p>
 <ul>
 <li>Use the clinical depth-dose curve — the one entered into the treatment planning system.</li>
-<li>If the curve was measured with an ionization chamber, ionization is converted to dose by multiplying by the water/air stopping-power ratio s<sub>w,air</sub> for the given depth (TRS-398, Table 22). For reference-class chambers, the variation of the perturbation correction with depth affects R<sub>50</sub> by less than 0.05 g/cm².</li>
+<li>If the curve was measured with an ionization chamber, ionization is converted to dose by multiplying by the water/air stopping-power ratio s<sub>w,air</sub> for the given depth (TRS-398, Table 22) — in the calculator this is done under Tools → Electron depth dose. For reference-class chambers, the variation of the perturbation correction with depth affects R<sub>50</sub> by less than 0.05 g/cm².</li>
 <li>Report 385: incorrect transfer of dose from d<sub>ref</sub> to d<sub>max</sub> is one of the most common errors in electron beam calibration.</li>
 </ul>
 <p class="src">TRS-398 Rev.1, Secs. 7.4.3, 7.7.1, Table 22; Report 385, Sec. 4; TG-51, Sec. X.D.</p>`,

@@ -834,6 +834,14 @@ svg .mk.hollow { fill: var(--sheet); stroke-width: 2; }
 svg .mk.hollow.s1 { stroke: var(--series-1); }
 svg .mk.hollow.s2 { stroke: var(--series-2); }
 svg.chart .hit { fill: transparent; cursor: default; }
+svg .ln.aux { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }
+svg.chart .xh-line { stroke: var(--muted); stroke-width: 1; }
+.chart-tip { position: absolute; z-index: 2; pointer-events: none; display: grid; gap: 2px; padding: 6px 8px; font: 12px/1.35 var(--font-body); color: var(--ink); background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); white-space: nowrap; }
+.chart-tip b { font-weight: 600; }
+.chart-tip span { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.chart-tip .sw { display: inline-block; width: 10px; height: 3px; border-radius: 2px; }
+.chart-tip .sw.s1 { background: var(--series-1); }
+.chart-tip .sw.s2 { background: var(--series-2); }
 svg.chart .pt:hover .mk { stroke: var(--ink); }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
 .chart-legend .item { display: inline-flex; align-items: center; gap: 6px; }
@@ -860,4 +868,10 @@ svg.chart .pt:hover .mk { stroke: var(--ink); }
   table.jf-table tr.empty { display: none; }
   .chart-box { break-inside: avoid; }
   .checks li { font-size: 10px; padding: 2px 0; }
+}
+
+/* ------------------------------------------------------------ кривая дозы электронов */
+textarea.curve-data { min-height: 200px; height: 220px; font: 12.5px/1.45 var(--font-mono); white-space: pre; overflow: auto; tab-size: 10; resize: vertical; }
+@media print {
+  textarea.curve-data { display: none !important; }
 }

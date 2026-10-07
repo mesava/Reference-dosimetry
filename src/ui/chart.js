@@ -48,11 +48,15 @@ export function legendSwatch({ shape = 'circle', cls = 's1', hollow = false, lin
  * @param {string} spec.xLabel, spec.yLabel — подписи осей (простой текст)
  * @param {(v:number, digits:number)=>string} spec.fmt — число с заданным числом знаков (для подписей делений)
  * @param {number[]} [spec.xInclude], [spec.yInclude] — значения, которые должны попасть в диапазон осей
- * @param {Array} spec.series — [{ cls, shape, points: [{ x, y, hollow, title }] }]
+ * @param {Array} spec.series — [{ cls, shape, points: [{ x, y, hollow, title }] }]; с line: true — ломаная
+ *   через точки (в порядке массива) без значков, dashed — пунктиром
  * @param {Array} [spec.lines] — [{ cls, a, b, x0, x1, dashed }] — прямая y = a + b·x на отрезке [x0, x1]
- * @param {Array} [spec.vlines] — [{ x, label }] — вертикальные метки (рабочее напряжение и т. п.)
+ * @param {Array} [spec.vlines] — [{ x, label, row }] — вертикальные метки (рабочее напряжение и т. п.);
+ *   row = 1 — подпись во втором ряду, чтобы близкие метки не наезжали друг на друга
  * @param {Array} [spec.notes] — [{ x, y, text, below, anchor }] — подписи у точек в координатах данных
  * @param {number} [spec.aspect], [spec.minHeight], [spec.maxHeight] — высота: доля ширины в заданных пределах, px
+ * @param {(x:number)=>({x:number, head:string, rows:Array<{cls:string, y:number, text:string}>})|null} [spec.crosshair]
+ *   — для ломаных: вертикальная линия и подсказка у ближайшей точки по x при наведении
  * Подписи осей, меток и заметок могут содержать нижние индексы через «_» (M_нас, k_s).
  */
 export function scatterChart(box, spec) {
@@ -60,7 +64,8 @@ export function scatterChart(box, spec) {
   const W = Math.max(260, Math.round(box.clientWidth || 640));
   const H = Math.round(Math.min(spec.maxHeight ?? 360, Math.max(spec.minHeight ?? 230, W * (spec.aspect ?? 0.56))));
   // сверху — подпись оси y и, ниже неё, подписи вертикальных меток
-  const m = { l: 56, r: 16, t: spec.vlines?.length ? 38 : 28, b: 44 };
+  const rows2 = spec.vlines?.some((v) => v.row);
+  const m = { l: 56, r: 16, t: spec.vlines?.length ? (rows2 ? 50 : 38) : 28, b: 44 };
   const pw = W - m.l - m.r;
   const ph = H - m.t - m.b;
 
@@ -102,7 +107,8 @@ export function scatterChart(box, spec) {
     const x = X(v.x).toFixed(1);
     // подпись у правого или левого края не выходит за рамку графика
     const anchor = X(v.x) > m.l + pw - 44 ? 'end' : X(v.x) < m.l + 44 ? 'start' : 'middle';
-    parts.push(`<line class="vmark" x1="${x}" x2="${x}" y1="${m.t}" y2="${m.t + ph}"/><text class="vmark-label" x="${x}" y="${m.t - 5}" text-anchor="${anchor}">${svgText(v.label)}</text>`);
+    const ly = m.t - 5 - (v.row ? 12 : 0);
+    parts.push(`<line class="vmark" x1="${x}" x2="${x}" y1="${m.t}" y2="${m.t + ph}"/><text class="vmark-label" x="${x}" y="${ly}" text-anchor="${anchor}">${svgText(v.label)}</text>`);
   }
   // прямые (обрезаны по области графика)
   parts.push(`<clipPath id="${box.id || 'chart'}-clip"><rect x="${m.l}" y="${m.t}" width="${pw}" height="${ph}"/></clipPath>`);
@@ -113,8 +119,15 @@ export function scatterChart(box, spec) {
     if (!(b > a)) continue;
     parts.push(`<line class="ln ${l.cls}${l.dashed ? ' dashed' : ''}" clip-path="url(#${box.id || 'chart'}-clip)" x1="${X(a).toFixed(1)}" y1="${Y(l.a + l.b * a).toFixed(1)}" x2="${X(b).toFixed(1)}" y2="${Y(l.a + l.b * b).toFixed(1)}"/>`);
   }
+  // ломаные
+  for (const s of spec.series) {
+    if (!s.line) continue;
+    const d = s.points.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y)).map((p, i) => `${i ? 'L' : 'M'}${X(p.x).toFixed(1)} ${Y(p.y).toFixed(1)}`).join('');
+    if (d) parts.push(`<path class="ln ${s.cls}${s.dashed ? ' dashed' : ''}" clip-path="url(#${box.id || 'chart'}-clip)" d="${d}"/>`);
+  }
   // точки: сначала значок, поверх — невидимая область побольше с подсказкой
   for (const s of spec.series) {
+    if (s.line) continue;
     for (const p of s.points) {
       if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
       const x = X(p.x);
@@ -128,5 +141,55 @@ export function scatterChart(box, spec) {
     const dx = anchor === 'start' ? 6 : 0;
     parts.push(`<text class="note" x="${(X(n.x) + dx).toFixed(1)}" y="${(Y(n.y) + (n.below ? 16 : -8)).toFixed(1)}" text-anchor="${anchor}">${svgText(n.text)}</text>`);
   }
+  if (spec.crosshair) parts.push(`<g class="xh" visibility="hidden"><line class="xh-line" y1="${m.t}" y2="${m.t + ph}"/></g>`);
   box.innerHTML = `<svg class="chart" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(spec.label)}">${parts.join('')}</svg>`;
+  if (spec.crosshair) attachCrosshair(box, spec.crosshair, { m, pw, ph, W, X, Y, x0, x1 });
+}
+
+/** Наведение на график с ломаными: вертикальная линия, точки на кривых и подсказка с их значениями. */
+function attachCrosshair(box, fn, g) {
+  const svg = box.querySelector('svg');
+  const grp = svg.querySelector('.xh');
+  const line = grp.querySelector('.xh-line');
+  const tip = document.createElement('div');
+  tip.className = 'chart-tip';
+  tip.hidden = true;
+  box.appendChild(tip);
+  const hide = () => {
+    grp.setAttribute('visibility', 'hidden');
+    tip.hidden = true;
+  };
+  const move = (e) => {
+    const rect = svg.getBoundingClientRect();
+    const k = g.W / rect.width;
+    const px = (e.clientX - rect.left) * k;
+    if (px < g.m.l || px > g.m.l + g.pw) return hide();
+    const r = fn(g.x0 + ((px - g.m.l) / g.pw) * (g.x1 - g.x0));
+    if (!r) return hide();
+    const x = g.X(r.x);
+    line.setAttribute('x1', x.toFixed(1));
+    line.setAttribute('x2', x.toFixed(1));
+    for (const c of grp.querySelectorAll('circle')) c.remove();
+    for (const row of r.rows) {
+      if (!Number.isFinite(row.y)) continue;
+      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      c.setAttribute('class', `mk ${row.cls}`);
+      c.setAttribute('cx', x.toFixed(1));
+      c.setAttribute('cy', g.Y(row.y).toFixed(1));
+      c.setAttribute('r', '4.5');
+      grp.appendChild(c);
+    }
+    grp.setAttribute('visibility', 'visible');
+    tip.innerHTML = `<b>${esc(r.head)}</b>${r.rows.map((row) => `<span><i class="sw ${row.cls}"></i>${esc(row.text)}</span>`).join('')}`;
+    tip.hidden = false;
+    // подсказка — справа от линии, у правого края — слева
+    const bx = box.getBoundingClientRect();
+    const sx = rect.left - bx.left + x / k;
+    const left = sx + 12 + tip.offsetWidth > box.clientWidth ? sx - 12 - tip.offsetWidth : sx + 12;
+    tip.style.left = `${Math.max(0, left)}px`;
+    tip.style.top = `${rect.top - bx.top + g.m.t / k + 4}px`;
+  };
+  svg.addEventListener('pointermove', move);
+  svg.addEventListener('pointerdown', move);
+  svg.addEventListener('pointerleave', hide);
 }

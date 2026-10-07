@@ -242,8 +242,8 @@ export function computeJaffe(form) {
       add(
         'warn',
         L(
-          `Ни на одном участке из трёх и более соседних точек отклонение от прямой не укладывается в ${ru(tol, 2)} %: проверьте показания, увеличьте допуск или выберите точки вручную. Если 1/M не линейно ни от 1/V, ни от 1/V², нужен обобщённый подход (TRS-398, ур. 17).`,
-          `No stretch of three or more neighbouring points stays within ${ru(tol, 2)}% of a straight line: check the readings, increase the tolerance or select the points manually. If 1/M is linear neither in 1/V nor in 1/V², a generalized approach is needed (TRS-398, Eq. 17).`,
+          `Ни на одном участке из трёх и более соседних точек отклонение от прямой не укладывается в ${ru(tol, 2)} %: проверьте показания, увеличьте допуск или выберите точки вручную. Если 1/M не линейно ни от 1/V, ни от 1/V², при этих напряжениях камеру для референсной дозиметрии использовать нельзя: снизьте напряжение до линейного участка или выберите другую камеру.`,
+          `No stretch of three or more neighbouring points stays within ${ru(tol, 2)}% of a straight line: check the readings, increase the tolerance or select the points manually. If 1/M is linear neither in 1/V nor in 1/V², the chamber must not be used for reference dosimetry at these voltages: lower the voltage to the linear part or choose another chamber.`,
         ),
         `${REF.trs}, разд. 4.4.3.4`,
         'jf_tol',
