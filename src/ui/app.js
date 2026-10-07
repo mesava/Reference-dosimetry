@@ -125,6 +125,16 @@ function initTransfer() {
   });
 }
 
+// ------------------------------------------------------------ «как проводить и как считается» в инструментах
+// Блок раскрыт по умолчанию; если его свернуть, в этом браузере он останется свёрнутым.
+function initHowto() {
+  for (const d of $$('details.howto[data-howto]')) {
+    const key = `reference-dosimetry.howto.${d.dataset.howto}`;
+    if (store.get(key) === 'closed') d.open = false;
+    d.addEventListener('toggle', () => store.set(key, d.open ? 'open' : 'closed'));
+  }
+}
+
 // ------------------------------------------------------------ справки
 function openTerm(key) {
   const t = (getLang() === 'en' && TERMS_EN[key]) || TERMS[key];
@@ -228,6 +238,7 @@ function init() {
   initTheme();
   initProtocol();
   initTerms();
+  initHowto();
   initCobalt();
   initPhotons();
   initElectrons();

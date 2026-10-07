@@ -752,3 +752,18 @@ table.unc-table tr.total + tr.total td { border-bottom: 0; }
 @media print { .subtools, .pull { display: none !important; } }
 /* сводка инструмента «Неопределённость»: длинные значения (образец, свидетельство) переносятся */
 #unc-factors td.v { white-space: normal; }
+/* «Как проводить и как считается» в инструментах */
+details.howto { border: 1px solid var(--rule); border-left: 3px solid var(--accent); border-radius: var(--radius); background: var(--sheet); }
+details.howto > summary {
+  cursor: pointer; padding: 10px 14px; font: 600 14.5px var(--font-display); color: var(--accent);
+  list-style: none; display: flex; align-items: center; gap: 8px;
+}
+details.howto > summary::-webkit-details-marker { display: none; }
+details.howto > summary::before { content: '▸'; display: inline-block; transition: transform 0.15s; }
+details.howto[open] > summary::before { transform: rotate(90deg); }
+details.howto > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.howto-body { padding: 0 16px 12px; font-size: 13.5px; line-height: 1.5; }
+.howto-body h3 { margin: 10px 0 4px; font: 600 12px var(--font-display); text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.howto-body ul, .howto-body ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+@media (prefers-reduced-motion: reduce) { details.howto > summary::before { transition: none; } }
+@media print { details.howto { display: none !important; } }
