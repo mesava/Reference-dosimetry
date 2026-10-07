@@ -21,6 +21,7 @@
       <a href="#co60" id="tab-co60" data-module="co60" aria-controls="module-co60">⁶⁰Co</a>
       <a href="#photons" id="tab-photons" data-module="photons" aria-controls="module-photons">МВ фотоны</a>
       <a href="#electrons" id="tab-electrons" data-module="electrons" aria-controls="module-electrons">Электроны</a>
+      <a href="#tools" id="tab-tools" data-module="tools" aria-controls="module-tools">Инструменты</a>
     </nav>
     <div class="lang-switch" data-i18n-skip>
       <button type="button" class="theme-toggle" id="theme-toggle" data-state="auto" aria-label="Тема: как в системе" title="Тема: как в системе">
@@ -373,7 +374,7 @@
     </section>
 
     <!-- 6 -->
-    <section class="step" aria-labelledby="co-s6">
+    <section class="step" aria-labelledby="co-s6" data-nav="Пересчёт и сравнение">
       <header><span class="step-no">7</span><h2 id="co-s6"><button type="button" class="term" data-term="pdd">Пересчёт на z<sub>max</sub></button> и сравнение</h2>
         <p class="hint" id="co-dd-hint"></p></header>
       <label class="check"><input type="checkbox" id="co_dd_on" checked> <span>Пересчитать мощность дозы на глубину максимума</span></label>
@@ -788,7 +789,7 @@
     </section>
 
     <!-- 6 -->
-    <section class="step" id="step-kvol" aria-labelledby="s6">
+    <section class="step" id="step-kvol" aria-labelledby="s6" data-nav="Усреднение по объёму">
       <header><span class="step-no">6</span><h2 id="s6">Усреднение по объёму: <button type="button" class="term" data-term="kvol">k<sub>vol</sub></button> (TRS-398) / P<sub>rp</sub> (TG-51)</h2>
         <p class="hint" id="kvol-hint"></p></header>
       <fieldset id="kvol-fields" class="plain">
@@ -848,7 +849,7 @@
     </section>
 
     <!-- 7 -->
-    <section class="step" aria-labelledby="s7">
+    <section class="step" aria-labelledby="s7" data-nav="Пересчёт и номинальный выход">
       <header><span class="step-no">8</span><h2 id="s7"><button type="button" class="term" data-term="pdd">Пересчёт на d<sub>max</sub></button> и номинальный выход</h2>
         <p class="hint" id="dd-hint"></p></header>
       <label class="check"><input type="checkbox" id="dd_on" checked> <span>Пересчитать дозу на глубину максимума</span></label>
@@ -1284,7 +1285,7 @@
     </section>
 
     <!-- 8 -->
-    <section class="step" aria-labelledby="e-s7">
+    <section class="step" aria-labelledby="e-s7" data-nav="Пересчёт и номинальный выход">
       <header><span class="step-no">8</span><h2 id="e-s7"><button type="button" class="term" data-term="pddE">Пересчёт на z<sub>max</sub></button> и номинальный выход</h2>
         <p class="hint">D(z<sub>max</sub>) = D(z<sub>ref</sub>) / PDD(z<sub>ref</sub>) · 100. PDD берут клиническую — ту, что заложена в систему планирования. Отсутствие этого пересчёта — одна из самых частых ошибок калибровки электронов.</p></header>
       <label class="check"><input type="checkbox" id="e_dd_on" checked> <span>Пересчитать дозу на глубину максимума</span></label>
@@ -1383,6 +1384,390 @@
   </aside>
 </main>
 <div class="mobile-result"><span id="e-mobile-value">—</span><a href="#e-readout">к результату</a></div>
+</div>
+
+<div class="module" id="module-tools" role="tabpanel" aria-labelledby="tab-tools" hidden>
+<main class="layout">
+  <form id="cc-sheet" class="sheet" autocomplete="off" novalidate>
+    <p class="intro">Инструменты для работы вокруг референсной дозиметрии. Сейчас здесь <button type="button" class="term" data-term="crosscal">перекрёстная калибровка</button> рабочей камеры в пучке электронов: коэффициент камеры (обычно плоскопараллельной) по опорной камере, откалиброванной в ⁶⁰Co. TRS-398 Rev.1 — разд. 7.6, ур. (41); TG-51 — Report 385, разд. 5.3.2, ур. (5). Результат переносится кнопкой в раздел 2 вкладки «Электроны».</p>
+
+    <!-- 1 -->
+    <section class="step" aria-labelledby="cc-s1">
+      <header><span class="step-no">1</span><h2 id="cc-s1">Пучок перекрёстной калибровки</h2>
+        <p class="hint">Пучок электронов наибольшей энергии: TRS-398 рекомендует R<sub>50</sub> &gt; 7 г/см² (E₀ &gt; 16 МэВ), TG-51 — выше 10 МэВ. РИП 100 см, поле 10 × 10 см на поверхности воды. Метод замещения: камеры поочерёдно ставят на опорную глубину и облучают одним и тем же числом МЕ.</p></header>
+      <div class="grid">
+        <div class="field"><label for="cc_institution">Учреждение</label><div class="combo" data-list="institutions"><input type="text" id="cc_institution"></div></div>
+        <div class="field"><label for="cc_machine">Аппарат</label><div class="combo" data-list="machines-electrons"><input type="text" id="cc_machine" placeholder="Модель, заводской №"></div></div>
+        <div class="field"><label for="cc_beam">Пучок</label><div class="combo" data-list="ebeams"><input type="text" id="cc_beam" placeholder="18 МэВ"></div></div>
+        <div class="field"><label for="cc_date">Дата измерения</label><input type="date" id="cc_date"></div>
+        <div class="field span-2">
+          <span class="label" id="cc-staff-label">Сотрудник, выполняющий измерения</span>
+          <div id="cc-staff-list" class="staff-list" data-prefix="cc_staff" role="group" aria-labelledby="cc-staff-label"></div>
+          <button type="button" class="link-btn" id="cc-btn-add-staff"><span aria-hidden="true">+</span> Добавить сотрудника</button>
+        </div>
+      </div>
+      <div class="grid subgrid">
+        <div class="field span-2">
+          <label for="cc_r50_method">Как получен R<sub>50</sub></label>
+          <select id="cc_r50_method">
+            <option value="i50">по глубине 50 % ионизации R50,ion (I50)</option>
+            <option value="r50">R50 известен (детектор, отвечающий дозе)</option>
+          </select>
+        </div>
+        <div class="field" data-show="cc_r50_method:i50"><span class="label" id="cc-lbl-i50">R<sub>50,ion</sub> (I<sub>50</sub>), <button type="button" class="term" data-term="gcm2">г/см²</button></span><input type="text" id="cc_i50" class="num" inputmode="decimal" placeholder="7,40" aria-labelledby="cc-lbl-i50"></div>
+        <div class="field" data-show="cc_r50_method:r50"><span class="label" id="cc-lbl-r50">R<sub>50</sub>, <button type="button" class="term" data-term="gcm2">г/см²</button></span><input type="text" id="cc_r50" class="num" inputmode="decimal" aria-labelledby="cc-lbl-r50"></div>
+      </div>
+      <div class="grid four">
+        <div class="field out-cell"><span class="label">R<sub>50</sub>, <button type="button" class="term" data-term="gcm2">г/см²</button></span><output data-out="quality.r50" data-digits="3"></output></div>
+        <div class="field out-cell used"><span class="label">z<sub>ref</sub> = d<sub>ref</sub>, <button type="button" class="term" data-term="gcm2">г/см²</button></span><output data-out="quality.zref" data-digits="3"></output></div>
+        <div class="field out-cell"><span class="label">E₀ ≈ 2,33·R<sub>50</sub>, МэВ</span><output data-out="quality.E0" data-digits="1"></output></div>
+      </div>
+      <p class="eq"><span data-out-text="quality.equation"></span>. <span>z<sub>ref</sub> = 0,6·R<sub>50</sub> − 0,1 <button type="button" class="term" data-term="gcm2">г/см²</button>: TRS-398, ур. (39); Report 385, ур. (2).</span></p>
+      <div class="grid subgrid">
+        <div class="field"><label for="cc_mu">Облучение, МЕ</label><input type="text" id="cc_mu" class="num" inputmode="decimal"><span class="sub">одно и то же для обеих камер</span></div>
+        <div class="field">
+          <label for="cc_beam_mode">Режим пучка</label>
+          <select id="cc_beam_mode"><option value="pulsed">импульсный</option><option value="scanned">импульсно-сканирующий</option></select>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section class="step" aria-labelledby="cc-s2">
+      <header><span class="step-no">2</span><h2 id="cc-s2">Опорная камера</h2>
+        <p class="hint">Камера с калибровочным коэффициентом N<sub>D,w</sub> в пучке ⁶⁰Co — обычно цилиндрическая эталонного класса. По Report 385 опорной может быть только цилиндрическая камера.</p></header>
+      <div class="grid two">
+        <div class="field span-all">
+          <label for="cc_ref_model">Ионизационная камера</label>
+          <select id="cc_ref_model"></select>
+          <span class="sub" id="cc-ref-info"></span>
+        </div>
+      </div>
+      <div class="grid subgrid" data-show="cc_ref_model:OTHER">
+        <div class="field"><label for="cc_ref_other_name">Модель</label><input type="text" id="cc_ref_other_name"></div>
+        <div class="field"><label for="cc_ref_other_type">Тип</label><select id="cc_ref_other_type"><option value="cyl">цилиндрическая</option><option value="pp">плоскопараллельная</option></select></div>
+        <div class="field" data-show="cc_ref_other_type:cyl"><label for="cc_ref_other_r">Радиус полости, мм</label><input type="text" id="cc_ref_other_r" class="num" inputmode="decimal"></div>
+      </div>
+      <div class="positions" id="cc-ref-positions" aria-live="polite" hidden></div>
+      <div class="grid two">
+        <div class="field"><label for="cc_ref_serial">Серийный № камеры</label><div class="combo" data-list="chamber-serials"><input type="text" id="cc_ref_serial"></div></div>
+        <div class="field">
+          <span class="label"><button type="button" class="term" data-term="ndw">N<sub>D,w</sub></button> (⁶⁰Co)</span>
+          <div class="inline">
+            <input type="text" id="cc_ref_ndw" class="num" inputmode="decimal" aria-label="Калибровочный коэффициент N_D,w опорной камеры">
+            <select id="cc_ref_ndw_unit" aria-label="Единица N_D,w"></select>
+          </div>
+        </div>
+        <div class="field">
+          <span class="label">Стандартные условия из сертификата</span>
+          <div class="inline">
+            <input type="text" id="cc_T0" class="num" inputmode="decimal" aria-label="T₀, °C">
+            <span class="unit-note">°C</span>
+            <input type="text" id="cc_P0" class="num" inputmode="decimal" aria-label="P₀, кПа">
+            <span class="unit-note">кПа</span>
+          </div>
+          <div class="presets">
+            <button type="button" data-cc-preset="20|101,325">20 °C · 101,325 кПа</button>
+            <button type="button" data-cc-preset="22|101,33">22 °C · 101,33 кПа</button>
+          </div>
+          <span class="sub">к этим же условиям будет отнесён коэффициент рабочей камеры</span>
+        </div>
+        <div class="field"><label for="cc_ref_el_model">Электрометр</label><div class="combo" data-list="electrometers"><input type="text" id="cc_ref_el_model"></div></div>
+        <div class="field"><label for="cc_ref_el_serial">Серийный № электрометра</label><div class="combo" data-list="electrometer-serials"><input type="text" id="cc_ref_el_serial"></div></div>
+        <div class="field">
+          <span class="label"><button type="button" class="term" data-term="kelec">k<sub>elec</sub></button> (P<sub>elec</sub>)</span>
+          <input type="text" id="cc_ref_kelec" class="num" inputmode="decimal" aria-label="k_elec опорной камеры">
+          <span class="sub">1,000, если камера и электрометр калиброваны вместе</span>
+        </div>
+      </div>
+      <div class="duo">
+        <div class="proto-card" data-protocol="trs">
+          <h3>TRS-398 Rev.1 <small>k<sub>Qcross,Q₀</sub>, табл. 20</small></h3>
+          <div class="field">
+            <label for="cc_ref_kqtrs_mode">Как определить k<sub>Q</sub> опорной камеры в пучке Q<sub>cross</sub></label>
+            <select id="cc_ref_kqtrs_mode">
+              <option value="table">по табл. 20 с интерполяцией по R50</option>
+              <option value="formula">по аппроксимации прил. II (табл. 47)</option>
+              <option value="manual">ввести вручную</option>
+            </select>
+          </div>
+          <div class="field" data-show="cc_ref_kqtrs_mode:manual"><label for="cc_ref_kqtrs_manual">k<sub>Qcross,Q₀</sub></label><input type="text" id="cc_ref_kqtrs_manual" class="num" inputmode="decimal"></div>
+          <div class="grid four">
+            <div class="field out-cell"><span class="label">по таблице</span><output data-out="trs.kQTable" data-digits="4"></output></div>
+            <div class="field out-cell"><span class="label">по аппроксимации</span><output data-out="trs.kQFormula" data-digits="4"></output></div>
+            <div class="field out-cell"><span class="label">таблица − аппрокс.</span><output data-out="trs.kQDiff" data-digits="3" data-signed="1" data-suffix=" %"></output></div>
+            <div class="field out-cell used"><span class="label">k<sub>Q</sub> в расчёте</span><output data-out="trs.kQ" data-digits="4" data-flag="kQref_trs"></output></div>
+          </div>
+          <p class="eq" data-out-text="trs.kQSource"></p>
+        </div>
+        <div class="proto-card" data-protocol="tg51">
+          <h3>TG-51 + Report 385 <small>k<sub>Q</sub> = k′<sub>Q</sub>·k<sub>Qecal</sub></small></h3>
+          <div class="field">
+            <label for="cc_ref_kq51_mode">Как определить k<sub>Q</sub> опорной камеры</label>
+            <select id="cc_ref_kq51_mode">
+              <option value="fit">k′Q·kQecal по Report 385 (табл. 4–5)</option>
+              <option value="manual">ввести вручную</option>
+            </select>
+          </div>
+          <div class="field" data-show="cc_ref_kq51_mode:manual"><label for="cc_ref_kq51_manual">k<sub>Q</sub> = k′<sub>Q</sub>·k<sub>Qecal</sub></label><input type="text" id="cc_ref_kq51_manual" class="num" inputmode="decimal"></div>
+          <div class="grid three">
+            <div class="field out-cell"><span class="label">k′<sub>Q</sub></span><output data-out="tg51.kQprimeRef" data-digits="4"></output></div>
+            <div class="field out-cell"><span class="label">k<sub>Qecal</sub></span><output data-out="tg51.kQecal" data-digits="3"></output></div>
+            <div class="field out-cell used"><span class="label">k<sub>Q</sub> в расчёте</span><output data-out="tg51.kQref" data-digits="4" data-flag="kQref_51"></output></div>
+          </div>
+          <p class="eq" data-out-text="tg51.kQrefSource"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 -->
+    <section class="step" aria-labelledby="cc-s3">
+      <header><span class="step-no">3</span><h2 id="cc-s3">Рабочая камера</h2>
+        <p class="hint">Камера, которую калибруют, — обычно плоскопараллельная. Её коэффициент относится к тем же стандартным условиям T₀, P₀ и к своему k<sub>elec</sub>: с ними его и применяют дальше на вкладке «Электроны».</p></header>
+      <div class="grid two">
+        <div class="field span-all">
+          <label for="cc_fld_model">Ионизационная камера</label>
+          <select id="cc_fld_model"></select>
+          <span class="sub" id="cc-fld-info"></span>
+        </div>
+      </div>
+      <div class="grid subgrid" data-show="cc_fld_model:OTHER">
+        <div class="field"><label for="cc_fld_other_name">Модель</label><input type="text" id="cc_fld_other_name"></div>
+        <div class="field"><label for="cc_fld_other_type">Тип</label><select id="cc_fld_other_type"><option value="pp">плоскопараллельная</option><option value="cyl">цилиндрическая</option></select></div>
+        <div class="field" data-show="cc_fld_other_type:cyl"><label for="cc_fld_other_r">Радиус полости, мм</label><input type="text" id="cc_fld_other_r" class="num" inputmode="decimal"></div>
+      </div>
+      <div class="positions" id="cc-fld-positions" aria-live="polite" hidden></div>
+      <div class="grid two">
+        <div class="field"><label for="cc_fld_serial">Серийный № камеры</label><div class="combo" data-list="chamber-serials"><input type="text" id="cc_fld_serial"></div></div>
+        <div class="field"><label for="cc_fld_el_model">Электрометр</label><div class="combo" data-list="electrometers"><input type="text" id="cc_fld_el_model"></div></div>
+        <div class="field"><label for="cc_fld_el_serial">Серийный № электрометра</label><div class="combo" data-list="electrometer-serials"><input type="text" id="cc_fld_el_serial"></div></div>
+        <div class="field">
+          <span class="label"><button type="button" class="term" data-term="kelec">k<sub>elec</sub></button> (P<sub>elec</sub>)</span>
+          <input type="text" id="cc_fld_kelec" class="num" inputmode="decimal" aria-label="k_elec рабочей камеры">
+          <span class="sub">если тот же электрометр — то же значение, что у опорной камеры</span>
+        </div>
+      </div>
+      <p class="eq" data-protocol="trs">TRS-398: k<sub>Q</sub> рабочей камеры в ур. (41) не входит. Дальше в любом пучке электронов k<sub>Q,Qcross</sub> = k<sub>Q,Qint</sub>/k<sub>Qcross,Qint</sub> по табл. 21 (ур. 44) — его считает вкладка «Электроны» по R<sub>50</sub> этого пучка.</p>
+      <div class="proto-card" data-protocol="tg51">
+        <h3>TG-51 + Report 385 <small>k′<sub>Q</sub>, ур. (8), табл. 7</small></h3>
+        <div class="field">
+          <label for="cc_fld_kq51_mode">Как определить k′<sub>Q</sub> рабочей камеры</label>
+          <select id="cc_fld_kq51_mode">
+            <option value="fit">по Report 385 (табл. 7)</option>
+            <option value="manual">ввести вручную</option>
+          </select>
+        </div>
+        <div class="field" data-show="cc_fld_kq51_mode:manual"><label for="cc_fld_kq51_manual">k′<sub>Q</sub></label><input type="text" id="cc_fld_kq51_manual" class="num" inputmode="decimal"></div>
+        <div class="grid three">
+          <div class="field out-cell used"><span class="label">k′<sub>Q</sub> в расчёте</span><output data-out="tg51.kQprimeFld" data-digits="4" data-flag="kQfld_51"></output></div>
+        </div>
+        <p class="eq" data-out-text="tg51.kQprimeFldSource"></p>
+      </div>
+    </section>
+
+    <!-- 4 -->
+    <section class="step" aria-labelledby="cc-s4">
+      <header><span class="step-no">4</span><h2 id="cc-s4">Температура и давление</h2>
+        <p class="hint">Температура воды у камеры и давление по поверенному барометру в помещении, без приведения к уровню моря. Если между измерениями камерами они изменились, введите значения для рабочей камеры отдельно.</p></header>
+      <div class="grid">
+        <div class="field"><label for="cc_T">Температура воды, °C</label><input type="text" id="cc_T" class="num" inputmode="decimal"><span class="sub">обычный диапазон 15–25 °C</span></div>
+        <div class="field"><label for="cc_H">Относительная влажность, %</label><input type="text" id="cc_H" class="num" inputmode="decimal"><span class="sub">20–80 %, лучше 40–60 %</span></div>
+        <div class="field">
+          <label for="cc_P">Давление</label>
+          <div class="inline">
+            <input type="text" id="cc_P" class="num" inputmode="decimal">
+            <select id="cc_P_unit" aria-label="Единица давления"></select>
+          </div>
+        </div>
+      </div>
+      <details class="more" id="cc-tp2">
+        <summary>Температура и давление при измерении рабочей камерой, если изменились</summary>
+        <div class="grid">
+          <div class="field"><label for="cc_T2">Температура воды, °C</label><input type="text" id="cc_T2" class="num" inputmode="decimal"><span class="sub">пусто — как выше</span></div>
+          <div class="field"><label for="cc_P2">Давление</label><input type="text" id="cc_P2" class="num" inputmode="decimal"><span class="sub">в тех же единицах; пусто — как выше</span></div>
+        </div>
+      </details>
+      <div class="grid four">
+        <div class="field out-cell" data-protocol="trs"><span class="label"><button type="button" class="term" data-term="kTP">k<sub>TP</sub></button>, опорная</span><output data-out="trs.ref.kTP" data-digits="4"></output></div>
+        <div class="field out-cell" data-protocol="trs"><span class="label"><button type="button" class="term" data-term="kTP">k<sub>TP</sub></button>, рабочая</span><output data-out="trs.fld.kTP" data-digits="4"></output></div>
+        <div class="field out-cell" data-protocol="tg51"><span class="label"><button type="button" class="term" data-term="kTP">P<sub>TP</sub></button>, опорная</span><output data-out="tg51.ref.PTP" data-digits="4"></output></div>
+        <div class="field out-cell" data-protocol="tg51"><span class="label"><button type="button" class="term" data-term="kTP">P<sub>TP</sub></button>, рабочая</span><output data-out="tg51.fld.PTP" data-digits="4"></output></div>
+      </div>
+    </section>
+
+    <!-- 5 -->
+    <section class="step" aria-labelledby="cc-s5">
+      <header><span class="step-no">5</span><h2 id="cc-s5">Показания опорной камеры</h2>
+        <p class="hint">Опорная камера на опорной глубине (положение — в разделе 2). Все серии — при числе МЕ из раздела 1; значения можно вводить со знаком или без. Чтобы учесть дрейф выхода ускорителя, измерьте опорную камеру до и после рабочей и введите все показания: в расчёт войдёт среднее.</p></header>
+      <div class="grid">
+        <div class="field">
+          <label for="cc_ref_polarity">Обычная полярность</label>
+          <select id="cc_ref_polarity"><option value="+">положительная (+)</option><option value="-">отрицательная (−)</option></select>
+        </div>
+        <div class="field"><label for="cc_ref_V1">V₁ рабочее, В</label><input type="text" id="cc_ref_V1" class="num" inputmode="decimal"></div>
+        <div class="field"><label for="cc_ref_V2">V₂ пониженное, В</label><input type="text" id="cc_ref_V2" class="num" inputmode="decimal"></div>
+      </div>
+      <div class="series">
+        <div class="series-group">
+          <div class="cells" data-series="cc_ref_M1" data-label="Опорная камера: M при V₁, обычная полярность">
+            <span class="label">M при V₁, обычная полярность, нКл</span>
+            <div class="cells-row">
+              <div class="cells-list"></div>
+              <div class="cells-tools">
+                <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+                <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+              </div>
+              <div class="cell-mean"><span>Среднее</span><output data-out="inputs.ref.M1.mean" data-digits="4" data-abs="1"></output></div>
+            </div>
+          </div>
+          <div class="cells" data-series="cc_ref_Mopp" data-label="Опорная камера: M при V₁, обратная полярность">
+            <span class="label">M при V₁, обратная полярность, нКл</span>
+            <div class="cells-row">
+              <div class="cells-list"></div>
+              <div class="cells-tools">
+                <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+                <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+              </div>
+              <div class="cell-mean"><span>Среднее</span><output data-out="inputs.ref.Mopp.mean" data-digits="4" data-abs="1"></output></div>
+            </div>
+          </div>
+          <div class="cells" data-series="cc_ref_M2" data-label="Опорная камера: M при V₂, обычная полярность">
+            <span class="label">M при V₂, обычная полярность, нКл</span>
+            <div class="cells-row">
+              <div class="cells-list"></div>
+              <div class="cells-tools">
+                <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+                <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+              </div>
+              <div class="cell-mean"><span>Среднее</span><output data-out="inputs.ref.M2.mean" data-digits="4" data-abs="1"></output></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="field out-cell" data-protocol="trs"><span class="label"><button type="button" class="term" data-term="kpol">k<sub>pol</sub></button></span><output data-out="trs.ref.kpol" data-digits="4" data-flag="kpol_ref"></output></div>
+        <div class="field out-cell" data-protocol="trs"><span class="label"><button type="button" class="term" data-term="ks">k<sub>s</sub></button></span><output data-out="trs.ref.ks" data-digits="4" data-flag="ks_ref"></output></div>
+        <div class="field out-cell" data-protocol="tg51"><span class="label"><button type="button" class="term" data-term="kpol">P<sub>pol</sub></button></span><output data-out="tg51.ref.Ppol" data-digits="4" data-flag="Ppol_ref"></output></div>
+        <div class="field out-cell" data-protocol="tg51"><span class="label"><button type="button" class="term" data-term="ks">P<sub>ion</sub></button></span><output data-out="tg51.ref.Pion" data-digits="4" data-flag="Pion_ref"></output></div>
+        <div class="field out-cell"><span class="label">V₁/V₂</span><output data-out="inputs.ref.nV" data-digits="2"></output></div>
+        <div class="field out-cell"><span class="label">M₁/M₂</span><output data-out="inputs.ref.ratio12" data-digits="5"></output></div>
+        <div class="field out-cell used" data-protocol="trs"><span class="label">M с поправками, нКл</span><output data-out="trs.ref.M" data-digits="4"></output></div>
+        <div class="field out-cell used" data-protocol="tg51"><span class="label">M с поправками, нКл</span><output data-out="tg51.ref.M" data-digits="4"></output></div>
+      </div>
+      <p class="eq" data-protocol="trs">k<sub>s</sub>: <span data-out-text="trs.ref.ksEquation"></span>. <span>M с поправками = M₁·k<sub>TP</sub>·k<sub>elec</sub>·k<sub>pol</sub>·k<sub>s</sub> (TRS-398, разд. 4.4.3).</span></p>
+      <p class="eq" data-protocol="tg51">P<sub>ion</sub> — ур. (12) TG-51 для импульсного пучка. M с поправками = M₁·P<sub>TP</sub>·P<sub>elec</sub>·P<sub>pol</sub>·P<sub>ion</sub> (TG-51, ур. 8).</p>
+    </section>
+
+    <!-- 6 -->
+    <section class="step" aria-labelledby="cc-s6">
+      <header><span class="step-no">6</span><h2 id="cc-s6">Показания рабочей камеры</h2>
+        <p class="hint">Рабочая камера на опорной глубине (положение — в разделе 3), то же число МЕ. Поправки на полярность и рекомбинацию измеряют для каждой камеры отдельно.</p></header>
+      <div class="grid">
+        <div class="field">
+          <label for="cc_fld_polarity">Обычная полярность</label>
+          <select id="cc_fld_polarity"><option value="+">положительная (+)</option><option value="-">отрицательная (−)</option></select>
+        </div>
+        <div class="field"><label for="cc_fld_V1">V₁ рабочее, В</label><input type="text" id="cc_fld_V1" class="num" inputmode="decimal"></div>
+        <div class="field"><label for="cc_fld_V2">V₂ пониженное, В</label><input type="text" id="cc_fld_V2" class="num" inputmode="decimal"></div>
+      </div>
+      <div class="series">
+        <div class="series-group">
+          <div class="cells" data-series="cc_fld_M1" data-label="Рабочая камера: M при V₁, обычная полярность">
+            <span class="label">M при V₁, обычная полярность, нКл</span>
+            <div class="cells-row">
+              <div class="cells-list"></div>
+              <div class="cells-tools">
+                <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+                <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+              </div>
+              <div class="cell-mean"><span>Среднее</span><output data-out="inputs.fld.M1.mean" data-digits="4" data-abs="1"></output></div>
+            </div>
+          </div>
+          <div class="cells" data-series="cc_fld_Mopp" data-label="Рабочая камера: M при V₁, обратная полярность">
+            <span class="label">M при V₁, обратная полярность, нКл</span>
+            <div class="cells-row">
+              <div class="cells-list"></div>
+              <div class="cells-tools">
+                <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+                <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+              </div>
+              <div class="cell-mean"><span>Среднее</span><output data-out="inputs.fld.Mopp.mean" data-digits="4" data-abs="1"></output></div>
+            </div>
+          </div>
+          <div class="cells" data-series="cc_fld_M2" data-label="Рабочая камера: M при V₂, обычная полярность">
+            <span class="label">M при V₂, обычная полярность, нКл</span>
+            <div class="cells-row">
+              <div class="cells-list"></div>
+              <div class="cells-tools">
+                <button type="button" class="icon-btn cell-add" aria-label="Добавить ячейку" title="Добавить измерение">+</button>
+                <button type="button" class="icon-btn cell-remove" aria-label="Убрать последнюю ячейку" title="Убрать последнюю ячейку">−</button>
+              </div>
+              <div class="cell-mean"><span>Среднее</span><output data-out="inputs.fld.M2.mean" data-digits="4" data-abs="1"></output></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="field out-cell" data-protocol="trs"><span class="label"><button type="button" class="term" data-term="kpol">k<sub>pol</sub></button></span><output data-out="trs.fld.kpol" data-digits="4" data-flag="kpol_fld"></output></div>
+        <div class="field out-cell" data-protocol="trs"><span class="label"><button type="button" class="term" data-term="ks">k<sub>s</sub></button></span><output data-out="trs.fld.ks" data-digits="4" data-flag="ks_fld"></output></div>
+        <div class="field out-cell" data-protocol="tg51"><span class="label"><button type="button" class="term" data-term="kpol">P<sub>pol</sub></button></span><output data-out="tg51.fld.Ppol" data-digits="4" data-flag="Ppol_fld"></output></div>
+        <div class="field out-cell" data-protocol="tg51"><span class="label"><button type="button" class="term" data-term="ks">P<sub>ion</sub></button></span><output data-out="tg51.fld.Pion" data-digits="4" data-flag="Pion_fld"></output></div>
+        <div class="field out-cell"><span class="label">V₁/V₂</span><output data-out="inputs.fld.nV" data-digits="2"></output></div>
+        <div class="field out-cell"><span class="label">M₁/M₂</span><output data-out="inputs.fld.ratio12" data-digits="5"></output></div>
+        <div class="field out-cell used" data-protocol="trs"><span class="label">M с поправками, нКл</span><output data-out="trs.fld.M" data-digits="4"></output></div>
+        <div class="field out-cell used" data-protocol="tg51"><span class="label">M с поправками, нКл</span><output data-out="tg51.fld.M" data-digits="4"></output></div>
+      </div>
+      <p class="eq" data-protocol="trs">k<sub>s</sub>: <span data-out-text="trs.fld.ksEquation"></span>. <span>M с поправками = M₁·k<sub>TP</sub>·k<sub>elec</sub>·k<sub>pol</sub>·k<sub>s</sub> (TRS-398, разд. 4.4.3).</span></p>
+      <p class="eq" data-protocol="tg51">P<sub>ion</sub> — ур. (12) TG-51 для импульсного пучка. M с поправками = M₁·P<sub>TP</sub>·P<sub>elec</sub>·P<sub>pol</sub>·P<sub>ion</sub> (TG-51, ур. 8).</p>
+    </section>
+
+    <!-- 7 -->
+    <section class="step" aria-labelledby="cc-s7">
+      <header><span class="step-no">7</span><h2 id="cc-s7">Примечания</h2></header>
+      <div class="field"><label for="cc_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="cc_notes"></textarea></div>
+    </section>
+  </form>
+
+  <aside class="readout" id="cc-readout" aria-label="Результат перекрёстной калибровки">
+    <section class="display" aria-live="polite">
+      <h2>Коэффициент рабочей камеры</h2>
+      <p class="demo-flag" id="cc-demo-flag" hidden>Сейчас загружен демонстрационный пример: значения вымышленные.</p>
+      <p class="demo-flag" id="cc-notes-flag" hidden></p>
+      <p class="file-note" id="cc-file-note" hidden></p>
+      <div class="dose-rows" id="cc-result"></div>
+      <div class="transfer">
+        <button type="button" class="primary" id="cc-btn-transfer">Перенести во вкладку «Электроны»</button>
+        <p class="transfer-note" id="cc-transfer-note"></p>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Замечания</h2>
+      <ul class="messages" id="cc-messages"></ul>
+    </section>
+    <section class="panel">
+      <h2>Поправки и промежуточные величины</h2>
+      <div class="table-wrap"><table class="factors" id="cc-factors"></table></div>
+    </section>
+
+    <section class="print-only sign-block" id="cc-sign" aria-hidden="true"></section>
+    <section class="panel no-print">
+      <h2>Данные</h2>
+      <div class="actions">
+        <button type="button" class="primary" id="cc-btn-sample">Загрузить пример</button>
+        <button type="button" id="cc-btn-clear">Очистить</button>
+        <button type="button" id="cc-btn-save" data-standalone>Сохранить данные (.json)</button>
+        <button type="button" id="cc-btn-load">Открыть файл</button>
+        <button type="button" id="cc-btn-copy-json">Копировать данные</button>
+        <button type="button" id="cc-btn-copy-report">Копировать протокол</button>
+        <button type="button" id="cc-btn-pdf" data-standalone>Сохранить в PDF</button>
+        <button type="button" id="cc-btn-print" data-standalone>Печать</button>
+      </div>
+      <input type="file" id="cc-file-input" accept="application/json,.json" hidden>
+      <p class="status-line" id="cc-status" role="status"></p>
+    </section>
+  </aside>
+</main>
+<div class="mobile-result"><span id="cc-mobile-value">—</span><a href="#cc-readout">к результату</a></div>
 </div>
 
 <footer class="page-foot">

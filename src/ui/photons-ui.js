@@ -11,6 +11,7 @@ import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
+  notifyUpdate,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.photons.v2';
@@ -648,6 +649,7 @@ function update() {
   renderFileNote($('#file-note'), openedFile ? compareWithFile(openedFile, snapshot(result), SNAP_CMP) : null);
   saveDraft(result.form);
   renderSignBlock($('#sign'), result.form.meta_staff);
+  notifyUpdate(ROOT());
 }
 
 let lastBeamFff = null;

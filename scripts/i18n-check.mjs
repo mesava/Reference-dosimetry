@@ -8,7 +8,7 @@ import { parse } from 'acorn';
 import { ancestor } from 'acorn-walk';
 
 const CYR = /[А-Яа-яЁё]/;
-const SKIP_FILES = new Set(['src/ui/terms.js', 'src/ui/terms-en.js', 'src/ui/i18n-static-en.js', 'src/core/sample.js', 'src/core/sample-cobalt.js', 'src/core/sample-electrons.js', 'src/core/i18n.js']);
+const SKIP_FILES = new Set(['src/ui/terms.js', 'src/ui/terms-en.js', 'src/ui/i18n-static-en.js', 'src/core/sample.js', 'src/core/sample-cobalt.js', 'src/core/sample-electrons.js', 'src/core/sample-crosscal.js', 'src/core/i18n.js']);
 const files = ['src/core', 'src/ui'].flatMap((d) => readdirSync(d).filter((f) => f.endsWith('.js')).map((f) => `${d}/${f}`)).filter((f) => !SKIP_FILES.has(f));
 
 const isL = (n) => n && n.type === 'CallExpression' && n.callee.type === 'Identifier' && n.callee.name === 'L';

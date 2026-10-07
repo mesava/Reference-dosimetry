@@ -11,6 +11,7 @@ import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
+  notifyUpdate,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.cobalt.v1';
@@ -525,6 +526,7 @@ function update() {
   renderFileNote($('#co-file-note'), openedFile ? compareWithFile(openedFile, snapshot(result), SNAP_CMP) : null);
   saveDraft(result.form);
   renderSignBlock($('#co-sign'), result.form.co_staff);
+  notifyUpdate(ROOT());
 }
 
 /** Смена языка: списки с переведёнными подписями, подписи ячеек, десятичный разделитель, пересчёт. */

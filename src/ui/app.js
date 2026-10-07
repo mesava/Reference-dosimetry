@@ -6,13 +6,16 @@ import { initialLang, saveLang, applyLang, translateStatic, localizeDecimal } fr
 import { $, $$, setActiveModule, getActiveModule, PROTOCOL_KEY, applyProtocol } from './common.js';
 import { initCobalt, importCobalt, cobaltStatus } from './cobalt-ui.js';
 import { initPhotons, importPhotons, photonsStatus } from './photons-ui.js';
-import { initElectrons, importElectrons, electronsStatus } from './electrons-ui.js';
+import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch } from './electrons-ui.js';
+import { initCrossCal, importCrossCal, crossCalStatus, setCrossCalTransfer } from './crosscal-ui.js';
+import { initSectionNavs, refreshSectionNav } from './section-nav.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
 const MODULES = {
   co60: { title: () => L('⁶⁰Co — референсная дозиметрия', '⁶⁰Co — reference dosimetry'), file: 'cobalt', importData: importCobalt, status: cobaltStatus },
   photons: { title: () => L('МВ фотоны — референсная дозиметрия', 'MV photons — reference dosimetry'), file: 'photons', importData: importPhotons, status: photonsStatus },
   electrons: { title: () => L('Электроны — референсная дозиметрия', 'Electrons — reference dosimetry'), file: 'electrons', importData: importElectrons, status: electronsStatus },
+  tools: { title: () => L('Инструменты — перекрёстная калибровка', 'Tools — cross-calibration'), file: 'crosscal', importData: importCrossCal, status: crossCalStatus },
 };
 
 const store = {
@@ -69,6 +72,7 @@ function showModule(name) {
   setActiveModule(name);
   document.title = MODULES[name].title();
   store.set(TAB_KEY, name);
+  refreshSectionNav($(`#module-${name}`));
 }
 
 /** Переключение по щелчку или по вставленным данным: адрес меняется без прокрутки к якорю. */
@@ -86,6 +90,23 @@ function switchTo(name) {
 function moduleFromHash() {
   const h = location.hash.replace('#', '');
   return MODULES[h] ? h : null;
+}
+
+// ------------------------------------------------------------ перенос результата между вкладками
+/** Перекрёстная калибровка → раздел 2 вкладки «Электроны»: подставить значения, открыть вкладку и раздел. */
+function initTransfer() {
+  setCrossCalTransfer((patch) => {
+    switchTo('electrons');
+    applyElectronsPatch(patch);
+    const sec = $('#e-s3')?.closest('section');
+    sec?.scrollIntoView({ behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    electronsStatus(
+      L(
+        'Коэффициент перекрёстной калибровки перенесён в раздел 2 («Камера и электрометр»); подсвечены заполненные поля. Остальные разделы — для измерений в нужном пучке.',
+        'The cross-calibration coefficient has been transferred to section 2 (Chamber and electrometer); the filled fields are highlighted. The other sections are for measurements in the beam of interest.',
+      ),
+    );
+  });
 }
 
 // ------------------------------------------------------------ справки
@@ -194,9 +215,14 @@ function init() {
   initCobalt();
   initPhotons();
   initElectrons();
+  initCrossCal();
+  initTransfer();
   initPaste();
   initDecimals();
   translateStatic(document.body);
+  // ячейки, списки и подписи модули отрисовали до перевода статического текста: по-английски перерисовать
+  if (getLang() === 'en') document.dispatchEvent(new CustomEvent('langchange', { detail: { lang: 'en' } }));
+  initSectionNavs();
   showModule(moduleFromHash() ?? store.get(TAB_KEY) ?? 'co60');
   window.addEventListener('hashchange', () => {
     const m = moduleFromHash();

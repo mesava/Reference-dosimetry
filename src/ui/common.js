@@ -90,6 +90,9 @@ export function downloadText(text, filename, type = 'application/json') {
   }, 0);
 }
 
+/** Модуль пересчитан: список разделов слева обновляет состояние пунктов. */
+export const notifyUpdate = (root) => document.dispatchEvent(new CustomEvent('moduleupdate', { detail: { root } }));
+
 // ------------------------------------------------------------ состояние приложения
 let activeModule = 'photons';
 export const getActiveModule = () => activeModule;
@@ -138,17 +141,24 @@ export function renderFlags(root, flags, seriesBox) {
   }
 }
 
-/** Видимость по data-protocol, data-show и data-standalone внутри root. */
+/**
+ * Видимость по data-protocol, data-show и data-standalone внутри root.
+ * Если у элемента несколько условий, он виден, только когда выполнены все.
+ */
 export function applyShowRules(root, data, protocol) {
-  for (const el of $$('[data-protocol]', root)) el.hidden = protocol !== el.dataset.protocol;
-  for (const el of $$('[data-show]', root)) {
-    el.hidden = !el.dataset.show.split(';').every((cond) => {
+  const showOk = (el) =>
+    el.dataset.show.split(';').every((cond) => {
       const [key, vals] = cond.split(':');
       const v = data[key];
       return vals.split(',').includes(typeof v === 'boolean' ? String(v) : v);
     });
+  for (const el of $$('[data-protocol], [data-show], [data-standalone]', root)) {
+    let visible = true;
+    if (el.dataset.protocol) visible = visible && protocol === el.dataset.protocol;
+    if (el.dataset.show) visible = visible && showOk(el);
+    if (el.hasAttribute('data-standalone')) visible = visible && !framed;
+    el.hidden = !visible;
   }
-  for (const el of $$('[data-standalone]', root)) el.hidden = framed;
 }
 
 /**

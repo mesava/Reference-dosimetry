@@ -8,7 +8,7 @@ import { setLang, getLang } from '../core/i18n.js';
 import { STATIC_EN } from './i18n-static-en.js';
 
 const LANG_KEY = 'reference-dosimetry.lang';
-const ATTRS = ['placeholder', 'aria-label', 'title', 'data-tip', 'data-label', 'data-label-a', 'data-label-b'];
+const ATTRS = ['placeholder', 'aria-label', 'title', 'data-tip', 'data-label', 'data-label-a', 'data-label-b', 'data-nav'];
 const CYR = /[А-Яа-яЁё]/;
 const norm = (s) => String(s).replace(/\s+/g, ' ').trim();
 
