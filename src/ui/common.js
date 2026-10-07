@@ -90,6 +90,18 @@ export function downloadText(text, filename, type = 'application/json') {
   }, 0);
 }
 
+/** Ненадолго подсвечивает поля, заполненные из другой вкладки (видимые). */
+export function flashFields(ids) {
+  for (const k of ids) {
+    const el = document.getElementById(k);
+    if (!el || el.closest('[hidden]')) continue;
+    el.classList.remove('just-filled');
+    void el.offsetWidth;
+    el.classList.add('just-filled');
+    setTimeout(() => el.classList.remove('just-filled'), 2600);
+  }
+}
+
 /** Модуль пересчитан: список разделов слева обновляет состояние пунктов. */
 export const notifyUpdate = (root) => document.dispatchEvent(new CustomEvent('moduleupdate', { detail: { root } }));
 

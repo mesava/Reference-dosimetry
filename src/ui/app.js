@@ -4,8 +4,8 @@ import { TERMS_EN } from './terms-en.js';
 import { L, setLang, getLang } from '../core/i18n.js';
 import { initialLang, saveLang, applyLang, translateStatic, localizeDecimal } from './i18n.js';
 import { $, $$, setActiveModule, getActiveModule, PROTOCOL_KEY, applyProtocol } from './common.js';
-import { initCobalt, importCobalt, cobaltStatus } from './cobalt-ui.js';
-import { initPhotons, importPhotons, photonsStatus } from './photons-ui.js';
+import { initCobalt, importCobalt, cobaltStatus, applyCobaltPatch } from './cobalt-ui.js';
+import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch } from './photons-ui.js';
 import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch } from './electrons-ui.js';
 import { initCrossCal, importCrossCal, crossCalStatus, setCrossCalTransfer } from './crosscal-ui.js';
 import { initSectionNavs, refreshSectionNav } from './section-nav.js';
@@ -93,17 +93,24 @@ function moduleFromHash() {
 }
 
 // ------------------------------------------------------------ перенос результата между вкладками
-/** Перекрёстная калибровка → раздел 2 вкладки «Электроны»: подставить значения, открыть вкладку и раздел. */
+/** Перекрёстная калибровка → раздел «Камера и электрометр» нужной вкладки: подставить значения, открыть вкладку и раздел. */
+const TRANSFER = {
+  electrons: { apply: (p) => applyElectronsPatch(p), section: '#e-s3', status: (t) => electronsStatus(t), sec: 2 },
+  photons: { apply: (p) => applyPhotonsPatch(p), section: '#s2', status: (t) => photonsStatus(t), sec: 2 },
+  co60: { apply: (p) => applyCobaltPatch(p), section: '#co-s2', status: (t) => cobaltStatus(t), sec: 2 },
+};
 function initTransfer() {
-  setCrossCalTransfer((patch) => {
-    switchTo('electrons');
-    applyElectronsPatch(patch);
-    const sec = $('#e-s3')?.closest('section');
+  setCrossCalTransfer((target, patch) => {
+    const t = TRANSFER[target];
+    if (!t) return;
+    switchTo(target);
+    t.apply(patch);
+    const sec = $(t.section)?.closest('section');
     sec?.scrollIntoView({ behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
-    electronsStatus(
+    t.status(
       L(
-        'Коэффициент перекрёстной калибровки перенесён в раздел 2 («Камера и электрометр»); подсвечены заполненные поля. Остальные разделы — для измерений в нужном пучке.',
-        'The cross-calibration coefficient has been transferred to section 2 (Chamber and electrometer); the filled fields are highlighted. The other sections are for measurements in the beam of interest.',
+        `Коэффициент перекрёстной калибровки перенесён в раздел ${t.sec} («Камера и электрометр»); подсвечены заполненные поля. Остальные разделы — для измерений в нужном пучке.`,
+        `The cross-calibration coefficient has been transferred to section ${t.sec} (Chamber and electrometer); the filled fields are highlighted. The other sections are for measurements in the beam of interest.`,
       ),
     );
   });

@@ -11,7 +11,7 @@ import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
-  notifyUpdate,
+  notifyUpdate, flashFields,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.cobalt.v1';
@@ -513,6 +513,15 @@ export function importCobalt(obj) {
 let current = { data: null, result: null };
 /** Открытый файл: пока форму не меняли, итог сверяется с сохранённым в файле. */
 let openedFile = null;
+
+/** Подстановка значений из другой вкладки (перекрёстная калибровка из «Инструментов»): остальные поля не меняются. */
+export function applyCobaltPatch(patch) {
+  writeForm({ ...readForm(), ...patch });
+  openedFile = null;
+  update();
+  flashFields(Object.keys(patch));
+}
+
 function update() {
   const data = readForm();
   const result = computeCobalt(data);

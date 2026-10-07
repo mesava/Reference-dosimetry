@@ -10,7 +10,7 @@ import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
-  notifyUpdate,
+  notifyUpdate, flashFields,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.electrons.v1';
@@ -539,25 +539,12 @@ function update() {
   notifyUpdate(ROOT());
 }
 
-/**
- * Подстановка значений из другой вкладки (перекрёстная калибровка из «Инструментов»): остальные поля не меняются.
- * Изменённые поля ненадолго подсвечиваются. Возвращает список их id.
- */
+/** Подстановка значений из другой вкладки (перекрёстная калибровка из «Инструментов»): остальные поля не меняются. */
 export function applyElectronsPatch(patch) {
-  const before = readForm();
-  writeForm({ ...before, ...patch });
+  writeForm({ ...readForm(), ...patch });
   openedFile = null;
   update();
-  const changed = Object.keys(patch).filter((k) => String(before[k] ?? '') !== String(readForm()[k] ?? ''));
-  for (const k of Object.keys(patch)) {
-    const el = document.getElementById(k);
-    if (!el || el.closest('[hidden]')) continue;
-    el.classList.remove('just-filled');
-    void el.offsetWidth;
-    el.classList.add('just-filled');
-    setTimeout(() => el.classList.remove('just-filled'), 2600);
-  }
-  return changed;
+  flashFields(Object.keys(patch));
 }
 
 function onBeamInput() {

@@ -308,26 +308,29 @@ export const TERMS_EN = {
   },
 
   crosscal: {
-    title: 'Cross-calibration of a field chamber in an electron beam',
+    title: 'Cross-calibration of a field chamber',
     html: `
-<p>Plane-parallel chambers for electron beams are better calibrated in an electron beam than in ⁶⁰Co: the ⁶⁰Co calibration coefficients of some plane-parallel chambers are sensitive to small construction details. If the calibration laboratory does not calibrate in electron beams, the chamber is calibrated in the clinic against a reference chamber calibrated in ⁶⁰Co — this is cross-calibration.</p>
+<p>A field chamber is calibrated in the clinic against a reference chamber that has an N<sub>D,w</sub> calibration coefficient in ⁶⁰Co. This keeps the reference chamber, which is regularly sent for calibration, out of routine use while preserving the traceability of the field chamber to the primary standard (TRS-398, Sec. 4.5).</p>
 <h4>How to measure</h4>
-<ol>
-<li>Use the highest-energy electron beam: TRS-398 recommends R<sub>50</sub> &gt; 7 g/cm² (E₀ &gt; 16 MeV), TG-51 above 10 MeV. Reference conditions: SSD 100 cm, 10 × 10 cm field.</li>
-<li>Measure R<sub>50</sub> and find z<sub>ref</sub> = 0.6·R<sub>50</sub> − 0.1 g/cm².</li>
-<li>Place the reference chamber at z<sub>ref</sub> (a cylindrical chamber per TRS-398 with its center 0.5·r<sub>cyl</sub> deeper, per Report 385 with its center at d<sub>ref</sub>) and take readings at V₁ for both polarities and at V₂.</li>
-<li>Replace it with the field chamber (per TRS-398 the inner surface of the entrance window at z<sub>ref</sub>, per Report 385 the point of measurement from Table 3 at d<sub>ref</sub>) and take the same series for the same number of MU.</li>
-<li>To account for linac output drift, repeat the reference chamber measurement after the field chamber.</li>
-</ol>
-<p>The readings of both chambers are corrected for temperature and pressure, electrometer calibration, polarity and recombination.</p>
-<h4>TRS-398 Rev.1</h4>
+<ul>
+<li><b>Substitution:</b> the chambers are placed in turn at the reference point at z<sub>ref</sub> and irradiated identically (the same MU or time). To account for output drift, the reference chamber is measured before and after the field chamber; in photon beams TRS-398 recommends dividing the readings by those of an external monitor in the phantom at z<sub>ref</sub>, 3–4 cm from the chamber (Sec. 6.6).</li>
+<li><b>Side by side</b> (⁶⁰Co and photons, chambers of similar design): the chambers are irradiated simultaneously, then swapped and the measurement repeated, and the mean is taken for each; no monitor is needed if the profile is uniform (footnote 28).</li>
+<li>The readings of both chambers are corrected for temperature and pressure, electrometer, polarity and recombination; in an FFF beam also for volume averaging k<sub>vol</sub> (Eq. 22), which differs for chambers of different length.</li>
+</ul>
+<h4>⁶⁰Co (reference beam quality Q₀)</h4>
+<p class="formula">N<sup>field</sup><sub>D,w</sub> = (M<sub>ref</sub>/M<sub>field</sub>) · N<sup>ref</sup><sub>D,w</sub></p>
+<p>TRS-398, Eqs. (25), (32), (36). The result is an ordinary N<sub>D,w</sub> in ⁶⁰Co: the field chamber is then used like a laboratory-calibrated one.</p>
+<h4>Clinical MV photon beam Q<sub>cross</sub></h4>
+<p class="formula">N<sup>field</sup><sub>D,w,Qcross</sub> = (M<sub>ref</sub>/M<sub>field</sub>) · N<sup>ref</sup><sub>D,w,Q₀</sub> · k<sup>ref</sup><sub>Qcross</sub></p>
+<p>TRS-398, Sec. 4.5.2, Eqs. (26)–(27); k<sup>ref</sup><sub>Qcross</sub> from the TPR<sub>20,10</sub> of the beam (Table 16 or Eq. 34). Then in any photon beam Q: k<sup>field</sup><sub>Q,Qcross</sub> = k<sup>field</sup><sub>Q</sub>/k<sup>field</sup><sub>Qcross</sub> (Eq. 30), so the TPR<sub>20,10</sub> of the cross-calibration beam must be kept together with the coefficient.</p>
+<h4>Electron beam</h4>
+<p>Plane-parallel chambers for electrons are better calibrated in an electron beam: the ⁶⁰Co calibration coefficients of some of them are sensitive to small construction details. Use the highest-energy beam: TRS-398 recommends R<sub>50</sub> &gt; 7 g/cm² (E₀ &gt; 16 MeV), TG-51 above 10 MeV.</p>
 <p class="formula">N<sub>D,w,Qcross</sub> = (M<sub>ref</sub>/M<sub>field</sub>) · N<sup>ref</sup><sub>D,w,Q₀</sub> · k<sup>ref</sup><sub>Qcross,Q₀</sub></p>
-<p>k<sup>ref</sup><sub>Qcross,Q₀</sub> is the k<sub>Q</sub> of the ⁶⁰Co-calibrated reference chamber in the cross-calibration beam (Table 20). The field chamber is then used in any electron beam: D<sub>w,Q</sub> = M<sub>Q</sub>·N<sub>D,w,Qcross</sub>·k<sub>Q,Qcross</sub>, k<sub>Q,Qcross</sub> = k<sub>Q,Qint</sub>/k<sub>Qcross,Qint</sub> from Table 21. The R<sub>50</sub> of the cross-calibration beam must therefore be kept together with the coefficient.</p>
-<h4>TG-51 with Report 385</h4>
+<p>TRS-398, Eq. (41); k<sup>ref</sup><sub>Qcross,Q₀</sub> from Table 20. Then k<sub>Q,Qcross</sub> = k<sub>Q,Qint</sub>/k<sub>Qcross,Qint</sub> from Table 21, so the R<sub>50</sub> of the cross-calibration beam is kept.</p>
 <p class="formula">(k<sub>Qecal</sub>N<sub>D,w</sub>)<sub>pp</sub> = (M k′<sub>Q</sub> k<sub>Qecal</sub> N<sub>D,w</sub>)<sub>cyl</sub> / (M k′<sub>Q</sub>)<sub>pp</sub></p>
-<p>The reference chamber is cylindrical and the field chamber plane-parallel. Then D<sub>w</sub> = (M k′<sub>Q</sub>)<sub>pp</sub>·(k<sub>Qecal</sub>N<sub>D,w</sub>)<sub>pp</sub>. For a cross-calibrated chamber TG-51 takes P<sub>elec</sub> = 1, since it cancels out.</p>
+<p>Report 385, Eq. (5): the reference chamber is cylindrical and the field chamber plane-parallel; then D<sub>w</sub> = (M k′<sub>Q</sub>)<sub>pp</sub>·(k<sub>Qecal</sub>N<sub>D,w</sub>)<sub>pp</sub>. For such a chamber TG-51 takes P<sub>elec</sub> = 1. For ⁶⁰Co and photons, TG-51 and its addenda do not describe cross-calibration.</p>
 <h4>After the calculation</h4>
-<p>The “Transfer to the Electrons tab” button fills section 2 “Chamber and electrometer”: the chamber, the calibration route, the coefficient, the R<sub>50</sub> of the cross-calibration beam (for TRS-398), T₀, P₀ and the electrometer. The coefficient is valid with the same T₀, P₀ and k<sub>elec</sub>. TRS-398 treats the dose uncertainty with a cross-calibrated chamber separately (Sec. 7.10, Eq. 47): some quantities cancel, but the chamber comparison step itself is added.</p>
-<p class="src">TRS-398 Rev.1, Sec. 4.5, 7.6, 7.10, Eqs. (41)–(44), (47), Tables 20–21; TG-51, Sec. X.C, Eq. (22); Report 385, Sec. 5.3.2, Eqs. (5)–(6), Tables 3–7.</p>`,
+<p>The “Transfer to the … tab” button fills the Chamber and electrometer section of the relevant tab: the chamber, the calibration route, the coefficient, the quality of the cross-calibration beam, T₀, P₀ and the electrometer. The coefficient is valid with the same T₀, P₀ and k<sub>elec</sub>. The dose uncertainty with a cross-calibrated chamber is slightly larger: TRS-398 estimates the addition at about 0.2 % for photons (Sec. 6.8) and treats electrons separately (Sec. 7.10, Eq. 47).</p>
+<p class="src">TRS-398 Rev.1, Sec. 4.5, 5.5, 6.6, 6.8, 7.6, 7.10, Eqs. (25)–(30), (32), (36), (41)–(44), (47), Tables 16, 20–21; TG-51, Sec. X.C; Report 385, Sec. 5.3.2, Eqs. (5)–(6).</p>`,
   },
 };

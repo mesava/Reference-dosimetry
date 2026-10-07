@@ -32,6 +32,12 @@ export const FORM_DEFAULTS = {
   ch_ndw: '',
   ch_ndw_unit: 'Gy/nC',
   ch_klab: '1,000', // поправочный множитель K из протокола поверки (например, ВНИИФТРИ); пусто — 1
+  // калибровка камеры: 'co60' — N_D,w в ⁶⁰Co (лаборатория или перекрёстная калибровка в ⁶⁰Co);
+  // 'cross' — перекрёстная калибровка в клиническом пучке МВ фотонов Q_cross (TRS-398, разд. 4.5.2–4.5.3)
+  ch_cal_route: 'co60',
+  ch_cross_ndw: '', // N_D,w,Qcross рабочей камеры (ур. 27)
+  ch_cross_ndw_unit: 'Gy/nC',
+  ch_cross_tpr: '', // TPR20,10 пучка перекрёстной калибровки
   ch_T0: '20',
   ch_P0: '101,325',
 
@@ -323,16 +329,42 @@ export function computePhotons(form) {
     );
   }
 
-  const ndwRaw = read('ch_ndw', 'N_D,w');
-  const ndw = Number.isFinite(ndwRaw) ? ndwToGyPerNC(ndwRaw, f.ch_ndw_unit) : NaN;
+  // Рабочая камера, откалиброванная перекрёстно в клиническом пучке Q_cross (TRS-398, разд. 4.5.2–4.5.3):
+  // вместо N_D,w в ⁶⁰Co — N_D,w,Qcross, k_Q,Qcross = k_Q/k_Qcross (ур. 30). TG-51 такого пути не описывает.
+  const cross = f.ch_cal_route === 'cross';
+  const ndwKey = cross ? 'ch_cross_ndw' : 'ch_ndw';
+  const ndwRaw = read(ndwKey, cross ? 'N_D,w,Qcross' : 'N_D,w');
+  const ndw = Number.isFinite(ndwRaw) ? ndwToGyPerNC(ndwRaw, cross ? f.ch_cross_ndw_unit : f.ch_ndw_unit) : NaN;
   if (Number.isFinite(ndw) && (ndw < 1e-3 || ndw > 5)) {
     const v = dec(ndw.toPrecision(4));
-    add('warn', 'common', L(`N_D,w = ${v} Гр/нКл выглядит неправдоподобно: проверьте единицы.`, `N_D,w = ${v} Gy/nC looks implausible: check the units.`), null, 'ch_ndw');
+    add('warn', 'common', L(`N_D,w = ${v} Гр/нКл выглядит неправдоподобно: проверьте единицы.`, `N_D,w = ${v} Gy/nC looks implausible: check the units.`), null, ndwKey);
+  }
+  let tprCross = NaN;
+  if (cross) {
+    if (want51) {
+      add(
+        'error',
+        'tg51',
+        L(
+          'TG-51 и его аддендумы не описывают калибровку рабочей камеры в клиническом пучке МВ фотонов: для такой камеры считайте по TRS-398 (разд. 4.5.2–4.5.3).',
+          'TG-51 and its addenda do not describe calibrating a field chamber in a clinical MV photon beam: for such a chamber, calculate per TRS-398 (Sec. 4.5.2–4.5.3).',
+        ),
+        `${REF.trs}, разд. 4.5.2`,
+        'ch_cal_route',
+      );
+    } else {
+      tprCross = read('ch_cross_tpr', L('TPR20,10 пучка перекрёстной калибровки', 'TPR20,10 of the cross-calibration beam'), 'trs');
+      if (Number.isFinite(tprCross) && (tprCross < 0.5 || tprCross > 0.9)) {
+        add('error', 'trs', L(`TPR20,10 пучка перекрёстной калибровки ${ru(tprCross, 3)} неправдоподобно.`, `TPR20,10 of the cross-calibration beam ${ru(tprCross, 3)} is implausible.`), null, 'ch_cross_tpr');
+        tprCross = NaN;
+      }
+    }
   }
   // Поправочный множитель из протокола поверки (в протоколах ВНИИФТРИ — «значение поправочного
   // множителя K» рядом с N_D): калибровочный коэффициент умножается на него. Протоколы TG-51 и
-  // TRS-398 такой величины не вводят; пустое поле — 1.
-  const klab = isBlank(f.ch_klab) ? 1 : parseNumber(f.ch_klab);
+  // TRS-398 такой величины не вводят; пустое поле — 1. Для перекрёстно откалиброванной камеры он
+  // уже учтён в N_D,w,Qcross (через коэффициент опорной камеры).
+  const klab = cross || isBlank(f.ch_klab) ? 1 : parseNumber(f.ch_klab);
   if (!Number.isFinite(klab) || klab <= 0) add('error', 'common', L('Не удалось прочитать k_лаб: введите поправочный множитель из протокола поверки (обычно 1,000).', 'Could not read k_lab: enter the correction multiplier from the calibration certificate (usually 1.000).'), null, 'ch_klab');
   else if (Math.abs(klab - 1) > 0.05) add('warn', 'common', L('k_лаб отличается от 1 больше чем на 5 %: проверьте протокол поверки.', 'k_lab differs from 1 by more than 5%: check the calibration certificate.'), null, 'ch_klab');
   const ndwEff = ndw * klab; // N_D,w с поправочным множителем лаборатории
@@ -464,8 +496,9 @@ export function computePhotons(form) {
       );
     }
   }
+  // поправки лаборатории относятся к калибровке в ⁶⁰Co; при перекрёстной калибровке показания уже полностью исправлены
   let kpolQ0 = 1;
-  if (!f.lab_pol_applied) kpolQ0 = read('lab_kpol', L('Поправка на полярность при калибровке', 'Polarity correction at calibration'));
+  if (!f.lab_pol_applied && !cross) kpolQ0 = read('lab_kpol', L('Поправка на полярность при калибровке', 'Polarity correction at calibration'));
   const kpol = kpolRaw / kpolQ0;
 
   // рекомбинация
@@ -488,7 +521,7 @@ export function computePhotons(form) {
     );
   }
   let ksQ0 = 1;
-  if (!f.lab_ks_applied) ksQ0 = read('lab_ks', L('Поправка на рекомбинацию при калибровке', 'Recombination correction at calibration'));
+  if (!f.lab_ks_applied && !cross) ksQ0 = read('lab_ks', L('Поправка на рекомбинацию при калибровке', 'Recombination correction at calibration'));
 
   // ------------------------------------------------------------- TRS-398
   const trs = { enabled: wantTRS };
@@ -638,8 +671,8 @@ export function computePhotons(form) {
     if (Number.isFinite(kf.value) && Number.isFinite(kt.value)) trs.kQDiff = (kt.value / kf.value - 1) * 100;
     const mode = f.kqtrs_mode;
     if (mode === 'manual') {
-      trs.kQ = read('kqtrs_manual', L('k_Q (TRS-398), измеренный в лаборатории', 'k_Q (TRS-398) measured by the laboratory'), 'trs');
-      trs.kQSource = L('измерен в лаборатории для этой камеры', 'measured by the laboratory for this chamber');
+      trs.kQ = read('kqtrs_manual', cross ? 'k_Q,Qcross (TRS-398)' : L('k_Q (TRS-398), измеренный в лаборатории', 'k_Q (TRS-398) measured by the laboratory'), 'trs');
+      trs.kQSource = cross ? L('k_Q,Qcross введён вручную', 'k_Q,Qcross entered manually') : L('измерен в лаборатории для этой камеры', 'measured by the laboratory for this chamber');
       if (Number.isFinite(trs.kQ) && (trs.kQ < 0.9 || trs.kQ > 1.02)) {
         add('warn', 'trs', L('k_Q для МВ фотонов обычно 0,94–1,00: проверьте ввод.', 'k_Q for MV photons is usually 0.94–1.00: check the input.'), null, 'kqtrs_manual');
       }
@@ -679,6 +712,18 @@ export function computePhotons(form) {
       }
       trs.kQ = k.value;
       trs.kQSource = k.source;
+      if (cross) {
+        // ур. (30): k_Q,Qcross = k_Q(Q)/k_Q(Q_cross), оба — тем же способом (табл. 16 или ур. 34)
+        const kc = mode === 'table' ? TRS.kQFromTable(chamber, tprCross) : TRS.kQ(chamber, tprCross);
+        trs.kQcross = kc.value;
+        trs.kQQ = k.value;
+        if (kc.error && Number.isFinite(tprCross) && chamber?.trs) add('error', 'trs', L(`k_Q в пучке перекрёстной калибровки: ${kc.error}.`, `k_Q in the cross-calibration beam: ${kc.error}.`), `${REF.trs}, табл. 16`, ['kQtrs', 'ch_cross_tpr']);
+        trs.kQ = k.value / kc.value;
+        trs.kQSource = L(
+          `ур. (30): k_Q,Qcross = k_Q(TPR20,10)/k_Q(TPR20,10 пучка перекрёстной калибровки = ${ru(tprCross, 3)}); ${k.source || ''}`,
+          `Eq. (30): k_Q,Qcross = k_Q(TPR20,10)/k_Q(TPR20,10 of the cross-calibration beam = ${ru(tprCross, 3)}); ${k.source || ''}`,
+        );
+      }
       if (chamber?.custom && chamber.trs) {
         if (chamber.hasAB) {
           add('info', 'trs', L('k_Q рассчитан по ур. (34) с параметрами a и b, введёнными для своей камеры.', 'k_Q is calculated by Eq. (34) with the parameters a and b entered for your chamber.'), `${REF.trs}, ур. (34)`);
@@ -1267,7 +1312,7 @@ export function computePhotons(form) {
     recal,
     compliance,
     inputs: { H: env.H,
-      T, P, T0, P0, mu, V1, V2, nV, ndw, ndwRaw, klab, ndwEff, kelec, kleak, energy, fff,
+      T, P, T0, P0, mu, V1, V2, nV, ndw, ndwRaw, klab, ndwEff, kelec, kleak, energy, fff, cross, tprCross,
       M1, Mopp, M2, ratio12, lengthMm, sddCm,
     },
     profile: prof,

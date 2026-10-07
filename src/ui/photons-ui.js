@@ -11,7 +11,7 @@ import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
-  notifyUpdate,
+  notifyUpdate, flashFields,
 } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.photons.v2';
@@ -66,7 +66,7 @@ function fillSelects() {
     analog.push('</optgroup>');
   }
   $('#cc_analog').innerHTML = analog.join('');
-  $('#ch_ndw_unit').innerHTML = Object.entries(NDW_UNITS).map(([k, u]) => `<option value="${k}">${unitLabel(u)}</option>`).join('');
+  for (const id of ['#ch_ndw_unit', '#ch_cross_ndw_unit']) $(id).innerHTML = Object.entries(NDW_UNITS).map(([k, u]) => `<option value="${k}">${unitLabel(u)}</option>`).join('');
   $('#env_P_unit').innerHTML = Object.entries(PRESSURE_UNITS).map(([k, u]) => `<option value="${k}">${unitLabel(u)}</option>`).join('');
 }
 
@@ -401,10 +401,13 @@ function renderReadout(result, data) {
     [L('Утечка', 'Leakage'), ['k<sub>leak</sub>', t.kleak, 4], ['P<sub>leak</sub>', g.Pleak, 4]],
     [L('Усреднение по объёму', 'Volume averaging'), ['k<sub>vol</sub>', t.kvol, 4], ['P<sub>rp</sub>', g.Prp, 4]],
     [L('Качество пучка', 'Beam quality'), ['TPR<sub>20,10</sub>', t.tpr, 4], ['%dd(10)<sub>x</sub>', g.pdd10x, 2]],
-    [L('Поправка на качество', 'Beam quality correction'), ['k<sub>Q</sub>', t.kQ, 4], ['k<sub>Q</sub>', g.kQ, 4]],
-    [L('N<sub>D,w</sub>, Гр/нКл', 'N<sub>D,w</sub>, Gy/nC'), ['', result.inputs.ndw, 5], ['', result.inputs.ndw, 5]],
-    [L('Поправочный множитель лаборатории', 'Laboratory correction multiplier'), [L('k<sub>лаб</sub>', 'k<sub>lab</sub>'), result.inputs.klab, 4], [L('k<sub>лаб</sub>', 'k<sub>lab</sub>'), result.inputs.klab, 4]],
+    [L('Поправка на качество', 'Beam quality correction'), [result.inputs.cross ? 'k<sub>Q,Qcross</sub>' : 'k<sub>Q</sub>', t.kQ, 4], ['k<sub>Q</sub>', g.kQ, 4]],
+    result.inputs.cross
+      ? [L('N<sub>D,w,Qcross</sub>, Гр/нКл', 'N<sub>D,w,Qcross</sub>, Gy/nC'), ['', result.inputs.ndw, 5], ['', result.inputs.ndw, 5]]
+      : [L('N<sub>D,w</sub>, Гр/нКл', 'N<sub>D,w</sub>, Gy/nC'), ['', result.inputs.ndw, 5], ['', result.inputs.ndw, 5]],
   ];
+  if (result.inputs.cross) rows.push([L('TPR<sub>20,10</sub> пучка перекрёстной калибровки', 'TPR<sub>20,10</sub> of the cross-calibration beam'), ['', result.inputs.tprCross, 4], ['', NaN, 4]]);
+  else rows.push([L('Поправочный множитель лаборатории', 'Laboratory correction multiplier'), [L('k<sub>лаб</sub>', 'k<sub>lab</sub>'), result.inputs.klab, 4], [L('k<sub>лаб</sub>', 'k<sub>lab</sub>'), result.inputs.klab, 4]]);
   if (result.depth.on) rows.push([result.depth.label, ['', result.depth.factor, 4], ['', result.depth.factor, 4]]);
   const tc = t.ctrl || {};
   const gc = g.ctrl || {};
@@ -497,8 +500,16 @@ function reportText(data, r) {
   } else {
     line(L('Камера', 'Chamber'), c ? L(`${chamberLabel(c)}, № ${data.ch_serial || '—'}`, `${chamberLabel(c)}, S/N ${data.ch_serial || '—'}`) : '—');
   }
-  const ndwUnit = unitLabel(NDW_UNITS[data.ch_ndw_unit]);
-  line('N_D,w', L(`${data.ch_ndw} ${ndwUnit} (= ${fmt(r.inputs.ndw, 6)} Гр/нКл); k_лаб = ${fmt(r.inputs.klab, 4)}; T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} кПа`, `${data.ch_ndw} ${ndwUnit} (= ${fmt(r.inputs.ndw, 6)} Gy/nC); k_lab = ${fmt(r.inputs.klab, 4)}; T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} kPa`));
+  if (r.inputs.cross) {
+    const u = unitLabel(NDW_UNITS[data.ch_cross_ndw_unit]);
+    line(
+      L('N_D,w,Qcross (перекрёстная калибровка, TRS-398 ур. 27)', 'N_D,w,Qcross (cross-calibration, TRS-398 Eq. 27)'),
+      L(`${data.ch_cross_ndw} ${u} (= ${fmt(r.inputs.ndw, 6)} Гр/нКл) при TPR20,10 = ${data.ch_cross_tpr}; T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} кПа`, `${data.ch_cross_ndw} ${u} (= ${fmt(r.inputs.ndw, 6)} Gy/nC) at TPR20,10 = ${data.ch_cross_tpr}; T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} kPa`),
+    );
+  } else {
+    const ndwUnit = unitLabel(NDW_UNITS[data.ch_ndw_unit]);
+    line('N_D,w', L(`${data.ch_ndw} ${ndwUnit} (= ${fmt(r.inputs.ndw, 6)} Гр/нКл); k_лаб = ${fmt(r.inputs.klab, 4)}; T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} кПа`, `${data.ch_ndw} ${ndwUnit} (= ${fmt(r.inputs.ndw, 6)} Gy/nC); k_lab = ${fmt(r.inputs.klab, 4)}; T0 = ${data.ch_T0} °C, P0 = ${data.ch_P0} kPa`));
+  }
   line(L('Электрометр', 'Electrometer'), L(`${data.el_model || '—'}, № ${data.el_serial || '—'}, k_elec = ${data.el_kelec}`, `${data.el_model || '—'}, S/N ${data.el_serial || '—'}, k_elec = ${data.el_kelec}`));
   const hasH = String(data.env_H ?? '').trim();
   line(L('Условия', 'Conditions'), `T = ${data.env_T} °C, P = ${data.env_P} ${unitLabel(PRESSURE_UNITS[data.env_P_unit])}${hasH ? L(`, относительная влажность ${data.env_H} %`, `, relative humidity ${data.env_H} %`) : ''}`);
@@ -633,6 +644,15 @@ export function importPhotons(obj) {
 let current = { data: null, result: null };
 /** Открытый файл: пока форму не меняли, итог сверяется с сохранённым в файле. */
 let openedFile = null;
+
+/** Подстановка значений из другой вкладки (перекрёстная калибровка из «Инструментов»): остальные поля не меняются. */
+export function applyPhotonsPatch(patch) {
+  writeForm({ ...readForm(), ...patch });
+  openedFile = null;
+  update();
+  flashFields(Object.keys(patch));
+}
+
 function update() {
   // формула (22) и табл. 11 требуют TPR20,10, то есть протокол TRS-398
   if (currentProtocol() === 'tg51' && ['formula22', 'table11'].includes($('#prof_mode').value)) {
