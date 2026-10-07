@@ -9,6 +9,7 @@ import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch, photonsUn
 import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch, electronsUncSource } from './electrons-ui.js';
 import { initCrossCal, importCrossCal, crossCalStatus, setCrossCalTransfer } from './crosscal-ui.js';
 import { initUncTool, importUncTool, uncToolStatus, setUncSources } from './uncertainty-tool-ui.js';
+import { initJaffe, importJaffe, jaffeStatus } from './jaffe-ui.js';
 import { initSectionNavs, refreshSectionNav } from './section-nav.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
@@ -20,6 +21,7 @@ const MODULES = {
   electrons: { title: () => L('Электроны — референсная дозиметрия', 'Electrons — reference dosimetry'), file: 'electrons', importData: importElectrons, status: electronsStatus },
   tools: { title: () => L('Инструменты — перекрёстная калибровка', 'Tools — cross-calibration'), file: 'crosscal', importData: importCrossCal, status: crossCalStatus, tab: 'tools' },
   uncertainty: { title: () => L('Инструменты — неопределённость', 'Tools — uncertainty'), file: 'uncertainty', importData: importUncTool, status: uncToolStatus, tab: 'tools' },
+  jaffe: { title: () => L('Инструменты — график Яффе', 'Tools — Jaffé plot'), file: 'jaffe', importData: importJaffe, status: jaffeStatus, tab: 'tools' },
 };
 const tabOf = (name) => MODULES[name]?.tab ?? name;
 
@@ -244,6 +246,7 @@ function init() {
   initElectrons();
   initCrossCal();
   initUncTool();
+  initJaffe();
   setUncSources({ co60: cobaltUncSource, photons: photonsUncSource, electrons: electronsUncSource });
   initTransfer();
   initPaste();

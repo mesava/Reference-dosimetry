@@ -23,6 +23,9 @@
   --info: #3b5864;
   --info-soft: #e8f0f2;
   --ok: #1d7549;
+  /* графики: обычная и обратная полярность (палитра проверена на различимость при нарушениях цветового зрения) */
+  --series-1: #0090a0;
+  --series-2: #d4581e;
 
   --font-display: "IBM Plex Sans Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
   --font-body: "Golos Text", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -57,6 +60,8 @@
     --info: #a3c6d1;
     --info-soft: #15262b;
     --ok: #6fd3a0;
+    --series-1: #13a3b0;
+    --series-2: #e0672a;
     color-scheme: dark;
   }
 }
@@ -83,6 +88,8 @@
   --info: #a3c6d1;
   --info-soft: #15262b;
   --ok: #6fd3a0;
+  --series-1: #13a3b0;
+  --series-2: #e0672a;
   color-scheme: dark;
 }
 
@@ -409,6 +416,7 @@ footer.page-foot p { max-width: 90ch; }
     --paper: #ffffff; --sheet: #ffffff; --ink: #1b2326; --muted: #58646a; --rule: #d5dcd8; --field: #ffffff; --field-border: #b9c3bf;
     --accent: #0d6670; --accent-ink: #ffffff; --accent-soft: #e0eeee; --calc: #f1f5f3; --display: #121a1c; --display-ink: #e8eee9; --display-dim: #93a4a6;
     --amber: #ffbf5a; --err: #b42318; --err-soft: #fdecea; --warn: #875600; --warn-soft: #fff3d6; --info: #3b5864; --info-soft: #e8f0f2; --ok: #1d7549;
+    --series-1: #0090a0; --series-2: #d4581e;
     color-scheme: light;
   }
   /* поля страницы нулевые — браузер не печатает свои колонтитулы (адрес сайта, дату, номера страниц);
@@ -754,7 +762,7 @@ table.unc-table tr.total + tr.total td { border-bottom: 0; }
 .pull .sub { color: var(--muted); font-size: 12px; line-height: 1.35; }
 @media print { .subtools, .pull { display: none !important; } }
 /* сводка инструмента «Неопределённость»: длинные значения (образец, свидетельство) переносятся */
-#unc-factors td.v { white-space: normal; }
+#unc-factors td.v, #jf-factors td.v { white-space: normal; }
 /* «Как проводить и как считается» в инструментах */
 details.howto { border: 1px solid var(--rule); border-left: 3px solid var(--accent); border-radius: var(--radius); background: var(--sheet); }
 details.howto > summary {
@@ -770,3 +778,86 @@ details.howto > summary:focus-visible { outline: 2px solid var(--accent); outlin
 .howto-body ul, .howto-body ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 @media (prefers-reduced-motion: reduce) { details.howto > summary::before { transition: none; } }
 @media print { details.howto { display: none !important; } }
+
+/* ------------------------------------------------------------ график Яффе */
+table.jf-table { font-size: 13px; }
+table.jf-table th, table.jf-table td { padding: 4px 5px; vertical-align: middle; }
+table.jf-table th { text-transform: none; letter-spacing: 0; font-size: 12.5px; }
+table.jf-table th.no, table.jf-table td.no { width: 2em; color: var(--muted); font: 12px var(--font-mono); text-align: center; }
+table.jf-table td input[type="text"] { width: 100%; min-width: 4.2em; height: 32px; padding: 3px 6px; }
+table.jf-table td.cond input { min-width: 8em; }
+table.jf-table th.use, table.jf-table td.use { width: 4.6em; text-align: center; }
+table.jf-table td.use input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+table.jf-table th.v, table.jf-table td.v { text-align: right; width: 5.4em; }
+table.jf-table tr.out td.v { color: var(--muted); }
+table.jf-table input.flag-warn { border-color: var(--warn); background: var(--warn-soft); }
+table.jf-table input.flag-error { border-color: var(--err); background: var(--err-soft); }
+.row-tools { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 6px; }
+.row-tools .link-btn:disabled { color: var(--muted); cursor: default; text-decoration: none; }
+@media (max-width: 560px) {
+  table.jf-table, table.jf-table tbody { display: block; width: 100%; }
+  table.jf-table thead { display: none; }
+  table.jf-table tr { display: grid; grid-template-columns: 1.6em repeat(3, minmax(0, 1fr)); gap: 4px 6px; align-items: end; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+  table.jf-table td { display: block; border: 0 !important; padding: 0; width: auto !important; }
+  table.jf-table td.no { align-self: center; }
+  table.jf-table td[data-cap]::before { content: attr(data-cap); display: block; font: 400 11px var(--font-body); color: var(--muted); margin-bottom: 1px; text-align: left; }
+  table.jf-table td input[type="text"] { min-width: 0; }
+  #jf-points tr td.use { grid-column: 1; grid-row: 2; align-self: center; text-align: center; }
+  #jf-points tr td.v { grid-row: 2; font-size: 12.5px; text-align: left; padding-left: 7px; }
+  table.jf-dpp tr td.v { text-align: left; padding-left: 7px; }
+  .segmented.stack { display: grid; width: 100%; }
+  .segmented.stack label + label span { border-left: 0; border-top: 1px solid var(--field-border); }
+  table.jf-dpp tr td.cond { grid-column: 2 / -1; }
+  table.jf-dpp tr td.v { grid-column: 4; }
+}
+.chart-box { position: relative; min-height: 120px; margin-top: 4px; }
+.chart-box.small { margin-top: 10px; min-height: 0; }
+.chart-box svg { display: block; max-width: 100%; height: auto; }
+.chart-empty { margin: 0; padding: 24px 12px; text-align: center; color: var(--muted); font-size: 13px; border: 1px dashed var(--rule); border-radius: var(--radius); }
+svg.chart { font-family: var(--font-body); overflow: visible; }
+svg.chart .grid { stroke: var(--rule); stroke-width: 1; }
+svg.chart .axis { stroke: var(--field-border); stroke-width: 1; }
+svg.chart .tick { font: 11px var(--font-mono); fill: var(--muted); }
+svg.chart .axis-label { font: 500 12px var(--font-body); fill: var(--muted); }
+svg.chart .vmark { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+svg.chart .vmark-label { font: 500 11px var(--font-body); fill: var(--ink); }
+svg.chart .note { font: 11px var(--font-body); fill: var(--muted); }
+svg.chart .sub { font-size: 0.75em; }
+svg .ln { stroke-width: 2; fill: none; stroke-linecap: round; }
+svg .ln.dashed { stroke-dasharray: 5 4; stroke-width: 1.5; }
+svg .ln.s1 { stroke: var(--series-1); }
+svg .ln.s2 { stroke: var(--series-2); }
+svg .mk { stroke: var(--sheet); stroke-width: 2; }
+svg .mk.s1 { fill: var(--series-1); }
+svg .mk.s2 { fill: var(--series-2); }
+svg .mk.hollow { fill: var(--sheet); stroke-width: 2; }
+svg .mk.hollow.s1 { stroke: var(--series-1); }
+svg .mk.hollow.s2 { stroke: var(--series-2); }
+svg.chart .hit { fill: transparent; cursor: default; }
+svg.chart .pt:hover .mk { stroke: var(--ink); }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+.chart-legend .item { display: inline-flex; align-items: center; gap: 6px; }
+.chart-swatch { flex: none; }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.checks li { display: grid; grid-template-columns: 7.6em minmax(0, 1fr); gap: 0 8px; font-size: 13px; padding: 4px 0; border-bottom: 1px solid var(--rule); }
+.checks li:last-child { border-bottom: 0; }
+.checks .st { grid-row: span 3; font: 500 12px var(--font-display); white-space: nowrap; }
+.checks li.ok .st { color: var(--ok); }
+.checks li.fail .st { color: var(--err); }
+.checks li.na .st { color: var(--muted); }
+.checks .val { font: 12.5px var(--font-mono); color: var(--ink); }
+.checks .ref { font-size: 11.5px; color: var(--muted); font-style: italic; }
+.checks .ref:empty { display: none; }
+@media (max-width: 560px) {
+  .checks li { grid-template-columns: minmax(0, 1fr); }
+  .checks .st { grid-row: auto; }
+}
+@media print {
+  .row-tools { display: none !important; }
+  table.jf-table td input[type="text"] { height: auto; padding: 0 4px; }
+  table.jf-table td.use input { display: none; }
+  table.jf-table tr:not(.out) td.use::after { content: '✓'; }
+  table.jf-table tr.empty { display: none; }
+  .chart-box { break-inside: avoid; }
+  .checks li { font-size: 10px; padding: 2px 0; }
+}

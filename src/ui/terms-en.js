@@ -70,6 +70,7 @@ export const TERMS_EN = {
 <li>Extrapolating the straight line to 1/V = 0 gives the saturation reading M<sub>0</sub>, and P<sub>ion</sub> = M<sub>0</sub>/M — this is used to verify the result of the two-voltage method.</li>
 <li>Report 374: a Jaffé plot is mandatory for at least one modality (photons or electrons), and at commissioning it is also obtained at different values of dose per pulse. Dose per pulse is varied via SSD or depth: changing the dose rate via the pulse repetition frequency does not change it. For a reference-class chamber, P<sub>ion</sub> depends linearly on dose per pulse.</li>
 </ol>
+<p>In the calculator the Jaffé plot is built under Tools → Jaffé plot, together with the comparison with the two-voltage method, the polarity check and the dose-per-pulse dependence.</p>
 <p>Some chambers have V<sub>max</sub> of only about 100 V, whereas the manufacturer specifies 300 V. Adopting the manufacturer's voltage without verification can lead to an error of 0.5% or more. After commissioning, the two-voltage method at each calibration is sufficient.</p>
 <h4>Requirements for a reference-class chamber</h4>
 <ul>
