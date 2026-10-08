@@ -516,6 +516,19 @@ export function importJaffe(obj) {
 
 // ------------------------------------------------------------ цикл
 let current = { data: null, result: null };
+
+/**
+ * Начальная рекомбинация по графику Яффе — для поправки на рекомбинацию по глубине в «Кривой дозы электронов»:
+ * C_init по дозе за импульс (аддендум TG-51), иначе b₀/(n − 1) по ур. 17 TRS-398. null, если её нет.
+ */
+export function jaffeRecInfo() {
+  const r = current.result;
+  if (!r || r.blocked) return null;
+  if (r.dpp?.fit) return { cInit: r.dpp.cInit, source: 'dpp' };
+  if (r.eq17) return { cInit: r.eq17.cInit, source: 'eq17' };
+  if (!r.pulsed && Number.isFinite(r.cInit)) return { cInit: r.cInit, source: 'cont' };
+  return null;
+}
 let openedFile = null;
 function update() {
   const data = readForm();

@@ -7,6 +7,7 @@ import { L, getLang, refText } from '../core/i18n.js';
 import { localizeDecimals } from './i18n.js';
 import { makeCombo, renderStaff, readStaff } from './widgets.js';
 import { scatterChart, legendSwatch } from './chart.js';
+import { jaffeRecInfo } from './jaffe-ui.js';
 import {
   $, $$, localizeDemo, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, currentProtocol, renderFlags, applyShowRules,
   armButton, renderSignBlock, printToPdf, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, notifyUpdate,
@@ -56,7 +57,7 @@ function readForm() {
     else if (key === 'ed_staff') data.ed_staff = readStaff($('#ed-staff-list'));
     else {
       const el = document.getElementById(key);
-      if (el) data[key] = el.value;
+      if (el) data[key] = el.type === 'checkbox' ? el.checked : el.value;
     }
   }
   return data;
@@ -72,7 +73,9 @@ function writeForm(values) {
   for (const [key, value] of Object.entries(f)) {
     if (Array.isArray(value) || key === 'protocol' || RADIOS.includes(key)) continue;
     const el = document.getElementById(key);
-    if (el) el.value = value ?? '';
+    if (!el) continue;
+    if (el.type === 'checkbox') el.checked = !!value;
+    else el.value = value ?? '';
   }
   localizeDecimals(ROOT()); // поля .num; данные кривой (textarea) остаются как есть
 }
@@ -94,6 +97,18 @@ function renderInputsInfo(r) {
     sub = L(`Точек: ${p.n}`, `Points: ${p.n}`) + (Number.isFinite(z0) ? L(`, глубина ${fmt(z0, 1)}–${fmt(z1, 1)} ${unit} в данных`, `, depth ${fmt(z0, 1)}–${fmt(z1, 1)} ${unit} in the data`) : '') + (p.skipped ? L(`; пропущено строк: ${p.skipped}`, `; lines skipped: ${p.skipped}`) : '');
   }
   $('#ed-data-sub').textContent = sub;
+
+  // поправки по глубине
+  const c = r.corr || {};
+  const ksPts = r.points.filter((q) => Number.isFinite(q.ks));
+  $('#ed-rec-out').textContent = c.rec && ksPts.length
+    ? L(`от ${fmt(Math.max(...ksPts.map((q) => q.ks)), 4)} на максимуме до ${fmt(c.ksAtI50, 4)} на глубине 50 % ионизации`, `from ${fmt(Math.max(...ksPts.map((q) => q.ks)), 4)} at the maximum to ${fmt(c.ksAtI50, 4)} at the 50% ionization depth`)
+    : '—';
+  $('#ed-pol-out').textContent = c.pol ? (c.kpolMax - c.kpolMin < 5e-5 ? fmt(c.kpolMin, 4) : `${fmt(c.kpolMin, 4)}–${fmt(c.kpolMax, 4)}`) : '—';
+  // номера разделов: без камеры раздела поправок нет
+  const shift = r.chamberMode ? 0 : 1;
+  $('#ed-step-chart').textContent = String(5 - shift);
+  $('#ed-step-notes').textContent = String(6 - shift);
 }
 
 let lastResult = null;
@@ -144,7 +159,7 @@ function renderChart(r) {
     },
   });
   const items = [[legendSwatch({ line: true, cls: 's1' }), L('Доза', 'Dose')]];
-  if (r.chamberMode) items.push([legendSwatch({ line: true, dashed: true, cls: 's2' }), L('Ионизация (измерено)', 'Ionization (measured)')]);
+  if (r.chamberMode) items.push([legendSwatch({ line: true, dashed: true, cls: 's2' }), r.corr?.rec || r.corr?.pol ? L('Ионизация (с поправками по глубине)', 'Ionization (with depth corrections)') : L('Ионизация (измерено)', 'Ionization (measured)')]);
   if (r.tangent) items.push([legendSwatch({ line: true, cls: 'aux' }), L('Касательная и фон для R_p', 'Tangent and background for R_p')]);
   legend.innerHTML = items.map(([sw, t]) => `<span class="item">${sw}<span>${rich(t)}</span></span>`).join('');
 }
@@ -195,6 +210,13 @@ function summaryRows(r) {
   if (r.blocked) return rows;
   rows.push([L('Точек кривой', 'Curve points'), String(r.points.length)]);
   if (Number.isFinite(r.maxStep)) rows.push([L('Наибольший шаг на спаде, мм', 'Largest step on the falloff, mm'), v(r.maxStep * 10, 1)]);
+  const c = r.corr || {};
+  if (c.rec) rows.push([L('Поправка на рекомбинацию по глубине', 'Recombination correction with depth'), L(`k<sub>s,max</sub> = ${fmt(c.ksMax, 4)}, C<sub>init</sub> = ${fmt(c.cInit * 100, 3)} %; на I<sub>50</sub> — ${fmt(c.ksAtI50, 4)}`, `k<sub>s,max</sub> = ${fmt(c.ksMax, 4)}, C<sub>init</sub> = ${fmt(c.cInit * 100, 3)}%; at I<sub>50</sub> ${fmt(c.ksAtI50, 4)}`)]);
+  if (c.pol) rows.push([L('Поправка на полярность по глубине, k<sub>pol</sub>', 'Polarity correction with depth, k<sub>pol</sub>'), c.kpolMax - c.kpolMin < 5e-5 ? fmt(c.kpolMin, 4) : `${fmt(c.kpolMin, 4)}–${fmt(c.kpolMax, 4)}`]);
+  if ((c.rec || c.pol) && Number.isFinite(c.dI50mm)) {
+    rows.push([L('Изменение I<sub>50</sub> от поправок, мм', 'Change of I<sub>50</sub> due to the corrections, mm'), fmtSigned(c.dI50mm, 3)]);
+    rows.push([L('Изменение PDD(z<sub>ref</sub>) от поправок, %', 'Change of PDD(z<sub>ref</sub>) due to the corrections, %'), fmtSigned(c.dPddZref, 3)]);
+  }
   if (r.chamberMode) {
     rows.push([L('R<sub>50,ion</sub> (I<sub>50</sub>), г/см²', 'R<sub>50,ion</sub> (I<sub>50</sub>), g/cm²'), v(r.i50, 3)]);
     rows.push([L('R<sub>50</sub> по ур. 37, г/см²', 'R<sub>50</sub> per Eq. 37, g/cm²'), v(r.r50, 3)]);
@@ -402,6 +424,35 @@ export function initEdepth() {
       update();
       const r = current.result;
       setStatus(L(`Кривая загружена из файла ${file.name}: точек — ${r.parsed?.n ?? 0}.`, `Curve loaded from ${file.name}: ${r.parsed?.n ?? 0} points.`));
+    } catch {
+      setStatus(L('Не удалось прочитать файл.', 'Could not read the file.'));
+    }
+    e.target.value = '';
+  });
+  $('#ed-btn-cinit-jaffe').addEventListener('click', () => {
+    const info = jaffeRecInfo();
+    if (!info) {
+      setStatus(L('В «Графике Яффе» нет начальной рекомбинации: нужны условия с разной дозой за импульс (раздел 5) или непрерывный пучок.', 'The Jaffé plot has no initial recombination: conditions with different dose per pulse (section 5) or a continuous beam are needed.'));
+      return;
+    }
+    $('#ed_rec_cinit').value = fmt(Math.max(0, info.cInit) * 100, 3);
+    openedFile = null;
+    update();
+    setStatus(
+      info.source === 'eq17'
+        ? L('C_init взят из «Графика Яффе»: b₀/(n − 1) по ур. 17 TRS-398.', 'C_init taken from the Jaffé plot: b₀/(n − 1) per TRS-398 Eq. 17.')
+        : L('C_init взят из «Графика Яффе» (зависимость от дозы за импульс).', 'C_init taken from the Jaffé plot (dose-per-pulse dependence).'),
+    );
+  });
+  $('#ed-btn-pol-file').addEventListener('click', () => $('#ed-pol-input').click());
+  $('#ed-pol-input').addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      $('#ed_pol_data').value = await file.text();
+      openedFile = null;
+      update();
+      setStatus(L(`Кривая при обратной полярности загружена из файла ${file.name}.`, `Opposite-polarity curve loaded from ${file.name}.`));
     } catch {
       setStatus(L('Не удалось прочитать файл.', 'Could not read the file.'));
     }

@@ -880,7 +880,10 @@ svg.chart .pt:hover .mk { stroke: var(--ink); }
 }
 
 /* ------------------------------------------------------------ кривая дозы электронов */
+textarea.curve-data.short { min-height: 120px; height: 140px; }
 textarea.curve-data { min-height: 200px; height: 220px; font: 12.5px/1.45 var(--font-mono); white-space: pre; overflow: auto; tab-size: 10; resize: vertical; }
 @media print {
   textarea.curve-data { display: none !important; }
 }
+#module-edepth .step > .check { margin-top: 10px; }
+#module-edepth .step > .subgrid { margin-top: 8px; }

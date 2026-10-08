@@ -134,3 +134,33 @@ test('нормализация: неизвестная камера → Roos, н
   assert.equal(f.ed_shift_mode, 'auto');
   assert.equal(f.ed_unit, 'mm');
 });
+
+test('поправки по глубине: k_pol по кривой при обратной полярности, k_s пропорционально показанию (TRS-398, 7.3.2, сноска 46)', () => {
+  const rows = SAMPLE_EDEPTH.ed_data.split('\n').slice(1);
+  // обратная полярность: показания на 0,5 % ниже на всех глубинах — k_pol = (1 + 0,995)/2, I50 не меняется
+  const opp = rows.map((l) => {
+    const [z, v] = l.split('\t');
+    return `${z}\t${(Number(v) * 0.995).toFixed(4)}`;
+  }).join('\n');
+  const p = computeEdepth({ ...SAMPLE_EDEPTH, ed_pol_on: true, ed_pol_data: opp });
+  assert.equal(p.corr.pol, true);
+  p.points.forEach((q) => near(q.kpol, 0.9975, 5e-5));
+  near(p.i50, computeEdepth(SAMPLE_EDEPTH).i50, 1e-5);
+  // рекомбинация: на максимуме k_s = введённому, глубже — 1 + C_init + общая часть × M/M_max
+  const r = computeEdepth({ ...SAMPLE_EDEPTH, ed_rec_on: true, ed_rec_ksmax: '1,010', ed_rec_cinit: '0,1' });
+  const vMax = Math.max(...r.points.map((q) => q.vRaw));
+  r.points.forEach((q) => near(q.ks, 1.001 + 0.009 * (q.vRaw / vMax), 1e-9));
+  const top = r.points.find((q) => q.vRaw === vMax);
+  near(top.ks, 1.01, 1e-12);
+  // общая часть на спаде меньше — I50 смещается к поверхности, но меньше чем на 0,1 мм
+  assert.ok(r.corr.dI50mm < 0 && r.corr.dI50mm > -0.1, `ΔI50 ${r.corr.dI50mm}`);
+  assert.match(curveCsv(r).split('\n')[0], /k_s/);
+  // ошибки: включено без данных
+  assert.equal(computeEdepth({ ...SAMPLE_EDEPTH, ed_rec_on: true }).flags.ed_rec_ksmax, 'error');
+  assert.equal(computeEdepth({ ...SAMPLE_EDEPTH, ed_pol_on: true }).flags.ed_pol_data, 'error');
+  // детектор дозы — поправки не применяются
+  const d = computeEdepth({ ...SAMPLE_EDEPTH, ed_detector: 'dose', ed_rec_on: true, ed_rec_ksmax: '1,01' });
+  assert.equal(d.corr.rec, false);
+  // из файла приходят строки 'true' / 'false'
+  assert.equal(normalizeEdepth({ ed_rec_on: 'true', ed_pol_on: 'false' }).ed_rec_on, true);
+});

@@ -12,6 +12,9 @@
 //    TRS-398; оно и используется здесь (коэффициенты — Rogers, Med. Phys. 31, 3460, 2004, ур. 1) и воспроизводит все
 //    значения табл. 22 в пределах округления (тест). Изменение поправки на возмущение с глубиной не учитывается: у камер
 //    эталонного класса оно сдвигает R50 меньше чем на 0,05 г/см² (TRS-398, разд. 7.7.1).
+// Поправки по глубине (по желанию; TRS-398 Rev.1, разд. 4.4.3.4 e, 7.3.2, сноска 46): полярность — по кривой при
+// обратной полярности, k_pol(z) = (|M₊| + |M₋|)/(2|M|); рекомбинация — общая часть пропорциональна дозе за импульс,
+// то есть показанию на глубине: k_s(z) = 1 + C_init + (k_s,max − 1 − C_init)·M(z)/M_max.
 // 4. По кривой дозы: R100, R90, R80, R50, практический пробег Rp (касательная в точке наибольшего спада до
 //    пересечения с тормозным фоном), фон Dx, z_ref = 0,6·R50 − 0,1 (TRS-398, ур. 39) и PDD(z_ref) — для пересчёта
 //    дозы на глубину максимума на вкладке «Электроны».
@@ -43,6 +46,13 @@ export const ED_DEFAULTS = {
 
   ed_unit: 'mm', // единицы глубины в данных: 'mm' | 'cm'
   ed_data: '', // вставленные данные: глубина и показание в строке
+
+  // поправки по глубине (только для камеры)
+  ed_rec_on: false, // рекомбинация
+  ed_rec_ksmax: '', // k_s на глубине максимума ионизации (метод двух напряжений)
+  ed_rec_cinit: '', // начальная рекомбинация, %: не зависит от глубины; пусто — 0
+  ed_pol_on: false, // полярность
+  ed_pol_data: '', // кривая при обратной полярности (сырые показания)
 };
 
 const REF = { trs: 'TRS-398 Rev.1', r385: 'Report 385', burns: 'Burns et al. (1996)', rogers: 'Rogers (2004)' };
@@ -183,7 +193,24 @@ export function normalizeEdepth(input) {
   if (f.ed_other_type !== 'cyl') f.ed_other_type = 'pp';
   if (f.ed_ch_model !== 'OTHER' && !findEChamber(f.ed_ch_model)) f.ed_ch_model = 'ROOS';
   if (!Array.isArray(f.ed_staff) || !f.ed_staff.length) f.ed_staff = [''];
+  f.ed_rec_on = f.ed_rec_on === true || f.ed_rec_on === 'true';
+  f.ed_pol_on = f.ed_pol_on === true || f.ed_pol_on === 'true';
   return f;
+}
+
+/** Точки кривой из текста: глубина в см, одинаковые глубины усреднены, по возрастанию глубины. */
+function curvePoints(text, unit) {
+  const parsed = parseCurveText(text);
+  const k = unit === 'cm' ? 1 : 0.1;
+  const byZ = new Map();
+  for (const p of parsed.points) {
+    const z = Math.round(p.z * k * 1e6) / 1e6;
+    const e = byZ.get(z);
+    if (e) e.push(p.v);
+    else byZ.set(z, [p.v]);
+  }
+  const pts = [...byZ.entries()].map(([z, vs]) => ({ z, v: vs.reduce((s, x) => s + x, 0) / vs.length })).sort((a, b) => a.z - b.z);
+  return { parsed, pts };
 }
 
 export function resolveChamber(f) {
@@ -223,18 +250,11 @@ export function computeEdepth(form) {
   }
 
   // данные
-  const parsed = parseCurveText(f.ed_data);
+  const cp = curvePoints(f.ed_data, f.ed_unit);
+  const parsed = cp.parsed;
   out.parsed = { skipped: parsed.skipped, curves: parsed.curves, n: parsed.points.length };
   if (parsed.curves > 1) add('info', L(`В файле ${parsed.curves} кривых: взята первая.`, `The file contains ${parsed.curves} curves: the first one is used.`), null, 'ed_data');
-  const k = f.ed_unit === 'cm' ? 1 : 0.1;
-  const byZ = new Map();
-  for (const p of parsed.points) {
-    const z = Math.round(p.z * k * 1e6) / 1e6;
-    const e = byZ.get(z);
-    if (e) e.push(p.v);
-    else byZ.set(z, [p.v]);
-  }
-  let pts = [...byZ.entries()].map(([z, vs]) => ({ z, v: vs.reduce((s, x) => s + x, 0) / vs.length })).sort((a, b) => a.z - b.z);
+  let pts = cp.pts;
   if (pts.length < parsed.points.length) add('info', L('Повторяющиеся глубины усреднены.', 'Repeated depths have been averaged.'), null);
   if (isBlank(f.ed_data)) {
     add('error', L('Вставьте кривую: в каждой строке — глубина и показание.', 'Paste the curve: depth and reading on each line.'), null, 'ed_data');
@@ -246,6 +266,68 @@ export function computeEdepth(form) {
   }
   if (pts.some((p) => p.v < 0)) add('warn', L('Есть отрицательные показания: проверьте вычитание фона и полярность.', 'There are negative readings: check the background subtraction and polarity.'), null, 'ed_data');
   if (!Number.isFinite(shift.value)) return finish(out);
+
+  // поправки по глубине: полярность и рекомбинация (до определения I50)
+  out.corr = { pol: false, rec: false };
+  for (const p of pts) p.vRaw = p.v;
+  if (chamberMode && f.ed_pol_on) {
+    const oc = curvePoints(f.ed_pol_data, f.ed_unit);
+    const oz = oc.pts.map((q) => q.z);
+    const ov = oc.pts.map((q) => Math.abs(q.v));
+    if (oc.pts.length < 2) {
+      add('error', L('Вставьте кривую при обратной полярности или выключите поправку на полярность.', 'Paste the opposite-polarity curve or turn the polarity correction off.'), null, 'ed_pol_data');
+      return finish(out);
+    }
+    let outside = 0;
+    for (const p of pts) {
+      const vo = valueAt(oz, ov, p.z);
+      p.kpol = Number.isFinite(vo) && p.v !== 0 ? (Math.abs(p.v) + vo) / (2 * Math.abs(p.v)) : NaN;
+    }
+    // за пределами кривой обратной полярности — k_pol ближайшей точки
+    const inside = pts.filter((p) => Number.isFinite(p.kpol));
+    if (!inside.length) {
+      add('error', L('Кривые при двух полярностях не перекрываются по глубине.', 'The curves at the two polarities do not overlap in depth.'), null, 'ed_pol_data');
+      return finish(out);
+    }
+    for (const p of pts) {
+      if (Number.isFinite(p.kpol)) continue;
+      outside++;
+      p.kpol = (p.z < inside[0].z ? inside[0] : inside[inside.length - 1]).kpol;
+    }
+    if (outside) add('info', L(`Для ${outside} точек вне кривой при обратной полярности взят k_pol ближайшей точки.`, `For ${outside} points outside the opposite-polarity curve the k_pol of the nearest point is used.`), null, 'ed_pol_data');
+    const kp = inside.map((p) => p.kpol);
+    out.corr.pol = true;
+    out.corr.kpolMin = Math.min(...kp);
+    out.corr.kpolMax = Math.max(...kp);
+    if (Math.max(...kp.map((x) => Math.abs(x - 1))) > 0.05) add('warn', L('k_pol отличается от 1 больше чем на 5 %: показания при двух полярностях должны быть сырыми (не нормированными), в одних единицах и при одинаковом числе МЕ.', 'k_pol differs from 1 by more than 5%: the readings at the two polarities must be raw (not normalized), in the same units and with the same MU.'), null, 'ed_pol_data');
+    for (const p of pts) p.v *= p.kpol;
+  }
+  if (chamberMode && f.ed_rec_on) {
+    const ksMax = parseNumber(f.ed_rec_ksmax);
+    const ci = isBlank(f.ed_rec_cinit) ? 0 : parseNumber(f.ed_rec_cinit) / 100;
+    if (!Number.isFinite(ksMax) || ksMax < 1 || ksMax > 1.1) {
+      add('error', L('Введите k_s на глубине максимума ионизации (от 1 до 1,1) или выключите поправку на рекомбинацию.', 'Enter k_s at the depth of maximum ionization (1 to 1.1) or turn the recombination correction off.'), `${REF.trs}, разд. 4.4.3.4`, 'ed_rec_ksmax');
+      return finish(out);
+    }
+    if (!Number.isFinite(ci) || ci < 0 || ci > 0.01) {
+      add('error', L('Начальная рекомбинация вводится в процентах, от 0 до 1 %.', 'Initial recombination is entered in percent, from 0 to 1%.'), null, 'ed_rec_cinit');
+      return finish(out);
+    }
+    let gen = ksMax - 1 - ci;
+    if (gen < 0) {
+      add('warn', L('Начальная рекомбинация больше всей поправки на максимуме: общая часть принята равной нулю.', 'The initial recombination exceeds the whole correction at the maximum: the general part is taken as zero.'), null, ['ed_rec_cinit', 'ed_rec_ksmax']);
+      gen = 0;
+    }
+    if (isBlank(f.ed_rec_cinit)) add('info', L('Начальная рекомбинация не задана: вся поправка на максимуме считается общей (пропорциональной показанию). Если C_init известен (график Яффе), введите его.', 'Initial recombination is not set: the whole correction at the maximum is treated as general (proportional to the reading). Enter C_init if known (Jaffé plot).'), `${REF.trs}, разд. 4.4.3.4 e`, 'ed_rec_cinit');
+    const vm = Math.max(...pts.map((p) => p.v));
+    for (const p of pts) {
+      p.ks = 1 + ci + (gen * p.v) / vm;
+      p.v *= p.ks;
+    }
+    out.corr.rec = true;
+    out.corr.ksMax = ksMax;
+    out.corr.cInit = ci;
+  }
 
   // глубина точки измерения
   const dz = shift.value;
@@ -403,6 +485,19 @@ export function computeEdepth(form) {
   if (Number.isFinite(maxStep) && maxStep > 0.2) add('info', L(`Шаг на спаде до ${ru(maxStep * 10, 1)} мм: для точных R50 и R80 лучше 1 мм и меньше.`, `The step on the falloff is up to ${ru(maxStep * 10, 1)} mm: 1 mm or less is better for accurate R50 and R80.`), null, 'ed_data');
   if (!Number.isFinite(out.pddZref)) add('warn', L('Опорная глубина вне измеренного диапазона: PDD(z_ref) не определён.', 'The reference depth is outside the measured range: PDD(z_ref) is not determined.'), null, 'ed_data');
   if (zs[0] > 0.3) add('info', L(`Кривая начинается с ${ru(zs[0] * 10, 1)} мм: поверхность и нарастание дозы не измерены.`, `The curve starts at ${ru(zs[0] * 10, 1)} mm: the surface and build-up are not measured.`), null, 'ed_data');
+  // что изменили поправки по глубине: сравнение с расчётом без них
+  if (out.corr.pol || out.corr.rec) {
+    const base = computeEdepth({ ...f, ed_pol_on: false, ed_rec_on: false });
+    if (!base.blocked) {
+      out.corr.base = { i50: base.i50, r50: base.r50, r80: base.r80, pddZref: base.pddZref };
+      out.corr.dI50mm = (out.i50 - base.i50) * 10;
+      out.corr.dPddZref = out.pddZref - base.pddZref;
+    }
+    if (out.corr.rec) {
+      const at50 = pts.reduce((b, p) => (Math.abs(p.zEff - out.i50) < Math.abs(b.zEff - out.i50) ? p : b), pts[0]);
+      out.corr.ksAtI50 = at50.ks;
+    }
+  }
   if (parsed.skipped > 2 && parsed.points.length) add('info', L(`Пропущено строк без двух чисел: ${parsed.skipped} (заголовки, комментарии).`, `Lines without two numbers skipped: ${parsed.skipped} (headers, comments).`), null);
   return finish(out);
 }
@@ -418,7 +513,9 @@ function finish(out) {
 /** Кривая дозы для системы планирования: глубина точки измерения, см, и PDD, % (CSV, разделитель — точка с запятой). */
 export function curveCsv(r, { dec = ',' } = {}) {
   const n = (v, d) => (Number.isFinite(v) ? v.toFixed(d).replace('.', dec) : '');
-  const head = r.chamberMode ? ['z, cm', 'I, %', 's_w,air', 'PDD, %'] : ['z, cm', 'PDD, %'];
-  const rows = r.points.map((p) => (r.chamberMode ? [n(p.zEff, 3), n(p.I, 2), n(p.s, 4), n(p.D, 2)] : [n(p.zEff, 3), n(p.D, 2)]));
+  const pol = r.corr?.pol;
+  const rec = r.corr?.rec;
+  const head = r.chamberMode ? ['z, cm', ...(pol ? ['k_pol'] : []), ...(rec ? ['k_s'] : []), 'I, %', 's_w,air', 'PDD, %'] : ['z, cm', 'PDD, %'];
+  const rows = r.points.map((p) => (r.chamberMode ? [n(p.zEff, 3), ...(pol ? [n(p.kpol, 4)] : []), ...(rec ? [n(p.ks, 4)] : []), n(p.I, 2), n(p.s, 4), n(p.D, 2)] : [n(p.zEff, 3), n(p.D, 2)]));
   return [head, ...rows].map((row) => row.join(';')).join('\n');
 }
