@@ -2101,7 +2101,7 @@
         <li><b>Показания M при 6–8 напряжениях</b> (раздел 3) — от примерно трети напряжения производителя до него, при обычной полярности, в одних и тех же условиях облучения (обычно референсных). После смены напряжения дождитесь, пока показания установятся; каждое значение — среднее нескольких измерений. Удобно идти от высокого напряжения к низкому и в конце повторить рабочее, чтобы увидеть дрейф.</li>
         <li><b>Обратная полярность</b> — по желанию: тот же ряд напряжений; по нему проверяется, что k<sub>s</sub> при двух полярностях различается меньше чем на 0,1 %.</li>
         <li><b>V₁ и V₂</b> (раздел 2) — рабочее напряжение, при котором будет проводиться дозиметрия, и пониженное для метода двух напряжений (V₁/V₂ не меньше 2, лучше 3). Показания при них должны быть в таблице.</li>
-        <li><b>Доза за импульс</b> (раздел 5, для ускорителей) — k<sub>s</sub> не меньше чем при трёх значениях D<sub>pp</sub>: меняют РИП или глубину, а не частоту импульсов. D<sub>pp</sub> = доза за МЕ в точке измерения × МЕ за импульс; можно вводить и в относительных единицах. k<sub>s</sub> при каждом условии — по графику Яффе или методом двух напряжений.</li>
+        <li><b>Разные мощности дозы</b> (раздел 5) — показания при V₁ и V₂ не меньше чем в трёх условиях: меняют РИП или глубину (у ускорителей — не частоту импульсов). Для ускорителей можно указать и дозу за импульс D<sub>pp</sub> = доза за МЕ в точке измерения × МЕ за импульс (или в относительных единицах). Вместо показаний можно ввести готовый k<sub>s</sub>.</li>
       </ul>
         <h3>Как считается</h3>
       <ol>
@@ -2110,7 +2110,7 @@
         <li>Прямая проводится методом наименьших квадратов; M<sub>нас</sub> — её пересечение с осью 1/V = 0. Поправка при напряжении V: k<sub>s</sub> = M<sub>нас</sub>/M (TRS-398, ур. 15; P<sub>ion</sub> в TG-51). На графике по вертикали — M<sub>нас</sub>/M, прямая приходит в 1.</li>
         <li>Выше линейной области точки уходят под прямую — показания растут быстрее, чем позволяет рекомбинация: это умножение заряда. Последнее напряжение линейной области — V<sub>max</sub>; рабочее напряжение должно быть не выше него и не выше напряжения производителя.</li>
         <li>Метод двух напряжений по V₁ и V₂ (TRS-398, ур. 13 и 14 для импульсных пучков, ур. 16 для непрерывных; TG-51, ур. 11 и 12) сравнивается с k<sub>s</sub> по графику: расхождение больше 0,1 % значит, что при этих напряжениях метод использовать нельзя.</li>
-        <li>Для ускорителей: k<sub>s</sub> = 1 + C<sub>init</sub> + C<sub>gen</sub>·D<sub>pp</sub> — прямая по значениям из раздела 5 (аддендум TG-51, ур. 2). У камеры эталонного класса C<sub>init</sub> меньше 0,2 %, зависимость линейная, наклон положительный (аддендум TG-51, табл. III).</li>
+        <li>Раздел 5: k<sub>s</sub> каждого условия — методом двух напряжений; по показаниям — прямая M₁/M₂ = (1 + b₀) + b₁·M₁ и k<sub>s</sub> = 1 + b₀/(n − 1) + b₁·M₁/(n² − 1), для импульсных пучков b₁·M₁/(n − 1) (обобщённый подход ди Алмейды и Ниателя, TRS-398, ур. 17): так k<sub>s</sub> находится для любой мощности дозы, и так же его определяют, если ни 1/V, ни 1/V² не дают прямой. Для ускорителей с дозой за импульс — прямая k<sub>s</sub> = 1 + C<sub>init</sub> + C<sub>gen</sub>·D<sub>pp</sub> (аддендум TG-51, ур. 2). У камеры эталонного класса начальная рекомбинация меньше 0,2 %, зависимость от дозы за импульс линейная, наклон положительный (TRS-398, табл. 3; аддендум TG-51, табл. III).</li>
       </ol>
       </div>
     </details>
@@ -2206,15 +2206,15 @@
     </section>
 
     <!-- 5 -->
-    <section class="step" aria-labelledby="jf-s5" data-show="jf_beam_type:pulsed,scanned">
-      <header><span class="step-no">5</span><h2 id="jf-s5">Зависимость от дозы за импульс</h2>
-        <p class="hint">По желанию, для ускорителей: k<sub>s</sub> при трёх и более значениях дозы за импульс D<sub>pp</sub> (меняют РИП или глубину). Прямая k<sub>s</sub> = 1 + C<sub>init</sub> + C<sub>gen</sub>·D<sub>pp</sub> (аддендум TG-51, ур. 2).</p></header>
+    <section class="step" aria-labelledby="jf-s5">
+      <header><span class="step-no">5</span><h2 id="jf-s5">Рекомбинация при разных мощностях дозы</h2>
+        <p class="hint">По желанию. Для трёх и более условий с разной мощностью дозы (меняют РИП или глубину; у ускорителей — не частоту импульсов) введите показания при V₁ и V₂ из раздела 2 — k<sub>s</sub> посчитается методом двух напряжений — или готовый k<sub>s</sub>. По показаниям строится прямая M₁/M₂ от M₁ (обобщённый подход ди Алмейды и Ниателя, TRS-398, ур. 17), по ней k<sub>s</sub> находится для любого показания M₁. Для ускорителей с указанной дозой за импульс — ещё прямая k<sub>s</sub> = 1 + C<sub>init</sub> + C<sub>gen</sub>·D<sub>pp</sub> (аддендум TG-51, ур. 2).</p></header>
       <div class="grid">
-        <div class="field"><label for="jf_dpp_unit">Единицы D<sub>pp</sub></label><select id="jf_dpp_unit"><option value="mGy">мГр за импульс</option><option value="rel">относительные</option></select></div>
+        <div class="field" data-show="jf_beam_type:pulsed,scanned"><label for="jf_dpp_unit">Единицы D<sub>pp</sub></label><select id="jf_dpp_unit"><option value="mGy">мГр за импульс</option><option value="rel">относительные</option></select></div>
       </div>
       <div class="table-wrap">
         <table class="factors jf-table jf-dpp" id="jf-dpp">
-          <thead><tr><th class="no">№</th><th>Условие</th><th>D<sub>pp</sub></th><th><span data-protocol="trs">k<sub>s</sub></span><span data-protocol="tg51">P<sub>ion</sub></span></th><th class="v">Откл., %</th></tr></thead>
+          <thead><tr><th class="no">№</th><th>Условие</th><th data-show="jf_beam_type:pulsed,scanned">D<sub>pp</sub></th><th>M₁ при V₁</th><th>M₂ при V₂</th><th><span data-protocol="trs">k<sub>s</sub></span><span data-protocol="tg51">P<sub>ion</sub></span></th><th class="v">Откл., %</th></tr></thead>
           <tbody id="jf-dpp-body" data-i18n-skip></tbody>
         </table>
       </div>
@@ -2222,12 +2222,26 @@
         <button type="button" class="link-btn" id="jf-btn-add-dpp"><span aria-hidden="true">+</span> Добавить условие</button>
         <button type="button" class="link-btn" id="jf-btn-remove-dpp"><span aria-hidden="true">−</span> Убрать последнюю строку</button>
       </div>
+      <h3 class="sub-h">Обобщённый подход ди Алмейды и Ниателя (TRS-398, ур. 17)</h3>
+      <p class="sub-hint">M₁/M₂ = (1 + b₀) + b₁·M₁ — прямая по условиям с показаниями при двух напряжениях; k<sub>s</sub> = 1 + b₀/(n − 1) + b₁·M₁/(n² − 1), для импульсных пучков второй член b₁·M₁/(n − 1); n = V₁/V₂.</p>
       <div class="grid">
-        <div class="field out-cell"><span class="label">C<sub>init</sub>, %</span><output id="jf-cinit"></output><span class="sub">меньше 0,2 % у камеры эталонного класса</span></div>
-        <div class="field out-cell"><span class="label">C<sub>gen</sub></span><output id="jf-cgen"></output><span class="sub" id="jf-cgen-sub"></span></div>
-        <div class="field out-cell"><span class="label">Наибольшее отклонение, %</span><output id="jf-dpp-dev"></output><span class="sub">от прямой; зависимость должна быть линейной</span></div>
+        <div class="field out-cell"><span class="label">b₀</span><output id="jf-b0"></output></div>
+        <div class="field out-cell"><span class="label">b₁</span><output id="jf-b1"></output><span class="sub">на единицу показания</span></div>
+        <div class="field out-cell"><span class="label">b₀/(n − 1), %</span><output id="jf-e17-init"></output><span class="sub">начальная рекомбинация: меньше 0,2 % у камеры эталонного класса</span></div>
+        <div class="field"><label for="jf_dpp_mq">Показание M₁ для пересчёта</label><input type="text" id="jf_dpp_mq" class="num" inputmode="decimal"><span class="sub">при V₁, в тех же единицах</span></div>
+        <div class="field out-cell"><span class="label"><span data-protocol="trs">k<sub>s</sub></span><span data-protocol="tg51">P<sub>ion</sub></span> <span>при этом M₁</span></span><output id="jf-e17-ksq"></output></div>
+        <div class="field out-cell"><span class="label"><span data-protocol="trs">k<sub>s</sub></span><span data-protocol="tg51">P<sub>ion</sub></span> <span>при M₁ из раздела 3</span></span><output id="jf-e17-ksref"></output><span class="sub" id="jf-e17-ksref-sub"></span></div>
       </div>
-      <div class="chart-box small" id="jf-dpp-chart" data-i18n-skip></div>
+      <div class="chart-box small" id="jf-e17-chart" data-i18n-skip></div>
+      <div data-show="jf_beam_type:pulsed,scanned">
+        <h3 class="sub-h">Зависимость от дозы за импульс (аддендум TG-51)</h3>
+        <div class="grid">
+          <div class="field out-cell"><span class="label">C<sub>init</sub>, %</span><output id="jf-cinit"></output><span class="sub">меньше 0,2 % у камеры эталонного класса</span></div>
+          <div class="field out-cell"><span class="label">C<sub>gen</sub></span><output id="jf-cgen"></output><span class="sub" id="jf-cgen-sub"></span></div>
+          <div class="field out-cell"><span class="label">Наибольшее отклонение, %</span><output id="jf-dpp-dev"></output><span class="sub">от прямой; зависимость должна быть линейной</span></div>
+        </div>
+        <div class="chart-box small" id="jf-dpp-chart" data-i18n-skip></div>
+      </div>
     </section>
 
     <!-- 6 -->
@@ -2294,7 +2308,7 @@
       <div class="howto-body">
         <h3>Что откуда берётся</h3>
       <ul>
-        <li><b>Кривая</b> — центральная ось в воде, РИП 100 см, поле на поверхности не меньше 10 × 10 см. Предпочтительна плоскопараллельная камера; цилиндрическая — при R<sub>50</sub> не меньше 3 г/см² (TRS-398, табл. 19). При вертикальном пучке сканируют к поверхности.</li>
+        <li><b>Кривая</b> — центральная ось в воде, РИП 100 см, поле на поверхности не меньше 10 × 10 см. Предпочтительна плоскопараллельная камера; цилиндрическая — при R<sub>50</sub> больше 3 г/см² (TRS-398, разд. 7.3.2, табл. 18). При вертикальном пучке сканируют к поверхности. В идеале показания на всех глубинах исправляют на рекомбинацию и полярность; кривые при двух полярностях — быстрая проверка системы.</li>
         <li><b>Данные</b> (раздел 3) — два столбца из экспорта сканера: глубина и показание, в любых единицах. Подходят CSV, TXT и PTW .mcc (берётся первая кривая); заголовки и комментарии пропускаются.</li>
         <li><b>Глубина в данных</b> (раздел 2) — глубина опорной точки камеры: центра цилиндрической камеры или наружной поверхности входного окна плоскопараллельной. Если программа сканера уже пересчитала глубину на точку измерения, выберите «сдвиг уже учтён».</li>
         <li><b>Детектор дозы</b> (диод, алмаз) — если сравнением с камерой подтверждено, что он отвечает дозе: тогда кривая уже кривая дозы, пересчёта нет.</li>
@@ -2303,7 +2317,7 @@
       <ol>
         <li>Глубина точки измерения z = z<sub>данных</sub> + Δ. TRS-398: цилиндрическая камера — Δ = −0,5·r<sub>cyl</sub> (табл. 4), плоскопараллельная — Δ = водоэквивалентная толщина окна (табл. 5). TG-51 с Report 385 — сдвиги для каждой камеры (табл. 2 и 3).</li>
         <li>I<sub>50</sub> — глубина, где ионизация на спаде падает до 50 % максимума (линейная интерполяция между точками). R<sub>50</sub> = 1,029·I<sub>50</sub> − 0,06 г/см² при I<sub>50</sub> ≤ 10 г/см², иначе 1,059·I<sub>50</sub> − 0,37 (TRS-398, ур. 37; Report 385, ур. 3).</li>
-        <li>Доза D(z) ∝ M(z)·s<sub>w,air</sub>(R<sub>50</sub>, z) (TRS-398, разд. 7.7.1, табл. 22), затем нормировка на максимум. s<sub>w,air</sub> — выражение Burns et al. (1996) для z/R<sub>50</sub> от 0,02 до 1,2; ближе к поверхности и глубже берутся значения на краях. Изменение поправки на возмущение с глубиной не учитывается: у камер эталонного класса оно сдвигает R<sub>50</sub> меньше чем на 0,05 г/см².</li>
+        <li>Доза D(z) ∝ M(z)·s<sub>w,air</sub>(R<sub>50</sub>, z) (TRS-398, разд. 7.7.1), затем нормировка на максимум. s<sub>w,air</sub> — табл. 22 (R<sub>50</sub> = 1–10 г/см², z/R<sub>50</sub> = 0,02–1,2): она рассчитана по выражению Burns et al. (1996), которое и используется здесь — оно воспроизводит таблицу в пределах округления. Ближе к поверхности и глубже берутся значения на краях таблицы. Изменение поправки на возмущение с глубиной не учитывается: у камер эталонного класса оно сдвигает R<sub>50</sub> меньше чем на 0,05 г/см².</li>
         <li>По кривой дозы: R<sub>100</sub> — вершина параболы по точкам не ниже 98 %; R<sub>90</sub>, R<sub>80</sub>, R<sub>50</sub> — глубины, где доза на спаде падает до 90, 80 и 50 %; R<sub>p</sub> — пересечение касательной к спаду (прямая по точкам от 70 до 30 %) с линией тормозного фона; D<sub>x</sub> — фон на R<sub>p</sub>.</li>
         <li>z<sub>ref</sub> = 0,6·R<sub>50</sub> − 0,1 г/см² (ур. 39), PDD(z<sub>ref</sub>) — интерполяцией по кривой дозы; E<sub>0</sub> ≈ 2,33·R<sub>50</sub> МэВ. Кнопка переноса заполняет во вкладке «Электроны» R<sub>50,ion</sub> (или R<sub>50</sub>), PDD(z<sub>ref</sub>) и z<sub>max</sub> = R<sub>100</sub>.</li>
       </ol>

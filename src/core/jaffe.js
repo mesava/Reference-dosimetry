@@ -10,6 +10,9 @@
 // Метод двух напряжений проверяется сравнением с k_s по графику; полярность — отдельным графиком при обратной
 // полярности (TRS-398, сноска 25; табл. 3, п. 5). Зависимость от дозы за импульс: P_ion = 1 + C_init + C_gen·D_pp
 // (аддендум TG-51, ур. 2 и табл. III; Report 374, ур. A.5): линейность, C_init < 0,002.
+// Обобщённый подход ди Алмейды и Ниателя (TRS-398 Rev.1, разд. 4.4.3.4 d, ур. 17): метод двух напряжений при серии
+// мощностей дозы, прямая M₁/M₂ = (1 + b₀) + b₁·M₁; k_s = 1 + b₀/(n − 1) + b₁·M₁/(n² − 1), для импульсных пучков
+// второй член b₁·M₁/(n − 1); n = V₁/V₂. Позволяет найти k_s при любом показании M₁ без повторного измерения.
 
 import { parseNumber, isBlank, ru } from './units.js';
 import { L } from './i18n.js';
@@ -53,7 +56,10 @@ export const JF_DEFAULTS = {
   jf_dpp_unit: 'mGy', // 'mGy' — мГр за импульс; 'rel' — относительная величина
   jf_dpp_cond: Array(DPP_ROWS).fill(''),
   jf_dpp_x: Array(DPP_ROWS).fill(''),
-  jf_dpp_ks: Array(DPP_ROWS).fill(''),
+  jf_dpp_m1: Array(DPP_ROWS).fill(''), // показание при V₁ (для метода двух напряжений и ур. 17)
+  jf_dpp_m2: Array(DPP_ROWS).fill(''), // показание при V₂
+  jf_dpp_ks: Array(DPP_ROWS).fill(''), // готовый k_s, если M₁ и M₂ не введены
+  jf_dpp_mq: '', // показание M₁, для которого найти k_s по ур. 17
 };
 
 const REF = { trs: 'TRS-398 Rev.1', r374: 'WGTG51 Report 374', add: 'аддендум TG-51 (2014)' };
@@ -82,10 +88,9 @@ export function normalizeJaffe(input) {
   f.jf_M = cut(f.jf_M, n).map(String);
   f.jf_Mopp = cut(f.jf_Mopp, n).map(String);
   f.jf_use = cut(f.jf_use, n, true).map((x) => x !== false && x !== 'false');
-  const m = Math.max(1, given(['jf_dpp_cond', 'jf_dpp_x', 'jf_dpp_ks'], DPP_ROWS));
-  f.jf_dpp_cond = cut(f.jf_dpp_cond, m).map(String);
-  f.jf_dpp_x = cut(f.jf_dpp_x, m).map(String);
-  f.jf_dpp_ks = cut(f.jf_dpp_ks, m).map(String);
+  const dk = ['jf_dpp_cond', 'jf_dpp_x', 'jf_dpp_m1', 'jf_dpp_m2', 'jf_dpp_ks'];
+  const m = Math.max(1, given(dk, DPP_ROWS));
+  for (const k of dk) f[k] = cut(f[k], m).map(String);
   if (!Array.isArray(f.jf_staff) || f.jf_staff.length === 0) f.jf_staff = [''];
   return f;
 }
@@ -242,10 +247,10 @@ export function computeJaffe(form) {
       add(
         'warn',
         L(
-          `Ни на одном участке из трёх и более соседних точек отклонение от прямой не укладывается в ${ru(tol, 2)} %: проверьте показания, увеличьте допуск или выберите точки вручную. Если 1/M не линейно ни от 1/V, ни от 1/V², при этих напряжениях камеру для референсной дозиметрии использовать нельзя: снизьте напряжение до линейного участка или выберите другую камеру.`,
-          `No stretch of three or more neighbouring points stays within ${ru(tol, 2)}% of a straight line: check the readings, increase the tolerance or select the points manually. If 1/M is linear neither in 1/V nor in 1/V², the chamber must not be used for reference dosimetry at these voltages: lower the voltage to the linear part or choose another chamber.`,
+          `Ни на одном участке из трёх и более соседних точек отклонение от прямой не укладывается в ${ru(tol, 2)} %: проверьте показания, увеличьте допуск или выберите точки вручную. Если 1/M не линейно ни от 1/V, ни от 1/V², k_s нужно определять обобщённым подходом ди Алмейды и Ниателя (ур. 17, раздел 5) или выбрать напряжения в линейной области.`,
+          `No stretch of three or more neighbouring points stays within ${ru(tol, 2)}% of a straight line: check the readings, increase the tolerance or select the points manually. If 1/M is linear neither in 1/V nor in 1/V², k_s must be determined with the generalized approach of de Almeida and Niatel (Eq. 17, section 5) or voltages in the linear region must be chosen.`,
         ),
-        `${REF.trs}, разд. 4.4.3.4`,
+        `${REF.trs}, разд. 4.4.3.4 c–d, ур. 17`,
         'jf_tol',
       );
       win = pts.map((p, k) => k);
@@ -347,25 +352,29 @@ export function computeJaffe(form) {
   if (pulsed && axis === 'v2') add('info', L('Для импульсных пучков график строят от 1/V: метод двух напряжений предполагает линейность 1/M от 1/V.', 'For pulsed beams the plot uses 1/V: the two-voltage method assumes 1/M is linear in 1/V.'), `${REF.trs}, разд. 4.4.3.4`, 'jf_axis');
 
   // ---------------------------------------------- метод двух напряжений для сравнения
+  /** k_s методом двух напряжений при V₁, V₂ из раздела 2 — по формулам выбранного протокола. */
+  function twoVoltage(m1, m2) {
+    if (f.protocol === 'tg51') {
+      return {
+        value: TG51.pIon({ mH: m1, mL: m2, vH: V1, vL: V2, beam: pulsed ? 'pulsed' : 'continuous' }),
+        equation: pulsed ? L('P_ion, TG-51 ур. (12)', 'P_ion, TG-51 Eq. (12)') : L('P_ion, TG-51 ур. (11)', 'P_ion, TG-51 Eq. (11)'),
+      };
+    }
+    if (!pulsed && axis === 'v2') {
+      const nn = (V1 / V2) ** 2;
+      return { value: (nn - 1) / (nn - m1 / m2), equation: L('TRS-398 ур. (16)', 'TRS-398 Eq. (16)') };
+    }
+    const k = TRS.ks({ m1, m2, v1: V1, v2: V2, beam: beam === 'scanned' ? 'scanned' : 'pulsed' });
+    return { value: k.value, equation: `TRS-398, ${k.equation || ''}`, error: k.error };
+  }
+  const nOK = Number.isFinite(V1) && Number.isFinite(V2) && V1 > 0 && V2 > 0 && V2 < V1;
   if (Number.isFinite(V1) && Number.isFinite(V2) && V1 > 0 && V2 > 0) {
     const p1 = at(V1);
     const p2 = at(V2);
     if (V2 >= V1) add('error', L('Пониженное напряжение V₂ должно быть меньше рабочего V₁.', 'The reduced voltage V₂ must be lower than the working voltage V₁.'), null, 'jf_v2');
     else if (p1 && p2) {
-      const two = { n: V1 / V2 };
-      if (f.protocol === 'tg51') {
-        two.value = TG51.pIon({ mH: p1.M, mL: p2.M, vH: V1, vL: V2, beam: pulsed ? 'pulsed' : 'continuous' });
-        two.equation = pulsed ? L('P_ion, TG-51 ур. (12)', 'P_ion, TG-51 Eq. (12)') : L('P_ion, TG-51 ур. (11)', 'P_ion, TG-51 Eq. (11)');
-      } else if (!pulsed && axis === 'v2') {
-        const nn = two.n * two.n;
-        two.value = (nn - 1) / (nn - p1.M / p2.M);
-        two.equation = L('TRS-398 ур. (16)', 'TRS-398 Eq. (16)');
-      } else {
-        const k = TRS.ks({ m1: p1.M, m2: p2.M, v1: V1, v2: V2, beam: beam === 'scanned' ? 'scanned' : 'pulsed' });
-        two.value = k.value;
-        two.equation = `TRS-398, ${k.equation || ''}`;
-        if (k.error) add('warn', k.error, `${REF.trs}, табл. 10`, 'jf_v2');
-      }
+      const two = { n: V1 / V2, ...twoVoltage(p1.M, p2.M) };
+      if (two.error) add('warn', two.error, `${REF.trs}, табл. 10`, 'jf_v2');
       if (Number.isFinite(two.value) && Number.isFinite(out.ks1)) {
         two.diffPct = (two.value / out.ks1 - 1) * 100;
         if (Math.abs(two.diffPct) > 0.1) {
@@ -430,39 +439,96 @@ export function computeJaffe(form) {
     add('info', L('Для графика при обратной полярности нужно не меньше трёх показаний в линейной области.', 'At least three readings in the linear region are needed for the opposite-polarity plot.'), null, 'jf_Mopp.0');
   }
 
-  // ---------------------------------------------- зависимость от дозы за импульс
+  // ---------------------------------------------- зависимость от дозы за импульс и ур. 17
   const dpp = [];
   for (let i = 0; i < f.jf_dpp_x.length; i++) {
-    const rx = f.jf_dpp_x[i];
-    const rk = f.jf_dpp_ks[i];
-    if (isBlank(rx) && isBlank(rk)) continue;
-    const x = parseNumber(rx);
-    const k = parseNumber(rk);
-    if (!Number.isFinite(x) || x < 0) {
-      add('warn', L(`Доза за импульс, строка ${i + 1}: не удалось прочитать.`, `Dose per pulse, row ${i + 1}: could not read.`), null, `jf_dpp_x.${i}`);
-      continue;
+    const [rx, r1, r2, rk] = [f.jf_dpp_x[i], f.jf_dpp_m1[i], f.jf_dpp_m2[i], f.jf_dpp_ks[i]];
+    if ([rx, r1, r2, rk].every(isBlank)) continue;
+    const row = { i, cond: f.jf_dpp_cond[i], x: NaN, m1: NaN, m2: NaN, ks: NaN, src: null };
+    if (!isBlank(rx)) {
+      row.x = parseNumber(rx);
+      if (!Number.isFinite(row.x) || row.x < 0) {
+        add('warn', L(`Доза за импульс, строка ${i + 1}: не удалось прочитать.`, `Dose per pulse, row ${i + 1}: could not read.`), null, `jf_dpp_x.${i}`);
+        row.x = NaN;
+      }
     }
-    if (!Number.isFinite(k) || k < 1 || k > 1.2) {
-      add('warn', L(`${KS}, строка ${i + 1}: введите значение от 1 до 1,2.`, `${KS}, row ${i + 1}: enter a value between 1 and 1.2.`), null, `jf_dpp_ks.${i}`);
-      continue;
+    const hasM = !isBlank(r1) || !isBlank(r2);
+    if (hasM) {
+      const m1 = Math.abs(parseNumber(r1));
+      const m2 = Math.abs(parseNumber(r2));
+      if (!(m1 > 0) || !(m2 > 0)) {
+        add('warn', L(`Строка ${i + 1}: для метода двух напряжений нужны оба показания, M₁ и M₂.`, `Row ${i + 1}: the two-voltage method needs both readings, M₁ and M₂.`), null, [`jf_dpp_m1.${i}`, `jf_dpp_m2.${i}`]);
+      } else if (!nOK) {
+        add('warn', L(`Строка ${i + 1}: задайте V₁ и V₂ в разделе 2 — по ним считается k_s.`, `Row ${i + 1}: set V₁ and V₂ in section 2 — k_s is calculated with them.`), null, ['jf_v1', 'jf_v2']);
+      } else {
+        row.m1 = m1;
+        row.m2 = m2;
+        const t = twoVoltage(m1, m2);
+        row.ks = t.value;
+        row.src = 'two';
+        row.equation = t.equation;
+        if (t.error) add('warn', t.error, `${REF.trs}, табл. 10`, 'jf_v2');
+        if (m1 < m2) add('warn', L(`Строка ${i + 1}: M₁ меньше M₂ — при пониженном напряжении камера не может собрать больше заряда. Проверьте показания.`, `Row ${i + 1}: M₁ is below M₂ — the chamber cannot collect more charge at the reduced voltage. Check the readings.`), null, `jf_dpp_m1.${i}`);
+      }
+    } else if (!isBlank(rk)) {
+      const k = parseNumber(rk);
+      if (!Number.isFinite(k) || k < 1 || k > 1.2) {
+        add('warn', L(`${KS}, строка ${i + 1}: введите значение от 1 до 1,2.`, `${KS}, row ${i + 1}: enter a value between 1 and 1.2.`), null, `jf_dpp_ks.${i}`);
+      } else {
+        row.ks = k;
+        row.src = 'in';
+      }
     }
-    dpp.push({ i, cond: f.jf_dpp_cond[i], x, ks: k });
+    dpp.push(row);
   }
   if (dpp.length) {
     out.dpp = { points: dpp, unit: f.jf_dpp_unit };
-    if (dpp.length < 3) {
+    // аддендум TG-51: k_s = 1 + C_init + C_gen·D_pp
+    const px = dpp.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.ks));
+    if (px.length && px.length < 3) {
       add('info', L('Зависимость от дозы за импульс: нужно не меньше трёх значений (меняйте РИП или глубину, а не частоту импульсов).', 'Dose-per-pulse dependence: at least three values are needed (vary the SSD or depth, not the pulse repetition frequency).'), `${REF.r374}, разд. 4.4.4`, 'jf_dpp_x.0');
-    } else {
-      const fd = linearFit(dpp.map((p) => p.x), dpp.map((p) => p.ks));
+    } else if (px.length >= 3) {
+      const fd = linearFit(px.map((p) => p.x), px.map((p) => p.ks));
       if (fd) {
         out.dpp.fit = fd;
         out.dpp.cInit = fd.a - 1;
         out.dpp.cGen = fd.b;
-        out.dpp.maxDev = Math.max(...dpp.map((p) => Math.abs(p.ks - (fd.a + fd.b * p.x)))) * 100;
+        for (const p of px) p.dev = (p.ks - (fd.a + fd.b * p.x)) * 100;
+        out.dpp.maxDev = Math.max(...px.map((p) => Math.abs(p.dev)));
         if (out.dpp.cInit > 0.002) add('warn', L(`Начальная рекомбинация C_init = ${ru(out.dpp.cInit * 100, 2)} % больше 0,2 %: камера не отвечает критериям эталонного класса.`, `Initial recombination C_init = ${ru(out.dpp.cInit * 100, 2)}% exceeds 0.2%: the chamber does not meet the reference-class criteria.`), `${REF.add}, табл. III; ${REF.trs}, табл. 3`, 'jf_dpp_ks.0');
         if (out.dpp.cInit < -0.0005) add('warn', L(`Прямая пересекает D_pp = 0 ниже 1: проверьте значения ${KS} и дозы за импульс.`, `The line crosses D_pp = 0 below 1: check the ${KS} and dose-per-pulse values.`), null, 'jf_dpp_ks.0');
         if (!(fd.b > 0)) add('warn', L(`${KS} не растёт с дозой за импульс: у камеры эталонного класса наклон положительный.`, `${KS} does not increase with the dose per pulse: a reference-class chamber has a positive slope.`), `${REF.add}, прил. A`, 'jf_dpp_x.0');
         if (out.dpp.maxDev > 0.1) add('warn', L(`Точки отклоняются от прямой до ${ru(out.dpp.maxDev, 2)} %: зависимость ${KS} от дозы за импульс должна быть линейной.`, `Points deviate from the line by up to ${ru(out.dpp.maxDev, 2)}%: ${KS} must depend linearly on the dose per pulse.`), `${REF.trs}, табл. 3; ${REF.add}, табл. III`, 'jf_dpp_ks.0');
+      }
+    }
+    // TRS-398, ур. 17: M₁/M₂ = (1 + b₀) + b₁·M₁ по строкам с показаниями при двух напряжениях
+    const pm = dpp.filter((p) => p.src === 'two');
+    if (pm.length >= 2) {
+      const n = V1 / V2;
+      const fe = linearFit(pm.map((p) => p.m1), pm.map((p) => p.m1 / p.m2));
+      if (fe) {
+        const gen = pulsed ? n - 1 : n * n - 1; // знаменатель члена общей рекомбинации
+        const e = { n, b0: fe.a - 1, b1: fe.b, gen, fit: fe, pulsed };
+        e.ksAt = (m1) => 1 + e.b0 / (n - 1) + (e.b1 * m1) / gen;
+        e.cInit = e.b0 / (n - 1); // вклад, не зависящий от мощности дозы (начальная рекомбинация)
+        for (const p of pm) {
+          p.ks17 = e.ksAt(p.m1);
+          p.dev17 = ((p.m1 / p.m2 - (fe.a + fe.b * p.m1)) / (n - 1)) * 100; // отклонение, пересчитанное в k_s, %
+        }
+        e.maxDev = Math.max(...pm.map((p) => Math.abs(p.dev17)));
+        // показание при V₁ из раздела 3 (если сняты в тех же единицах и при том же числе МЕ)
+        const p1 = Number.isFinite(V1) ? at(V1) : null;
+        if (p1) e.ksRef = e.ksAt(p1.M);
+        const mq = parseNumber(f.jf_dpp_mq);
+        if (!isBlank(f.jf_dpp_mq)) {
+          if (Number.isFinite(mq) && mq > 0) e.ksQ = e.ksAt(Math.abs(mq));
+          else add('warn', L('Не удалось прочитать показание M₁ для пересчёта k_s.', 'Could not read the M₁ reading for the k_s conversion.'), null, 'jf_dpp_mq');
+        }
+        out.eq17 = e;
+        if (pm.length < 3) add('info', L('Ур. 17 по двум условиям: для проверки линейности M₁/M₂ от M₁ нужно три и больше.', 'Eq. 17 from two conditions: three or more are needed to check that M₁/M₂ is linear in M₁.'), `${REF.trs}, ур. 17`, 'jf_dpp_m1.0');
+        if (e.cInit > 0.002) add('warn', L(`Начальная рекомбинация по ур. 17, b₀/(n − 1) = ${ru(e.cInit * 100, 2)} %, больше 0,2 %: камера не отвечает критериям эталонного класса.`, `Initial recombination from Eq. 17, b₀/(n − 1) = ${ru(e.cInit * 100, 2)}%, exceeds 0.2%: the chamber does not meet the reference-class criteria.`), `${REF.trs}, ур. 17, табл. 3`, 'jf_dpp_m1.0');
+        if (pm.length >= 3 && e.maxDev > 0.1) add('warn', L(`Точки M₁/M₂ отклоняются от прямой до ${ru(e.maxDev, 2)} % (в пересчёте на ${KS}): проверьте показания.`, `The M₁/M₂ points deviate from the line by up to ${ru(e.maxDev, 2)}% (in terms of ${KS}): check the readings.`), `${REF.trs}, ур. 17`, 'jf_dpp_m1.0');
+        if (fe.b < 0) add('warn', L('M₁/M₂ уменьшается с ростом M₁: общая рекомбинация должна расти с мощностью дозы. Проверьте показания и порядок условий.', 'M₁/M₂ decreases as M₁ grows: general recombination must grow with the dose rate. Check the readings and the order of the conditions.'), `${REF.trs}, ур. 17`, 'jf_dpp_m1.0');
       }
     }
   }
@@ -489,7 +555,7 @@ function checks(o, KS) {
     'pol',
     o.opp ? (Math.abs(o.opp.diffPct) < 0.1 ? 'ok' : 'fail') : 'na',
     L(`${KS} при двух полярностях различается меньше чем на 0,1 %`, `${KS} at the two polarities differs by less than 0.1%`),
-    o.opp ? pct(o.opp.diffPct) : L('нет показаний при обратной полярности', 'no opposite-polarity readings'),
+    o.opp ? L(`${pct(o.opp.diffPct)}; при одной дозе за импульс разница отражает начальную рекомбинацию`, `${pct(o.opp.diffPct)}; at the same dose per pulse the difference reflects initial recombination`) : L('нет показаний при обратной полярности', 'no opposite-polarity readings'),
     `${REF.trs}, табл. 3, сноска 25; ${REF.add}, табл. III`,
   );
   push(
@@ -500,9 +566,13 @@ function checks(o, KS) {
     `${REF.trs}, разд. 4.4.3.4`,
   );
   if (o.pulsed) {
+    // по дозе за импульс (аддендум TG-51) или, если её нет, по ур. 17 TRS-398 (M₁/M₂ от M₁ при трёх и более условиях)
     const d = o.dpp?.fit ? o.dpp : null;
-    push('cinit', d ? (d.cInit < 0.002 ? 'ok' : 'fail') : 'na', L('Начальная рекомбинация C_init меньше 0,2 %', 'Initial recombination C_init below 0.2%'), d ? pct(d.cInit * 100) : L('нужны три значения дозы за импульс', 'three dose-per-pulse values are needed'), `${REF.add}, табл. III; ${REF.trs}, табл. 3`);
-    push('dpp', d ? (d.maxDev <= 0.1 && d.cGen > 0 ? 'ok' : 'fail') : 'na', L(`${KS} линейно растёт с дозой за импульс`, `${KS} increases linearly with the dose per pulse`), d ? L(`отклонение до ${pct(d.maxDev, 3)}`, `deviation up to ${pct(d.maxDev, 3)}`) : L('нет данных', 'no data'), `${REF.add}, табл. III; ${REF.r374}, разд. 4.4.4`);
+    const e = !d && o.eq17 && o.dpp.points.filter((p) => p.src === 'two').length >= 3 ? o.eq17 : null;
+    const ci = d ? d.cInit : e ? e.cInit : NaN;
+    push('cinit', Number.isFinite(ci) ? (ci < 0.002 ? 'ok' : 'fail') : 'na', L('Начальная рекомбинация меньше 0,2 %', 'Initial recombination below 0.2%'), Number.isFinite(ci) ? `${pct(ci * 100)}${e ? L(' (ур. 17)', ' (Eq. 17)') : ' (C_init)'}` : L('нужны три условия с разной дозой за импульс', 'three conditions with different dose per pulse are needed'), d ? `${REF.add}, табл. III; ${REF.trs}, табл. 3` : `${REF.trs}, табл. 3, ур. 17`);
+    const lin = d ? d.maxDev <= 0.1 && d.cGen > 0 : e ? e.maxDev <= 0.1 && e.b1 > 0 : null;
+    push('dpp', lin === null ? 'na' : lin ? 'ok' : 'fail', L(`${KS} линейно растёт с дозой за импульс`, `${KS} increases linearly with the dose per pulse`), d ? L(`отклонение до ${pct(d.maxDev, 3)}`, `deviation up to ${pct(d.maxDev, 3)}`) : e ? L(`отклонение до ${pct(e.maxDev, 3)} (ур. 17)`, `deviation up to ${pct(e.maxDev, 3)} (Eq. 17)`) : L('нет данных', 'no data'), d ? `${REF.add}, табл. III; ${REF.r374}, разд. 4.4.4` : `${REF.trs}, табл. 3, ур. 17`);
   } else if (o.axis === 'v') {
     push('cinit', Number.isFinite(o.cInit) ? (o.cInit < 0.002 ? 'ok' : 'fail') : 'na', L(`Начальная рекомбинация (${KS} − 1) меньше 0,2 %`, `Initial recombination (${KS} − 1) below 0.2%`), Number.isFinite(o.cInit) ? pct(o.cInit * 100) : '—', `${REF.trs}, табл. 3; ${REF.add}, табл. III`);
   }

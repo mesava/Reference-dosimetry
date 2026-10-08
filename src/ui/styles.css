@@ -793,6 +793,11 @@ table.jf-table tr.out td.v { color: var(--muted); }
 table.jf-table input.flag-warn { border-color: var(--warn); background: var(--warn-soft); }
 table.jf-table input.flag-error { border-color: var(--err); background: var(--err-soft); }
 .row-tools { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 6px; }
+table.jf-dpp td.ks output.calc { display: none; font: 13px var(--font-mono); font-variant-numeric: tabular-nums; }
+table.jf-dpp tr.has-m td.ks input { display: none; }
+table.jf-dpp tr.has-m td.ks output.calc { display: block; padding: 6px 2px; }
+.sub-h { margin: 16px 0 2px; font: 600 13px var(--font-display); color: var(--ink); }
+.sub-hint { margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
 .row-tools .link-btn:disabled { color: var(--muted); cursor: default; text-decoration: none; }
 @media (max-width: 560px) {
   table.jf-table, table.jf-table tbody { display: block; width: 100%; }
@@ -808,7 +813,11 @@ table.jf-table input.flag-error { border-color: var(--err); background: var(--er
   .segmented.stack { display: grid; width: 100%; }
   .segmented.stack label + label span { border-left: 0; border-top: 1px solid var(--field-border); }
   table.jf-dpp tr td.cond { grid-column: 2 / -1; }
-  table.jf-dpp tr td.v { grid-column: 4; }
+  table.jf-dpp tr td.dx { grid-column: 2; }
+  table.jf-dpp tr td.m1 { grid-column: 3; }
+  table.jf-dpp tr td.m2 { grid-column: 4; }
+  table.jf-dpp tr td.ks { grid-column: 2; }
+  table.jf-dpp tr td.v { grid-column: 3; }
 }
 .chart-box { position: relative; min-height: 120px; margin-top: 4px; }
 .chart-box.small { margin-top: 10px; min-height: 0; }

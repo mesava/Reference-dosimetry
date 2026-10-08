@@ -30,6 +30,9 @@ const pctS = (v, d = 2) => L(`${fmtSigned(v, d)} %`, `${fmtSigned(v, d)}%`);
 const subs = (html) => html.replace(/\b([kPVCMD])_([a-zа-яё]+)\b/gi, '$1<sub>$2</sub>');
 const rich = (s) => subs(esc(s));
 
+/** Число с n значащими цифрами (для малых коэффициентов вроде b₁). */
+const sig = (v, n) => (Number.isFinite(v) && v !== 0 ? fmt(v, Math.max(0, n - 1 - Math.floor(Math.log10(Math.abs(v))))) : fmt(v, n));
+
 /** Отклонение со знаком; ноль после округления — без знака. */
 const dev3 = (v) => (Math.abs(v) < 5e-4 ? fmt(0, 3) : fmtSigned(v, 3));
 
@@ -64,8 +67,10 @@ function renderDpp(f) {
   dppBody().innerHTML = Array.from({ length: n }, (_, i) => `<tr data-i="${i}">
       <td class="no">${i + 1}</td>
       <td class="cond"><input type="text" id="jf_dpp_cond_${i}" aria-label="${esc(`${L('Условие', 'Condition')}, ${row(i)}`)}" value="${esc(f.jf_dpp_cond[i])}" placeholder="${esc(L('РИП, глубина', 'SSD, depth'))}"></td>
-      <td data-cap="Dₚₚ">${numInput(`jf_dpp_x_${i}`, `jf_dpp_x.${i}`, `${L('Доза за импульс', 'Dose per pulse')}, ${row(i)}`, f.jf_dpp_x[i])}</td>
-      <td data-cap="${esc(ksCap(f.protocol))}">${numInput(`jf_dpp_ks_${i}`, `jf_dpp_ks.${i}`, `${ksText(f.protocol)}, ${row(i)}`, f.jf_dpp_ks[i])}</td>
+      <td class="dx" data-cap="Dₚₚ" data-show="jf_beam_type:pulsed,scanned">${numInput(`jf_dpp_x_${i}`, `jf_dpp_x.${i}`, `${L('Доза за импульс', 'Dose per pulse')}, ${row(i)}`, f.jf_dpp_x[i])}</td>
+      <td class="m1" data-cap="M₁">${numInput(`jf_dpp_m1_${i}`, `jf_dpp_m1.${i}`, `${L('Показание при V₁', 'Reading at V₁')}, ${row(i)}`, f.jf_dpp_m1[i])}</td>
+      <td class="m2" data-cap="M₂">${numInput(`jf_dpp_m2_${i}`, `jf_dpp_m2.${i}`, `${L('Показание при V₂', 'Reading at V₂')}, ${row(i)}`, f.jf_dpp_m2[i])}</td>
+      <td class="ks" data-cap="${esc(ksCap(f.protocol))}">${numInput(`jf_dpp_ks_${i}`, `jf_dpp_ks.${i}`, `${ksText(f.protocol)}, ${row(i)}`, f.jf_dpp_ks[i])}<output class="calc" data-o="ks"></output></td>
       <td class="v" data-o="dev" data-cap="${esc(L('откл., %', 'dev., %'))}"></td>
     </tr>`).join('');
   $('#jf-btn-remove-dpp').disabled = n <= 1;
@@ -87,6 +92,8 @@ function readForm() {
     else if (key === 'jf_dpp_cond') data.jf_dpp_cond = vals('#jf-dpp-body input[id^="jf_dpp_cond_"]');
     else if (key === 'jf_dpp_x') data.jf_dpp_x = vals('#jf-dpp-body input[id^="jf_dpp_x_"]');
     else if (key === 'jf_dpp_ks') data.jf_dpp_ks = vals('#jf-dpp-body input[id^="jf_dpp_ks_"]');
+    else if (key === 'jf_dpp_m1') data.jf_dpp_m1 = vals('#jf-dpp-body input[id^="jf_dpp_m1_"]');
+    else if (key === 'jf_dpp_m2') data.jf_dpp_m2 = vals('#jf-dpp-body input[id^="jf_dpp_m2_"]');
     else {
       const el = document.getElementById(key);
       if (el) data[key] = el.value;
@@ -116,7 +123,7 @@ function writeForm(values) {
 /** Добавить или убрать строку таблицы, сохранив введённое. */
 function resizeRows(kind, delta) {
   const f = normalizeJaffe(readForm());
-  const keys = kind === 'points' ? ['jf_V', 'jf_M', 'jf_Mopp', 'jf_use'] : ['jf_dpp_cond', 'jf_dpp_x', 'jf_dpp_ks'];
+  const keys = kind === 'points' ? ['jf_V', 'jf_M', 'jf_Mopp', 'jf_use'] : ['jf_dpp_cond', 'jf_dpp_x', 'jf_dpp_m1', 'jf_dpp_m2', 'jf_dpp_ks'];
   const min = kind === 'points' ? 3 : 1;
   const n = f[keys[0]].length + delta;
   if (n < min) return;
@@ -150,11 +157,26 @@ function fillRows(r) {
     tr.querySelector('[data-o="kpol"]').textContent = p && Number.isFinite(p.kpol) ? fmt(p.kpol, 4) : '';
   }
   const d = r.dpp?.fit ? r.dpp : null;
+  const e = r.eq17;
   const byD = new Map((r.dpp?.points || []).map((p) => [p.i, p]));
   for (const tr of $$('#jf-dpp-body tr')) {
     const p = byD.get(Number(tr.dataset.i));
-    tr.querySelector('[data-o="dev"]').textContent = d && p ? dev3((p.ks - (d.fit.a + d.fit.b * p.x)) * 100) : '';
+    // k_s по M₁, M₂ — вычислен; иначе поле для готового значения
+    const calc = p?.src === 'two';
+    tr.classList.toggle('has-m', calc);
+    tr.querySelector('output[data-o="ks"]').textContent = calc && Number.isFinite(p.ks) ? fmt(p.ks, 5) : '';
+    // отклонение: от прямой по D_pp, если она есть, иначе от прямой ур. 17
+    const dv = p && Number.isFinite(p.dev) ? p.dev : p && Number.isFinite(p.dev17) && !d ? p.dev17 : NaN;
+    tr.querySelector('[data-o="dev"]').textContent = Number.isFinite(dv) ? dev3(dv) : '';
   }
+  $('#jf-b0').textContent = e ? fmt(e.b0, 5) : '—';
+  $('#jf-b1').textContent = e ? sig(e.b1, 4) : '—';
+  $('#jf-e17-init').textContent = e ? fmt(e.cInit * 100, 3) : '—';
+  $('#jf-e17-ksq').textContent = e && Number.isFinite(e.ksQ) ? fmt(e.ksQ, 4) : '—';
+  $('#jf-e17-ksref').textContent = e && Number.isFinite(e.ksRef) ? fmt(e.ksRef, 4) : '—';
+  $('#jf-e17-ksref-sub').textContent = e && Number.isFinite(e.ksRef) && Number.isFinite(r.ks1)
+    ? L(`по графику Яффе ${fmt(r.ks1, 4)} (${fmtSigned((e.ksRef / r.ks1 - 1) * 100, 3)} %); сравнение имеет смысл, если показания сняты при одинаковом числе МЕ`, `from the Jaffé plot ${fmt(r.ks1, 4)} (${fmtSigned((e.ksRef / r.ks1 - 1) * 100, 3)}%); the comparison makes sense if the readings were taken with the same MU`)
+    : '';
   $('#jf-cinit').textContent = d ? fmt(d.cInit * 100, 3) : '—';
   $('#jf-cgen').textContent = d ? fmt(d.cGen, 4) : '—';
   $('#jf-cgen-sub').textContent = r.form.jf_dpp_unit === 'rel' ? L('на единицу относительной дозы за импульс', 'per unit of relative dose per pulse') : L('на мГр за импульс', 'per mGy per pulse');
@@ -166,6 +188,38 @@ function renderCharts(r) {
   lastResult = r;
   renderJaffeChart(r);
   renderDppChart(r);
+  renderEq17Chart(r);
+}
+
+/** Ур. 17: M₁/M₂ от M₁ по условиям раздела 5. */
+function renderEq17Chart(r) {
+  const box = $('#jf-e17-chart');
+  const e = r.eq17;
+  if (!e) {
+    box.innerHTML = '';
+    return;
+  }
+  const pm = r.dpp.points.filter((p) => p.src === 'two');
+  const xs = pm.map((p) => p.m1);
+  const xMax = Math.max(...xs);
+  const xMin = Math.min(...xs);
+  scatterChart(box, {
+    label: L('Ур. 17 TRS-398: M₁/M₂ в зависимости от M₁', 'TRS-398 Eq. 17: M₁/M₂ versus M₁'),
+    aspect: 0.4,
+    minHeight: 200,
+    maxHeight: 260,
+    xLabel: L('M₁ при V₁', 'M₁ at V₁'),
+    yLabel: 'M₁/M₂',
+    fmt,
+    xInclude: [0],
+    yInclude: [1, e.fit.a],
+    series: [{ cls: 's1', shape: 'circle', points: pm.map((p) => ({ x: p.m1, y: p.m1 / p.m2, title: `${p.cond ? `${p.cond}: ` : ''}M₁ = ${fmt(p.m1, 4)}; M₁/M₂ = ${fmt(p.m1 / p.m2, 5)}; ${ksText(r.protocol)} = ${fmt(p.ks17, 5)}` })) }],
+    lines: [
+      { cls: 's1', a: e.fit.a, b: e.fit.b, x0: xMin, x1: xMax },
+      { cls: 's1', a: e.fit.a, b: e.fit.b, x0: 0, x1: xMin, dashed: true },
+    ],
+    notes: [{ x: 0, y: e.fit.a, text: '1 + b₀', below: true }],
+  });
 }
 
 function renderJaffeChart(r) {
@@ -235,7 +289,7 @@ function renderJaffeChart(r) {
 function renderDppChart(r) {
   const box = $('#jf-dpp-chart');
   const d = r.dpp?.fit ? r.dpp : null;
-  if (!d || ROOT().querySelector('#jf-s5')?.closest('section')?.hidden) {
+  if (!d || !r.pulsed) {
     box.innerHTML = '';
     return;
   }
@@ -349,6 +403,13 @@ function summaryRows(r) {
     if (Number.isFinite(r.kpolMin)) rows.push([L('k<sub>pol</sub> в линейной области', 'k<sub>pol</sub> in the linear region'), r.kpolMax - r.kpolMin < 5e-5 ? fmt(r.kpolMin, 4) : `${fmt(r.kpolMin, 4)}–${fmt(r.kpolMax, 4)}`]);
   }
   if (Number.isFinite(r.cInit)) rows.push([L('Начальная рекомбинация, %', 'Initial recombination, %'), fmt(r.cInit * 100, 3)]);
+  if (r.eq17) {
+    const e = r.eq17;
+    rows.push([L('Ур. 17: b₀ / b₁', 'Eq. 17: b₀ / b₁'), `${fmt(e.b0, 5)} / ${sig(e.b1, 4)}`]);
+    rows.push([L('Ур. 17: начальная рекомбинация b₀/(n − 1), %', 'Eq. 17: initial recombination b₀/(n − 1), %'), fmt(e.cInit * 100, 3)]);
+    if (Number.isFinite(e.ksRef)) rows.push([L(`Ур. 17: ${KS} при M₁ из раздела 3`, `Eq. 17: ${KS} at M₁ of section 3`), fmt(e.ksRef, 4)]);
+    if (Number.isFinite(e.ksQ)) rows.push([L(`Ур. 17: ${KS} при M₁ = ${esc(r.form.jf_dpp_mq)}`, `Eq. 17: ${KS} at M₁ = ${esc(r.form.jf_dpp_mq)}`), fmt(e.ksQ, 4)]);
+  }
   if (r.dpp?.fit) {
     rows.push(['C<sub>init</sub>, %', fmt(r.dpp.cInit * 100, 3)]);
     rows.push([r.form.jf_dpp_unit === 'rel' ? L('C<sub>gen</sub>, на отн. ед.', 'C<sub>gen</sub>, per rel. unit') : L('C<sub>gen</sub>, на мГр', 'C<sub>gen</sub>, per mGy'), fmt(r.dpp.cGen, 4)]);
@@ -393,8 +454,9 @@ function reportText(data, r) {
   }
   if (r.dpp?.points?.length) {
     const unit = r.form.jf_dpp_unit === 'rel' ? L('отн. ед.', 'rel. units') : L('мГр', 'mGy');
-    out.push('', L(`Доза за импульс (условие — D_pp, ${unit} — ${KS}):`, `Dose per pulse (condition — D_pp, ${unit} — ${KS}):`));
-    for (const p of r.dpp.points) out.push(`  ${p.cond || '—'} — ${fmt(p.x, 3)} — ${fmt(p.ks, 5)}`);
+    out.push('', L(`Разные мощности дозы (условие — D_pp, ${unit} — M₁ — M₂ — ${KS}):`, `Different dose rates (condition — D_pp, ${unit} — M₁ — M₂ — ${KS}):`));
+    const raw = (v) => (String(v ?? '').trim() || '—');
+    for (const p of r.dpp.points) out.push(`  ${p.cond || '—'} — ${Number.isFinite(p.x) ? fmt(p.x, 3) : '—'} — ${p.src === 'two' ? `${raw(data.jf_dpp_m1[p.i])} — ${raw(data.jf_dpp_m2[p.i])}` : '— — —'} — ${Number.isFinite(p.ks) ? fmt(p.ks, 5) : '—'}${p.src === 'two' ? L(' (метод двух напряжений)', ' (two-voltage method)') : ''}`);
   }
   out.push('', L('Результаты:', 'Results:'));
   for (const [k, v] of summaryRows(r)) out.push(`  ${plain(k)}: ${plain(v)}`);
@@ -539,11 +601,13 @@ export function initJaffe() {
         if (!w || widths.get(e.target) === w) continue;
         widths.set(e.target, w);
         if (e.target.id === 'jf-chart') renderJaffeChart(lastResult);
+        else if (e.target.id === 'jf-e17-chart') renderEq17Chart(lastResult);
         else renderDppChart(lastResult);
       }
     });
     ro.observe($('#jf-chart'));
     ro.observe($('#jf-dpp-chart'));
+    ro.observe($('#jf-e17-chart'));
   }
 
   $('#jf-btn-add-row').addEventListener('click', () => resizeRows('points', 1));

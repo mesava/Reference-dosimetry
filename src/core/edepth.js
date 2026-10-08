@@ -2,15 +2,16 @@
 // в пучке электронов, в кривую глубинной дозы и параметры пучка.
 //
 // 1. Глубина в данных сканера переводится в глубину точки измерения (эффективной точки):
-//    TRS-398 Rev.1 — цилиндрическая камера: центр на 0,5·r_cyl глубже точки измерения (табл. 4, 19),
+//    TRS-398 Rev.1 — цилиндрическая камера: центр на 0,5·r_cyl глубже точки измерения (табл. 4, 18),
 //    плоскопараллельная: точка измерения — внутренняя поверхность входного окна с учётом его водоэквивалентной
 //    толщины (табл. 5); Report 385 — сдвиги для каждой камеры (табл. 2 и 3).
 // 2. R50,ion (I50) — глубина 50 % ионизации на спаде; R50 = 1,029·I50 − 0,06 (I50 ≤ 10 г/см²) или
 //    1,059·I50 − 0,37 (TRS-398, ур. 37; TG-51, ур. 16–17; Report 385, ур. 3).
-// 3. Доза ∝ ионизация × s_w,air(z): TRS-398 Rev.1, разд. 7.7.1, табл. 22; здесь s_w,air(R50, z) — по выражению
-//    Burns, Ding, Rogers (Med. Phys. 23, 489, 1996), ур. (1) в Rogers (Med. Phys. 31, 3460, 2004): точность до 1 %
-//    дозы в максимуме при 0,02 ≤ z/R50 ≤ 1,1, за 1,2 аппроксимация ухудшается. Изменение поправки на возмущение
-//    с глубиной не учитывается: у камер эталонного класса оно сдвигает R50 меньше чем на 0,05 г/см² (TRS-398).
+// 3. Доза ∝ ионизация × s_w,air(z): TRS-398 Rev.1, разд. 7.7.1, табл. 22 (R50 = 1–10 г/см², z/R50 = 0,02–1,2).
+//    Таблица получена по многопараметрическому выражению Burns, Ding, Rogers (Med. Phys. 23, 489, 1996) — ссылка [173]
+//    TRS-398; оно и используется здесь (коэффициенты — Rogers, Med. Phys. 31, 3460, 2004, ур. 1) и воспроизводит все
+//    значения табл. 22 в пределах округления (тест). Изменение поправки на возмущение с глубиной не учитывается: у камер
+//    эталонного класса оно сдвигает R50 меньше чем на 0,05 г/см² (TRS-398, разд. 7.7.1).
 // 4. По кривой дозы: R100, R90, R80, R50, практический пробег Rp (касательная в точке наибольшего спада до
 //    пересечения с тормозным фоном), фон Dx, z_ref = 0,6·R50 − 0,1 (TRS-398, ур. 39) и PDD(z_ref) — для пересчёта
 //    дозы на глубину максимума на вкладке «Электроны».
@@ -45,11 +46,13 @@ export const ED_DEFAULTS = {
 };
 
 const REF = { trs: 'TRS-398 Rev.1', r385: 'Report 385', burns: 'Burns et al. (1996)', rogers: 'Rogers (2004)' };
+const T22 = `${REF.trs}, табл. 22`;
 
 // ---------------------------------------------------------------- s_w,air
 // Burns D T, Ding G X, Rogers D W O 1996 Med. Phys. 23 489–501; коэффициенты — Rogers 2004, ур. (1).
 const BURNS = { a: 1.0752, b: -0.50867, c: 0.08867, d: -0.08402, e: -0.42806, f: 0.064627, g: 0.003085, h: -0.1246 };
-export const SW_Y_RANGE = [0.02, 1.2]; // z/R50, в котором выражение пригодно (Rogers 2004: 0,02–1,1; хуже за 1,2)
+export const SW_Y_RANGE = [0.02, 1.2]; // z/R50 табл. 22 TRS-398 Rev.1 (Rogers 2004: выражение пригодно до 1,1–1,2)
+export const SW_R50_RANGE = [1, 10]; // R50 табл. 22, г/см²
 
 /** s_w,air по Burns et al. (1996): R50 и z — в г/см² (см воды). */
 export function swAirBurns(r50, z) {
@@ -153,7 +156,7 @@ export function depthShift(f, chamber) {
     if (!Number.isFinite(r)) return { value: NaN, text: L('нужен радиус полости камеры', 'the cavity radius is needed') };
     return {
       value: -0.05 * r,
-      ref: `${REF.trs}, табл. 4, 19`,
+      ref: `${REF.trs}, табл. 4, 18`,
       fallback: proto === 'tg51',
       text: L(`точка измерения на 0,5·r_cyl = ${ru(0.5 * r, 2)} мм выше центра камеры`, `point of measurement 0.5·r_cyl = ${ru(0.5 * r, 2)} mm upstream of the chamber centre`),
     };
@@ -165,7 +168,7 @@ export function depthShift(f, chamber) {
   if (!Number.isFinite(wetMm)) return { value: NaN, text: L('нужна водоэквивалентная толщина входного окна', 'the water-equivalent window thickness is needed') };
   return {
     value: wetMm / 10,
-    ref: `${REF.trs}, табл. 5, 19`,
+    ref: `${REF.trs}, табл. 5, 18`,
     fallback: proto === 'tg51',
     text: L(`точка измерения — внутренняя поверхность окна: ${ru(wetMm, 2)} мм водного эквивалента за наружной`, `point of measurement — inner window surface: ${ru(wetMm, 2)} mm water-equivalent behind the outer one`),
   };
@@ -216,7 +219,7 @@ export function computeEdepth(form) {
     else if (chamber?.other) add('error', chamber.type === 'cyl' ? L('Для другой камеры введите радиус полости.', 'Enter the cavity radius for the other chamber.') : L('Для другой камеры введите водоэквивалентную толщину окна.', 'Enter the water-equivalent window thickness for the other chamber.'), null, chamber.type === 'cyl' ? 'ed_other_r' : 'ed_other_wet');
     else add('error', L(`Для этой камеры нет данных о сдвиге точки измерения (${shift.text}): введите сдвиг вручную.`, `There are no point-of-measurement data for this chamber (${shift.text}): enter the shift manually.`), null, 'ed_shift_mode');
   } else if (shift.fallback) {
-    add('info', L('В Report 385 нет сдвига для этой камеры: принят сдвиг по TRS-398.', 'Report 385 gives no shift for this chamber: the TRS-398 shift is used.'), shift.ref, 'ed_shift_mode');
+    add('info', L('Этой камеры нет в табл. 2 и 3 Report 385: сдвиг принят по TRS-398. Report 385 не рекомендует такие камеры для референсной дозиметрии электронов.', 'This chamber is not in Report 385 Tables 2 and 3: the TRS-398 shift is used. Report 385 does not recommend such chambers for electron-beam reference dosimetry.'), `${REF.r385}, разд. 4`, 'ed_shift_mode');
   }
 
   // данные
@@ -312,8 +315,9 @@ export function computeEdepth(form) {
   if (chamberMode) {
     const sRef = swAirBurns(r50, Math.min(Math.max(zrefFromR50(r50), SW_Y_RANGE[0] * r50), SW_Y_RANGE[1] * r50));
     pts.forEach((p) => (p.sRel = p.s / sRef));
-    if (clampedNear) add('info', L(`У самой поверхности (z/R50 < 0,02, ${clampedNear} точ.) s_w,air взят при z/R50 = 0,02.`, `Near the surface (z/R50 < 0.02, ${clampedNear} pts) s_w,air is taken at z/R50 = 0.02.`), `${REF.rogers}`);
-    if (clampedFar) add('info', L(`За z/R50 = 1,2 (${clampedFar} точ., тормозной хвост) s_w,air взят при z/R50 = 1,2: выражение Burns et al. там неточно, на R50 и PDD(z_ref) это не влияет.`, `Beyond z/R50 = 1.2 (${clampedFar} pts, bremsstrahlung tail) s_w,air is taken at z/R50 = 1.2: the Burns et al. expression is inaccurate there; R50 and PDD(z_ref) are not affected.`), `${REF.rogers}`);
+    if (clampedNear) add('info', L(`У самой поверхности (z/R50 < 0,02, ${clampedNear} точ.) s_w,air взят при z/R50 = 0,02 — первой строке табл. 22.`, `Near the surface (z/R50 < 0.02, ${clampedNear} pts) s_w,air is taken at z/R50 = 0.02, the first row of Table 22.`), T22);
+    if (clampedFar) add('info', L(`За z/R50 = 1,2 (${clampedFar} точ., тормозной хвост) s_w,air взят при z/R50 = 1,2 — последней строке табл. 22; на R50 и PDD(z_ref) это не влияет.`, `Beyond z/R50 = 1.2 (${clampedFar} pts, bremsstrahlung tail) s_w,air is taken at z/R50 = 1.2, the last row of Table 22; R50 and PDD(z_ref) are not affected.`), T22);
+    if (r50 < SW_R50_RANGE[0] || r50 > SW_R50_RANGE[1]) add('warn', L(`R50 = ${ru(r50, 2)} г/см² вне диапазона табл. 22 (1–10 г/см²): s_w,air рассчитан по выражению Burns et al. за пределами таблицы.`, `R50 = ${ru(r50, 2)} g/cm² is outside the range of Table 22 (1–10 g/cm²): s_w,air is calculated with the Burns et al. expression beyond the table.`), T22);
   }
 
   // параметры кривой дозы
@@ -380,10 +384,13 @@ export function computeEdepth(form) {
 
   // проверки
   if (chamberMode && chamber?.type === 'cyl' && r50 < 3) {
-    add('warn', L(`R50 = ${ru(r50, 2)} г/см² меньше 3 г/см²: для таких пучков нужна плоскопараллельная камера.`, `R50 = ${ru(r50, 2)} g/cm² is below 3 g/cm²: a plane-parallel chamber is needed for such beams.`), `${REF.trs}, табл. 19`, 'ed_ch_model');
+    add('warn', L(`R50 = ${ru(r50, 2)} г/см² меньше 3 г/см²: для таких пучков нужна плоскопараллельная камера.`, `R50 = ${ru(r50, 2)} g/cm² is below 3 g/cm²: a plane-parallel chamber is needed for such beams.`), `${REF.trs}, разд. 7.3.2, табл. 18`, 'ed_ch_model');
+  }
+  if (chamberMode && f.protocol === 'tg51' && (out.i50 < 1.7 || out.i50 > 10)) {
+    add('warn', L(`I50 = ${ru(out.i50, 2)} см вне диапазона 1,7–10 см, для которого Report 385 даёт формулу R50 по I50.`, `I50 = ${ru(out.i50, 2)} cm is outside the 1.7–10 cm range for which Report 385 gives the R50-from-I50 formula.`), `${REF.r385}, ур. 3`, 'ed_data');
   }
   if (!chamberMode) {
-    add('info', L('Детектор (диод, алмаз) должен отвечать дозе: это подтверждают сравнением с кривой, измеренной камерой.', 'The detector (diode, diamond) must respond to dose: this is confirmed by comparison with a curve measured with a chamber.'), `${REF.trs}, разд. 7.3; ${REF.r385}, разд. 4`, 'ed_detector');
+    add('info', L('Детектор должен отвечать дозе и не зависеть от мощности дозы (для электронов — неэкранированный диод); это подтверждают сравнением с кривой, измеренной камерой.', 'The detector must respond to dose independently of dose rate (for electrons, an unshielded diode); this is confirmed by comparison with a curve measured with a chamber.'), `${REF.r385}, разд. 4`, 'ed_detector');
   }
   if (chamberMode && Number.isFinite(out.r50dose) && Math.abs(out.r50dose - r50) > 0.1) {
     add('info', L(`Глубина 50 % на кривой дозы (${ru(out.r50dose, 2)} см) отличается от R50 по ур. 37 (${ru(r50, 2)} г/см²) больше чем на 1 мм. Для k_Q и z_ref используется R50 по ур. 37.`, `The 50% depth of the dose curve (${ru(out.r50dose, 2)} cm) differs from R50 per Eq. 37 (${ru(r50, 2)} g/cm²) by more than 1 mm. R50 per Eq. 37 is used for k_Q and z_ref.`), `${REF.trs}, ур. 37`);

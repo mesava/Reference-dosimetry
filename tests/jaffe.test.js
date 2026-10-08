@@ -113,9 +113,9 @@ test('образец: линейная область 100–300 В, V_max = 300 
   // обратная полярность: разница k_s < 0,1 %
   assert.ok(Math.abs(r.opp.diffPct) < 0.1);
   assert.ok(r.kpolRange < 0.1);
-  // доза за импульс: C_init ≈ 0,04 %, C_gen ≈ 0,0134 на мГр
-  near(r.dpp.cInit, 0.0004, 0.00005);
-  near(r.dpp.cGen, 0.0134, 0.0002);
+  // доза за импульс: k_s строк — методом двух напряжений (ур. 13) по M₁, M₂; C_init ≈ 0,03 %, C_gen ≈ 0,013 на мГр
+  near(r.dpp.cInit, 0.0003, 0.0001);
+  near(r.dpp.cGen, 0.0131, 0.0003);
   assert.ok(!r.messages.some((m) => m.level === 'error'));
 });
 
@@ -213,4 +213,52 @@ test('нормализация: массивы выравниваются, «fal
   assert.equal(f.jf_axis, 'v');
   assert.equal(f.jf_fit, 'auto');
   assert.equal(s(f.jf_tol), '0,1');
+});
+
+test('ур. 17 TRS-398 (ди Алмейда и Ниатель): b₀, b₁ по M₁/M₂ от M₁; k_s при любом M₁ — импульсный и непрерывный пучок', () => {
+  // импульсный: M₁/M₂ − 1 = (n − 1)·(c₀ + c₁·M₁) ⇒ k_s = 1 + c₀ + c₁·M₁
+  const c0 = 0.0005;
+  const c1 = 0.0003;
+  const M1 = [10, 20, 30, 40];
+  const n = 3;
+  const m2 = (m1, gen) => m1 / (1 + (n - 1) * c0 + gen * c1 * m1);
+  const base = ideal({ jf_v1: '300', jf_v2: '100' });
+  const pulsed = computeJaffe({ ...base, jf_dpp_x: ['', '', '', ''], jf_dpp_m1: M1.map(String), jf_dpp_m2: M1.map((m) => String(m2(m, n - 1))), jf_dpp_ks: ['', '', '', ''], jf_dpp_cond: ['', '', '', ''], jf_dpp_mq: '25' });
+  const e = pulsed.eq17;
+  near(e.b0, (n - 1) * c0, 1e-9);
+  near(e.b1, (n - 1) * c1, 1e-9);
+  near(e.cInit, c0, 1e-9);
+  near(e.ksQ, 1 + c0 + c1 * 25, 1e-9);
+  pulsed.dpp.points.forEach((p) => near(p.ks17, 1 + c0 + c1 * p.m1, 1e-9));
+  // без D_pp проверки начальной рекомбинации и линейности берутся по ур. 17
+  const st = Object.fromEntries(pulsed.checks.map((c) => [c.id, c]));
+  assert.equal(st.cinit.status, 'ok');
+  assert.match(st.cinit.value, /ур\. 17/);
+  assert.equal(st.dpp.status, 'ok');
+  // непрерывный пучок: общий член делится на n² − 1
+  const cont = computeJaffe({ ...ideal({ A: 0.3, jf_beam_type: 'continuous', jf_v1: '300', jf_v2: '100' }), jf_dpp_x: [''], jf_dpp_m1: M1.map(String), jf_dpp_m2: M1.map((m) => String(m2(m, n * n - 1))), jf_dpp_ks: [''], jf_dpp_cond: [''] });
+  near(cont.eq17.b1, (n * n - 1) * c1, 1e-9);
+  near(cont.eq17.ksAt(30), 1 + c0 + c1 * 30, 1e-9);
+});
+
+test('строки раздела 5: k_s методом двух напряжений по M₁ и M₂, ошибки ввода', () => {
+  const base = ideal({ jf_v1: '300', jf_v2: '100' });
+  const r = computeJaffe({ ...base, jf_dpp_cond: ['a', 'b'], jf_dpp_x: ['0,2', ''], jf_dpp_m1: ['20,12', '20'], jf_dpp_m2: ['20', ''], jf_dpp_ks: ['', ''] });
+  const p = r.dpp.points[0];
+  near(p.ks, TRS.ks({ m1: 20.12, m2: 20, v1: 300, v2: 100, beam: 'pulsed' }).value, 1e-12);
+  assert.equal(p.src, 'two');
+  assert.ok(has(r, 'warn', /нужны оба показания/));
+  // без V₂ k_s по M₁, M₂ не считается
+  const noV2 = computeJaffe({ ...base, jf_v2: '', jf_dpp_cond: ['a'], jf_dpp_x: ['0,2'], jf_dpp_m1: ['20,12'], jf_dpp_m2: ['20'], jf_dpp_ks: [''] });
+  assert.ok(has(noV2, 'warn', /задайте V₁ и V₂/));
+  // TG-51: P_ion по ур. 12
+  const tg = computeJaffe({ ...base, protocol: 'tg51', jf_dpp_cond: ['a'], jf_dpp_x: ['0,2'], jf_dpp_m1: ['20,12'], jf_dpp_m2: ['20'], jf_dpp_ks: [''] });
+  near(tg.dpp.points[0].ks, (1 - 3) / (20.12 / 20 - 3), 1e-12);
+});
+
+test('образец: ур. 17 при показании раздела 3 совпадает с k_s по графику в пределах 0,01 %', () => {
+  const r = computeJaffe(SAMPLE_JAFFE);
+  near(r.eq17.ksRef, r.ks1, 0.0001);
+  assert.ok(r.dpp.fit && r.eq17);
+  assert.ok(Math.abs(r.dpp.cInit - r.eq17.cInit) < 0.0003);
 });

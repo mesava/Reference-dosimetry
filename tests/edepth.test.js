@@ -5,10 +5,25 @@ import assert from 'node:assert/strict';
 import { computeEdepth, swAirBurns, parseCurveText, depthShift, normalizeEdepth, resolveChamber, ED_DEFAULTS, curveCsv, valueAt } from '../src/core/edepth.js';
 import { SAMPLE_EDEPTH } from '../src/core/sample-edepth.js';
 import { r50FromI50 } from '../src/core/electrons.js';
+import { readFileSync } from 'node:fs';
+
+const T22 = JSON.parse(readFileSync(new URL('./data/trs398_table22.json', import.meta.url), 'utf8'));
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''} ${a} ≠ ${b} (±${tol})`);
 const has = (r, level, re) => r.messages.some((m) => m.level === level && re.test(m.text));
 const text = (rows) => rows.map(([z, v]) => `${z}\t${v}`).join('\n');
+
+test('TRS-398 Rev.1, табл. 22: выражение Burns et al. воспроизводит все 350 значений s_w,air в пределах округления', () => {
+  assert.equal(T22.zr50.length * T22.r50.length, 350);
+  T22.zr50.forEach((y, i) =>
+    T22.r50.forEach((r50, j) => near(swAirBurns(r50, y * r50), T22.sw[i][j], 0.0006, `R50 = ${r50}, z/R50 = ${y}`)),
+  );
+  // нижние строки таблицы: z_ref (округлено до 0,1 г/см²) и s_w,air на этой глубине (2–3 знака)
+  T22.r50.forEach((r50, j) => {
+    near(T22.zref[j], 0.6 * r50 - 0.1, 0.051, `z_ref при R50 = ${r50}`);
+    near(swAirBurns(r50, T22.zref[j]), T22.swZref[j], 0.0015, `s_w,air(z_ref) при R50 = ${r50}`);
+  });
+});
 
 test('s_w,air по Burns et al. на z_ref совпадает в пределах 0,25 % с их же выражением для опорной глубины, 1,253 − 0,1487·R50^0,214', () => {
   for (const r50 of [2, 3, 5, 7.5, 10]) {
