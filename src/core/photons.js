@@ -77,6 +77,11 @@ export const FORM_DEFAULTS = {
   rd_Mopp: ['', '', ''],
   rd_M2: ['', '', ''],
   rd_kleak: '1,000',
+  // проверка выхода (журнал): k_pol и k_s не измеряются, а берутся из последней калибровки этого пучка
+  rd_fixed: false,
+  rd_fixed_kpol: '', // k_pol, измеренный при калибровке
+  rd_fixed_ks: '', // k_s (P_ion), измеренный при калибровке (до деления на значение лаборатории)
+  rd_fixed_from: '', // дата калибровки, из которой взяты значения
 
   q51_method: 'open', // 'open' | 'foil50' | 'foil30' | 'interim' | 'manual'
   q51_pdd10: '',
@@ -140,6 +145,7 @@ export function normalizeForm(input) {
   f.rd_M2 = cells(f.rd_M2);
   f.ctrl_M = cells(f.ctrl_M);
   f.recal_M = cells(f.recal_M);
+  f.rd_fixed = f.rd_fixed === true || f.rd_fixed === 'true';
   if (!Array.isArray(f.meta_staff)) f.meta_staff = [String(f.meta_staff ?? '')];
   if (input && 'meta_physicist' in input && !('meta_staff' in input)) f.meta_staff = [String(input.meta_physicist ?? '')];
   if (f.meta_staff.length === 0) f.meta_staff = [''];
@@ -434,7 +440,8 @@ export function computePhotons(form) {
   const mu = read('rd_mu', L('Мониторные единицы', 'Monitor units'));
   if (Number.isFinite(mu) && mu <= 0) add('error', 'common', L('Число МЕ должно быть больше нуля.', 'The number of MU must be greater than zero.'), null, 'rd_mu');
   const V1 = read('rd_V1', L('Рабочее напряжение V₁', 'Operating voltage V₁'));
-  const V2 = read('rd_V2', L('Пониженное напряжение V₂', 'Reduced voltage V₂'));
+  const fixed = f.rd_fixed;
+  const V2 = fixed ? NaN : read('rd_V2', L('Пониженное напряжение V₂', 'Reduced voltage V₂'));
   if (Number.isFinite(V1) && Number.isFinite(V2) && Math.abs(V1) <= Math.abs(V2)) {
     add('error', 'common', L('Рабочее напряжение V₁ должно быть больше пониженного V₂.', 'The operating voltage V₁ must be higher than the reduced voltage V₂.'), null, ['rd_V1', 'rd_V2']);
   }
@@ -444,8 +451,29 @@ export function computePhotons(form) {
     }
   }
   const M1 = readCells('rd_M1', L('M при V₁, обычная полярность', 'M at V₁, normal polarity'));
-  const Mopp = readCells('rd_Mopp', L('M при V₁, обратная полярность', 'M at V₁, opposite polarity'));
-  const M2 = readCells('rd_M2', L('M при V₂', 'M at V₂'));
+  // при проверке выхода обратная полярность и V₂ не измеряются
+  const Mopp = fixed ? parseCells([]) : readCells('rd_Mopp', L('M при V₁, обратная полярность', 'M at V₁, opposite polarity'));
+  const M2 = fixed ? parseCells([]) : readCells('rd_M2', L('M при V₂', 'M at V₂'));
+  let fixedKs = NaN;
+  if (fixed) {
+    const fk = read('rd_fixed_kpol', L('k_pol из калибровки', 'k_pol from the calibration'));
+    fixedKs = read('rd_fixed_ks', L('k_s из калибровки', 'k_s from the calibration'));
+    if (Number.isFinite(fk) && Math.abs(fk - 1) > 0.05) add('error', 'common', L(`k_pol из калибровки ${ru(fk, 4)} неправдоподобен.`, `k_pol from the calibration ${ru(fk, 4)} is implausible.`), null, 'rd_fixed_kpol');
+    if (Number.isFinite(fixedKs) && (fixedKs < 1 || fixedKs > 1.05)) add('error', 'common', L(`k_s из калибровки ${ru(fixedKs, 4)} вне 1–1,05.`, `k_s from the calibration ${ru(fixedKs, 4)} is outside 1–1.05.`), null, 'rd_fixed_ks');
+    const from = String(f.rd_fixed_from ?? '').trim();
+    const [kp, kx] = want51 ? ['P_pol', 'P_ion'] : ['k_pol', 'k_s'];
+    if (Number.isFinite(fk) && Number.isFinite(fixedKs)) {
+      add(
+        'info',
+        'common',
+        L(
+          `Проверка выхода: ${kp} = ${ru(fk, 4)} и ${kx} = ${ru(fixedKs, 4)} взяты из калибровки${from ? ` от ${from}` : ''}, обратная полярность и V₂ не измерялись.`,
+          `Output check: ${kp} = ${ru(fk, 4)} and ${kx} = ${ru(fixedKs, 4)} are taken from the calibration${from ? ` of ${from}` : ''}; the opposite polarity and V₂ were not measured.`,
+        ),
+        null,
+      );
+    }
+  }
   const seriesChecks = [
     [M1, L('при V₁', 'at V₁'), 'rd_M1'],
     [Mopp, L('обратной полярности', 'at opposite polarity'), 'rd_Mopp'],
@@ -499,8 +527,8 @@ export function computePhotons(form) {
   const m1 = readingsOk ? Math.abs(M1.mean) : NaN;
 
   // полярность
-  let kpolRaw = NaN;
-  if (readingsOk && Mopp.n > 0 && !Mopp.error) {
+  let kpolRaw = fixed ? parseNumber(f.rd_fixed_kpol) : NaN;
+  if (!fixed && readingsOk && Mopp.n > 0 && !Mopp.error) {
     kpolRaw = polarity(M1.mean, Mopp.mean);
     if (Math.abs(kpolRaw - 1) > 0.004) {
       add(
@@ -599,6 +627,11 @@ export function computePhotons(form) {
           'ks',
         );
       }
+    } else if (fixed && Number.isFinite(fixedKs)) {
+      trs.ksRaw = fixedKs;
+      trs.ks = fixedKs / ksQ0;
+      trs.ksQ0 = ksQ0;
+      trs.ksFixed = true;
     } else {
       trs.ks = NaN;
     }
@@ -860,6 +893,11 @@ export function computePhotons(form) {
           `${REF.tg51}, ур. (7), разд. VII.D.1`,
         );
       }
+    } else if (fixed && Number.isFinite(fixedKs)) {
+      tg.PionRaw = fixedKs;
+      tg.Pion = fixedKs / ksQ0;
+      tg.PionQ0 = ksQ0;
+      tg.PionFixed = true;
     } else {
       tg.Pion = NaN;
     }

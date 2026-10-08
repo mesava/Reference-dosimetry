@@ -89,7 +89,7 @@ function fillChambers() {
   sel.value = cur;
 }
 /** Название камеры с заводским номером — для протокола, файла и подписи у кнопок «Взять из графика Яффе». */
-const chamberText = (d, sep = ', ') => [jaffeChamber(d)?.label, d.jf_ch_serial ? `№ ${d.jf_ch_serial}` : ''].filter(Boolean).join(sep);
+const chamberText = (d, sep = ', ') => [jaffeChamber(d)?.label, d.jf_ch_serial ? `${L('№', 'S/N')} ${d.jf_ch_serial}` : ''].filter(Boolean).join(sep);
 
 // ------------------------------------------------------------ форма ↔ данные
 function readForm() {
@@ -463,7 +463,7 @@ function reportText(data, r) {
   line(L('Дата', 'Date'), data.jf_date || '—');
   line(L('Выполнил', 'Performed by'), data.jf_staff.filter((s) => s.trim()).join(', ') || '—');
   line(L('Камера', 'Chamber'), chamberText(data) || '—');
-  line(L('Электрометр', 'Electrometer'), [data.jf_electrometer, data.jf_el_serial && `№ ${data.jf_el_serial}`].filter(Boolean).join(', ') || '—');
+  line(L('Электрометр', 'Electrometer'), [data.jf_electrometer, data.jf_el_serial && `${L('№', 'S/N')} ${data.jf_el_serial}`].filter(Boolean).join(', ') || '—');
   line(L('Кабель', 'Cable'), data.jf_cable || '—');
   line(L('Аппарат и пучок', 'Machine and beam'), [data.jf_machine, data.jf_beam].filter(Boolean).join(', ') || '—');
   line(L('Тип пучка', 'Beam type'), beamName(r.beam));

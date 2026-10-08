@@ -22,6 +22,7 @@
       <a href="#photons" id="tab-photons" data-module="photons" aria-controls="module-photons">МВ фотоны</a>
       <a href="#electrons" id="tab-electrons" data-module="electrons" aria-controls="module-electrons">Электроны</a>
       <a href="#tools" id="tab-tools" data-module="tools" aria-controls="module-tools">Инструменты</a>
+      <a href="#session" id="tab-journal" data-module="journal" aria-controls="module-session">Журнал</a>
     </nav>
     <div class="lang-switch" data-i18n-skip>
       <button type="button" class="theme-toggle" id="theme-toggle" data-state="auto" aria-label="Тема: как в системе" title="Тема: как в системе">
@@ -465,6 +466,7 @@
 <main class="layout">
   <form id="sheet" class="sheet" autocomplete="off" novalidate>
     <p class="intro">Рабочий лист калибровки пучка МВ фотонов: поглощённая доза в воде на опорной глубине и на d<sub>max</sub>. Числа можно вводить с запятой или точкой. Обозначения коэффициентов с пунктирным подчёркиванием открывают справку. Всё считается в браузере, данные никуда не отправляются.</p>
+    <div class="journal-bar no-print" id="ph-journal-bar" hidden data-i18n-skip></div>
 
     <!-- 1 -->
     <section class="step" aria-labelledby="s1">
@@ -660,12 +662,20 @@
           <select id="rd_polarity"><option value="+">положительная (+)</option><option value="-">отрицательная (−)</option></select>
         </div>
         <div class="field"><label for="rd_V1">V₁ рабочее, В</label><input type="text" id="rd_V1" class="num" inputmode="decimal"></div>
-        <div class="field"><label for="rd_V2">V₂ пониженное, В</label><input type="text" id="rd_V2" class="num" inputmode="decimal"></div>
+        <div class="field" data-show="rd_fixed:false"><label for="rd_V2">V₂ пониженное, В</label><input type="text" id="rd_V2" class="num" inputmode="decimal"></div>
         <div class="field">
           <label for="rd_beam">Режим пучка</label>
           <select id="rd_beam"><option value="pulsed">импульсный</option><option value="scanned">импульсно-сканирующий</option></select>
         </div>
       </div>
+
+      <label class="check"><input type="checkbox" id="rd_fixed"> <span>Проверка выхода: k<sub>pol</sub> и k<sub>s</sub> из предыдущей калибровки этого пучка</span></label>
+      <div class="grid three" data-show="rd_fixed:true">
+        <div class="field"><label for="rd_fixed_kpol">k<sub>pol</sub> из калибровки</label><input type="text" id="rd_fixed_kpol" class="num" inputmode="decimal"></div>
+        <div class="field"><label for="rd_fixed_ks">k<sub>s</sub> (P<sub>ion</sub>) из калибровки</label><input type="text" id="rd_fixed_ks" class="num" inputmode="decimal"><span class="sub">измеренный, до деления на значение лаборатории</span></div>
+        <div class="field"><label for="rd_fixed_from">Дата калибровки</label><input type="text" id="rd_fixed_from" placeholder="25.08.2026"></div>
+      </div>
+      <p class="sub-hint" data-show="rd_fixed:true">Для регулярной проверки выхода: показания только при V₁ и обычной полярности, поправки на полярность и рекомбинацию — из последней полной калибровки. Для референсной дозиметрии их измеряют каждый раз.</p>
 
       <div class="series">
         <div class="cells" data-series="rd_M1" data-label="M при V₁, обычная полярность">
@@ -679,7 +689,7 @@
             <div class="cell-mean"><span>Среднее</span><output data-out="inputs.M1.mean" data-digits="4" data-abs="1"></output></div>
           </div>
         </div>
-        <div class="cells" data-series="rd_Mopp" data-label="M при V₁, обратная полярность">
+        <div class="cells" data-series="rd_Mopp" data-label="M при V₁, обратная полярность" data-show="rd_fixed:false">
           <span class="label">M при V₁, обратная полярность, нКл</span>
           <div class="cells-row">
             <div class="cells-list"></div>
@@ -690,7 +700,7 @@
             <div class="cell-mean"><span>Среднее</span><output data-out="inputs.Mopp.mean" data-digits="4" data-abs="1"></output></div>
           </div>
         </div>
-        <div class="cells" data-series="rd_M2" data-label="M при V₂, обычная полярность">
+        <div class="cells" data-series="rd_M2" data-label="M при V₂, обычная полярность" data-show="rd_fixed:false">
           <span class="label">M при V₂, обычная полярность, нКл</span>
           <div class="cells-row">
             <div class="cells-list"></div>
@@ -2518,6 +2528,203 @@
   </aside>
 </main>
 <div class="mobile-result"><span id="ed-mobile-value">—</span><a href="#ed-readout">к результату</a></div>
+</div>
+
+<div class="module" id="module-session" role="tabpanel" aria-labelledby="tab-journal" hidden>
+<main class="layout">
+  <form id="js-sheet" class="sheet" autocomplete="off" novalidate>
+    <nav class="subtools" aria-label="Журнал">
+      <a href="#session" data-module="session" aria-current="page">Сеанс</a>
+      <a href="#equipment" data-module="equipment">Оборудование</a>
+      <a href="#history" data-module="history">Журнал и тренды</a>
+    </nav>
+    <p class="intro">Сеанс на весь аппарат: калибровка или проверка выхода всех пучков фотонов за один заход. Камеры, электрометры и настройки пучков берутся из «Оборудования», результат записывается в журнал.</p>
+    <ul class="purpose">
+      <li><b>Когда:</b> при калибровке аппарата — режим «Калибровка»: k<sub>pol</sub> и k<sub>s</sub> измеряются для каждого пучка; при регулярной проверке выхода — режим «Проверка выхода»: только M при V₁, а k<sub>pol</sub> и k<sub>s</sub> каждого пучка берутся из его последней калибровки в журнале.</li>
+      <li><b>Что делать:</b> выберите аппарат и режим, введите общие температуру и давление (раздел 1) и показания каждого пучка (раздел 2). Свои T и P у пучка нужны, только если они отличаются от общих.</li>
+      <li><b>Результат:</b> доза каждого пучка в точке номинала и отклонение от номинала с отметкой «в допуске / вне допуска», общий протокол сеанса. Кнопка «Записать сеанс в журнал» добавляет сеанс в журнал и тренды; затем сохраните файл журнала.</li>
+    </ul>
+
+    <section class="step" aria-labelledby="js-s1">
+      <header><span class="step-no">1</span><h2 id="js-s1">Аппарат и условия</h2>
+        <p class="hint">Протокол — общий переключатель в шапке. Температура и давление — общие для сеанса; у пучка их можно задать отдельно.</p></header>
+      <div class="grid">
+        <div class="field span-2"><label for="js_machine">Аппарат</label><select id="js_machine"></select></div>
+        <div class="field"><label for="js_date">Дата</label><input type="date" id="js_date"></div>
+      </div>
+      <div class="field cc-type-field">
+        <span class="label" id="js-mode-label">Режим</span>
+        <div class="segmented" role="radiogroup" aria-labelledby="js-mode-label">
+          <label><input type="radio" name="js_mode" id="js_mode_cal" value="cal" checked><span>Калибровка</span></label>
+          <label><input type="radio" name="js_mode" id="js_mode_check" value="check"><span>Проверка выхода</span></label>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="field"><label for="js_T">Температура воды, °C</label><input type="text" id="js_T" class="num" inputmode="decimal"></div>
+        <div class="field"><label for="js_P">Давление</label><input type="text" id="js_P" class="num" inputmode="decimal"></div>
+        <div class="field"><label for="js_P_unit">Единицы давления</label><select id="js_P_unit"></select></div>
+        <div class="field"><label for="js_H">Относительная влажность, %</label><input type="text" id="js_H" class="num" inputmode="decimal"><span class="sub">по желанию</span></div>
+        <div class="field span-2">
+          <span class="label" id="js-staff-label">Сотрудник, проводивший измерения</span>
+          <div id="js-staff-list" class="staff-list" data-prefix="js_staff" role="group" aria-labelledby="js-staff-label"></div>
+          <button type="button" class="link-btn" id="js-btn-add-staff"><span aria-hidden="true">+</span> Добавить сотрудника</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="step" aria-labelledby="js-s2">
+      <header><span class="step-no">2</span><h2 id="js-s2">Пучки</h2>
+        <p class="hint">Показания — среднее нескольких облучений; ячейки добавляются кнопкой «+». Пучок без показаний в журнал не попадёт; снятая отметка исключает пучок из сеанса.</p></header>
+      <div id="js-beams" data-i18n-skip></div>
+    </section>
+
+    <section class="step" aria-labelledby="js-s3" data-optional>
+      <header><span class="step-no">3</span><h2 id="js-s3">Примечания</h2></header>
+      <div class="field"><label for="js_notes" class="muted">Порядок измерений, подстройка ускорителя, принятые решения</label><textarea id="js_notes"></textarea></div>
+    </section>
+  </form>
+
+  <aside class="readout" id="js-readout" aria-label="Результат: сеанс">
+    <section class="display" aria-live="polite">
+      <h2>Сеанс</h2>
+      <div class="dose-rows" id="js-result" data-i18n-skip></div>
+    </section>
+    <section class="panel">
+      <h2>Замечания</h2>
+      <ul class="messages" id="js-messages" data-i18n-skip></ul>
+    </section>
+    <section class="print-only sign-block" id="js-sign" aria-hidden="true"></section>
+    <section class="panel no-print">
+      <h2>Сеанс в журнале</h2>
+      <div class="actions">
+        <button type="button" class="primary" id="js-btn-record">Записать сеанс в журнал</button>
+        <button type="button" id="js-btn-new">Новый сеанс</button>
+        <button type="button" id="js-btn-copy">Копировать протокол</button>
+        <button type="button" id="js-btn-pdf" data-standalone>Сохранить в PDF</button>
+        <button type="button" id="js-btn-print" data-standalone>Печать</button>
+      </div>
+      <p class="status-line" id="js-status" role="status"></p>
+    </section>
+    <section class="panel no-print"><div class="journal-file" id="js-file" data-i18n-skip></div></section>
+  </aside>
+</main>
+<div class="mobile-result"><span id="js-mobile-value">—</span><a href="#js-readout">к результату</a></div>
+</div>
+
+<div class="module" id="module-equipment" role="tabpanel" aria-labelledby="tab-journal" hidden>
+<main class="layout">
+  <form id="eq-sheet" class="sheet" autocomplete="off" novalidate>
+    <nav class="subtools" aria-label="Журнал">
+      <a href="#session" data-module="session">Сеанс</a>
+      <a href="#equipment" data-module="equipment" aria-current="page">Оборудование</a>
+      <a href="#history" data-module="history">Журнал и тренды</a>
+    </nav>
+    <p class="intro">Оборудование отделения для сеансов: камеры, электрометры и аппараты с пучками. Заполняется один раз и хранится в файле журнала вместе с сеансами.</p>
+    <ul class="purpose">
+      <li><b>Когда:</b> при начале работы с журналом, после калибровки (поверки) камеры или электрометра и при изменении настроек пучка.</li>
+      <li><b>Что делать:</b> добавьте камеры и электрометры с калибровочными коэффициентами и сроками, затем аппарат и его пучки. Пучок, уже настроенный на вкладке «МВ фотоны», переносится кнопкой «Пучок из вкладки «МВ фотоны»» — вместе с камерой и электрометром.</li>
+      <li><b>Результат:</b> профили, из которых собирается расчёт каждого пучка в сеансе; напоминания о сроках калибровки камер и электрометров.</li>
+    </ul>
+
+    <section class="step" aria-labelledby="eq-s1">
+      <header><span class="step-no">1</span><h2 id="eq-s1">Учреждение</h2></header>
+      <div class="field"><label for="eq_institution">Учреждение</label><input type="text" id="eq_institution"></div>
+    </section>
+
+    <section class="step" aria-labelledby="eq-s2">
+      <header><span class="step-no">2</span><h2 id="eq-s2">Камеры</h2>
+        <p class="hint">N<sub>D,w</sub>, T₀, P₀ и k<sub>лаб</sub> — из свидетельства о калибровке (поверке). Срок «действует до» нужен для напоминаний.</p></header>
+      <div id="eq-chambers" class="jcards" data-i18n-skip></div>
+      <div class="row-tools"><button type="button" class="link-btn" id="eq-add-chamber"><span aria-hidden="true">+</span> Добавить камеру</button></div>
+    </section>
+
+    <section class="step" aria-labelledby="eq-s3">
+      <header><span class="step-no">3</span><h2 id="eq-s3">Электрометры</h2></header>
+      <div id="eq-electrometers" class="jcards" data-i18n-skip></div>
+      <div class="row-tools"><button type="button" class="link-btn" id="eq-add-electrometer"><span aria-hidden="true">+</span> Добавить электрометр</button></div>
+    </section>
+
+    <section class="step" aria-labelledby="eq-s4">
+      <header><span class="step-no">4</span><h2 id="eq-s4">Аппараты и пучки</h2>
+        <p class="hint">У пучка — камера и электрометр по умолчанию, напряжения, МЕ, номинальный выход с допуском и последнее качество пучка (для проверки выхода до первой калибровки в журнале). Остальные настройки — кнопкой «Все настройки — во вкладке «МВ фотоны»».</p></header>
+      <div id="eq-machines" class="jcards" data-i18n-skip></div>
+      <div class="row-tools"><button type="button" class="link-btn" id="eq-add-machine"><span aria-hidden="true">+</span> Добавить аппарат</button></div>
+    </section>
+  </form>
+
+  <aside class="readout" id="eq-readout" aria-label="Результат: оборудование">
+    <section class="display" aria-live="polite">
+      <h2>Оборудование</h2>
+      <div class="dose-rows" id="eq-result" data-i18n-skip></div>
+    </section>
+    <section class="panel">
+      <h2>Замечания</h2>
+      <ul class="messages" id="eq-messages" data-i18n-skip></ul>
+    </section>
+    <section class="panel no-print">
+      <div class="journal-file" id="eq-file" data-i18n-skip></div>
+      <p class="status-line" id="eq-status" role="status"></p>
+    </section>
+  </aside>
+</main>
+<div class="mobile-result"><span id="eq-mobile-value">—</span><a href="#eq-readout">к результату</a></div>
+</div>
+
+<div class="module" id="module-history" role="tabpanel" aria-labelledby="tab-journal" hidden>
+<main class="layout">
+  <form id="hs-sheet" class="sheet" autocomplete="off" novalidate>
+    <nav class="subtools" aria-label="Журнал">
+      <a href="#session" data-module="session">Сеанс</a>
+      <a href="#equipment" data-module="equipment">Оборудование</a>
+      <a href="#history" data-module="history" aria-current="page">Журнал и тренды</a>
+    </nav>
+    <p class="intro">Журнал сеансов аппарата: отклонение выхода от номинала по датам для каждого пучка, k<sub>pol</sub> и k<sub>s</sub> по калибровкам, сроки калибровки камер и электрометров.</p>
+    <ul class="purpose">
+      <li><b>Когда:</b> чтобы увидеть дрейф выхода, сравнить калибровки и найти записанный сеанс.</li>
+      <li><b>Что делать:</b> выберите аппарат. Сеанс открывается кнопкой «Открыть» — для просмотра, протокола или правки.</li>
+      <li><b>Результат:</b> график и таблица отклонений, история k<sub>pol</sub> и k<sub>s</sub>; изменение k<sub>pol</sub> или k<sub>s</sub> от калибровки к калибровке — ранний признак неполадки камеры, кабеля или электрометра.</li>
+    </ul>
+
+    <section class="step" aria-labelledby="hs-s1">
+      <header><span class="step-no">1</span><h2 id="hs-s1">Аппарат</h2></header>
+      <div class="field"><label for="hs_machine">Аппарат</label><select id="hs_machine"></select></div>
+    </section>
+
+    <section class="step" aria-labelledby="hs-s2">
+      <header><span class="step-no">2</span><h2 id="hs-s2">Выход по датам</h2>
+        <p class="hint">Отклонение дозы от номинального выхода в точке номинала; сплошные значки — калибровка, полые — проверка выхода, пунктир — допуск. Наведите курсор на график, чтобы увидеть значения.</p></header>
+      <div class="chart-box" id="hs-chart" data-i18n-skip></div>
+      <div class="chart-legend" id="hs-legend" data-i18n-skip></div>
+      <details class="jsb-more"><summary>Таблица значений</summary><div class="table-wrap" id="hs-table" data-i18n-skip></div></details>
+    </section>
+
+    <section class="step" aria-labelledby="hs-s3">
+      <header><span class="step-no">3</span><h2 id="hs-s3">k<sub>pol</sub> и k<sub>s</sub> по калибровкам</h2></header>
+      <div class="table-wrap" id="hs-ktable" data-i18n-skip></div>
+    </section>
+
+    <section class="step" aria-labelledby="hs-s4">
+      <header><span class="step-no">4</span><h2 id="hs-s4">Сеансы</h2></header>
+      <div id="hs-sessions" data-i18n-skip></div>
+    </section>
+  </form>
+
+  <aside class="readout" id="hs-readout" aria-label="Результат: журнал и тренды">
+    <section class="display" aria-live="polite">
+      <h2>Журнал</h2>
+      <div class="dose-rows" id="hs-result" data-i18n-skip></div>
+    </section>
+    <section class="panel">
+      <h2>Замечания</h2>
+      <ul class="messages" id="hs-messages" data-i18n-skip></ul>
+    </section>
+    <section class="panel no-print">
+      <div class="journal-file" id="hs-file" data-i18n-skip></div>
+      <p class="status-line" id="hs-status" role="status"></p>
+    </section>
+  </aside>
+</main>
+<div class="mobile-result"><span id="hs-mobile-value">—</span><a href="#hs-readout">к результату</a></div>
 </div>
 
 <footer class="page-foot">

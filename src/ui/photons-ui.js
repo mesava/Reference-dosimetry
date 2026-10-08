@@ -262,9 +262,9 @@ function renderInline(result, data) {
     if (c.lengthMm) bits.push(L(`длина полости ${fmt(c.lengthMm, 1)} мм`, `cavity length ${fmt(c.lengthMm, 1)} mm`));
     const srcs = [c.tg51 ? L('аддендум TG-51', 'TG-51 addendum') : c.tg51Legacy ? 'TG-51 (1999)' : null, c.trs ? L('TRS-398 Rev.1 (формула и табл. 16)', 'TRS-398 Rev.1 (formula and Table 16)') : null].filter(Boolean);
     bits.push(L(`данные k_Q: ${srcs.join(', ')}`, `k_Q data: ${srcs.join(', ')}`));
-    info.textContent = bits.join(' · ');
+    info.innerHTML = richText(bits.join(' · '));
   } else if (c?.custom) {
-    info.textContent = L('Заполните характеристики камеры ниже и укажите, откуда брать k_Q.', 'Fill in the chamber characteristics below and specify where to take k_Q from.');
+    info.innerHTML = richText(L('Заполните характеристики камеры ниже и укажите, откуда брать k_Q.', 'Fill in the chamber characteristics below and specify where to take k_Q from.'));
   } else {
     info.textContent = '';
   }
@@ -716,6 +716,91 @@ function update() {
   notifyUpdate(ROOT());
 }
 
+// ------------------------------------------------------------ связь с журналом
+// «Все настройки» пучка из «Оборудования» и «Открыть во вкладке» из сеанса: форма журнала загружается во вкладку,
+// прежние данные вкладки откладываются и возвращаются кнопкой на плашке (или после «Сохранить в журнал»).
+// Отложенные данные вкладки хранятся и в браузере: после перезагрузки страницы плашка и кнопки возврата остаются.
+let journalView = null; // { stash, mode: 'edit' | 'view', title, target }
+const VIEW_KEY = 'reference-dosimetry.photons.journal-view.v1';
+let journalSave = null; // (target, form, title) => void — запись настроек пучка в журнал (задаёт app.js)
+/** Куда записывать настройки пучка из вкладки по «Сохранить в журнал». */
+export const setPhotonsJournalSave = (fn) => (journalSave = fn);
+function persistView() {
+  try {
+    if (journalView) localStorage.setItem(VIEW_KEY, JSON.stringify(journalView));
+    else localStorage.removeItem(VIEW_KEY);
+  } catch {
+    /* хранилище недоступно */
+  }
+}
+function loadView() {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null');
+    if (v && v.stash && (v.mode === 'edit' || v.mode === 'view')) journalView = v;
+  } catch {
+    /* повреждённая запись — без плашки */
+  }
+}
+
+/** Текущая форма вкладки (для «Пучок из вкладки «МВ фотоны»»). */
+export function photonsCurrentForm() {
+  return normalizeForm(readForm());
+}
+
+function renderJournalBar() {
+  const bar = $('#ph-journal-bar');
+  if (!bar) return;
+  if (!journalView) {
+    bar.hidden = true;
+    bar.innerHTML = '';
+    return;
+  }
+  bar.hidden = false;
+  const edit = journalView.mode === 'edit';
+  bar.innerHTML = `<p>${esc(
+    edit
+      ? L(`Настройки пучка журнала: ${journalView.title}. Измените нужное и нажмите «Сохранить в журнал»: в журнал попадут настройки пучка, камеры и электрометра (показания и условия — нет).`, `Journal beam settings: ${journalView.title}. Change what is needed and click "Save to journal": the beam, chamber and electrometer settings go to the journal (readings and conditions do not).`)
+      : L(`Пучок из сеанса журнала: ${journalView.title}. Здесь видны все поправки и замечания; изменения во вкладке в журнал не попадают.`, `Beam from a journal session: ${journalView.title}. All corrections and messages are shown here; changes in this tab do not go to the journal.`),
+  )}</p><div class="actions">${edit ? `<button type="button" class="primary" data-jv="save">${esc(L('Сохранить в журнал', 'Save to journal'))}</button>` : ''}<button type="button" data-jv="back">${esc(edit ? L('Отмена — вернуть данные вкладки', 'Cancel: restore the tab data') : L('Вернуть прежние данные вкладки', 'Restore the previous tab data'))}</button></div>`;
+  bar.querySelector('[data-jv="save"]')?.addEventListener('click', () => {
+    const f = normalizeForm(readForm());
+    const done = journalView;
+    restoreFromJournal();
+    setStatus(L(`Настройки пучка «${done.title}» сохранены в журнал; вкладке возвращены прежние данные. Сохраните журнал в файл.`, `Beam settings "${done.title}" saved to the journal; the tab's previous data restored. Save the journal to the file.`));
+    journalSave?.(done.target, f, done.title);
+  });
+  bar.querySelector('[data-jv="back"]').addEventListener('click', () => {
+    restoreFromJournal();
+    setStatus(L('Вкладке возвращены прежние данные.', "The tab's previous data have been restored."));
+  });
+}
+
+function restoreFromJournal() {
+  if (!journalView) return;
+  const { stash } = journalView;
+  journalView = null;
+  persistView();
+  writeForm(stash, { withProtocol: false });
+  openedFile = null;
+  update();
+  renderJournalBar();
+}
+
+/**
+ * Загрузить форму журнала во вкладку: mode 'edit' — настройки пучка с сохранением в журнал (target — какой пучок),
+ * 'view' — пучок сеанса. Протокол в шапке ставится по форме.
+ */
+export function showInPhotons(form, { mode = 'view', title = '', target = null } = {}) {
+  if (!journalView) journalView = { stash: readForm() };
+  Object.assign(journalView, { mode, title, target });
+  persistView();
+  writeForm(form, { withProtocol: true });
+  openedFile = null;
+  lastBeamFff = parseBeamName($('#meta_beam').value).fff;
+  update();
+  renderJournalBar();
+}
+
 let lastBeamFff = null;
 function onBeamInput() {
   const name = $('#meta_beam').value;
@@ -738,6 +823,7 @@ function refreshForLang() {
   localizeDemo(SAMPLE_FORM, SAMPLE_FORM_EN);
   localizeDecimals(ROOT());
   update();
+  renderJournalBar();
 }
 
 export function initPhotons() {
@@ -750,6 +836,9 @@ export function initPhotons() {
   writeForm(draft ? draft : sampleData());
   localizeDemo(SAMPLE_FORM, SAMPLE_FORM_EN);
   lastBeamFff = parseBeamName($('#meta_beam').value).fff;
+  // во вкладке был пучок журнала (страницу перезагрузили): плашка с возвратом прежних данных остаётся
+  loadView();
+  renderJournalBar();
   update();
   if (!draft) setStatus(L('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.', 'Demo example loaded. Click "Clear" to enter your own data.'));
 

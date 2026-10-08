@@ -5,16 +5,21 @@ import { L, setLang, getLang } from '../core/i18n.js';
 import { initialLang, saveLang, applyLang, translateStatic, localizeDecimal } from './i18n.js';
 import { $, $$, setActiveModule, getActiveModule, PROTOCOL_KEY, applyProtocol } from './common.js';
 import { initCobalt, importCobalt, cobaltStatus, applyCobaltPatch, cobaltUncSource } from './cobalt-ui.js';
-import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch, photonsUncSource } from './photons-ui.js';
+import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch, photonsUncSource, photonsCurrentForm, showInPhotons, setPhotonsJournalSave } from './photons-ui.js';
 import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch, electronsUncSource } from './electrons-ui.js';
 import { initCrossCal, importCrossCal, crossCalStatus, setCrossCalTransfer } from './crosscal-ui.js';
 import { initUncTool, importUncTool, uncToolStatus, setUncSources } from './uncertainty-tool-ui.js';
 import { initJaffe, importJaffe, jaffeStatus } from './jaffe-ui.js';
 import { initEdepth, importEdepth, edepthStatus, setEdepthTransfer } from './edepth-ui.js';
 import { initSectionNavs, refreshSectionNav } from './section-nav.js';
+import { initJournalStore, importJournalObject } from './journal-store.js';
+import { initSession, sessionStatus, setSessionBridge, loadSession, sessionUnsaved } from './journal-session-ui.js';
+import { initEquipment, equipmentStatus, setEquipmentBridge, saveBeamFromTab, revealBeam } from './journal-equipment-ui.js';
+import { initHistory, historyStatus, setHistoryBridge } from './journal-history-ui.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
 const TOOL_KEY = 'reference-dosimetry.tool'; // последний открытый подраздел «Инструментов»
+const JOURNAL_SUB_KEY = 'reference-dosimetry.journal-sub'; // последний открытый подраздел «Журнала»
 // tab — вкладка в шапке, к которой относится модуль (подразделы «Инструментов» — к вкладке tools)
 const MODULES = {
   co60: { title: () => L('⁶⁰Co — референсная дозиметрия', '⁶⁰Co — reference dosimetry'), file: 'cobalt', importData: importCobalt, status: cobaltStatus },
@@ -24,6 +29,9 @@ const MODULES = {
   uncertainty: { title: () => L('Инструменты — неопределённость', 'Tools — uncertainty'), file: 'uncertainty', importData: importUncTool, status: uncToolStatus, tab: 'tools' },
   jaffe: { title: () => L('Инструменты — график Яффе', 'Tools — Jaffé plot'), file: 'jaffe', importData: importJaffe, status: jaffeStatus, tab: 'tools' },
   edepth: { title: () => L('Инструменты — кривая дозы электронов', 'Tools — electron depth dose'), file: 'edepth', importData: importEdepth, status: edepthStatus, tab: 'tools' },
+  session: { title: () => L('Журнал — сеанс на весь аппарат', 'Journal — whole-machine session'), file: 'journal', importData: (obj) => importJournalObject(obj), status: (t) => sessionStatus(t), tab: 'journal' },
+  equipment: { title: () => L('Журнал — оборудование', 'Journal — equipment'), file: '-', importData: () => {}, status: (t) => equipmentStatus(t), tab: 'journal' },
+  history: { title: () => L('Журнал — сеансы и тренды', 'Journal — sessions and trends'), file: '-', importData: () => {}, status: (t) => historyStatus(t), tab: 'journal' },
 };
 const tabOf = (name) => MODULES[name]?.tab ?? name;
 
@@ -85,6 +93,7 @@ function showModule(name) {
   document.title = MODULES[name].title();
   store.set(TAB_KEY, name);
   if (tabOf(name) === 'tools') store.set(TOOL_KEY, name);
+  if (tabOf(name) === 'journal') store.set(JOURNAL_SUB_KEY, name);
   refreshSectionNav($(`#module-${name}`));
 }
 
@@ -138,6 +147,45 @@ function initTransfer() {
         `The cross-calibration coefficient has been transferred to section ${t.sec} (Chamber and electrometer); the filled fields are highlighted. The other sections are for measurements in the beam of interest.`,
       ),
     );
+  });
+}
+
+// ------------------------------------------------------------ журнал ↔ вкладка «МВ фотоны»
+function initJournalBridges() {
+  const toTop = () => window.scrollTo({ top: 0 });
+  setEquipmentBridge({
+    current: () => photonsCurrentForm(),
+    edit: (form, { title, target }) => {
+      switchTo('photons');
+      showInPhotons(form, { mode: 'edit', title, target });
+      toTop();
+    },
+  });
+  // «Сохранить в журнал» на вкладке «МВ фотоны» (работает и после перезагрузки страницы)
+  setPhotonsJournalSave((target, form, title) => {
+    const text = saveBeamFromTab(target, form, title);
+    switchTo('equipment');
+    revealBeam(target?.beamId);
+    equipmentStatus(text);
+  });
+  setSessionBridge({
+    openInPhotons: (form, title) => {
+      switchTo('photons');
+      showInPhotons(form, { mode: 'view', title });
+      toTop();
+    },
+    openEquipment: (beamId) => {
+      switchTo('equipment');
+      revealBeam(beamId);
+    },
+  });
+  setHistoryBridge({
+    unsaved: () => sessionUnsaved(),
+    openSession: (s) => {
+      switchTo('session');
+      loadSession(s);
+      toTop();
+    },
   });
 }
 
@@ -262,6 +310,11 @@ function init() {
   initUncTool();
   initJaffe();
   initEdepth();
+  initJournalStore();
+  initSession();
+  initEquipment();
+  initHistory();
+  initJournalBridges();
   setUncSources({ co60: cobaltUncSource, photons: photonsUncSource, electrons: electronsUncSource });
   initTransfer();
   initPaste();
@@ -281,10 +334,12 @@ function init() {
   for (const a of $$('.modules a[data-module], .subtools a[data-module]')) {
     a.addEventListener('click', (e) => {
       e.preventDefault();
-      // «Инструменты» в шапке открывают подраздел, с которым работали последним
-      const top = a.closest('.modules') && a.dataset.module === 'tools';
-      const last = store.get(TOOL_KEY);
-      switchTo(top && MODULES[last] && tabOf(last) === 'tools' ? last : a.dataset.module);
+      // «Инструменты» и «Журнал» в шапке открывают подраздел, с которым работали последним
+      const top = a.closest('.modules');
+      const want = a.dataset.module;
+      const last = top && want === 'tools' ? store.get(TOOL_KEY) : top && want === 'journal' ? store.get(JOURNAL_SUB_KEY) : null;
+      const group = want === 'journal' ? 'journal' : 'tools';
+      switchTo(last && MODULES[last] && tabOf(last) === group ? last : want === 'journal' ? 'session' : want);
       window.scrollTo({ top: 0 });
     });
   }

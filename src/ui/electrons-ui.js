@@ -152,7 +152,7 @@ function renderChamberInfo(r) {
   const c = r.chamber;
   const info = $('#e-chamber-info');
   if (!c) info.textContent = '';
-  else if (c.other) info.textContent = L('k_Q вводится вручную в разделе 6.', 'k_Q is entered manually in section 6.');
+  else if (c.other) info.innerHTML = richText(L('k_Q вводится вручную в разделе 6.', 'k_Q is entered manually in section 6.'));
   else {
     const bits = [c.type === 'pp' ? L('плоскопараллельная', 'plane-parallel') : L('цилиндрическая', 'cylindrical')];
     if (c.type === 'pp' && Number.isFinite(c.windowMgCm2)) bits.push(L(`входное окно ${fmt(c.windowMgCm2, c.windowMgCm2 < 10 ? 2 : 0)} мг/см²`, `entrance window ${fmt(c.windowMgCm2, c.windowMgCm2 < 10 ? 2 : 0)} mg/cm²`));
@@ -160,7 +160,7 @@ function renderChamberInfo(r) {
     if (c.type === 'cyl' && Number.isFinite(c.trsRcylMm)) bits.push(L(`r_cyl = ${fmt(c.trsRcylMm, 1)} мм (табл. 4 TRS-398)`, `r_cyl = ${fmt(c.trsRcylMm, 1)} mm (TRS-398 Table 4)`));
     const src = [c.trsT20 ? L('TRS-398 табл. 20', 'TRS-398 Table 20') : null, c.trsT21 ? L('табл. 21', 'Table 21') : null, c.r385 ? 'Report 385' : null].filter(Boolean);
     bits.push(L(`данные k_Q: ${src.join(', ')}`, `k_Q data: ${src.join(', ')}`));
-    info.textContent = bits.join(' · ');
+    info.innerHTML = richText(bits.join(' · '));
   }
   const p = r.positions;
   const box = $('#e-positions');
@@ -552,7 +552,7 @@ export function electronsKsInfo() {
   const ks = tg ? result.tg51?.PionRaw : result.trs?.ksRaw;
   if (!Number.isFinite(ks)) return null;
   const c = result.chamber;
-  const chamber = [c && c.maker && c.model ? eChamberLabel(c) : '', data.e_ch_serial ? `№ ${data.e_ch_serial}` : ''].filter(Boolean).join(' ');
+  const chamber = [c && c.maker && c.model ? eChamberLabel(c) : '', data.e_ch_serial ? `${L('№', 'S/N')} ${data.e_ch_serial}` : ''].filter(Boolean).join(' ');
   return { ks, tg, chamber, V1: data.e_V1, beam: data.e_beam, date: data.e_date };
 }
 /** Открытый файл: пока форму не меняли, итог сверяется с сохранённым в файле. */

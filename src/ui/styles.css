@@ -26,6 +26,9 @@
   /* графики: обычная и обратная полярность (палитра проверена на различимость при нарушениях цветового зрения) */
   --series-1: #0090a0;
   --series-2: #d4581e;
+  /* тренды журнала: до 8 пучков (палитра проверена валидатором: соседние пары, нарушения цветового зрения) */
+  --trend-1: #2a78d6; --trend-2: #eb6834; --trend-3: #1baf7a; --trend-4: #eda100;
+  --trend-5: #e87ba4; --trend-6: #008300; --trend-7: #4a3aa7; --trend-8: #e34948;
 
   --font-display: "IBM Plex Sans Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
   --font-body: "Golos Text", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -62,6 +65,8 @@
     --ok: #6fd3a0;
     --series-1: #13a3b0;
     --series-2: #e0672a;
+    --trend-1: #3987e5; --trend-2: #d95926; --trend-3: #199e70; --trend-4: #c98500;
+    --trend-5: #d55181; --trend-6: #008300; --trend-7: #9085e9; --trend-8: #e66767;
     color-scheme: dark;
   }
 }
@@ -90,6 +95,8 @@
   --ok: #6fd3a0;
   --series-1: #13a3b0;
   --series-2: #e0672a;
+  --trend-1: #3987e5; --trend-2: #d95926; --trend-3: #199e70; --trend-4: #c98500;
+  --trend-5: #d55181; --trend-6: #008300; --trend-7: #9085e9; --trend-8: #e66767;
   color-scheme: dark;
 }
 
@@ -424,6 +431,8 @@ footer.page-foot p { max-width: 90ch; }
     --accent: #0d6670; --accent-ink: #ffffff; --accent-soft: #e0eeee; --calc: #f1f5f3; --display: #121a1c; --display-ink: #e8eee9; --display-dim: #93a4a6;
     --amber: #ffbf5a; --err: #b42318; --err-soft: #fdecea; --warn: #875600; --warn-soft: #fff3d6; --info: #3b5864; --info-soft: #e8f0f2; --ok: #1d7549;
     --series-1: #0090a0; --series-2: #d4581e;
+    --trend-1: #2a78d6; --trend-2: #eb6834; --trend-3: #1baf7a; --trend-4: #eda100;
+    --trend-5: #e87ba4; --trend-6: #008300; --trend-7: #4a3aa7; --trend-8: #e34948;
     color-scheme: light;
   }
   /* поля страницы нулевые — браузер не печатает свои колонтитулы (адрес сайта, дату, номера страниц);
@@ -859,6 +868,15 @@ svg.chart .xh-line { stroke: var(--muted); stroke-width: 1; }
 .chart-tip .sw { display: inline-block; width: 10px; height: 3px; border-radius: 2px; }
 .chart-tip .sw.s1 { background: var(--series-1); }
 .chart-tip .sw.s2 { background: var(--series-2); }
+svg .ln.t1 { stroke: var(--trend-1); } svg .mk.t1 { fill: var(--trend-1); } .chart-tip .sw.t1 { background: var(--trend-1); }
+svg .ln.t2 { stroke: var(--trend-2); } svg .mk.t2 { fill: var(--trend-2); } .chart-tip .sw.t2 { background: var(--trend-2); }
+svg .ln.t3 { stroke: var(--trend-3); } svg .mk.t3 { fill: var(--trend-3); } .chart-tip .sw.t3 { background: var(--trend-3); }
+svg .ln.t4 { stroke: var(--trend-4); } svg .mk.t4 { fill: var(--trend-4); } .chart-tip .sw.t4 { background: var(--trend-4); }
+svg .ln.t5 { stroke: var(--trend-5); } svg .mk.t5 { fill: var(--trend-5); } .chart-tip .sw.t5 { background: var(--trend-5); }
+svg .ln.t6 { stroke: var(--trend-6); } svg .mk.t6 { fill: var(--trend-6); } .chart-tip .sw.t6 { background: var(--trend-6); }
+svg .ln.t7 { stroke: var(--trend-7); } svg .mk.t7 { fill: var(--trend-7); } .chart-tip .sw.t7 { background: var(--trend-7); }
+svg .ln.t8 { stroke: var(--trend-8); } svg .mk.t8 { fill: var(--trend-8); } .chart-tip .sw.t8 { background: var(--trend-8); }
+svg .mk.hollow.t1 { fill: var(--sheet); stroke: var(--trend-1); } svg .mk.hollow.t2 { fill: var(--sheet); stroke: var(--trend-2); } svg .mk.hollow.t3 { fill: var(--sheet); stroke: var(--trend-3); } svg .mk.hollow.t4 { fill: var(--sheet); stroke: var(--trend-4); } svg .mk.hollow.t5 { fill: var(--sheet); stroke: var(--trend-5); } svg .mk.hollow.t6 { fill: var(--sheet); stroke: var(--trend-6); } svg .mk.hollow.t7 { fill: var(--sheet); stroke: var(--trend-7); } svg .mk.hollow.t8 { fill: var(--sheet); stroke: var(--trend-8); }
 svg.chart .pt:hover .mk { stroke: var(--ink); }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
 .chart-legend .item { display: inline-flex; align-items: center; gap: 6px; }
@@ -895,3 +913,64 @@ textarea.curve-data { min-height: 200px; height: 220px; font: 12.5px/1.45 var(--
 }
 #module-edepth .step > .check { margin-top: 10px; }
 #module-edepth .step > .subgrid { margin-top: 8px; }
+
+/* ------------------------------------------------------------ журнал: оборудование, сеанс, тренды */
+.jcards { display: grid; gap: 12px; }
+.jcard { border: 1px solid var(--rule); border-radius: var(--radius); padding: 12px 14px; display: grid; gap: 10px; min-width: 0; background: var(--sheet); }
+.jcard-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.jcard-head b { font: 600 14px var(--font-display); }
+.jcard .sub-h { margin: 6px 0 0; }
+.jcard-head .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.jbeams { display: grid; gap: 8px; }
+.jbeam { border: 1px solid var(--rule); border-radius: var(--radius); padding: 0 12px; background: var(--calc); }
+.jbeam[open] { padding-bottom: 10px; }
+.jbeam > summary { cursor: pointer; padding: 9px 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; font-size: 13.5px; list-style: none; }
+.jbeam > summary::-webkit-details-marker { display: none; }
+.jbeam > summary::before { content: '▸'; color: var(--muted); margin-right: 6px; transition: transform 0.15s; display: inline-block; }
+.jbeam[open] > summary::before { transform: rotate(90deg); }
+.jbeam > summary .jbeam-name { flex: 1 1 auto; min-width: 0; }
+.jbeam > .grid { margin: 4px 0 8px; }
+.jbeam > .sub-h { margin: 12px 0 0; padding-top: 10px; border-top: 1px dashed var(--rule); }
+.jbeam > .sub-hint { margin: 2px 0 4px; }
+.jsb-recorded { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 8px; display: grid; gap: 4px; justify-items: start; font-size: 13px; }
+.jsb-recorded p { margin: 0; }
+.jsb > .jsb-warn { margin: 0; font-size: 13px; }
+.chip.ok, .chip.due.ok { color: var(--ok); }
+.chip.out, .chip.due.soon, .jcard .chip.warn { color: var(--warn); }
+.chip.error, .chip.due.overdue { color: var(--err); }
+.chip.empty, .chip.none, .chip.due.none { color: var(--muted); }
+.link-btn.danger { color: var(--err); }
+.link-btn.danger:disabled { color: var(--muted); }
+.jfile-line { margin: 0 0 8px; font-size: 13px; overflow-wrap: anywhere; }
+.jf-dirty { color: var(--warn); font-weight: 600; }
+.jf-clean { color: var(--ok); }
+.journal-bar { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: var(--radius); padding: 10px 14px; display: grid; gap: 8px; }
+.journal-bar p { margin: 0; font-size: 13.5px; }
+.jsb.off .jsb-body { opacity: 0.45; }
+.jsb-info { margin: -4px 0 0; font-size: 12.5px; color: var(--muted); }
+.jsb-body { display: grid; gap: 12px; }
+.jsb-more { border-top: 1px dashed var(--rule); padding-top: 8px; }
+.jsb-more > summary { cursor: pointer; font-size: 13px; color: var(--accent); }
+.jsb-more[open] > summary { margin-bottom: 8px; }
+.jsb-result { display: grid; gap: 4px; font-size: 13.5px; }
+.jsb-result:empty { display: none; }
+.jsb-result p { margin: 0; }
+.jsb-dose b { font: 600 15px var(--font-mono); font-variant-numeric: tabular-nums; }
+.jsb-k { color: var(--muted); font-size: 12.5px; font-family: var(--font-mono); }
+.jsb-warn { color: var(--warn); }
+.jsb-msgs > summary { cursor: pointer; font-size: 12.5px; color: var(--muted); }
+.jsb-msgs .messages { margin-top: 6px; }
+.display table.jsum { margin-top: 6px; }
+.display table.jsum th, .display table.jsum td { border-color: #2a3538; color: var(--display-ink); }
+.display table.jsum th { color: var(--display-dim); }
+.display table.jsum tr.st-out td { color: var(--amber); }
+.display table.jsum tr.st-error td, .display table.jsum tr.st-empty td { color: var(--display-dim); }
+.st-out { color: var(--warn); }
+.jsessions { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.jsessions li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; padding: 8px 0; border-bottom: 1px solid var(--rule); font-size: 13.5px; }
+.jsessions li:last-child { border-bottom: 0; }
+.jsessions small { color: var(--muted); }
+@media print {
+  .journal-file, .jsb-more > summary, .jbeam > summary::before { display: none !important; }
+  .jsb.off { display: none; }
+}

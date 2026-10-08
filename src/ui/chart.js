@@ -54,6 +54,8 @@ export function legendSwatch({ shape = 'circle', cls = 's1', hollow = false, lin
  * @param {Array} [spec.vlines] — [{ x, label, row }] — вертикальные метки (рабочее напряжение и т. п.);
  *   row = 1 — подпись во втором ряду, чтобы близкие метки не наезжали друг на друга
  * @param {Array} [spec.notes] — [{ x, y, text, below, anchor }] — подписи у точек в координатах данных
+ * @param {(x0:number, x1:number, count:number)=>number[]} [spec.xTicks] — свои деления оси x
+ * @param {(v:number)=>string} [spec.xFmt] — подпись деления оси x (например, дата)
  * @param {number} [spec.aspect], [spec.minHeight], [spec.maxHeight] — высота: доля ширины в заданных пределах, px
  * @param {(x:number)=>({x:number, head:string, rows:Array<{cls:string, y:number, text:string}>})|null} [spec.crosshair]
  *   — для ломаных: вертикальная линия и подсказка у ближайшей точки по x при наведении
@@ -85,7 +87,9 @@ export function scatterChart(box, spec) {
   if (x0 !== 0) x0 -= xpad;
   y0 -= ypad;
   y1 += ypad;
-  const xt = niceTicks(x0, x1, Math.max(3, Math.min(7, Math.round(pw / 90))));
+  // свои деления оси x (например, начала месяцев на оси дат) — xTicks(x0, x1, count)
+  const xCount = Math.max(3, Math.min(7, Math.round(pw / 90)));
+  const xt = spec.xTicks ? spec.xTicks(x0, x1, xCount) : niceTicks(x0, x1, xCount);
   const yt = niceTicks(y0, y1, Math.max(3, Math.min(6, Math.round(ph / 50))));
   const xd = tickDigits(xt);
   const yd = tickDigits(yt);
@@ -96,7 +100,7 @@ export function scatterChart(box, spec) {
   const parts = [];
   // сетка и деления
   for (const v of yt) if (v >= y0 && v <= y1) parts.push(`<line class="grid" x1="${m.l}" x2="${m.l + pw}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text class="tick" x="${m.l - 6}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end">${esc(spec.fmt(v, yd))}</text>`);
-  for (const v of xt) if (inX(v)) parts.push(`<line class="grid" y1="${m.t}" y2="${m.t + ph}" x1="${X(v).toFixed(1)}" x2="${X(v).toFixed(1)}"/><text class="tick" x="${X(v).toFixed(1)}" y="${m.t + ph + 16}" text-anchor="middle">${esc(spec.fmt(v, xd))}</text>`);
+  for (const v of xt) if (inX(v)) parts.push(`<line class="grid" y1="${m.t}" y2="${m.t + ph}" x1="${X(v).toFixed(1)}" x2="${X(v).toFixed(1)}"/><text class="tick" x="${X(v).toFixed(1)}" y="${m.t + ph + 16}" text-anchor="middle">${esc(spec.xFmt ? spec.xFmt(v) : spec.fmt(v, xd))}</text>`);
   parts.push(`<line class="axis" x1="${m.l}" x2="${m.l + pw}" y1="${m.t + ph}" y2="${m.t + ph}"/><line class="axis" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t + ph}"/>`);
   parts.push(`<text class="axis-label" x="${m.l + pw / 2}" y="${H - 6}" text-anchor="middle">${svgText(spec.xLabel)}</text>`);
   parts.push(`<text class="axis-label" x="${m.l - 50}" y="13">${svgText(spec.yLabel)}</text>`);
