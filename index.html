@@ -1006,6 +1006,7 @@
 <main class="layout">
   <form id="e-sheet" class="sheet" autocomplete="off" novalidate>
     <p class="intro">Рабочий лист калибровки пучка электронов: поглощённая доза в воде на опорной глубине z<sub>ref</sub> = 0,6·R50 − 0,1 и на z<sub>max</sub>. TRS-398 Rev.1 — глава 7; TG-51 — с аддендумом для электронов WGTG51 Report 385 (2024). Числа можно вводить с запятой или точкой; обозначения с пунктирным подчёркиванием открывают справку.</p>
+    <div class="journal-bar no-print" id="e-journal-bar" hidden data-i18n-skip></div>
 
     <!-- 1 -->
     <section class="step" aria-labelledby="e-s1">
@@ -1066,6 +1067,11 @@
             <input type="text" id="e_ndw" class="num" inputmode="decimal" aria-label="Калибровочный коэффициент N_D,w">
             <select id="e_ndw_unit" aria-label="Единица N_D,w"></select>
           </div>
+        </div>
+        <div class="field" data-show="e_cal_route:co60">
+          <label for="e_klab">k<sub>лаб</sub></label>
+          <input type="text" id="e_klab" class="num" inputmode="decimal">
+          <span class="sub">поправочный множитель K из протокола поверки (ВНИИФТРИ): N<sub>D,w</sub> умножается на него; обычно 1,000</span>
         </div>
         <div class="field" data-show="e_cal_route:cross" data-protocol="trs">
           <span class="label">N<sub>D,w,Qcross</sub> рабочей камеры (TRS-398, ур. 41)</span>
@@ -1182,12 +1188,20 @@
           <select id="e_polarity"><option value="+">положительная (+)</option><option value="-">отрицательная (−)</option></select>
         </div>
         <div class="field"><label for="e_V1">V₁ рабочее, В</label><input type="text" id="e_V1" class="num" inputmode="decimal"></div>
-        <div class="field"><label for="e_V2">V₂ пониженное, В</label><input type="text" id="e_V2" class="num" inputmode="decimal"></div>
+        <div class="field" data-show="e_fixed:false"><label for="e_V2">V₂ пониженное, В</label><input type="text" id="e_V2" class="num" inputmode="decimal"></div>
         <div class="field">
           <label for="e_beam_mode">Режим пучка</label>
           <select id="e_beam_mode"><option value="pulsed">импульсный</option><option value="scanned">импульсно-сканирующий</option></select>
         </div>
       </div>
+
+      <label class="check"><input type="checkbox" id="e_fixed"> <span>Проверка выхода: k<sub>pol</sub> и k<sub>s</sub> из предыдущей калибровки этого пучка</span></label>
+      <div class="grid three" data-show="e_fixed:true">
+        <div class="field"><label for="e_fixed_kpol">k<sub>pol</sub> из калибровки</label><input type="text" id="e_fixed_kpol" class="num" inputmode="decimal"></div>
+        <div class="field"><label for="e_fixed_ks">k<sub>s</sub> (P<sub>ion</sub>) из калибровки</label><input type="text" id="e_fixed_ks" class="num" inputmode="decimal"><span class="sub">измеренный, до деления на значение лаборатории</span></div>
+        <div class="field"><label for="e_fixed_from">Дата калибровки</label><input type="text" id="e_fixed_from" placeholder="25.08.2026"></div>
+      </div>
+      <p class="sub-hint" data-show="e_fixed:true">Для регулярной проверки выхода: показания только при V₁ и обычной полярности, поправки на полярность и рекомбинацию — из последней полной калибровки. Для референсной дозиметрии их измеряют каждый раз.</p>
 
       <div class="series">
         <div class="series-group" id="e-grp-main">
@@ -1202,7 +1216,7 @@
               <div class="cell-mean"><span>Среднее</span><output data-out="inputs.M1.mean" data-digits="4" data-abs="1"></output></div>
             </div>
           </div>
-          <div class="cells" data-series="e_Mopp" data-label="M при V₁, обратная полярность">
+          <div class="cells" data-series="e_Mopp" data-label="M при V₁, обратная полярность" data-show="e_fixed:false">
             <span class="label">M при V₁, обратная полярность, нКл</span>
             <div class="cells-row">
               <div class="cells-list"></div>
@@ -1213,7 +1227,7 @@
               <div class="cell-mean"><span>Среднее</span><output data-out="inputs.Mopp.mean" data-digits="4" data-abs="1"></output></div>
             </div>
           </div>
-          <div class="cells" data-series="e_M2" data-label="M при V₂, обычная полярность">
+          <div class="cells" data-series="e_M2" data-label="M при V₂, обычная полярность" data-show="e_fixed:false">
             <span class="label">M при V₂, обычная полярность, нКл</span>
             <div class="cells-row">
               <div class="cells-list"></div>
@@ -2538,7 +2552,7 @@
       <a href="#equipment" data-module="equipment">Оборудование</a>
       <a href="#history" data-module="history">Журнал и тренды</a>
     </nav>
-    <p class="intro">Сеанс на весь аппарат: калибровка или проверка выхода всех пучков фотонов за один заход. Камеры, электрометры и настройки пучков берутся из «Оборудования», результат записывается в журнал.</p>
+    <p class="intro">Сеанс на весь аппарат: калибровка или проверка выхода всех пучков фотонов и электронов за один заход. Камеры, электрометры и настройки пучков берутся из «Оборудования», результат записывается в журнал.</p>
     <ul class="purpose">
       <li><b>Когда:</b> при калибровке аппарата — режим «Калибровка»: k<sub>pol</sub> и k<sub>s</sub> измеряются для каждого пучка; при регулярной проверке выхода — режим «Проверка выхода»: только M при V₁, а k<sub>pol</sub> и k<sub>s</sub> каждого пучка берутся из его последней калибровки в журнале.</li>
       <li><b>Что делать:</b> выберите аппарат и режим, введите общие температуру и давление (раздел 1) и показания каждого пучка (раздел 2). Свои T и P у пучка нужны, только если они отличаются от общих.</li>
@@ -2622,7 +2636,7 @@
     <p class="intro">Оборудование отделения для сеансов: камеры, электрометры и аппараты с пучками. Заполняется один раз и хранится в файле журнала вместе с сеансами.</p>
     <ul class="purpose">
       <li><b>Когда:</b> при начале работы с журналом, после калибровки (поверки) камеры или электрометра и при изменении настроек пучка.</li>
-      <li><b>Что делать:</b> добавьте камеры и электрометры с калибровочными коэффициентами и сроками, затем аппарат и его пучки. Пучок, уже настроенный на вкладке «МВ фотоны», переносится кнопкой «Пучок из вкладки «МВ фотоны»» — вместе с камерой и электрометром.</li>
+      <li><b>Что делать:</b> добавьте камеры и электрометры с калибровочными коэффициентами и сроками, затем аппарат и его пучки. Пучок, уже настроенный на вкладке «МВ фотоны» или «Электроны», переносится кнопкой «Пучок из вкладки…» — вместе с камерой и электрометром.</li>
       <li><b>Результат:</b> профили, из которых собирается расчёт каждого пучка в сеансе; напоминания о сроках калибровки камер и электрометров.</li>
     </ul>
 
@@ -2633,7 +2647,7 @@
 
     <section class="step" aria-labelledby="eq-s2">
       <header><span class="step-no">2</span><h2 id="eq-s2">Камеры</h2>
-        <p class="hint">N<sub>D,w</sub>, T₀, P₀ и k<sub>лаб</sub> — из свидетельства о калибровке (поверке). Срок «действует до» нужен для напоминаний.</p></header>
+        <p class="hint">N<sub>D,w</sub>, T₀, P₀ и k<sub>лаб</sub> — из свидетельства о калибровке (поверке). Одна запись камеры служит и фотонам, и электронам. Срок «действует до» нужен для напоминаний.</p></header>
       <div id="eq-chambers" class="jcards" data-i18n-skip></div>
       <div class="row-tools"><button type="button" class="link-btn" id="eq-add-chamber"><span aria-hidden="true">+</span> Добавить камеру</button></div>
     </section>
@@ -2646,7 +2660,7 @@
 
     <section class="step" aria-labelledby="eq-s4">
       <header><span class="step-no">4</span><h2 id="eq-s4">Аппараты и пучки</h2>
-        <p class="hint">У пучка — камера и электрометр по умолчанию, напряжения, МЕ, номинальный выход с допуском и последнее качество пучка (для проверки выхода до первой калибровки в журнале). Остальные настройки — кнопкой «Все настройки — во вкладке «МВ фотоны»».</p></header>
+        <p class="hint">У пучка — камера и электрометр по умолчанию, напряжения, МЕ, номинальный выход с допуском и последнее качество пучка (для проверки выхода до первой калибровки в журнале). Остальные настройки — кнопкой «Все настройки» во вкладке «МВ фотоны» или «Электроны».</p></header>
       <div id="eq-machines" class="jcards" data-i18n-skip></div>
       <div class="row-tools"><button type="button" class="link-btn" id="eq-add-machine"><span aria-hidden="true">+</span> Добавить аппарат</button></div>
     </section>
@@ -2687,7 +2701,16 @@
 
     <section class="step" aria-labelledby="hs-s1">
       <header><span class="step-no">1</span><h2 id="hs-s1">Аппарат</h2></header>
-      <div class="field"><label for="hs_machine">Аппарат</label><select id="hs_machine"></select></div>
+      <div class="grid two">
+        <div class="field"><label for="hs_machine">Аппарат</label><select id="hs_machine"></select></div>
+        <div class="field cc-type-field" id="hs-kind-field" hidden>
+          <span class="label" id="hs-kind-label">Пучки</span>
+          <div class="segmented" role="radiogroup" aria-labelledby="hs-kind-label">
+            <label><input type="radio" name="hs_kind" id="hs_kind_photon" value="photon" checked><span>Фотоны</span></label>
+            <label><input type="radio" name="hs_kind" id="hs_kind_electron" value="electron"><span>Электроны</span></label>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="step" aria-labelledby="hs-s2">

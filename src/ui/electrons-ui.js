@@ -10,7 +10,8 @@ import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
-  notifyUpdate, flashFields, richText } from './common.js';
+  notifyUpdate, flashFields, richText, applyProtocol } from './common.js';
+import { makeJournalView } from './journal-view.js';
 
 const DRAFT_KEY = 'reference-dosimetry.electrons.v1';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'electrons', version: 1 };
@@ -308,11 +309,12 @@ function renderReadout(r, data) {
     [L('R<sub>50</sub>, г/см²', 'R<sub>50</sub>, g/cm²'), ['', r.quality.r50, 3], ['', r.quality.r50, 3]],
     cross
       ? [L('Калибровочный коэффициент, Гр/нКл', 'Calibration coefficient, Gy/nC'), ['N<sub>D,w,Qcross</sub>', t.coefficient, 5], ['(k<sub>Qecal</sub>N<sub>D,w</sub>)<sub>pp</sub>', g.coefficient, 5]]
-      : [L('N<sub>D,w</sub>, Гр/нКл', 'N<sub>D,w</sub>, Gy/nC'), ['', t.coefficient, 5], ['', g.coefficient, 5]],
+      : [L('N<sub>D,w</sub>, Гр/нКл', 'N<sub>D,w</sub>, Gy/nC'), ['', r.inputs.ndw, 5], ['', r.inputs.ndw, 5]],
     cross
       ? [L('Поправка на качество', 'Beam quality correction'), ['k<sub>Q,Qcross</sub>', t.kQ, 4], ['k′<sub>Q</sub>', g.kQ, 4]]
       : [L('Поправка на качество', 'Beam quality correction'), ['k<sub>Q</sub>', t.kQ, 4], ['k<sub>Q</sub>', g.kQ, 4]],
   ];
+  if (!cross) rows.push([L('Поправочный множитель лаборатории', 'Laboratory correction multiplier'), [L('k<sub>лаб</sub>', 'k<sub>lab</sub>'), r.inputs.klab, 4], [L('k<sub>лаб</sub>', 'k<sub>lab</sub>'), r.inputs.klab, 4]]);
   if (r.depth.on) rows.push([r.depth.label, ['', r.depth.factor, 4], ['', r.depth.factor, 4]]);
   const tc = t.ctrl || {};
   const gc = g.ctrl || {};
@@ -403,7 +405,7 @@ function reportText(data, r) {
     if (r.trs.enabled) line('N_D,w,Qcross (TRS-398)', L(`${data.e_cross_ndw} ${unitLabel(NDW_UNITS[data.e_cross_ndw_unit])} при R50 = ${data.e_cross_r50} г/см²`, `${data.e_cross_ndw} ${unitLabel(NDW_UNITS[data.e_cross_ndw_unit])} at R50 = ${data.e_cross_r50} g/cm²`));
     if (r.tg51.enabled) line('(k_Qecal·N_D,w)pp (Report 385)', `${data.e_cross_kn} ${unitLabel(NDW_UNITS[data.e_cross_kn_unit])}`);
   } else {
-    line('N_D,w (⁶⁰Co)', `${data.e_ndw} ${unitLabel(NDW_UNITS[data.e_ndw_unit])} (= ${fmt(i.ndw, 6)} ${L('Гр/нКл', 'Gy/nC')})`);
+    line('N_D,w (⁶⁰Co)', `${data.e_ndw} ${unitLabel(NDW_UNITS[data.e_ndw_unit])} (= ${fmt(i.ndw, 6)} ${L('Гр/нКл', 'Gy/nC')}); ${L('k_лаб', 'k_lab')} = ${fmt(i.klab, 4)}`);
   }
   line(L('Стандартные условия', 'Reference conditions'), `T0 = ${data.e_T0} °C, P0 = ${data.e_P0} ${L('кПа', 'kPa')}`);
   line(L('Электрометр', 'Electrometer'), `${data.e_el_model || '—'}, ${L('№', 'S/N')} ${data.e_el_serial || '—'}, k_elec = ${data.e_kelec}`);
@@ -411,10 +413,16 @@ function reportText(data, r) {
     L('Условия', 'Conditions'),
     `T = ${data.e_env_T} °C, P = ${data.e_env_P} ${unitLabel(PRESSURE_UNITS[data.e_env_P_unit])}${String(data.e_env_H ?? '').trim() ? L(`, относительная влажность ${data.e_env_H} %`, `, relative humidity ${data.e_env_H} %`) : ''}`,
   );
-  line(L('Облучение', 'Irradiation'), L(`${data.e_mu} МЕ, V1 = ${data.e_V1} В, V2 = ${data.e_V2} В, обычная полярность ${data.e_polarity}`, `${data.e_mu} MU, V1 = ${data.e_V1} V, V2 = ${data.e_V2} V, normal polarity ${data.e_polarity}`));
+  const fixed = data.e_fixed;
+  line(L('Облучение', 'Irradiation'), fixed ? L(`${data.e_mu} МЕ, V1 = ${data.e_V1} В, обычная полярность ${data.e_polarity}`, `${data.e_mu} MU, V1 = ${data.e_V1} V, normal polarity ${data.e_polarity}`) : L(`${data.e_mu} МЕ, V1 = ${data.e_V1} В, V2 = ${data.e_V2} В, обычная полярность ${data.e_polarity}`, `${data.e_mu} MU, V1 = ${data.e_V1} V, V2 = ${data.e_V2} V, normal polarity ${data.e_polarity}`));
   line(L('M(V1, обычная), нКл', 'M(V1, normal), nC'), `${cells(data.e_M1)} → ${mean} ${fmt(Math.abs(i.M1.mean), 4)}`);
-  line(L('M(V1, обратная), нКл', 'M(V1, opposite), nC'), `${cells(data.e_Mopp)} → ${mean} ${fmt(Math.abs(i.Mopp.mean), 4)}`);
-  line(L('M(V2), нКл', 'M(V2), nC'), `${cells(data.e_M2)} → ${mean} ${fmt(Math.abs(i.M2.mean), 4)}`);
+  if (fixed) {
+    const [kp, kx] = data.protocol === 'tg51' ? ['P_pol', 'P_ion'] : ['k_pol', 'k_s'];
+    line(L('Проверка выхода', 'Output check'), L(`${kp} = ${data.e_fixed_kpol}, ${kx} = ${data.e_fixed_ks} — из калибровки${data.e_fixed_from ? ` от ${data.e_fixed_from}` : ''}; обратная полярность и V2 не измерялись`, `${kp} = ${data.e_fixed_kpol}, ${kx} = ${data.e_fixed_ks} from the calibration${data.e_fixed_from ? ` of ${data.e_fixed_from}` : ''}; the opposite polarity and V2 were not measured`));
+  } else {
+    line(L('M(V1, обратная), нКл', 'M(V1, opposite), nC'), `${cells(data.e_Mopp)} → ${mean} ${fmt(Math.abs(i.Mopp.mean), 4)}`);
+    line(L('M(V2), нКл', 'M(V2), nC'), `${cells(data.e_M2)} → ${mean} ${fmt(Math.abs(i.M2.mean), 4)}`);
+  }
   if (r.ctrl.on) line(L('Контрольные измерения M(V1), нКл', 'Check measurements M(V1), nC'), `${cells(data.e_ctrl_M)} → ${mean} ${fmt(r.ctrl.mean, 4)} ${L(`за ${fmt(r.ctrl.mu, 0)} МЕ`, `for ${fmt(r.ctrl.mu, 0)} MU`)}`);
   if (r.recal.needed) {
     const ans = r.recal.answer === 'yes' ? L('да', 'yes') : r.recal.answer === 'no' ? L('нет', 'no') : L('не указано', 'not specified');
@@ -582,6 +590,29 @@ export function applyElectronsPatch(patch) {
   flashFields(Object.keys(patch));
 }
 
+// ------------------------------------------------------------ связь с журналом
+// «Все настройки» пучка электронов из «Оборудования» и «Открыть во вкладке» из сеанса — плашка над рабочим листом.
+const journalView = makeJournalView({
+  bar: () => $('#e-journal-bar'),
+  storageKey: 'reference-dosimetry.electrons.journal-view.v1',
+  readForm: () => normalizeElectrons(readForm()),
+  writeForm: (form, withProtocol) => {
+    if (withProtocol) applyProtocol(normalizeElectrons(form).protocol);
+    writeForm(form);
+  },
+  refresh: () => {
+    openedFile = null;
+    update();
+  },
+  setStatus: (t) => setStatus(t),
+});
+/** Куда записывать настройки пучка из вкладки по «Сохранить в журнал». */
+export const setElectronsJournalSave = (fn) => journalView.setSave(fn);
+/** Текущая форма вкладки (для «Пучок из вкладки «Электроны»»). */
+export const electronsCurrentForm = () => normalizeElectrons(readForm());
+/** Загрузить форму журнала во вкладку (протокол в шапке ставится по форме). */
+export const showInElectrons = (form, opts) => journalView.show(form, opts);
+
 function onBeamInput() {
   const { energy } = parseElectronBeam($('#e_beam').value);
   if (Number.isFinite(energy)) $('#e_energy').value = getLang() === 'en' ? String(energy) : String(energy).replace('.', ',');
@@ -597,6 +628,7 @@ function refreshForLang() {
   localizeDemo(SAMPLE_ELECTRONS, SAMPLE_ELECTRONS_EN);
   localizeDecimals(ROOT());
   update();
+  journalView.render();
 }
 
 export function initElectrons() {
@@ -608,6 +640,8 @@ export function initElectrons() {
   const draft = loadDraft();
   writeForm(draft ? draft : sampleData());
   localizeDemo(SAMPLE_ELECTRONS, SAMPLE_ELECTRONS_EN);
+  // во вкладке был пучок журнала (страницу перезагрузили): плашка с возвратом прежних данных остаётся
+  journalView.load();
   update();
   if (!draft) setStatus(L('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.', 'Demo example loaded. Click "Clear" to enter your own data.'));
 

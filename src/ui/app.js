@@ -6,7 +6,7 @@ import { initialLang, saveLang, applyLang, translateStatic, localizeDecimal } fr
 import { $, $$, setActiveModule, getActiveModule, PROTOCOL_KEY, applyProtocol } from './common.js';
 import { initCobalt, importCobalt, cobaltStatus, applyCobaltPatch, cobaltUncSource } from './cobalt-ui.js';
 import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch, photonsUncSource, photonsCurrentForm, showInPhotons, setPhotonsJournalSave } from './photons-ui.js';
-import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch, electronsUncSource } from './electrons-ui.js';
+import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch, electronsUncSource, electronsCurrentForm, showInElectrons, setElectronsJournalSave } from './electrons-ui.js';
 import { initCrossCal, importCrossCal, crossCalStatus, setCrossCalTransfer } from './crosscal-ui.js';
 import { initUncTool, importUncTool, uncToolStatus, setUncSources } from './uncertainty-tool-ui.js';
 import { initJaffe, importJaffe, jaffeStatus } from './jaffe-ui.js';
@@ -153,27 +153,32 @@ function initTransfer() {
 // ------------------------------------------------------------ журнал ↔ вкладка «МВ фотоны»
 function initJournalBridges() {
   const toTop = () => window.scrollTo({ top: 0 });
-  setEquipmentBridge({
-    current: () => photonsCurrentForm(),
-    edit: (form, { title, target }) => {
+  // пучок журнала во вкладке дозиметрии: фотоны или электроны
+  const showInTab = (kind, form, opts) => {
+    if (kind === 'electron') {
+      switchTo('electrons');
+      showInElectrons(form, opts);
+    } else {
       switchTo('photons');
-      showInPhotons(form, { mode: 'edit', title, target });
-      toTop();
-    },
+      showInPhotons(form, opts);
+    }
+    toTop();
+  };
+  setEquipmentBridge({
+    current: (kind) => (kind === 'electron' ? electronsCurrentForm() : photonsCurrentForm()),
+    edit: (kind, form, { title, target }) => showInTab(kind, form, { mode: 'edit', title, target }),
   });
-  // «Сохранить в журнал» на вкладке «МВ фотоны» (работает и после перезагрузки страницы)
-  setPhotonsJournalSave((target, form, title) => {
+  // «Сохранить в журнал» на вкладке дозиметрии (работает и после перезагрузки страницы)
+  const saveToJournal = (target, form, title) => {
     const text = saveBeamFromTab(target, form, title);
     switchTo('equipment');
     revealBeam(target?.beamId);
     equipmentStatus(text);
-  });
+  };
+  setPhotonsJournalSave((target, form, title) => saveToJournal({ kind: 'photon', ...target }, form, title));
+  setElectronsJournalSave((target, form, title) => saveToJournal({ ...target, kind: 'electron' }, form, title));
   setSessionBridge({
-    openInPhotons: (form, title) => {
-      switchTo('photons');
-      showInPhotons(form, { mode: 'view', title });
-      toTop();
-    },
+    openInTab: (kind, form, title) => showInTab(kind, form, { mode: 'view', title }),
     openEquipment: (beamId) => {
       switchTo('equipment');
       revealBeam(beamId);

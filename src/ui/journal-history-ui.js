@@ -10,6 +10,18 @@ import { setupFilePanel, machineOptions, fmtDate, countWord } from './journal-co
 const ROOT = () => $('#module-history');
 let setStatus = () => {};
 let machineId = '';
+let kindFilter = 'photon'; // какие пучки показывать, если у аппарата есть и фотоны, и электроны
+/** Ряды трендов выбранного аппарата и вида пучков; переключатель вида — только если у аппарата есть оба. */
+function seriesOf(j) {
+  const all = trendSeries(j, machineId);
+  const kinds = new Set(all.map((s) => s.kind));
+  const both = kinds.has('photon') && kinds.has('electron');
+  if (!both) kindFilter = kinds.has('electron') ? 'electron' : 'photon';
+  $('#hs-kind-field').hidden = !both;
+  const r = document.getElementById(`hs_kind_${kindFilter}`);
+  if (r) r.checked = true;
+  return all.filter((s) => s.kind === kindFilter);
+}
 let bridge = { openSession: () => {}, unsaved: () => false };
 /** Открыть сеанс в подразделе «Сеанс»; unsaved — есть ли там незаписанные показания. */
 export const setHistoryBridge = (b) => (bridge = { ...bridge, ...b });
@@ -102,21 +114,24 @@ function renderChart(series) {
 function renderTables(j, series) {
   const sessions = j.sessions.filter((s) => s.machineId === machineId);
   const beams = series.map((s) => s.beam);
+  const ids = new Set(beams.map((b) => b.id));
+  // в таблицах — сеансы, где есть пучки показанного вида (список сеансов ниже — все)
+  const shown = sessions.filter((s) => s.beams.some((b) => ids.has(b.beamId)));
   // таблица значений графика
   const head = `<tr><th>${esc(L('Дата', 'Date'))}</th><th>${esc(L('Режим', 'Mode'))}</th>${beams.map((b) => `<th class="v">${esc(b.name)}</th>`).join('')}</tr>`;
   const cell = (s, b, f) => {
     const x = s.beams.find((y) => y.beamId === b.id)?.summary;
     return x ? f(x) : '—';
   };
-  $('#hs-table').innerHTML = sessions.length
-    ? `<table class="factors"><thead>${head}</thead><tbody>${sessions
+  $('#hs-table').innerHTML = shown.length
+    ? `<table class="factors"><thead>${head}</thead><tbody>${shown
         .slice()
         .reverse()
         .map((s) => `<tr><td>${esc(fmtDate(s.date))}</td><td>${esc(s.mode === 'cal' ? L('калибровка', 'calibration') : L('проверка', 'check'))}</td>${beams.map((b) => `<td class="v">${cell(s, b, (x) => (x.ok ? `${fmt(x.value, 4)}<br><small class="${x.status === 'out' ? 'st-out' : ''}">${Number.isFinite(x.deviation) ? `${fmtSigned(x.deviation, 2)} %` : ''}</small>` : '—'))}</td>`).join('')}</tr>`)
         .join('')}</tbody></table>`
     : `<p class="sub-hint">${esc(L('Сеансов этого аппарата нет.', 'No sessions for this machine.'))}</p>`;
   // k_pol и k_s по калибровкам
-  const cals = sessions.filter((s) => s.mode === 'cal');
+  const cals = shown.filter((s) => s.mode === 'cal');
   const kHead = `<tr><th>${esc(L('Калибровка', 'Calibration'))}</th>${beams.map((b) => `<th class="v">${esc(b.name)}</th>`).join('')}</tr>`;
   $('#hs-ktable').innerHTML = cals.length
     ? `<table class="factors"><thead>${kHead}</thead><tbody>${cals
@@ -132,7 +147,8 @@ function renderTables(j, series) {
         .reverse()
         .map((s) => {
           const bs = s.beams.filter((b) => b.summary);
-          const out = bs.filter((b) => b.summary.status === 'out').map((b) => beams.find((x) => x.id === b.beamId)?.name).filter(Boolean);
+          const m = machineOf(j, machineId);
+          const out = bs.filter((b) => b.summary.status === 'out').map((b) => m?.beams.find((x) => x.id === b.beamId)?.name).filter(Boolean);
           return `<li><div><b>${esc(fmtDate(s.date))}</b> · ${esc(s.mode === 'cal' ? L('калибровка', 'calibration') : L('проверка выхода', 'output check'))} · ${esc(L(`пучков: ${bs.length}`, `beams: ${bs.length}`))}${out.length ? ` · <span class="st-out">${esc(L(`вне допуска: ${out.join(', ')}`, `out of tolerance: ${out.join(', ')}`))}</span>` : ''}${s.staff?.some((x) => x.trim()) ? `<br><small>${esc(s.staff.filter((x) => x.trim()).join(', '))}</small>` : ''}</div>
             <div class="row-tools"><button type="button" class="link-btn" data-open="${esc(s.id)}">${esc(L('Открыть', 'Open'))}</button><button type="button" class="link-btn danger" data-del-session="${esc(s.id)}">${esc(L('Удалить', 'Delete'))}</button></div></li>`;
         })
@@ -165,7 +181,7 @@ function render() {
   const j = getJournal();
   if (!machineOf(j, machineId)) machineId = j.machines[0]?.id ?? '';
   $('#hs_machine').innerHTML = machineOptions(j, machineId);
-  const series = trendSeries(j, machineId);
+  const series = seriesOf(j);
   renderChart(series);
   renderTables(j, series);
   renderReadout(j, series);
@@ -184,6 +200,12 @@ export function initHistory() {
     machineId = e.target.value;
     render();
   });
+  for (const r of document.querySelectorAll('input[name="hs_kind"]')) {
+    r.addEventListener('change', () => {
+      kindFilter = r.value === 'electron' ? 'electron' : 'photon';
+      render();
+    });
+  }
   $('#hs-sessions').addEventListener('click', (e) => {
     const b = e.target.closest('[data-open]');
     if (!b) return;
@@ -216,6 +238,6 @@ export function initHistory() {
     const box = $('#hs-chart');
     if (!box || box.clientWidth === w || !box.clientWidth) return;
     w = box.clientWidth;
-    renderChart(trendSeries(getJournal(), machineId));
+    renderChart(seriesOf(getJournal()));
   }).observe($('#hs-chart'));
 }

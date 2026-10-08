@@ -3,7 +3,10 @@
 // результат записывается в журнал кнопкой «Записать сеанс в журнал».
 import { L, refText, getLang } from '../core/i18n.js';
 import { PRESSURE_UNITS, unitLabel, isBlank, parseNumber } from '../core/units.js';
-import { computeSessionBeam, finalizeSession, upsertSession, chamberText, electrometerText, machineOf, equipmentDue, recordedBase, SESSION_DEFAULTS, uid } from '../core/journal.js';
+import {
+  computeSessionBeam, finalizeSession, upsertSession, chamberText, electrometerText, machineOf, equipmentDue, recordedBase, SESSION_DEFAULTS, uid,
+  beamKeys, beamKind, chamberFormFromElectrons, elFormFromElectrons,
+} from '../core/journal.js';
 import { $, $$, esc, fmt, fmtSigned, today, makeStatus, copyText, currentProtocol, applyProtocol, notifyUpdate, richText, armButton, renderSignBlock, printToPdf, versionText } from './common.js';
 import { localizeDecimals } from './i18n.js';
 import { renderCells, readCells, setupCells, renderStaff, readStaff, makeCombo } from './widgets.js';
@@ -13,8 +16,8 @@ import { setupFilePanel, machineOptions, fmtDate } from './journal-common.js';
 const DRAFT_KEY = 'reference-dosimetry.session.v1';
 const ROOT = () => $('#module-session');
 let setStatus = () => {};
-let bridge = { openInPhotons: () => {}, openEquipment: () => {} };
-/** Связь с вкладкой «МВ фотоны» (показать там пучок сеанса) и с «Оборудованием» (открыть карточку пучка). */
+let bridge = { openInTab: () => {}, openEquipment: () => {} };
+/** Связь с вкладками дозиметрии (показать там пучок сеанса: openInTab(kind, form, title)) и с «Оборудованием». */
 export const setSessionBridge = (b) => (bridge = { ...bridge, ...b });
 
 /**
@@ -43,8 +46,13 @@ function loadDraft() {
   }
 }
 
-/** Пучки сеанса: используемые в сеансах и те, что есть в открытом из журнала сеансе. */
-const activeBeams = (m) => (m ? m.beams.filter((b) => b.kind === 'photon' && (b.active !== false || draft.beams[b.id]?.base)) : []);
+/** Пучки сеанса: используемые в сеансах и те, что есть в открытом из журнала сеансе; сначала фотоны, затем электроны. */
+const activeBeams = (m) => {
+  const list = m ? m.beams.filter((b) => b.active !== false || draft.beams[b.id]?.base) : [];
+  return [...list.filter((b) => beamKind(b) === 'photon'), ...list.filter((b) => beamKind(b) === 'electron')];
+};
+/** Серии показаний пучка данного вида: имена полей. */
+const seriesKeys = (k) => [k.M1, k.Mopp, k.M2, k.ctrl, k.recal];
 const tg51 = () => currentProtocol() === 'tg51';
 /** Поле %dd(10) пучка по способу TG-51. */
 const q51Field = (f) => {
@@ -74,18 +82,38 @@ function cellsHtml(key, label, values) {
 function beamCard(j, m, b, mode) {
   const d = draft.beams[b.id] || {};
   const id = b.id;
+  const kind = beamKind(b);
+  const k = beamKeys(kind);
+  const electron = kind === 'electron';
   // у открытого из журнала сеанса — камера, электрометр и настройки, записанные в нём
-  const ch = d.base ? { form: d.base } : j.chambers.find((c) => c.id === b.chamberId);
-  const el = d.base ? { form: d.base } : j.electrometers.find((e) => e.id === b.electrometerId);
+  const ch = d.base ? { form: electron ? chamberFormFromElectrons(d.base) : d.base } : j.chambers.find((c) => c.id === b.chamberId);
+  const el = d.base ? { form: electron ? elFormFromElectrons(d.base) : d.base } : j.electrometers.find((e) => e.id === b.electrometerId);
   const f = d.base || b.form || {};
   const noChamber = !d.base && !ch;
-  const info = [chamberText(ch) || L('камера не выбрана', 'no chamber selected'), electrometerText(el) || L('электрометр не выбран', 'no electrometer selected'), !isBlank(f.rd_V1) ? `V₁ ${locNum(f.rd_V1)} ${L('В', 'V')}` : '', !isBlank(f.rd_mu) ? `${locNum(f.rd_mu)} ${L('МЕ', 'MU')}` : ''].filter(Boolean).join(' · ');
-  const [q51Key, q51Label] = q51Field(f);
+  const info = [chamberText(ch) || L('камера не выбрана', 'no chamber selected'), electrometerText(el) || L('электрометр не выбран', 'no electrometer selected'), !isBlank(f[k.V1]) ? `V₁ ${locNum(f[k.V1])} ${L('В', 'V')}` : '', !isBlank(f[k.mu]) ? `${locNum(f[k.mu])} ${L('МЕ', 'MU')}` : ''].filter(Boolean).join(' · ');
   const [kp, kx] = tg51() ? ['P<sub>pol</sub>', 'P<sub>ion</sub>'] : ['k<sub>pol</sub>', 'k<sub>s</sub>'];
   const inp = (key, label, { ph = '', sub = '', cls = '' } = {}) =>
     `<div class="field ${cls}"><label for="jsb-${id}-${key}">${label}</label><input type="text" id="jsb-${id}-${key}" data-sb="${key}" class="num" inputmode="decimal" value="${esc(d[key] ?? '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}>${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;
-  const pdd = f.qtrs_method === 'pdd2010';
-  return `<div class="jcard jsb${d.include === false ? ' off' : ''}" data-beam="${esc(id)}">
+  let quality;
+  if (electron) {
+    const i50 = f.e_r50_method !== 'r50';
+    quality = `<div class="grid three">
+            ${i50 ? inp('e_i50', L('R<sub>50,ion</sub> (I<sub>50</sub>), г/см²', 'R<sub>50,ion</sub> (I<sub>50</sub>), g/cm²'), { ph: locNum(f.e_i50) }) : inp('e_r50', L('R<sub>50</sub>, г/см²', 'R<sub>50</sub>, g/cm²'), { ph: locNum(f.e_r50) })}
+            ${inp('e_pdd', L('PDD(z<sub>ref</sub>), %', 'PDD(z<sub>ref</sub>), %'), { ph: locNum(f.e_pdd), sub: L('качество пучка; пусто — последнее из «Оборудования»', 'beam quality; blank: the last one from Equipment') })}
+          </div>`;
+  } else if (tg51()) {
+    const [q51Key, q51Label] = q51Field(f);
+    quality = `<div class="grid three">
+            ${inp(q51Key, q51Label, { ph: locNum(f[q51Key]), sub: L('качество пучка (TG-51); пусто — последнее из «Оборудования», там же способ', 'beam quality (TG-51); blank: the last one from Equipment, where the method is set') })}
+          </div>`;
+  } else {
+    const pdd = f.qtrs_method === 'pdd2010';
+    quality = `<div class="grid three">
+            ${inp('qtrs_v20', pdd ? 'PDD(20)' : L('M на 20 см', 'M at 20 cm'), { ph: locNum(f.qtrs_v20) })}
+            ${inp('qtrs_v10', pdd ? 'PDD(10)' : L('M на 10 см', 'M at 10 cm'), { ph: locNum(f.qtrs_v10), sub: L('качество пучка; пусто — последнее из «Оборудования»', 'beam quality; blank: the last one from Equipment') })}
+          </div>`;
+  }
+  return `<div class="jcard jsb${d.include === false ? ' off' : ''}" data-beam="${esc(id)}" data-kind="${kind}">
     <div class="jcard-head"><label class="check"><input type="checkbox" data-sb="include"${d.include === false ? '' : ' checked'}> <b>${esc(b.name || '—')}</b></label><span class="chip jsb-chip" data-chip></span></div>
     <p class="jsb-info">${richText(info)}</p>
     ${noChamber ? `<p class="jsb-warn">${esc(L('У пучка не выбрана камера: выберите её в «Оборудовании».', 'The beam has no chamber selected: choose one in Equipment.'))} <button type="button" class="link-btn" data-goto-eq="${esc(id)}">${esc(L('Открыть пучок в «Оборудовании»', 'Open the beam in Equipment'))}</button></p>` : ''}
@@ -95,35 +123,28 @@ function beamCard(j, m, b, mode) {
         ${inp('env_P', L('Давление', 'Pressure'), { ph: locNum(draft.env.P), sub: L('пусто — общее', 'blank — common') })}
       </div>
       <div class="series">
-        ${cellsHtml(`jsb-${id}-rd_M1`, L('M при V₁, обычная полярность', 'M at V₁, normal polarity'), d.rd_M1 || blank3())}
-        ${mode === 'cal' ? cellsHtml(`jsb-${id}-rd_Mopp`, L('M при V₁, обратная полярность', 'M at V₁, opposite polarity'), d.rd_Mopp || blank3()) : ''}
-        ${mode === 'cal' ? cellsHtml(`jsb-${id}-rd_M2`, L('M при V₂', 'M at V₂'), d.rd_M2 || blank3()) : ''}
+        ${cellsHtml(`jsb-${id}-${k.M1}`, L('M при V₁, обычная полярность', 'M at V₁, normal polarity'), d[k.M1] || blank3())}
+        ${mode === 'cal' ? cellsHtml(`jsb-${id}-${k.Mopp}`, L('M при V₁, обратная полярность', 'M at V₁, opposite polarity'), d[k.Mopp] || blank3()) : ''}
+        ${mode === 'cal' ? cellsHtml(`jsb-${id}-${k.M2}`, L('M при V₂', 'M at V₂'), d[k.M2] || blank3()) : ''}
       </div>
       ${mode === 'cal'
-        ? tg51()
-          ? `<div class="grid three">
-            ${inp(q51Key, q51Label, { ph: locNum(f[q51Key]), sub: L('качество пучка (TG-51); пусто — последнее из «Оборудования», там же способ', 'beam quality (TG-51); blank: the last one from Equipment, where the method is set') })}
-          </div>`
-          : `<div class="grid three">
-            ${inp('qtrs_v20', pdd ? 'PDD(20)' : L('M на 20 см', 'M at 20 cm'), { ph: locNum(f.qtrs_v20) })}
-            ${inp('qtrs_v10', pdd ? 'PDD(10)' : L('M на 10 см', 'M at 10 cm'), { ph: locNum(f.qtrs_v10), sub: L('качество пучка; пусто — последнее из «Оборудования»', 'beam quality; blank: the last one from Equipment') })}
-          </div>`
+        ? quality
         : `<div class="grid three">
-            ${inp('rd_fixed_kpol', L(`${kp} из калибровки`, `${kp} from the calibration`), { sub: L('пусто — из журнала', 'blank: from the journal') })}
-            ${inp('rd_fixed_ks', L(`${kx} из калибровки`, `${kx} from the calibration`), { sub: L('пусто — из журнала', 'blank: from the journal') })}
-            <div class="field"><label for="jsb-${id}-rd_fixed_from">${esc(L('Дата калибровки', 'Calibration date'))}</label><input type="text" id="jsb-${id}-rd_fixed_from" data-sb="rd_fixed_from" value="${esc(d.rd_fixed_from ?? '')}"><span class="sub">${esc(L('для протокола, если значения введены вручную', 'for the report if the values are entered manually'))}</span></div>
+            ${inp(k.fixedKpol, L(`${kp} из калибровки`, `${kp} from the calibration`), { sub: L('пусто — из журнала', 'blank: from the journal') })}
+            ${inp(k.fixedKs, L(`${kx} из калибровки`, `${kx} from the calibration`), { sub: L('пусто — из журнала', 'blank: from the journal') })}
+            <div class="field"><label for="jsb-${id}-${k.fixedFrom}">${esc(L('Дата калибровки', 'Calibration date'))}</label><input type="text" id="jsb-${id}-${k.fixedFrom}" data-sb="${k.fixedFrom}" data-fixed-from value="${esc(d[k.fixedFrom] ?? '')}"><span class="sub">${esc(L('для протокола, если значения введены вручную', 'for the report if the values are entered manually'))}</span></div>
           </div>
           <p class="sub-hint" data-fixed-note></p>`}
-      <details class="jsb-more"${hasValues(d.ctrl_M) || hasValues(d.recal_M) ? ' open' : ''}>
+      <details class="jsb-more"${hasValues(d[k.ctrl]) || hasValues(d[k.recal]) ? ' open' : ''}>
         <summary>${esc(L('Контрольные измерения и подстройка ускорителя', 'Check measurements and linac adjustment'))}</summary>
         <div class="series">
-          ${cellsHtml(`jsb-${id}-ctrl_M`, L('Контрольные измерения, M при V₁', 'Check measurements, M at V₁'), d.ctrl_M || blank3())}
+          ${cellsHtml(`jsb-${id}-${k.ctrl}`, L('Контрольные измерения, M при V₁', 'Check measurements, M at V₁'), d[k.ctrl] || blank3())}
         </div>
         <div class="grid">
-          <div class="field"><label for="jsb-${id}-recal_needed">${esc(L('Ускоритель подстраивали?', 'Was the linac adjusted?'))}</label><select id="jsb-${id}-recal_needed" data-sb="recal_needed"><option value="">—</option><option value="yes"${d.recal_needed === 'yes' ? ' selected' : ''}>${esc(L('да', 'yes'))}</option><option value="no"${d.recal_needed === 'no' ? ' selected' : ''}>${esc(L('нет', 'no'))}</option></select><span class="sub">${esc(L('если выход был вне допуска', 'if the output was out of tolerance'))}</span></div>
+          <div class="field"><label for="jsb-${id}-${k.recalNeeded}">${esc(L('Ускоритель подстраивали?', 'Was the linac adjusted?'))}</label><select id="jsb-${id}-${k.recalNeeded}" data-sb="${k.recalNeeded}" data-recal-needed><option value="">—</option><option value="yes"${d[k.recalNeeded] === 'yes' ? ' selected' : ''}>${esc(L('да', 'yes'))}</option><option value="no"${d[k.recalNeeded] === 'no' ? ' selected' : ''}>${esc(L('нет', 'no'))}</option></select><span class="sub">${esc(L('если выход был вне допуска', 'if the output was out of tolerance'))}</span></div>
         </div>
-        <div class="series" data-recal${d.recal_needed === 'yes' ? '' : ' hidden'}>
-          ${cellsHtml(`jsb-${id}-recal_M`, L('После подстройки, M при V₁', 'After adjustment, M at V₁'), d.recal_M || blank3())}
+        <div class="series" data-recal${d[k.recalNeeded] === 'yes' ? '' : ' hidden'}>
+          ${cellsHtml(`jsb-${id}-${k.recal}`, L('После подстройки, M при V₁', 'After adjustment, M at V₁'), d[k.recal] || blank3())}
         </div>
       </details>
       <div class="jsb-result" data-result></div>
@@ -148,10 +169,14 @@ function renderBeams() {
         'The session is calculated with the settings recorded in it: chamber, N<sub>D,w</sub>, electrometer and beam settings as on the session day. Changes in Equipment do not affect it.',
       )}</p><button type="button" class="link-btn" id="js-btn-current">${esc(L('Пересчитать по текущему «Оборудованию»', 'Recalculate with the current Equipment'))}</button></div>`
     : '';
-  box.innerHTML = note + (beams.map((b) => beamCard(j, m, b, draft.mode)).join('') || `<p class="sub-hint">${esc(L('У аппарата нет пучков фотонов: добавьте их в «Оборудовании».', 'The machine has no photon beams: add them in Equipment.'))}</p>`);
+  // пучки фотонов и электронов — отдельными группами, если у аппарата есть и те и другие
+  const both = beams.some((b) => beamKind(b) === 'photon') && beams.some((b) => beamKind(b) === 'electron');
+  const groupTitle = (kind) => `<h3 class="sub-h jsb-group">${esc(kind === 'electron' ? L('Пучки электронов', 'Electron beams') : L('Пучки фотонов', 'Photon beams'))}</h3>`;
+  const cards = beams.map((b, i) => (both && (i === 0 || beamKind(beams[i - 1]) !== beamKind(b)) ? groupTitle(beamKind(b)) : '') + beamCard(j, m, b, draft.mode)).join('');
+  box.innerHTML = note + (cards || `<p class="sub-hint">${esc(L('У аппарата нет пучков: добавьте их в «Оборудовании».', 'The machine has no beams: add them in Equipment.'))}</p>`);
   for (const b of beams) {
     const d = draft.beams[b.id] || {};
-    for (const key of ['rd_M1', 'rd_Mopp', 'rd_M2', 'ctrl_M', 'recal_M']) {
+    for (const key of seriesKeys(beamKeys(beamKind(b)))) {
       const c = box.querySelector(`.cells[data-series="jsb-${b.id}-${key}"]`);
       if (!c) continue;
       renderCells(c, d[key] || blank3());
@@ -190,7 +215,7 @@ function readDraft() {
     const d = { ...(draft.beams[id] || {}) };
     d.include = card.querySelector('[data-sb="include"]').checked;
     for (const el of card.querySelectorAll('[data-sb]:not([data-sb="include"])')) d[el.dataset.sb] = el.value;
-    for (const key of ['rd_M1', 'rd_Mopp', 'rd_M2', 'ctrl_M', 'recal_M']) {
+    for (const key of seriesKeys(beamKeys(card.dataset.kind))) {
       const c = card.querySelector(`.cells[data-series="jsb-${id}-${key}"]`);
       if (c) d[key] = readCells(c);
     }
@@ -224,7 +249,12 @@ const chipOf = (sum, started) => {
   if (sum.status === 'nonominal') return ['ok', L('посчитано, номинал не задан', 'calculated, no nominal')];
   return ['ok', L(`в допуске ±${fmt(sum.tol, sum.tol % 1 ? 1 : 0)} %`, `within ±${fmt(sum.tol, sum.tol % 1 ? 1 : 0)}%`)];
 };
-const atText = (s) => (s.at === 'dmax' ? 'd_max' : 'z_ref');
+const atText = (s) => ({ dmax: 'd_max', zmax: 'z_max' })[s.at] ?? 'z_ref';
+/** Показатель качества пучка для подписи: R50 (электроны), %dd(10)x (TG-51) или TPR20,10. */
+const qualityText = (sum, kind, tg) =>
+  !Number.isFinite(sum.quality) ? '' : kind === 'electron' ? L(`R50 = ${fmt(sum.quality, 3)} г/см²`, `R50 = ${fmt(sum.quality, 3)} g/cm²`) : tg ? `%dd(10)x = ${fmt(sum.quality, 2)}` : `TPR20,10 = ${fmt(sum.quality, 4)}`;
+/** Название вкладки дозиметрии для пучка данного вида. */
+const tabName = (kind) => (kind === 'electron' ? L('«Электроны»', 'Electrons') : L('«МВ фотоны»', 'MV photons'));
 const lvlName = () => ({ error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') });
 
 function compute() {
@@ -232,7 +262,8 @@ function compute() {
   const s = sessionObject();
   computed = s.beams.map((b) => {
     const calc = computeSessionBeam(j, s, b);
-    return { input: b, calc, started: hasValues(b.rd_M1) };
+    const kind = calc?.kind ?? 'photon';
+    return { input: b, calc, kind, started: hasValues(b[beamKeys(kind).M1]) };
   });
   return s;
 }
@@ -240,9 +271,10 @@ function compute() {
 function renderResults() {
   const s = compute();
   const tg = s.protocol === 'tg51';
-  for (const { input, calc, started } of computed) {
+  for (const { input, calc, started, kind } of computed) {
     const card = $(`#js-beams .jsb[data-beam="${CSS.escape(input.beamId)}"]`);
     if (!card || !calc) continue;
+    const k = beamKeys(kind);
     card.classList.toggle('off', input.include === false);
     const sum = calc.summary;
     const [cls, text] = chipOf(sum, started);
@@ -255,14 +287,14 @@ function renderResults() {
       const v = readCells(c).map(parseNumber).filter(Number.isFinite);
       out.textContent = v.length ? fmt(Math.abs(v.reduce((a, x) => a + x, 0) / v.length), 4) : '';
     }
-    card.querySelector('[data-recal]')?.toggleAttribute('hidden', card.querySelector('[data-sb="recal_needed"]')?.value !== 'yes');
+    card.querySelector('[data-recal]')?.toggleAttribute('hidden', card.querySelector('[data-recal-needed]')?.value !== 'yes');
     // откуда k_pol и k_s при проверке выхода
     const note = card.querySelector('[data-fixed-note]');
     if (note) {
       const [kp, kx] = tg ? ['P_pol', 'P_ion'] : ['k_pol', 'k_s'];
       const src = calc.fixedSrc || {};
       const valOf = (key) => parseNumber(calc.form[key]);
-      const from = calc.form.rd_fixed_from;
+      const from = calc.form[k.fixedFrom];
       const whence = (code) =>
         ({
           manual: L('введён вручную', 'entered manually'),
@@ -270,23 +302,23 @@ function renderResults() {
           journal: L(`из калибровки этого пучка от ${fmtDate(calc.last?.date)}`, `from this beam's calibration of ${fmtDate(calc.last?.date)}`),
         })[code];
       const part = (name, key, code) => (code === 'none' ? L(`${name}: нет ни калибровки в журнале, ни значения вручную`, `${name}: neither a calibration in the journal nor a manual value`) : `${name} = ${fmt(valOf(key), 4)} — ${whence(code)}`);
-      const q = tg ? (Number.isFinite(sum.quality) ? `%dd(10)x = ${fmt(sum.quality, 2)}` : '') : Number.isFinite(sum.quality) ? `TPR20,10 = ${fmt(sum.quality, 4)}` : '';
+      const q = qualityText(sum, kind, tg);
       let text;
       if (src.kpol === 'none' && src.ks === 'none') {
         text = L(`В журнале нет калибровки этого пучка до даты сеанса: проведите сеанс «Калибровка» или введите ${kp} и ${kx} из последней калибровки вручную.`, `The journal has no calibration of this beam before the session date: run a Calibration session or enter ${kp} and ${kx} from the last calibration manually.`);
       } else if (src.kpol === src.ks) {
-        text = `${kp} = ${fmt(valOf('rd_fixed_kpol'), 4)} ${L('и', 'and')} ${kx} = ${fmt(valOf('rd_fixed_ks'), 4)} — ${whence(src.ks)}${q ? `; ${q}` : ''}.`;
+        text = `${kp} = ${fmt(valOf(k.fixedKpol), 4)} ${L('и', 'and')} ${kx} = ${fmt(valOf(k.fixedKs), 4)} — ${whence(src.ks)}${q ? `; ${q}` : ''}.`;
       } else {
-        text = `${part(kp, 'rd_fixed_kpol', src.kpol)}; ${part(kx, 'rd_fixed_ks', src.ks)}${q ? `; ${q}` : ''}.`;
+        text = `${part(kp, k.fixedKpol, src.kpol)}; ${part(kx, k.fixedKs, src.ks)}${q ? `; ${q}` : ''}.`;
       }
       note.innerHTML = richText(text);
       // в пустых полях — значения, которые будут использованы
-      for (const [key, code] of [['rd_fixed_kpol', src.kpol], ['rd_fixed_ks', src.ks]]) {
+      for (const [key, code] of [[k.fixedKpol, src.kpol], [k.fixedKs, src.ks]]) {
         const el = card.querySelector(`[data-sb="${key}"]`);
         if (el) el.placeholder = code !== 'manual' && Number.isFinite(valOf(key)) ? fmt(valOf(key), 4) : '';
       }
-      const fe = card.querySelector('[data-sb="rd_fixed_from"]');
-      if (fe) fe.placeholder = isBlank(input.rd_fixed_from) && from ? from : '';
+      const fe = card.querySelector('[data-fixed-from]');
+      if (fe) fe.placeholder = isBlank(input[k.fixedFrom]) && from ? from : '';
     }
     // итог пучка
     const res = card.querySelector('[data-result]');
@@ -307,24 +339,26 @@ function renderResults() {
       const ks = tg ? 'P_ion' : 'k_s';
       const kp = tg ? 'P_pol' : 'k_pol';
       const prev = calc.prev && s.mode === 'cal' ? L(` (прошлая калибровка ${fmtDate(calc.prev.date)}: ${fmt(calc.prev.kpol, 4)} и ${fmt(calc.prev.ks, 4)})`, ` (previous calibration ${fmtDate(calc.prev.date)}: ${fmt(calc.prev.kpol, 4)} and ${fmt(calc.prev.ks, 4)})`) : '';
-      lines.push(`<p class="jsb-k">${richText(`${kp} = ${fmt(sum.kpolRaw, 4)}, ${ks} = ${fmt(sum.ksRaw, 4)}${sum.ksFixed ? L(' (из калибровки)', ' (from the calibration)') : ''}${prev}; k_Q = ${fmt(sum.kQ, 4)}; ${tg ? `%dd(10)x = ${fmt(sum.quality, 2)}` : `TPR20,10 = ${fmt(sum.quality, 4)}`}`)}</p>`);
+      lines.push(`<p class="jsb-k">${richText(`${kp} = ${fmt(sum.kpolRaw, 4)}, ${ks} = ${fmt(sum.ksRaw, 4)}${sum.ksFixed ? L(' (из калибровки)', ' (from the calibration)') : ''}${prev}; ${sum.kQName || 'k_Q'} = ${fmt(sum.kQ, 4)}${Number.isFinite(sum.quality) ? `; ${qualityText(sum, kind, tg)}` : ''}`).replace(/k′_Q/g, 'k′<sub>Q</sub>')}</p>`);
       if (Number.isFinite(sum.dKpol) && Math.abs(sum.dKpol) > 0.2) lines.push(`<p class="jsb-warn">${richText(L(`k_pol изменился на ${fmtSigned(sum.dKpol, 2)} % с прошлой калибровки: при изменении больше 0,2 % Report 374 советует выяснить причину (камера, кабель, электрометр).`, `k_pol changed by ${fmtSigned(sum.dKpol, 2)}% since the previous calibration: for a change above 0.2%, Report 374 advises investigating the cause (chamber, cable, electrometer).`))}</p>`);
     }
-    const msgs = calc.result.messages.filter((m) => m.level !== 'info' || !sum.ok);
+    // справки со ссылкой на протокол (рекомендации) видны всегда; список свёрнут, если нет ошибок
+    const msgs = calc.result.messages.filter((m) => m.level !== 'info' || m.ref || !sum.ok);
     const errs = msgs.filter((m) => m.level === 'error').length;
     if (errs && sum.hasValue) lines.push(`<p class="jsb-warn">${esc(L('Доза посчитана, но в настройках есть ошибки: пока их не исправить, пучок не записывается в журнал.', 'The dose is calculated, but the settings contain errors: until they are fixed, the beam is not recorded in the journal.'))}</p>`);
     if (msgs.length) {
-      // замечания — те же, что на вкладке «МВ фотоны»: подсказать, где исправлять
+      // замечания — те же, что на вкладке дозиметрии: подсказать, где исправлять
+      const tab = tabName(kind);
       const where = errs
         ? `<li class="info"><span class="lvl">${esc(L('Где исправить', 'Where to fix'))}</span><span>${esc(
             calc.recorded
-              ? L('Замечания — те же, что на вкладке «МВ фотоны», номера разделов в них — разделы вкладки. Показания и условия исправляются здесь. Сеанс посчитан по записанным в нём настройкам: чтобы применить исправленные в «Оборудовании», нажмите «Пересчитать по текущему «Оборудованию»» в начале раздела.', 'The messages are those of the MV photons tab, and section numbers in them refer to the tab. Readings and conditions are fixed here. The session is calculated with the settings recorded in it: to apply settings fixed in Equipment, click "Recalculate with the current Equipment" at the start of the section.')
-              : L('Замечания — те же, что на вкладке «МВ фотоны», номера разделов в них — разделы вкладки. Показания и условия исправляются здесь, настройки пучка, камеры и электрометра — в «Оборудовании».', 'The messages are those of the MV photons tab, and section numbers in them refer to the tab. Readings and conditions are fixed here; beam, chamber and electrometer settings are fixed in Equipment.'),
+              ? L(`Замечания — те же, что на вкладке ${tab}, номера разделов в них — разделы вкладки. Показания и условия исправляются здесь. Сеанс посчитан по записанным в нём настройкам: чтобы применить исправленные в «Оборудовании», нажмите «Пересчитать по текущему «Оборудованию»» в начале раздела.`, `The messages are those of the ${tab} tab, and section numbers in them refer to the tab. Readings and conditions are fixed here. The session is calculated with the settings recorded in it: to apply settings fixed in Equipment, click "Recalculate with the current Equipment" at the start of the section.`)
+              : L(`Замечания — те же, что на вкладке ${tab}, номера разделов в них — разделы вкладки. Показания и условия исправляются здесь, настройки пучка, камеры и электрометра — в «Оборудовании».`, `The messages are those of the ${tab} tab, and section numbers in them refer to the tab. Readings and conditions are fixed here; beam, chamber and electrometer settings are fixed in Equipment.`),
           )}</span></li>`
         : '';
       lines.push(`<details class="jsb-msgs"${errs ? ' open' : ''}><summary>${esc(L(`Замечания: ${msgs.length}`, `Messages: ${msgs.length}`))}${errs ? ` · ${esc(L(`ошибок ${errs}`, `${errs} errors`))}` : ''}</summary><ul class="messages">${msgs.map((m) => `<li class="${m.level}"><span class="lvl">${esc(lvlName()[m.level])}</span><span>${richText(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')}${where}</ul></details>`);
     }
-    lines.push(`<div class="row-tools"><button type="button" class="link-btn" data-open-tab="${esc(input.beamId)}">${esc(L('Открыть во вкладке «МВ фотоны»: все поправки и PDF по пучку', 'Open in the MV photons tab: all corrections and a PDF for the beam'))}</button>${errs && !calc.recorded ? `<button type="button" class="link-btn" data-goto-eq="${esc(input.beamId)}">${esc(L('Открыть пучок в «Оборудовании»', 'Open the beam in Equipment'))}</button>` : ''}</div>`);
+    lines.push(`<div class="row-tools"><button type="button" class="link-btn" data-open-tab="${esc(input.beamId)}">${esc(L(`Открыть во вкладке ${tabName(kind)}: все поправки и PDF по пучку`, `Open in the ${tabName(kind)} tab: all corrections and a PDF for the beam`))}</button>${errs && !calc.recorded ? `<button type="button" class="link-btn" data-goto-eq="${esc(input.beamId)}">${esc(L('Открыть пучок в «Оборудовании»', 'Open the beam in Equipment'))}</button>` : ''}</div>`);
     put(lines.join(''));
   }
   renderReadout(s);
@@ -347,7 +381,17 @@ function renderReadout(s) {
         })
         .join('')}</tbody></table>`
     : '';
-  const chip = errN ? `<span class="chip bad">${esc(L(`с ошибками: ${errN}`, `with errors: ${errN}`))}</span>` : outN ? `<span class="chip warn">${esc(L(`вне допуска: ${outN}`, `out of tolerance: ${outN}`))}</span>` : rows.length && okN === rows.length ? `<span class="chip good">${esc(L('все в допуске', 'all within tolerance'))}</span>` : okN ? `<span class="chip good">${esc(L(`в допуске: ${okN} из ${rows.length}`, `within tolerance: ${okN} of ${rows.length}`))}</span>` : '';
+  // считаются пучки с показаниями: калибровка одних электронов не «недоделанный» сеанс фотонов
+  const startedN = okN + outN + errN;
+  const chip = errN
+    ? `<span class="chip bad">${esc(L(`с ошибками: ${errN}`, `with errors: ${errN}`))}</span>`
+    : outN
+      ? `<span class="chip warn">${esc(L(`вне допуска: ${outN}`, `out of tolerance: ${outN}`))}</span>`
+      : okN && okN === rows.length
+        ? `<span class="chip good">${esc(L('все в допуске', 'all within tolerance'))}</span>`
+        : okN && okN === startedN
+          ? `<span class="chip good">${esc(L(`измеренные в допуске: ${okN}`, `measured within tolerance: ${okN}`))}</span>`
+          : '';
   $('#js-result').innerHTML = `<div class="dose-row"><div class="proto"><span>${head}</span>${chip}</div>${table || `<div class="secondary">${esc(L('Введите показания пучков.', 'Enter the beam readings.'))}</div>`}</div>`;
   $('#js-mobile-value').textContent = rows.length ? L(`в допуске ${okN}, вне ${outN}, ошибок ${errN}`, `ok ${okN}, out ${outN}, errors ${errN}`) : '—';
   // замечания сеанса
@@ -372,7 +416,7 @@ function onEdit() {
 }
 
 /** В сеансе есть показания, не записанные в журнал (для подтверждения перед открытием другого сеанса). */
-export const sessionUnsaved = () => !!draft.dirty && Object.values(draft.beams).some((b) => hasValues(b?.rd_M1));
+export const sessionUnsaved = () => !!draft.dirty && Object.values(draft.beams).some((b) => hasValues(b?.rd_M1) || hasValues(b?.e_M1));
 
 // ------------------------------------------------------------ действия
 function record() {
@@ -434,7 +478,7 @@ export function loadSession(s) {
     beams: Object.fromEntries(
       s.beams.map((b) => {
         const { form, summary, ...input } = b;
-        return [b.beamId, { ...input, include: true, ...(form ? { base: recordedBase(form) } : {}) }];
+        return [b.beamId, { ...input, include: true, ...(form ? { base: recordedBase(form, b.kind) } : {}) }];
       }),
     ),
     dirty: false,
@@ -493,7 +537,7 @@ function reportText() {
     if (sum.hasValue) {
       if (!sum.ok) out.push(`  ${L('Есть ошибки: пучок не записан в журнал', 'There are errors: the beam is not recorded in the journal')}`);
       out.push(`  ${L('Доза', 'Dose')}: ${fmt(sum.value, 4)} ${L('Гр на 100 МЕ на', 'Gy per 100 MU at')} ${atText(sum)}${Number.isFinite(sum.deviation) ? `; ${L('от номинала', 'from nominal')} ${fmtSigned(sum.deviation, 2)} % (${sum.status === 'out' ? L('вне допуска', 'out of tolerance') : L('в допуске', 'within tolerance')} ±${fmt(sum.tol, sum.tol % 1 ? 1 : 0)} %)` : ''}`);
-      out.push(`  ${tg ? 'P_pol' : 'k_pol'} = ${fmt(sum.kpolRaw, 4)}; ${tg ? 'P_ion' : 'k_s'} = ${fmt(sum.ksRaw, 4)}${sum.ksFixed ? ` (${[L('из калибровки', 'from the calibration'), calc.form.rd_fixed_from].filter(Boolean).join(' ')})` : ''}; k_Q = ${fmt(sum.kQ, 4)}; ${tg ? `%dd(10)x = ${fmt(sum.quality, 2)}` : `TPR20,10 = ${fmt(sum.quality, 4)}`}`);
+      out.push(`  ${tg ? 'P_pol' : 'k_pol'} = ${fmt(sum.kpolRaw, 4)}; ${tg ? 'P_ion' : 'k_s'} = ${fmt(sum.ksRaw, 4)}${sum.ksFixed ? ` (${[L('из калибровки', 'from the calibration'), calc.form[beamKeys(calc.kind).fixedFrom]].filter(Boolean).join(' ')})` : ''}; ${sum.kQName || 'k_Q'} = ${fmt(sum.kQ, 4)}${Number.isFinite(sum.quality) ? `; ${qualityText(sum, calc.kind, tg)}` : ''}`);
     } else out.push(`  ${L('Нет результата: есть ошибки', 'No result: there are errors')}`);
     for (const msg of calc.result.messages.filter((x) => x.level !== 'info')) out.push(`  - ${msg.text}`);
   }
@@ -560,7 +604,7 @@ export function initSession() {
     const b = e.target.closest('[data-open-tab]');
     if (!b) return;
     const c = computed.find((x) => x.input.beamId === b.dataset.openTab);
-    if (c?.calc) bridge.openInPhotons(c.calc.form, `${c.calc.machine.name} — ${c.calc.beam.name}, ${fmtDate(draft.date)}`);
+    if (c?.calc) bridge.openInTab(c.kind, c.calc.form, `${c.calc.machine.name} — ${c.calc.beam.name}, ${fmtDate(draft.date)}`);
   });
   $('#js-btn-add-staff').addEventListener('click', () => {
     const cur = readStaff($('#js-staff-list'));

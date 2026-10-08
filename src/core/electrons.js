@@ -36,6 +36,7 @@ export const E_DEFAULTS = {
   e_cal_route: 'co60', // 'co60' — N_D,w в ⁶⁰Co | 'cross' — перекрёстная калибровка в пучке электронов
   e_ndw: '',
   e_ndw_unit: 'Gy/nC',
+  e_klab: '1,000', // поправочный множитель K из протокола поверки (например, ВНИИФТРИ); пусто — 1
   e_cross_ndw: '', // TRS-398: N_D,w,Qcross рабочей камеры (ур. 41)
   e_cross_ndw_unit: 'Gy/nC',
   e_cross_r50: '', // TRS-398: R50 пучка перекрёстной калибровки
@@ -64,6 +65,11 @@ export const E_DEFAULTS = {
   e_M1: ['', '', ''],
   e_Mopp: ['', '', ''],
   e_M2: ['', '', ''],
+  // проверка выхода: показания только при V₁ и обычной полярности, k_pol и k_s — из последней калибровки этого пучка
+  e_fixed: false,
+  e_fixed_kpol: '', // k_pol, измеренный при калибровке
+  e_fixed_ks: '', // k_s (P_ion), измеренный при калибровке (до деления на значение лаборатории)
+  e_fixed_from: '', // дата калибровки, из которой взяты значения
   // контрольные измерения: обычная полярность, V₁; поправки — из основных серий (раздел 5)
   e_ctrl_M: ['', '', ''],
   e_ctrl_mu: '', // пусто — столько же МЕ, сколько в разделе 5
@@ -122,6 +128,7 @@ export function normalizeElectrons(input) {
     if (!Array.isArray(f[k])) f[k] = isBlank(f[k]) ? ['', '', ''] : String(f[k]).trim().split(/[\s;]+/);
   }
   if (!Array.isArray(f.e_staff) || f.e_staff.length === 0) f.e_staff = [''];
+  f.e_fixed = f.e_fixed === true || f.e_fixed === 'true';
   return f;
 }
 
@@ -319,6 +326,8 @@ export function computeElectrons(form) {
   let crossNdw = NaN;
   let crossR50 = NaN;
   let crossKN = NaN;
+  // поправочный множитель лаборатории (K в протоколе поверки ВНИИФТРИ) — к N_D,w в ⁶⁰Co, как на вкладке «МВ фотоны»
+  let klab = 1;
   if (!cross) {
     ndwRaw = read('e_ndw', 'N_D,w');
     ndw = Number.isFinite(ndwRaw) ? ndwToGyPerNC(ndwRaw, f.e_ndw_unit) : NaN;
@@ -328,6 +337,11 @@ export function computeElectrons(form) {
         `N_D,w = ${dec(ndw.toPrecision(4))} Gy/nC looks implausible: check the units.`,
       ), null, 'e_ndw');
     }
+    klab = isBlank(f.e_klab) ? 1 : parseNumber(f.e_klab);
+    if (!Number.isFinite(klab) || klab <= 0) {
+      add('error', 'common', L('Не удалось прочитать k_лаб: введите поправочный множитель из протокола поверки (обычно 1,000).', 'Could not read k_lab: enter the correction multiplier from the calibration certificate (usually 1.000).'), null, 'e_klab');
+      klab = NaN;
+    } else if (Math.abs(klab - 1) > 0.05) add('warn', 'common', L('k_лаб отличается от 1 больше чем на 5 %: проверьте протокол поверки.', 'k_lab differs from 1 by more than 5%: check the calibration certificate.'), null, 'e_klab');
   } else {
     if (wantTRS) {
       const v = read('e_cross_ndw', 'N_D,w,Qcross', 'trs');
@@ -365,11 +379,29 @@ export function computeElectrons(form) {
   const mu = read('e_mu', L('Мониторные единицы', 'Monitor units'));
   if (Number.isFinite(mu) && mu <= 0) add('error', 'common', L('Число МЕ должно быть больше нуля.', 'The number of MU must be greater than zero.'), null, 'e_mu');
   const V1 = read('e_V1', L('Рабочее напряжение V₁', 'Operating voltage V₁'));
-  const V2 = read('e_V2', L('Пониженное напряжение V₂', 'Reduced voltage V₂'));
+  const fixed = f.e_fixed;
+  const V2 = fixed ? NaN : read('e_V2', L('Пониженное напряжение V₂', 'Reduced voltage V₂'));
   if (Number.isFinite(V1) && Number.isFinite(V2) && Math.abs(V1) <= Math.abs(V2)) add('error', 'common', L('Рабочее напряжение V₁ должно быть больше пониженного V₂.', 'The operating voltage V₁ must be higher than the reduced voltage V₂.'), null, ['e_V1', 'e_V2']);
   const M1 = readCells('e_M1', L('M при V₁, обычная полярность', 'M at V₁, normal polarity'));
-  const Mopp = readCells('e_Mopp', L('M при V₁, обратная полярность', 'M at V₁, opposite polarity'));
-  const M2 = readCells('e_M2', L('M при V₂', 'M at V₂'));
+  // при проверке выхода обратная полярность и V₂ не измеряются: k_pol и k_s — из калибровки этого пучка
+  const Mopp = fixed ? parseCells([]) : readCells('e_Mopp', L('M при V₁, обратная полярность', 'M at V₁, opposite polarity'));
+  const M2 = fixed ? parseCells([]) : readCells('e_M2', L('M при V₂', 'M at V₂'));
+  let fixedKs = NaN;
+  let fixedKpol = NaN;
+  if (fixed) {
+    const [kp, kx] = want51 ? ['P_pol', 'P_ion'] : ['k_pol', 'k_s'];
+    fixedKpol = read('e_fixed_kpol', L(`${kp} из калибровки`, `${kp} from the calibration`));
+    fixedKs = read('e_fixed_ks', L(`${kx} из калибровки`, `${kx} from the calibration`));
+    if (Number.isFinite(fixedKpol) && Math.abs(fixedKpol - 1) > 0.05) add('error', 'common', L(`${kp} из калибровки ${ru(fixedKpol, 4)} неправдоподобен.`, `${kp} from the calibration ${ru(fixedKpol, 4)} is implausible.`), null, 'e_fixed_kpol');
+    if (Number.isFinite(fixedKs) && (fixedKs < 1 || fixedKs > 1.05)) add('error', 'common', L(`${kx} из калибровки ${ru(fixedKs, 4)} вне 1–1,05.`, `${kx} from the calibration ${ru(fixedKs, 4)} is outside 1–1.05.`), null, 'e_fixed_ks');
+    const from = String(f.e_fixed_from ?? '').trim();
+    if (Number.isFinite(fixedKpol) && Number.isFinite(fixedKs)) {
+      add('info', 'common', L(
+        `Проверка выхода: ${kp} = ${ru(fixedKpol, 4)} и ${kx} = ${ru(fixedKs, 4)} взяты из калибровки${from ? ` от ${from}` : ''}, обратная полярность и V₂ не измерялись.`,
+        `Output check: ${kp} = ${ru(fixedKpol, 4)} and ${kx} = ${ru(fixedKs, 4)} are taken from the calibration${from ? ` of ${from}` : ''}; the opposite polarity and V₂ were not measured.`,
+      ));
+    }
+  }
   const series = [
     [M1, L('при V₁', 'at V₁'), 'e_M1', 'common'],
     [Mopp, L('обратной полярности', 'at opposite polarity'), 'e_Mopp', 'common'],
@@ -393,8 +425,8 @@ export function computeElectrons(form) {
   };
   const readingsOk = seriesOk(M1);
   const m1 = readingsOk ? Math.abs(M1.mean) : NaN;
-  let kpolRaw = NaN;
-  if (readingsOk && Mopp.n > 0 && !Mopp.error) {
+  let kpolRaw = fixed ? fixedKpol : NaN;
+  if (!fixed && readingsOk && Mopp.n > 0 && !Mopp.error) {
     kpolRaw = polarity(M1.mean, Mopp.mean);
     checkPolarity(kpolRaw, 'k_pol', 'common', 'kpol');
   }
@@ -422,6 +454,8 @@ export function computeElectrons(form) {
     trs.kTP = temperaturePressure({ T, P, T0, P0, abs0: TRS.TRS_ABS0 });
     trs.kelec = kelec;
     trs.kpol = kpol;
+    trs.kpolRaw = kpolRaw;
+    trs.kpolQ0 = kpolQ0;
     trs.kleak = kleak;
     if (recOk) {
       const r = TRS.ks({ m1: M1.mean, m2: M2.mean, v1: Math.abs(V1), v2: Math.abs(V2), beam: f.e_beam_mode });
@@ -434,10 +468,16 @@ export function computeElectrons(form) {
       // пороги — по измеренному k_s (рекомбинация в пучке пользователя); отношение k_s,Q/k_s,Q₀ может быть < 1
       if (trs.ksRaw > 1.05) add('error', 'trs', L(`k_s = ${ru(trs.ksRaw, 4)} > 1,05: метод двух напряжений неприменим.`, `k_s = ${ru(trs.ksRaw, 4)} > 1.05: the two-voltage method is not applicable.`), `${REF.trs}, табл. 3`, 'ks');
       if (ratio12 >= 1 && trs.ksRaw < 1) add('error', 'trs', L(`k_s = ${ru(trs.ksRaw, 4)} < 1: так быть не может, проверьте показания и напряжения.`, `k_s = ${ru(trs.ksRaw, 4)} < 1 is impossible: check the readings and the voltages.`), `${REF.trs}, разд. 4.4.3.4`, 'ks');
+    } else if (fixed && Number.isFinite(fixedKs)) {
+      trs.ksRaw = fixedKs;
+      trs.ks = fixedKs / ksQ0;
+      trs.ksFixed = true;
+      const fromTxt = String(f.e_fixed_from ?? '').trim();
+      trs.ksEquation = L(`из калибровки${fromTxt ? ` от ${fromTxt}` : ''} (проверка выхода)`, `from the calibration${fromTxt ? ` of ${fromTxt}` : ''} (output check)`);
     } else trs.ks = NaN;
 
     // k_Q,Q₀: таблица (табл. 20/21, линейная интерполяция) и аппроксимация прил. II (табл. 47/48) — рядом для сравнения
-    trs.coefficient = cross ? crossNdw : ndw;
+    trs.coefficient = cross ? crossNdw : ndw * klab;
     const useFormula = f.e_kqtrs_mode === 'formula';
     if (chamber && !chamber.other && r50ok) {
       if (!cross && chamber.trsT20) {
@@ -512,6 +552,8 @@ export function computeElectrons(form) {
     tg.PTP = temperaturePressure({ T, P, T0, P0, abs0: TG51.TG51_ABS0 });
     tg.Pelec = kelec;
     tg.Ppol = kpol;
+    tg.PpolRaw = kpolRaw;
+    tg.PpolQ0 = kpolQ0;
     tg.Pleak = kleak;
     if (recOk) {
       tg.PionRaw = TG51.pIon({ mH: M1.mean, mL: M2.mean, vH: Math.abs(V1), vL: Math.abs(V2), beam: 'pulsed' });
@@ -519,6 +561,10 @@ export function computeElectrons(form) {
       tg.Pion = tg.PionRaw / ksQ0;
       if (tg.PionRaw > 1.05) add('error', 'tg51', L(`P_ion = ${ru(tg.PionRaw, 4)} > 1,05: нужна другая камера.`, `P_ion = ${ru(tg.PionRaw, 4)} > 1.05: use a different chamber.`), `${REF.tg51}, разд. VII.D.1`, 'Pion');
       if (ratio12 >= 1 && tg.PionRaw < 1) add('error', 'tg51', L(`P_ion = ${ru(tg.PionRaw, 4)} < 1: так быть не может, проверьте показания и напряжения.`, `P_ion = ${ru(tg.PionRaw, 4)} < 1 is impossible: check the readings and the voltages.`), `${REF.tg51}, разд. VII.D`, 'Pion');
+    } else if (fixed && Number.isFinite(fixedKs)) {
+      tg.PionRaw = fixedKs;
+      tg.Pion = fixedKs / ksQ0;
+      tg.PionFixed = true;
     } else tg.Pion = NaN;
 
     if (f.e_kq51_mode === 'manual') {
@@ -556,7 +602,7 @@ export function computeElectrons(form) {
             `Report 385: k′_Q = ${ru(chamber.r385.a, 3)} + ${ru(chamber.r385.b, 3)}·exp(−R50/${ru(chamber.r385.c, 3)}) (Eq. 8, Table 7)${cross ? '' : `, k_Qecal = ${ru(tg.kQecal, 3)} (Table 6)`}`,
           );
     } else tg.kQ = NaN;
-    tg.coefficient = cross ? crossKN : ndw;
+    tg.coefficient = cross ? crossKN : ndw * klab;
     if (cross && Number.isFinite(kelec) && Math.abs(kelec - 1) > 1e-9) {
       add('info', 'tg51', L(
         'Для перекрёстно откалиброванной плоскопараллельной камеры TG-51 принимает P_elec = 1: он сокращается. Оставьте другое значение, только если оно применялось и к показаниям рабочей камеры при перекрёстной калибровке.',
@@ -763,8 +809,8 @@ export function computeElectrons(form) {
     quality,
     compliance,
     inputs: { H: env.H,
-      T, P, T0, P0, mu, V1, V2, nV, ndw, ndwRaw, crossNdw, crossR50, crossKN, kelec, kleak, energy, ssd, field,
-      M1, Mopp, M2, ratio12, cross,
+      T, P, T0, P0, mu, V1, V2, nV, ndw, ndwRaw, klab, ndwEff: ndw * klab, crossNdw, crossR50, crossKN, kelec, kleak, energy, ssd, field,
+      M1, Mopp, M2, ratio12, cross, fixed,
     },
     depth,
     ctrl,

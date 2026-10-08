@@ -244,3 +244,47 @@ test('Электроны: калибровка ускорителя при от�
     near(x.recal.pre.deviation, x.ctrl.deviation, 1e-12);
   }
 });
+
+// Данные — рабочая книга реальной калибровки (Roos, 8 МэВ), как в workbook.test.js
+const RB = {
+  protocol: 'trs', e_ssd: '100', e_field: '10', e_r50_method: 'r50', e_r50: '3,186', e_ch_model: 'ROOS', e_cal_route: 'co60', e_ndw: '0,08287',
+  e_T0: '20', e_P0: '101,325', e_kelec: '1', e_env_T: '22,95', e_env_P: '1030,315', e_env_P_unit: 'hPa', e_mu: '100', e_polarity: '+',
+  e_V1: '200', e_V2: '100', e_beam_mode: 'pulsed', e_dd_on: true, e_pdd: '99,5536', e_nominal: '1,000', e_nominal_at: 'zmax', e_kqtrs_mode: 'manual', e_kqtrs_manual: '0,9319',
+  e_M1: ['12,93', '12,93', '12,94'], e_Mopp: ['-12,92', '-12,94', '-12,95'], e_M2: ['12,85', '12,86', '12,86'],
+};
+
+test('Электроны: k_лаб умножает N_D,w в ⁶⁰Co (как на вкладке «МВ фотоны»), при перекрёстной калибровке не применяется', () => {
+  for (const protocol of ['trs', 'tg51']) {
+    const a = computeElectrons({ ...RB, protocol });
+    const b = computeElectrons({ ...RB, protocol, e_klab: '1,0123' });
+    const x = protocol === 'trs' ? 'trs' : 'tg51';
+    near(b[x].DperMU / a[x].DperMU, 1.0123, 1e-12, `${protocol}: доза ∝ k_лаб`);
+    assert.equal(b.inputs.klab, 1.0123);
+  }
+  assert.equal(computeElectrons({ ...RB, e_klab: '' }).inputs.klab, 1, 'пусто — 1');
+  const bad = computeElectrons({ ...RB, e_klab: 'abc' });
+  assert.equal(bad.flags.e_klab, 'error');
+  assert.equal(computeElectrons({ ...RB, e_klab: '1,07' }).flags.e_klab, 'warn');
+  const cross = computeElectrons({ ...RB, e_cal_route: 'cross', e_cross_ndw: '0,0775', e_cross_r50: '7,5', e_klab: '1,05' });
+  assert.equal(cross.inputs.klab, 1, 'при перекрёстной калибровке k_лаб не применяется');
+});
+
+test('Электроны, проверка выхода: k_pol и k_s из калибровки — та же доза по тем же показаниям; без них — ошибка', () => {
+  for (const protocol of ['trs', 'tg51']) {
+    const x = protocol === 'trs' ? 'trs' : 'tg51';
+    const cal = computeElectrons({ ...RB, protocol });
+    const kpol = protocol === 'trs' ? cal.trs.kpolRaw : cal.tg51.PpolRaw;
+    const ks = protocol === 'trs' ? cal.trs.ksRaw : cal.tg51.PionRaw;
+    assert.ok(Number.isFinite(kpol) && Number.isFinite(ks));
+    const chk = computeElectrons({ ...RB, protocol, e_fixed: true, e_Mopp: ['', '', ''], e_M2: ['', '', ''], e_V2: '', e_fixed_kpol: String(kpol).replace('.', ','), e_fixed_ks: String(ks).replace('.', ','), e_fixed_from: '25.08.2026' });
+    assert.deepEqual(chk.messages.filter((m) => m.level === 'error').map((m) => m.text), [], protocol);
+    near(chk[x].DperMU, cal[x].DperMU, 1e-12, `${protocol}: доза`);
+    assert.equal(protocol === 'trs' ? chk.trs.ksFixed : chk.tg51.PionFixed, true);
+    assert.ok(chk.messages.some((m) => m.level === 'info' && /25\.08\.2026/.test(m.text)));
+  }
+  const empty = computeElectrons({ ...RB, e_fixed: 'true' });
+  assert.equal(empty.flags.e_fixed_ks, 'error');
+  assert.equal(empty.flags.e_fixed_kpol, 'error');
+  assert.ok(!empty.messages.some((m) => /NaN/.test(m.text)));
+  assert.equal(computeElectrons({ ...RB, e_fixed: true, e_fixed_kpol: '1', e_fixed_ks: '0,99' }).flags.e_fixed_ks, 'error', 'k_s < 1');
+});

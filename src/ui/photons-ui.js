@@ -8,6 +8,7 @@ import { PRESSURE_UNITS, NDW_UNITS, parseBeamName, parseNumber, unitLabel } from
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import { jaffeRecInfo, jaffeSourceText } from './jaffe-ui.js';
+import { makeJournalView } from './journal-view.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
@@ -536,11 +537,17 @@ function reportText(data, r) {
   line(L('Электрометр', 'Electrometer'), L(`${data.el_model || '—'}, № ${data.el_serial || '—'}, k_elec = ${data.el_kelec}`, `${data.el_model || '—'}, S/N ${data.el_serial || '—'}, k_elec = ${data.el_kelec}`));
   const hasH = String(data.env_H ?? '').trim();
   line(L('Условия', 'Conditions'), `T = ${data.env_T} °C, P = ${data.env_P} ${unitLabel(PRESSURE_UNITS[data.env_P_unit])}${hasH ? L(`, относительная влажность ${data.env_H} %`, `, relative humidity ${data.env_H} %`) : ''}`);
-  line(L('Облучение', 'Irradiation'), L(`${data.rd_mu} МЕ, V1 = ${data.rd_V1} В, V2 = ${data.rd_V2} В, обычная полярность ${data.rd_polarity}`, `${data.rd_mu} MU, V1 = ${data.rd_V1} V, V2 = ${data.rd_V2} V, normal polarity ${data.rd_polarity}`));
+  const fixed = data.rd_fixed;
+  line(L('Облучение', 'Irradiation'), fixed ? L(`${data.rd_mu} МЕ, V1 = ${data.rd_V1} В, обычная полярность ${data.rd_polarity}`, `${data.rd_mu} MU, V1 = ${data.rd_V1} V, normal polarity ${data.rd_polarity}`) : L(`${data.rd_mu} МЕ, V1 = ${data.rd_V1} В, V2 = ${data.rd_V2} В, обычная полярность ${data.rd_polarity}`, `${data.rd_mu} MU, V1 = ${data.rd_V1} V, V2 = ${data.rd_V2} V, normal polarity ${data.rd_polarity}`));
   const mean = L('среднее', 'mean');
   line(L('M(V1, обычная), нКл', 'M(V1, normal), nC'), `${cells(data.rd_M1)} → ${mean} ${fmt(Math.abs(r.inputs.M1.mean), 4)}`);
-  line(L('M(V1, обратная), нКл', 'M(V1, opposite), nC'), `${cells(data.rd_Mopp)} → ${mean} ${fmt(Math.abs(r.inputs.Mopp.mean), 4)}`);
-  line(L('M(V2), нКл', 'M(V2), nC'), `${cells(data.rd_M2)} → ${mean} ${fmt(Math.abs(r.inputs.M2.mean), 4)}`);
+  if (fixed) {
+    const [kp, kx] = data.protocol === 'tg51' ? ['P_pol', 'P_ion'] : ['k_pol', 'k_s'];
+    line(L('Проверка выхода', 'Output check'), L(`${kp} = ${data.rd_fixed_kpol}, ${kx} = ${data.rd_fixed_ks} — из калибровки${data.rd_fixed_from ? ` от ${data.rd_fixed_from}` : ''}; обратная полярность и V2 не измерялись`, `${kp} = ${data.rd_fixed_kpol}, ${kx} = ${data.rd_fixed_ks} from the calibration${data.rd_fixed_from ? ` of ${data.rd_fixed_from}` : ''}; the opposite polarity and V2 were not measured`));
+  } else {
+    line(L('M(V1, обратная), нКл', 'M(V1, opposite), nC'), `${cells(data.rd_Mopp)} → ${mean} ${fmt(Math.abs(r.inputs.Mopp.mean), 4)}`);
+    line(L('M(V2), нКл', 'M(V2), nC'), `${cells(data.rd_M2)} → ${mean} ${fmt(Math.abs(r.inputs.M2.mean), 4)}`);
+  }
   if (r.ctrl.on) line(L('Контрольные измерения M(V1), нКл', 'Check measurements M(V1), nC'), L(`${cells(data.ctrl_M)} → среднее ${fmt(r.ctrl.mean, 4)} за ${fmt(r.ctrl.mu, 0)} МЕ`, `${cells(data.ctrl_M)} → mean ${fmt(r.ctrl.mean, 4)} for ${fmt(r.ctrl.mu, 0)} MU`));
   if (r.recal.needed) {
     const ans = r.recal.answer === 'yes' ? L('да', 'yes') : r.recal.answer === 'no' ? L('нет', 'no') : L('не указано', 'not specified');
@@ -717,89 +724,27 @@ function update() {
 }
 
 // ------------------------------------------------------------ связь с журналом
-// «Все настройки» пучка из «Оборудования» и «Открыть во вкладке» из сеанса: форма журнала загружается во вкладку,
-// прежние данные вкладки откладываются и возвращаются кнопкой на плашке (или после «Сохранить в журнал»).
-// Отложенные данные вкладки хранятся и в браузере: после перезагрузки страницы плашка и кнопки возврата остаются.
-let journalView = null; // { stash, mode: 'edit' | 'view', title, target }
-const VIEW_KEY = 'reference-dosimetry.photons.journal-view.v1';
-let journalSave = null; // (target, form, title) => void — запись настроек пучка в журнал (задаёт app.js)
+// «Все настройки» пучка из «Оборудования» и «Открыть во вкладке» из сеанса — плашка над рабочим листом (journal-view.js).
+const journalView = makeJournalView({
+  bar: () => $('#ph-journal-bar'),
+  storageKey: 'reference-dosimetry.photons.journal-view.v1',
+  readForm: () => normalizeForm(readForm()),
+  writeForm: (form, withProtocol) => writeForm(form, { withProtocol }),
+  refresh: () => {
+    openedFile = null;
+    lastBeamFff = parseBeamName($('#meta_beam').value).fff;
+    update();
+  },
+  setStatus: (t) => setStatus(t),
+});
 /** Куда записывать настройки пучка из вкладки по «Сохранить в журнал». */
-export const setPhotonsJournalSave = (fn) => (journalSave = fn);
-function persistView() {
-  try {
-    if (journalView) localStorage.setItem(VIEW_KEY, JSON.stringify(journalView));
-    else localStorage.removeItem(VIEW_KEY);
-  } catch {
-    /* хранилище недоступно */
-  }
-}
-function loadView() {
-  try {
-    const v = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null');
-    if (v && v.stash && (v.mode === 'edit' || v.mode === 'view')) journalView = v;
-  } catch {
-    /* повреждённая запись — без плашки */
-  }
-}
-
+export const setPhotonsJournalSave = (fn) => journalView.setSave(fn);
 /** Текущая форма вкладки (для «Пучок из вкладки «МВ фотоны»»). */
 export function photonsCurrentForm() {
   return normalizeForm(readForm());
 }
-
-function renderJournalBar() {
-  const bar = $('#ph-journal-bar');
-  if (!bar) return;
-  if (!journalView) {
-    bar.hidden = true;
-    bar.innerHTML = '';
-    return;
-  }
-  bar.hidden = false;
-  const edit = journalView.mode === 'edit';
-  bar.innerHTML = `<p>${esc(
-    edit
-      ? L(`Настройки пучка журнала: ${journalView.title}. Измените нужное и нажмите «Сохранить в журнал»: в журнал попадут настройки пучка, камеры и электрометра (показания и условия — нет).`, `Journal beam settings: ${journalView.title}. Change what is needed and click "Save to journal": the beam, chamber and electrometer settings go to the journal (readings and conditions do not).`)
-      : L(`Пучок из сеанса журнала: ${journalView.title}. Здесь видны все поправки и замечания; изменения во вкладке в журнал не попадают.`, `Beam from a journal session: ${journalView.title}. All corrections and messages are shown here; changes in this tab do not go to the journal.`),
-  )}</p><div class="actions">${edit ? `<button type="button" class="primary" data-jv="save">${esc(L('Сохранить в журнал', 'Save to journal'))}</button>` : ''}<button type="button" data-jv="back">${esc(edit ? L('Отмена — вернуть данные вкладки', 'Cancel: restore the tab data') : L('Вернуть прежние данные вкладки', 'Restore the previous tab data'))}</button></div>`;
-  bar.querySelector('[data-jv="save"]')?.addEventListener('click', () => {
-    const f = normalizeForm(readForm());
-    const done = journalView;
-    restoreFromJournal();
-    setStatus(L(`Настройки пучка «${done.title}» сохранены в журнал; вкладке возвращены прежние данные. Сохраните журнал в файл.`, `Beam settings "${done.title}" saved to the journal; the tab's previous data restored. Save the journal to the file.`));
-    journalSave?.(done.target, f, done.title);
-  });
-  bar.querySelector('[data-jv="back"]').addEventListener('click', () => {
-    restoreFromJournal();
-    setStatus(L('Вкладке возвращены прежние данные.', "The tab's previous data have been restored."));
-  });
-}
-
-function restoreFromJournal() {
-  if (!journalView) return;
-  const { stash } = journalView;
-  journalView = null;
-  persistView();
-  writeForm(stash, { withProtocol: false });
-  openedFile = null;
-  update();
-  renderJournalBar();
-}
-
-/**
- * Загрузить форму журнала во вкладку: mode 'edit' — настройки пучка с сохранением в журнал (target — какой пучок),
- * 'view' — пучок сеанса. Протокол в шапке ставится по форме.
- */
-export function showInPhotons(form, { mode = 'view', title = '', target = null } = {}) {
-  if (!journalView) journalView = { stash: readForm() };
-  Object.assign(journalView, { mode, title, target });
-  persistView();
-  writeForm(form, { withProtocol: true });
-  openedFile = null;
-  lastBeamFff = parseBeamName($('#meta_beam').value).fff;
-  update();
-  renderJournalBar();
-}
+/** Загрузить форму журнала во вкладку (протокол в шапке ставится по форме). */
+export const showInPhotons = (form, opts) => journalView.show(form, opts);
 
 let lastBeamFff = null;
 function onBeamInput() {
@@ -823,7 +768,7 @@ function refreshForLang() {
   localizeDemo(SAMPLE_FORM, SAMPLE_FORM_EN);
   localizeDecimals(ROOT());
   update();
-  renderJournalBar();
+  journalView.render();
 }
 
 export function initPhotons() {
@@ -837,8 +782,7 @@ export function initPhotons() {
   localizeDemo(SAMPLE_FORM, SAMPLE_FORM_EN);
   lastBeamFff = parseBeamName($('#meta_beam').value).fff;
   // во вкладке был пучок журнала (страницу перезагрузили): плашка с возвратом прежних данных остаётся
-  loadView();
-  renderJournalBar();
+  journalView.load();
   update();
   if (!draft) setStatus(L('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.', 'Demo example loaded. Click "Clear" to enter your own data.'));
 
