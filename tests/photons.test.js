@@ -504,6 +504,11 @@ test('Поправка на рекомбинацию по глубине для 
   near(rd.ks20, 1.001 + (rd.ks10 - 1.001) * ratio, 1e-12);
   near(on.trs.tpr, off.trs.tpr * rd.ks20 / rd.ks10, 1e-12);
   assert.ok(on.trs.tpr < off.trs.tpr, 'на 20 см рекомбинация меньше — отношение уменьшается');
+  // влияние поправки: k_Q и доза без неё — как при выключенной поправке
+  near(rd.kQRaw, off.trs.kQ, 1e-15);
+  near(rd.dKQ, (on.trs.kQ / off.trs.kQ - 1) * 100, 1e-12);
+  near(rd.dDose, (on.trs.DperMU / off.trs.DperMU - 1) * 100, 1e-12);
+  assert.ok(on.messages.some((m) => m.recDepth && /доза изменились/.test(m.text)));
   // свой k_s (камера, которой снималась кривая)
   const own = computePhotons({ ...SAMPLE_FORM, protocol: 'trs', q_rec_on: true, q_rec_ks: '1,010' });
   near(own.trs.recDepth.ks20, 1 + 0.01 * own.trs.recDepth.raw, 1e-12);

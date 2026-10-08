@@ -153,7 +153,7 @@ test('инструмент «Неопределённость»: демонст�
   assert.equal(r.budget.template.id, 't17');
   near(r.budget.groups[0].subtotal.value, 0.6, 1e-12, 'этап 1 из свидетельства: 1,2 %/2');
   near(r.typeA.pct, typeAOf(parseCells(SAMPLE_UNC.unc_M)).pct, 1e-12);
-  near(r.abs, (1.0045 * r.UPct) / 100, 1e-15);
+  near(r.abs, (1.0046 * r.UPct) / 100, 1e-15);
   near(r.UPct, 2 * r.ucPct, 1e-12);
   // пустая форма: образец без своих значений, U в единицах дозы нет
   const e = computeUncertaintyTool({ ...UT_DEFAULTS });

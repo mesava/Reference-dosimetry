@@ -49,7 +49,7 @@ export const ED_DEFAULTS = {
 
   // поправки по глубине (только для камеры)
   ed_rec_on: false, // рекомбинация
-  ed_rec_ksmax: '', // k_s на глубине максимума ионизации (метод двух напряжений)
+  ed_rec_ks: '', // k_s на опорной глубине z_ref (метод двух напряжений той же камерой, например с вкладки «Электроны»)
   ed_rec_cinit: '', // начальная рекомбинация, %: не зависит от глубины; пусто — 0
   ed_pol_on: false, // полярность
   ed_pol_data: '', // кривая при обратной полярности (сырые показания)
@@ -194,6 +194,9 @@ export function normalizeEdepth(input) {
   if (f.ed_ch_model !== 'OTHER' && !findEChamber(f.ed_ch_model)) f.ed_ch_model = 'ROOS';
   if (!Array.isArray(f.ed_staff) || !f.ed_staff.length) f.ed_staff = [''];
   f.ed_rec_on = f.ed_rec_on === true || f.ed_rec_on === 'true';
+  // файлы версии 0.8: k_s задавался на глубине максимума ионизации; разница с z_ref для поправки пренебрежимо мала
+  if (isBlank(f.ed_rec_ks) && !isBlank(f.ed_rec_ksmax)) f.ed_rec_ks = String(f.ed_rec_ksmax);
+  delete f.ed_rec_ksmax;
   f.ed_pol_on = f.ed_pol_on === true || f.ed_pol_on === 'true';
   return f;
 }
@@ -274,59 +277,69 @@ export function computeEdepth(form) {
     const oc = curvePoints(f.ed_pol_data, f.ed_unit);
     const oz = oc.pts.map((q) => q.z);
     const ov = oc.pts.map((q) => Math.abs(q.v));
-    if (oc.pts.length < 2) {
-      add('error', L('Вставьте кривую при обратной полярности или выключите поправку на полярность.', 'Paste the opposite-polarity curve or turn the polarity correction off.'), null, 'ed_pol_data');
-      return finish(out);
-    }
-    let outside = 0;
     for (const p of pts) {
-      const vo = valueAt(oz, ov, p.z);
+      const vo = oc.pts.length >= 2 ? valueAt(oz, ov, p.z) : NaN;
       p.kpol = Number.isFinite(vo) && p.v !== 0 ? (Math.abs(p.v) + vo) / (2 * Math.abs(p.v)) : NaN;
     }
     // за пределами кривой обратной полярности — k_pol ближайшей точки
     const inside = pts.filter((p) => Number.isFinite(p.kpol));
-    if (!inside.length) {
-      add('error', L('Кривые при двух полярностях не перекрываются по глубине.', 'The curves at the two polarities do not overlap in depth.'), null, 'ed_pol_data');
-      return finish(out);
+    if (oc.pts.length < 2) {
+      add('warn', L('Поправка на полярность не внесена: вставьте кривую при обратной полярности (раздел 4).', 'The polarity correction is not applied: paste the opposite-polarity curve (section 4).'), null, 'ed_pol_data');
+    } else if (!inside.length) {
+      add('warn', L('Поправка на полярность не внесена: кривые при двух полярностях не перекрываются по глубине.', 'The polarity correction is not applied: the curves at the two polarities do not overlap in depth.'), null, 'ed_pol_data');
+    } else {
+      let outside = 0;
+      for (const p of pts) {
+        if (Number.isFinite(p.kpol)) continue;
+        outside++;
+        p.kpol = (p.z < inside[0].z ? inside[0] : inside[inside.length - 1]).kpol;
+      }
+      if (outside) add('info', L(`Для ${outside} точек вне кривой при обратной полярности взят k_pol ближайшей точки.`, `For ${outside} points outside the opposite-polarity curve the k_pol of the nearest point is used.`), null, 'ed_pol_data');
+      const kp = inside.map((p) => p.kpol);
+      out.corr.pol = true;
+      out.corr.kpolMin = Math.min(...kp);
+      out.corr.kpolMax = Math.max(...kp);
+      if (Math.max(...kp.map((x) => Math.abs(x - 1))) > 0.05) add('warn', L('k_pol отличается от 1 больше чем на 5 %: показания при двух полярностях должны быть в одних единицах и при одинаковом числе МЕ (или нормированы одинаково).', 'k_pol differs from 1 by more than 5%: the readings at the two polarities must be in the same units and with the same MU (or normalized the same way).'), null, 'ed_pol_data');
+      for (const p of pts) p.v *= p.kpol;
     }
-    for (const p of pts) {
-      if (Number.isFinite(p.kpol)) continue;
-      outside++;
-      p.kpol = (p.z < inside[0].z ? inside[0] : inside[inside.length - 1]).kpol;
-    }
-    if (outside) add('info', L(`Для ${outside} точек вне кривой при обратной полярности взят k_pol ближайшей точки.`, `For ${outside} points outside the opposite-polarity curve the k_pol of the nearest point is used.`), null, 'ed_pol_data');
-    const kp = inside.map((p) => p.kpol);
-    out.corr.pol = true;
-    out.corr.kpolMin = Math.min(...kp);
-    out.corr.kpolMax = Math.max(...kp);
-    if (Math.max(...kp.map((x) => Math.abs(x - 1))) > 0.05) add('warn', L('k_pol отличается от 1 больше чем на 5 %: показания при двух полярностях должны быть в одних единицах и при одинаковом числе МЕ (или нормированы одинаково).', 'k_pol differs from 1 by more than 5%: the readings at the two polarities must be in the same units and with the same MU (or normalized the same way).'), null, 'ed_pol_data');
-    for (const p of pts) p.v *= p.kpol;
   }
   if (chamberMode && f.ed_rec_on) {
-    const ksMax = parseNumber(f.ed_rec_ksmax);
+    const ksRef = parseNumber(f.ed_rec_ks);
     const ci = isBlank(f.ed_rec_cinit) ? 0 : parseNumber(f.ed_rec_cinit) / 100;
-    if (!Number.isFinite(ksMax) || ksMax < 1 || ksMax > 1.1) {
-      add('error', L('Введите k_s на глубине максимума ионизации (от 1 до 1,1) или выключите поправку на рекомбинацию.', 'Enter k_s at the depth of maximum ionization (1 to 1.1) or turn the recombination correction off.'), `${REF.trs}, разд. 4.4.3.4`, 'ed_rec_ksmax');
+    if (isBlank(f.ed_rec_ks)) {
+      add('warn', L('Поправка на рекомбинацию не внесена: введите k_s на опорной глубине (раздел 4).', 'The recombination correction is not applied: enter k_s at the reference depth (section 4).'), null, 'ed_rec_ks');
+    } else if (!Number.isFinite(ksRef) || ksRef < 1 || ksRef > 1.1) {
+      add('error', L('k_s на опорной глубине должен быть от 1 до 1,1.', 'k_s at the reference depth must be between 1 and 1.1.'), `${REF.trs}, разд. 4.4.3.4`, 'ed_rec_ks');
       return finish(out);
-    }
-    if (!Number.isFinite(ci) || ci < 0 || ci > 0.01) {
+    } else if (!Number.isFinite(ci) || ci < 0 || ci > 0.01) {
       add('error', L('Начальная рекомбинация вводится в процентах, от 0 до 1 %.', 'Initial recombination is entered in percent, from 0 to 1%.'), null, 'ed_rec_cinit');
       return finish(out);
+    } else {
+      // доля показания на опорной глубине от максимума — по той же кривой без поправки на рекомбинацию
+      const pre = computeEdepth({ ...f, ed_rec_on: false });
+      const frac = pre.blocked ? NaN : valueAt(pre.points.map((p) => p.zEff), pre.points.map((p) => p.I), pre.zref) / 100;
+      if (!(frac > 0)) {
+        if (!pre.blocked) add('warn', L('Поправка на рекомбинацию не внесена: опорная глубина вне измеренной кривой.', 'The recombination correction is not applied: the reference depth is outside the measured curve.'), null, 'ed_data');
+      } else {
+        let genRef = ksRef - 1 - ci;
+        if (genRef < 0) {
+          add('warn', L('Начальная рекомбинация больше всей поправки на опорной глубине: общая часть принята равной нулю.', 'The initial recombination exceeds the whole correction at the reference depth: the general part is taken as zero.'), null, ['ed_rec_cinit', 'ed_rec_ks']);
+          genRef = 0;
+        }
+        const genMax = genRef / frac;
+        if (isBlank(f.ed_rec_cinit)) add('info', L('Начальная рекомбинация не задана: вся поправка считается общей, пропорциональной показанию. Если C_init известен (график Яффе), введите его.', 'Initial recombination is not set: the whole correction is treated as general, proportional to the reading. Enter C_init if known (Jaffé plot).'), `${REF.trs}, разд. 4.4.3.4 e`, 'ed_rec_cinit');
+        const vm = Math.max(...pts.map((p) => p.v));
+        for (const p of pts) {
+          p.ks = 1 + ci + (genMax * p.v) / vm;
+          p.v *= p.ks;
+        }
+        out.corr.rec = true;
+        out.corr.ksRef = ksRef;
+        out.corr.ksMax = 1 + ci + genMax;
+        out.corr.fracRef = frac;
+        out.corr.cInit = ci;
+      }
     }
-    let gen = ksMax - 1 - ci;
-    if (gen < 0) {
-      add('warn', L('Начальная рекомбинация больше всей поправки на максимуме: общая часть принята равной нулю.', 'The initial recombination exceeds the whole correction at the maximum: the general part is taken as zero.'), null, ['ed_rec_cinit', 'ed_rec_ksmax']);
-      gen = 0;
-    }
-    if (isBlank(f.ed_rec_cinit)) add('info', L('Начальная рекомбинация не задана: вся поправка на максимуме считается общей (пропорциональной показанию). Если C_init известен (график Яффе), введите его.', 'Initial recombination is not set: the whole correction at the maximum is treated as general (proportional to the reading). Enter C_init if known (Jaffé plot).'), `${REF.trs}, разд. 4.4.3.4 e`, 'ed_rec_cinit');
-    const vm = Math.max(...pts.map((p) => p.v));
-    for (const p of pts) {
-      p.ks = 1 + ci + (gen * p.v) / vm;
-      p.v *= p.ks;
-    }
-    out.corr.rec = true;
-    out.corr.ksMax = ksMax;
-    out.corr.cInit = ci;
   }
 
   // глубина точки измерения
@@ -397,8 +410,8 @@ export function computeEdepth(form) {
   if (chamberMode) {
     const sRef = swAirBurns(r50, Math.min(Math.max(zrefFromR50(r50), SW_Y_RANGE[0] * r50), SW_Y_RANGE[1] * r50));
     pts.forEach((p) => (p.sRel = p.s / sRef));
-    if (clampedNear) add('info', L(`У самой поверхности (z/R50 < 0,02, ${clampedNear} точ.) s_w,air взят при z/R50 = 0,02 — первой строке табл. 22.`, `Near the surface (z/R50 < 0.02, ${clampedNear} pts) s_w,air is taken at z/R50 = 0.02, the first row of Table 22.`), T22);
-    if (clampedFar) add('info', L(`За z/R50 = 1,2 (${clampedFar} точ., тормозной хвост) s_w,air взят при z/R50 = 1,2 — последней строке табл. 22; на R50 и PDD(z_ref) это не влияет.`, `Beyond z/R50 = 1.2 (${clampedFar} pts, bremsstrahlung tail) s_w,air is taken at z/R50 = 1.2, the last row of Table 22; R50 and PDD(z_ref) are not affected.`), T22);
+    if (clampedNear) add('info', L(`Ближе к поверхности, чем 0,02·R50 (точек: ${clampedNear}), s_w,air взят как на 0,02·R50 — по первой строке табл. 22.`, `Closer to the surface than 0.02·R50 (${clampedNear} points), s_w,air is taken as at 0.02·R50, the first row of Table 22.`), T22);
+    if (clampedFar) add('info', L(`Глубже 1,2·R50, в тормозном хвосте (точек: ${clampedFar}), s_w,air взят как на 1,2·R50 — по последней строке табл. 22; на R50 и PDD(z_ref) это не влияет.`, `Deeper than 1.2·R50, in the bremsstrahlung tail (${clampedFar} points), s_w,air is taken as at 1.2·R50, the last row of Table 22; R50 and PDD(z_ref) are not affected.`), T22);
     if (r50 < SW_R50_RANGE[0] || r50 > SW_R50_RANGE[1]) add('warn', L(`R50 = ${ru(r50, 2)} г/см² вне диапазона табл. 22 (1–10 г/см²): s_w,air рассчитан по выражению Burns et al. за пределами таблицы.`, `R50 = ${ru(r50, 2)} g/cm² is outside the range of Table 22 (1–10 g/cm²): s_w,air is calculated with the Burns et al. expression beyond the table.`), T22);
   }
 

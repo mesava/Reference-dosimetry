@@ -11,8 +11,7 @@ import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
-  notifyUpdate, flashFields,
-} from './common.js';
+  notifyUpdate, flashFields, richText } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.cobalt.v1';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'cobalt', version: 1 };
@@ -295,7 +294,7 @@ function renderReadout(result, data) {
   const scopeName = { common: '', depth: L('Пересчёт на z_max · ', 'Transfer to z_max · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), source: L('Источник · ', 'Source · '), trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
   const list = result.messages.filter((m) => ['common', 'depth', 'ctrl', 'source'].includes(m.scope) || keys.includes(m.scope));
   $('#co-messages').innerHTML = list.length
-    ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
+    ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${richText(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
     : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
 
   const t = result.trs;

@@ -555,7 +555,7 @@ function checks(o, KS) {
     'pol',
     o.opp ? (Math.abs(o.opp.diffPct) < 0.1 ? 'ok' : 'fail') : 'na',
     L(`${KS} при двух полярностях различается меньше чем на 0,1 %`, `${KS} at the two polarities differs by less than 0.1%`),
-    o.opp ? L(`${pct(o.opp.diffPct)}; при одной дозе за импульс разница отражает начальную рекомбинацию`, `${pct(o.opp.diffPct)}; at the same dose per pulse the difference reflects initial recombination`) : L('нет показаний при обратной полярности', 'no opposite-polarity readings'),
+    o.opp ? pct(o.opp.diffPct) : L('нет показаний при обратной полярности', 'no opposite-polarity readings'),
     `${REF.trs}, табл. 3, сноска 25; ${REF.add}, табл. III`,
   );
   push(

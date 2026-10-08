@@ -7,11 +7,11 @@ import { L, getLang, refText } from '../core/i18n.js';
 import { localizeDecimals } from './i18n.js';
 import { makeCombo, renderStaff, readStaff } from './widgets.js';
 import { scatterChart, legendSwatch } from './chart.js';
-import { jaffeRecInfo } from './jaffe-ui.js';
+import { jaffeRecInfo, jaffeSourceText } from './jaffe-ui.js';
+import { electronsKsInfo } from './electrons-ui.js';
 import {
   $, $$, localizeDemo, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, currentProtocol, renderFlags, applyShowRules,
-  armButton, renderSignBlock, printToPdf, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, notifyUpdate,
-} from './common.js';
+  armButton, renderSignBlock, printToPdf, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, notifyUpdate, richText } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.edepth.v1';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'edepth', version: 1 };
@@ -29,8 +29,7 @@ const PROTO = { trs: 'TRS-398 Rev.1', tg51: 'TG-51 + Report 385' };
 const cm = (v, d = 2) => L(`${fmt(v, d)} см`, `${fmt(v, d)} cm`);
 const gcm2 = (v, d = 2) => L(`${fmt(v, d)} г/см²`, `${fmt(v, d)} g/cm²`);
 const pct = (v, d = 1) => L(`${fmt(v, d)} %`, `${fmt(v, d)}%`);
-const subs = (html) => html.replace(/\b([RIDEzsk])_([a-zа-яё0-9,]+)\b/gi, '$1<sub>$2</sub>');
-const rich = (s) => subs(esc(s));
+const rich = richText;
 
 const sampleData = () => (getLang() === 'en' ? { ...SAMPLE_EDEPTH, ...SAMPLE_EDEPTH_EN } : SAMPLE_EDEPTH);
 const isDemo = (d) => [SAMPLE_EDEPTH.ed_institution, SAMPLE_EDEPTH_EN.ed_institution].includes(d.ed_institution) && [SAMPLE_EDEPTH.ed_machine, SAMPLE_EDEPTH_EN.ed_machine].includes(d.ed_machine);
@@ -94,7 +93,7 @@ function renderInputsInfo(r) {
     const k = r.form.ed_unit === 'cm' ? 1 : 10;
     const z0 = pts.length ? (pts[0].z * k) : NaN;
     const z1 = pts.length ? (pts[pts.length - 1].z * k) : NaN;
-    sub = L(`Точек: ${p.n}`, `Points: ${p.n}`) + (Number.isFinite(z0) ? L(`, глубина ${fmt(z0, 1)}–${fmt(z1, 1)} ${unit} в данных`, `, depth ${fmt(z0, 1)}–${fmt(z1, 1)} ${unit} in the data`) : '') + (p.skipped ? L(`; пропущено строк: ${p.skipped}`, `; lines skipped: ${p.skipped}`) : '');
+    sub = L(`Точек: ${p.n}`, `Points: ${p.n}`) + (Number.isFinite(z0) ? L(`, глубина ${fmt(z0, 1)}–${fmt(z1, 1)} ${unit} в данных`, `, depth ${fmt(z0, 1)}–${fmt(z1, 1)} ${unit} in the data`) : '') + (p.skipped ? L(`; строк без двух чисел (заголовки, комментарии) пропущено: ${p.skipped}`, `; lines without two numbers (headers, comments) skipped: ${p.skipped}`) : '');
   }
   $('#ed-data-sub').textContent = sub;
 
@@ -102,7 +101,7 @@ function renderInputsInfo(r) {
   const c = r.corr || {};
   const ksPts = r.points.filter((q) => Number.isFinite(q.ks));
   $('#ed-rec-out').textContent = c.rec && ksPts.length
-    ? L(`от ${fmt(Math.max(...ksPts.map((q) => q.ks)), 4)} на максимуме до ${fmt(c.ksAtI50, 4)} на глубине 50 % ионизации`, `from ${fmt(Math.max(...ksPts.map((q) => q.ks)), 4)} at the maximum to ${fmt(c.ksAtI50, 4)} at the 50% ionization depth`)
+    ? L(`${fmt(c.ksRef, 4)} на опорной глубине; от ${fmt(Math.max(...ksPts.map((q) => q.ks)), 4)} на максимуме до ${fmt(c.ksAtI50, 4)} на глубине 50 % ионизации`, `${fmt(c.ksRef, 4)} at the reference depth; from ${fmt(Math.max(...ksPts.map((q) => q.ks)), 4)} at the maximum to ${fmt(c.ksAtI50, 4)} at the 50% ionization depth`)
     : '—';
   $('#ed-pol-out').textContent = c.pol ? (c.kpolMax - c.kpolMin < 5e-5 ? fmt(c.kpolMin, 4) : `${fmt(c.kpolMin, 4)}–${fmt(c.kpolMax, 4)}`) : '—';
   // номера разделов: без камеры раздела поправок нет
@@ -117,7 +116,7 @@ function renderChart(r) {
   const box = $('#ed-chart');
   const legend = $('#ed-legend');
   if (r.blocked || !r.points.length) {
-    box.innerHTML = `<p class="chart-empty">${L('График появится, когда кривая будет прочитана и дойдёт до 50 %.', 'The plot appears once the curve is read and reaches 50%.')}</p>`;
+    box.innerHTML = `<p class="chart-empty">${r.hasErrors && r.parsed?.n ? L('График появится, когда будут исправлены ошибки — см. «Замечания».', 'The plot appears once the errors are fixed — see Messages.') : L('График появится, когда кривая будет прочитана и дойдёт до 50 %.', 'The plot appears once the curve is read and reaches 50%.')}</p>`;
     legend.innerHTML = '';
     return;
   }
@@ -171,17 +170,20 @@ function renderReadout(r) {
     $('#ed-result').innerHTML = `<div class="dose-row blocked"><div class="proto"><span>${proto}</span>${chip}</div><div class="dose-big">—</div><div class="secondary">${esc(L('Нет результата: см. замечания.', 'No result: see Messages.'))}</div></div>`;
     $('#ed-mobile-value').innerHTML = '—';
     $('#ed-btn-transfer').disabled = true;
-    $('#ed-transfer-note').innerHTML = L('Кнопка станет доступна, когда будет найден R<sub>50</sub>.', 'The button becomes available once R<sub>50</sub> is found.');
+    $('#ed-transfer-note').innerHTML = r.hasErrors && r.parsed?.n
+      ? L('Кнопка станет доступна, когда будут исправлены ошибки — см. «Замечания».', 'The button becomes available once the errors are fixed — see Messages.')
+      : L('Кнопка станет доступна, когда будет найден R<sub>50</sub>.', 'The button becomes available once R<sub>50</sub> is found.');
     return;
   }
   const lines = [];
+  if (r.chamberMode) lines.push(`I<sub>50</sub> (R<sub>50,ion</sub>) = ${gcm2(r.i50)}`);
   lines.push(`z<sub>ref</sub> = ${gcm2(r.zref)}; PDD(z<sub>ref</sub>) = ${Number.isFinite(r.pddZref) ? pct(r.pddZref) : '—'}`);
   lines.push(`R<sub>100</sub> = ${cm(r.r100)}; R<sub>80</sub> = ${Number.isFinite(r.r80) ? cm(r.r80) : '—'}`);
   if (Number.isFinite(r.rp)) lines.push(`R<sub>p</sub> = ${cm(r.rp)}${Number.isFinite(r.dx) && r.background?.measured ? `; D<sub>x</sub> = ${pct(r.dx)}` : ''}`);
   lines.push(L(`E<sub>0</sub> ≈ ${fmt(r.e0, 1)} МэВ`, `E<sub>0</sub> ≈ ${fmt(r.e0, 1)} MeV`));
   $('#ed-result').innerHTML = `<div class="dose-row">
     <div class="proto"><span>${proto}</span>${chip}</div>
-    <div class="dose-big">R<sub>50</sub> = ${fmt(r.r50, 2)}<small>${esc(L('г/см²', 'g/cm²'))}${r.chamberMode ? ` · I<sub>50</sub> = ${fmt(r.i50, 2)}` : ''}</small></div>
+    <div class="dose-big">R<sub>50</sub> = ${fmt(r.r50, 2)}<small>${esc(L('г/см²', 'g/cm²'))}</small></div>
     <div class="secondary">${lines.join('<br>')}</div>
   </div>`;
   $('#ed-mobile-value').innerHTML = `R<sub>50</sub> = <b>${fmt(r.r50, 2)}</b>${Number.isFinite(r.pddZref) ? ` · PDD(z<sub>ref</sub>) = ${pct(r.pddZref)}` : ''}`;
@@ -194,7 +196,7 @@ function renderReadout(r) {
 function renderMessages(r) {
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
   $('#ed-messages').innerHTML = r.messages.length
-    ? r.messages.map((m) => `<li class="${m.level}"><span class="lvl">${lvlName[m.level]}</span><span>${rich(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
+    ? r.messages.map((m) => `<li class="${m.level}"><span class="lvl">${lvlName[m.level]}</span><span>${richText(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
     : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
 }
 
@@ -211,7 +213,7 @@ function summaryRows(r) {
   rows.push([L('Точек кривой', 'Curve points'), String(r.points.length)]);
   if (Number.isFinite(r.maxStep)) rows.push([L('Наибольший шаг на спаде, мм', 'Largest step on the falloff, mm'), v(r.maxStep * 10, 1)]);
   const c = r.corr || {};
-  if (c.rec) rows.push([L('Поправка на рекомбинацию по глубине', 'Recombination correction with depth'), L(`k<sub>s,max</sub> = ${fmt(c.ksMax, 4)}, C<sub>init</sub> = ${fmt(c.cInit * 100, 3)} %; на I<sub>50</sub> — ${fmt(c.ksAtI50, 4)}`, `k<sub>s,max</sub> = ${fmt(c.ksMax, 4)}, C<sub>init</sub> = ${fmt(c.cInit * 100, 3)}%; at I<sub>50</sub> ${fmt(c.ksAtI50, 4)}`)]);
+  if (c.rec) rows.push([L('Поправка на рекомбинацию по глубине, k<sub>s</sub>', 'Recombination correction with depth, k<sub>s</sub>'), L(`${fmt(c.ksRef, 4)} на z<sub>ref</sub>, ${fmt(c.ksMax, 4)} на максимуме, ${fmt(c.ksAtI50, 4)} на I<sub>50</sub>; C<sub>init</sub> = ${fmt(c.cInit * 100, 3)} %`, `${fmt(c.ksRef, 4)} at z<sub>ref</sub>, ${fmt(c.ksMax, 4)} at the maximum, ${fmt(c.ksAtI50, 4)} at I<sub>50</sub>; C<sub>init</sub> = ${fmt(c.cInit * 100, 3)}%`)]);
   if (c.pol) rows.push([L('Поправка на полярность по глубине, k<sub>pol</sub>', 'Polarity correction with depth, k<sub>pol</sub>'), c.kpolMax - c.kpolMin < 5e-5 ? fmt(c.kpolMin, 4) : `${fmt(c.kpolMin, 4)}–${fmt(c.kpolMax, 4)}`]);
   if ((c.rec || c.pol) && Number.isFinite(c.dI50mm)) {
     rows.push([L('Изменение I<sub>50</sub> от поправок, мм', 'Change of I<sub>50</sub> due to the corrections, mm'), fmtSigned(c.dI50mm, 3)]);
@@ -431,18 +433,28 @@ export function initEdepth() {
   });
   $('#ed-btn-cinit-jaffe').addEventListener('click', () => {
     const info = jaffeRecInfo();
+    const note = $('#ed-cinit-note');
     if (!info) {
-      setStatus(L('В «Графике Яффе» нет начальной рекомбинации: нужны условия с разной дозой за импульс (раздел 5) или непрерывный пучок.', 'The Jaffé plot has no initial recombination: conditions with different dose per pulse (section 5) or a continuous beam are needed.'));
+      note.innerHTML = richText(L('В «Графике Яффе» нет начальной рекомбинации: нужны показания при V₁ и V₂ в трёх и более условиях (раздел 5) или непрерывный пучок с осью 1/V.', 'The Jaffé plot has no initial recombination: readings at V₁ and V₂ in three or more conditions (section 5) or a continuous beam with the 1/V axis are needed.'));
       return;
     }
     $('#ed_rec_cinit').value = fmt(Math.max(0, info.cInit) * 100, 3);
     openedFile = null;
     update();
-    setStatus(
-      info.source === 'eq17'
-        ? L('C_init взят из «Графика Яффе»: b₀/(n − 1) по ур. 17 TRS-398.', 'C_init taken from the Jaffé plot: b₀/(n − 1) per TRS-398 Eq. 17.')
-        : L('C_init взят из «Графика Яффе» (зависимость от дозы за импульс).', 'C_init taken from the Jaffé plot (dose-per-pulse dependence).'),
-    );
+    note.innerHTML = richText(jaffeSourceText(info));
+  });
+  $('#ed-btn-ks-electrons').addEventListener('click', () => {
+    const info = electronsKsInfo();
+    const note = $('#ed-ks-note');
+    if (!info) {
+      note.innerHTML = richText(L('Во вкладке «Электроны» k_s не определён: нужны показания при двух напряжениях (раздел 5).', 'The Electrons tab has no k_s: readings at two voltages are needed (section 5).'));
+      return;
+    }
+    $('#ed_rec_ks').value = fmt(info.ks, 4);
+    openedFile = null;
+    update();
+    const who = [info.chamber, info.beam, info.V1 ? `V₁ = ${info.V1} ${L('В', 'V')}` : ''].filter(Boolean).join(', ');
+    note.innerHTML = richText(L(`Из вкладки «Электроны»${who ? ` (${who})` : ''}: ${info.tg ? 'P_ion' : 'k_s'} методом двух напряжений. Проверьте, что это та же камера и тот же пучок.`, `From the Electrons tab${who ? ` (${who})` : ''}: ${info.tg ? 'P_ion' : 'k_s'} by the two-voltage method. Check that it is the same chamber and beam.`));
   });
   $('#ed-btn-pol-file').addEventListener('click', () => $('#ed-pol-input').click());
   $('#ed-pol-input').addEventListener('change', async (e) => {

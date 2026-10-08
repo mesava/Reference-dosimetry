@@ -26,14 +26,27 @@ const numberOf = (sec) => sec.querySelector('.step-no')?.textContent.trim() ?? '
 
 const visible = (el) => el.offsetParent !== null || el.getClientRects().length > 0;
 
-/** Состояние раздела по форме: ошибка / предупреждение (подсвеченные поля и выводы), заполнен, пуст. */
+/**
+ * Состояние раздела по форме: ошибка / предупреждение (подсвеченные поля и выводы), заполнен, пуст.
+ * Раздел без текстовых полей: с выбранными переключателями или списками — заполнен; только с выключенными
+ * флажками — не включён; без полей вовсе (график) — результат. Необязательный раздел (data-optional) без
+ * введённых значений — «по желанию», а не «не заполнен».
+ */
 function stateOf(sec) {
   if (sec.classList.contains('inactive')) return 'inactive';
   const flagged = (cls) => [...sec.querySelectorAll(`.${cls}`)].some(visible);
   if (flagged('flag-error')) return 'error';
   if (flagged('flag-warn')) return 'warn';
   const fields = [...sec.querySelectorAll('input[type="text"], input[type="date"], textarea')].filter(visible);
-  return fields.some((f) => f.value.trim() !== '') ? 'done' : 'empty';
+  if (fields.some((f) => f.value.trim() !== '')) return 'done';
+  if (!fields.length) {
+    const choices = [...sec.querySelectorAll('select, input[type="radio"]')].filter(visible);
+    const checks = [...sec.querySelectorAll('input[type="checkbox"]')].filter(visible);
+    if (choices.length) return 'done';
+    if (checks.length) return checks.some((c) => c.checked) ? 'done' : 'off';
+    if (!sec.hasAttribute('data-optional')) return 'output';
+  }
+  return sec.hasAttribute('data-optional') ? 'optional' : 'empty';
 }
 
 const STATE_TEXT = () => ({
@@ -41,6 +54,9 @@ const STATE_TEXT = () => ({
   warn: L('есть предупреждения', 'has warnings'),
   done: L('заполнен', 'filled in'),
   empty: L('не заполнен', 'not filled in'),
+  optional: L('по желанию', 'optional'),
+  off: L('не включён', 'turned off'),
+  output: L('результат расчёта', 'calculation output'),
   inactive: L('не требуется', 'not required'),
 });
 

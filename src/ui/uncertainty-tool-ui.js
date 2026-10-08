@@ -8,8 +8,7 @@ import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff }
 import { setupBudget, renderBudget, budgetDoseText, budgetReportLines, fmt2sig } from './uncertainty-ui.js';
 import {
   $, $$, localizeDemo, fmt, esc, today, makeStatus, copyText, downloadText, currentProtocol, renderOutputs, renderFlags, applyShowRules,
-  armButton, renderSignBlock, printToPdf, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, notifyUpdate, flashFields,
-} from './common.js';
+  armButton, renderSignBlock, printToPdf, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, notifyUpdate, flashFields, richText, plainSymbols } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.uncertainty.v1';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'uncertainty', version: 1 };
@@ -40,7 +39,7 @@ const routeText = (beam, r) =>
 function fillRoutes(beam) {
   const sel = $('#unc_route');
   const keep = sel.value;
-  sel.innerHTML = ROUTES[beam].map((r) => `<option value="${r}">${esc(routeText(beam, r))}</option>`).join('');
+  sel.innerHTML = ROUTES[beam].map((r) => `<option value="${r}">${esc(plainSymbols(routeText(beam, r)))}</option>`).join('');
   sel.value = ROUTES[beam].includes(keep) ? keep : 'lab';
 }
 function fillUnits() {
@@ -99,13 +98,13 @@ function applyVisibility(data, r) {
   if (r.route === 'lab') sub.textContent = '';
   else if (r.beam === 'electrons' && r.route === 'crossQ') {
     sub.textContent = L(
-      'Образец — для перекрёстно откалиброванной камеры: TRS-398, табл. 24 (столбец цилиндрической камеры, разд. 7.10) или Report 385, табл. 9.',
+      'Типовой бюджет — для перекрёстно откалиброванной камеры: TRS-398, табл. 24 (столбец цилиндрической камеры, разд. 7.10) или Report 385, табл. 9.',
       'The example is for a cross-calibrated chamber: TRS-398, Table 24 (cylindrical chamber column, Sec. 7.10) or Report 385, Table 9.',
     );
   } else {
     sub.textContent = L(
-      'В бюджет добавляется строка «Перекрёстная калибровка рабочей камеры» (0,6 %: по TRS-398, разд. 5.7 и 6.8, неопределённость возрастает примерно на 0,2 %).',
-      'A “Cross-calibration of the field chamber” row is added to the budget (0.6%: per TRS-398, Sec. 5.7 and 6.8, the uncertainty increases by about 0.2%).',
+      'В бюджет добавляется строка «Перекрёстная калибровка рабочей камеры», 0,6 %: в квадратуре она увеличивает u_c примерно на 0,2 % — так эту прибавку оценивает TRS-398 (разд. 5.7, 6.8).',
+      'A “Cross-calibration of the field chamber” row of 0.6% is added to the budget: added in quadrature, it increases u_c by about 0.2%, which is how TRS-398 estimates this increase (Secs. 5.7, 6.8).',
     );
   }
   const t = r.typeA;
@@ -118,10 +117,11 @@ function applyVisibility(data, r) {
 function renderReadout(r) {
   const b = r.budget;
   const unit = unitText(r.unit);
-  const src = b.custom ? L('со своими данными', 'with your data') : L('образец протокола', 'protocol example');
+  const own = b.rows.filter((x) => x.over).length;
+  const src = own ? L(`своих строк: ${own}`, `own rows: ${own}`) : b.cert ? L('с U из свидетельства', 'with certificate U') : L('типовой бюджет', 'typical budget');
   const lines = [
     L(`u<sub>c</sub> = ${fmt(b.ucPct, 2)} % (k = 1)`, `u<sub>c</sub> = ${fmt(b.ucPct, 2)}% (k = 1)`),
-    Number.isFinite(r.abs) ? L(`Для итога ${fmt(r.value, r.value >= 10 ? 2 : 4)} ${esc(unit)}: ±${fmt2sig(r.abs)} ${esc(unit)}`, `For the result ${fmt(r.value, r.value >= 10 ? 2 : 4)} ${esc(unit)}: ±${fmt2sig(r.abs)} ${esc(unit)}`) : L('Введите итог в разделе 3, чтобы получить U в единицах дозы', 'Enter the result in section 3 to get U in dose units'),
+    Number.isFinite(r.abs) ? L(`Для результата ${fmt(r.value, r.value >= 10 ? 2 : 4)} ${esc(unit)}: ±${fmt2sig(r.abs)} ${esc(unit)}`, `For the result ${fmt(r.value, r.value >= 10 ? 2 : 4)} ${esc(unit)}: ±${fmt2sig(r.abs)} ${esc(unit)}`) : L('Введите результат дозиметрии в разделе 3, чтобы получить U в единицах дозы', 'Enter the dosimetry result in section 3 to get U in dose units'),
     esc(b.template.title),
   ];
   $('#unc-result').innerHTML = `<div class="dose-row">
@@ -133,13 +133,13 @@ function renderReadout(r) {
 
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
   $('#unc-messages').innerHTML = r.messages.length
-    ? r.messages.map((m) => `<li class="${m.level}"><span class="lvl">${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
+    ? r.messages.map((m) => `<li class="${m.level}"><span class="lvl">${lvlName[m.level]}</span><span>${richText(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
     : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
 
   const v = (x, d = 2) => (Number.isFinite(x) ? fmt(x, d) : '—');
   const rows = [
-    [L('Образец', 'Example'), esc(refText(b.template.ref))],
-    [L('U из свидетельства', 'U from the certificate'), b.cert ? L(`${fmt(b.cert.U, 2)} % при k = ${fmt(b.cert.k, b.cert.k % 1 ? 2 : 0)}`, `${fmt(b.cert.U, 2)}% at k = ${fmt(b.cert.k, b.cert.k % 1 ? 2 : 0)}`) : L('нет — значения образца', 'none — example values')],
+    [L('Типовой бюджет', 'Typical budget'), esc(refText(b.template.ref))],
+    [L('U из свидетельства', 'U from the certificate'), b.cert ? L(`${fmt(b.cert.U, 2)} % при k = ${fmt(b.cert.k, b.cert.k % 1 ? 2 : 0)}`, `${fmt(b.cert.U, 2)}% at k = ${fmt(b.cert.k, b.cert.k % 1 ? 2 : 0)}`) : L('нет — типовые значения', 'none — typical values')],
     [L('Повторяемость (тип А), %', 'Repeatability (type A), %'), r.typeA ? v(r.typeA.pct, 3) : '—'],
     [L('Своих значений строк', 'Your row values'), String(b.rows.filter((x) => x.over).length)],
   ];
@@ -171,10 +171,10 @@ function reportText(data, r) {
   if (r.beam === 'electrons') line(L('Камера', 'Chamber'), r.chamberType === 'pp' ? L('плоскопараллельная', 'plane-parallel') : L('цилиндрическая', 'cylindrical'));
   line(L('Калибровка камеры', 'Chamber calibration'), routeText(r.beam, r.route));
   if (r.beam === 'electrons' && Number.isFinite(r.r50)) line('R50', L(`${fmt(r.r50, 2)} г/см²`, `${fmt(r.r50, 2)} g/cm²`));
-  line(L('Свидетельство о калибровке', 'Calibration certificate'), b.cert ? L(`U = ${fmt(b.cert.U, 2)} % при k = ${fmt(b.cert.k, b.cert.k % 1 ? 2 : 0)}`, `U = ${fmt(b.cert.U, 2)}% at k = ${fmt(b.cert.k, b.cert.k % 1 ? 2 : 0)}`) : L('не введено — лабораторная часть по образцу', 'not entered — laboratory part from the example'));
+  line(L('Свидетельство о калибровке', 'Calibration certificate'), b.cert ? L(`U = ${fmt(b.cert.U, 2)} % при k = ${fmt(b.cert.k, b.cert.k % 1 ? 2 : 0)}`, `U = ${fmt(b.cert.U, 2)}% at k = ${fmt(b.cert.k, b.cert.k % 1 ? 2 : 0)}`) : L('не введено — лабораторная часть типового бюджета', 'not entered — laboratory part from the example'));
   const cells = r.series.values?.length ? r.series.values.map((x) => fmt(x, 4)).join('; ') : '—';
   line(L('Показания, нКл', 'Readings, nC'), r.typeA ? L(`${cells} → повторяемость (тип А) ${fmt(r.typeA.pct, 3)} %`, `${cells} → repeatability (type A) ${fmt(r.typeA.pct, 3)}%`) : cells);
-  if (Number.isFinite(r.value)) line(L('Итог', 'Result'), `${fmt(r.value, r.value >= 10 ? 2 : 4)} ${unit}`);
+  if (Number.isFinite(r.value)) line(L('Результат дозиметрии', 'Dosimetry result'), `${fmt(r.value, r.value >= 10 ? 2 : 4)} ${unit}`);
   out.push('');
   out.push(...budgetReportLines(b, r.value, unit));
   const msgs = r.messages.filter((m) => m.level !== 'info');
@@ -189,7 +189,7 @@ function reportText(data, r) {
 
 const closingNote = () =>
   L(
-    'Образцы — примеры бюджетов из протоколов; бюджет составляет и пересматривает пользователь. Составляющие считаются независимыми и складываются в квадратуре, U = 2·u_c (TRS-398 Rev.1, прил. IV).',
+    'Типовые бюджеты — примеры из протоколов; бюджет составляет и пересматривает пользователь. Составляющие считаются независимыми и складываются в квадратуре, U = 2·u_c (TRS-398 Rev.1, прил. IV).',
     'The examples are budgets from the protocols; the user sets up and reviews the budget. The components are assumed independent and are added in quadrature, U = 2·u_c (TRS-398 Rev.1, App. IV).',
   );
 
@@ -260,8 +260,8 @@ function pull(target) {
   const name = BEAM_NAME[target]();
   setStatus(
     Number.isFinite(s.value)
-      ? L(`Данные взяты с вкладки «${name}»: пучок, способ калибровки, показания, итог и сведения об аппарате. Свидетельство и свои значения бюджета не менялись.`, `Data taken from the ${name} tab: beam, calibration route, readings, result and machine details. The certificate and your budget values were not changed.`)
-      : L(`Данные взяты с вкладки «${name}», но итог там не вычислен (есть ошибки) — поле «Итог» очищено.`, `Data taken from the ${name} tab, but the result there is not calculated (there are errors): the Result field has been cleared.`),
+      ? L(`Данные взяты с вкладки «${name}»: пучок, способ калибровки, показания, результат дозиметрии и сведения об аппарате. Свидетельство и свои значения бюджета не менялись.`, `Data taken from the ${name} tab: beam, calibration route, readings, result and machine details. The certificate and your budget values were not changed.`)
+      : L(`Данные взяты с вкладки «${name}», но доза там не вычислена (есть ошибки) — поле «Результат дозиметрии» очищено.`, `Data taken from the ${name} tab, but the dose there is not calculated (there are errors): the Dosimetry result field has been cleared.`),
   );
 }
 

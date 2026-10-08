@@ -348,8 +348,8 @@ export const TERMS_EN = {
 <p class="formula">u<sub>c</sub> = √(Σ u<sub>i</sub>²), U = k · u<sub>c</sub>, k = 2</p>
 <p>The components are assumed independent and are added in quadrature (Eq. 113). The expanded uncertainty with coverage factor k = 2 corresponds to a confidence level of about 95% (App. IV.5).</p>
 <h4>Calibration certificate</h4>
-<p>Certificates usually state the expanded uncertainty U (k = 2). For the budget, divide it by k: for example, U = 1.2% at k = 2 gives a standard uncertainty of 0.6%. This value replaces the laboratory part of the example (step 1 of TRS-398 or the N<sub>D,w</sub> row of TG-51).</p>
-<h4>Typical totals of the examples (k = 1)</h4>
+<p>Certificates usually state the expanded uncertainty U (k = 2). For the budget, divide it by k: for example, U = 1.2% at k = 2 gives a standard uncertainty of 0.6%. This value replaces the laboratory part of the typical budget (step 1 of TRS-398 or the N<sub>D,w</sub> row of TG-51).</p>
+<h4>Totals of the typical budgets (k = 1)</h4>
 <ul>
 <li>TRS-398: ⁶⁰Co — 0.8% (Table 13); MV photons — 1.0% (Table 17); electrons — 1.1% for a cylindrical and 1.2% for a plane-parallel chamber (Table 24). With a cross-calibrated field instrument, about 0.2% more (Sec. 5.7, 6.8).</li>
 <li>TG-51 addendum, Table II: 0.9% in example (i) and 2.1% in example (ii); Report 385: 0.9 and 2.0% (Table 8), 1.1 and 2.5% for a cross-calibrated plane-parallel chamber (Table 9).</li>

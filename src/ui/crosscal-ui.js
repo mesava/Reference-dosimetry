@@ -11,8 +11,7 @@ import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff }
 import {
   $, $$, localizeDemo, fmt, esc, today, makeStatus, copyText, downloadText, currentProtocol, renderOutputs, renderFlags, applyShowRules,
   armButton, renderSignBlock, printToPdf, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
-  notifyUpdate,
-} from './common.js';
+  notifyUpdate, richText } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.crosscal.v1';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'crosscal', version: 1 };
@@ -33,7 +32,7 @@ const PROTO = {
 const TAB_NAME = { co60: () => '⁶⁰Co', photons: () => L('МВ фотоны', 'MV photons'), electrons: () => L('Электроны', 'Electrons') };
 
 // ------------------------------------------------------------ списки
-const OTHER_OPTION = () => `<option value="OTHER">${L('Другая камера (k_Q вручную)…', 'Other chamber (k_Q entered manually)…')}</option>`;
+const OTHER_OPTION = () => `<option value="OTHER">${L('Другая камера (kQ вводится вручную)…', 'Other chamber (kQ entered manually)…')}</option>`;
 const EMPTY_OPTION = () => `<option value="">${L('— выберите камеру —', '— select a chamber —')}</option>`;
 
 /** Список камер для пучка: электроны — электронная база; фотоны — цилиндрические; ⁶⁰Co — цилиндрические и плоскопараллельные. */
@@ -42,8 +41,10 @@ function chamberOptions(type, who) {
     const group = (t, label) =>
       `<optgroup label="${label}">${E_CHAMBERS.filter((c) => c.type === t)
         .map((c) => {
-          const tags = [c.trsT20 ? L('TRS: табл. 20', 'TRS: Table 20') : null, c.trsT21 ? L('TRS: табл. 21', 'TRS: Table 21') : null, c.r385 ? 'Report 385' : null].filter(Boolean).join(', ');
-          return `<option value="${c.id}">${esc(eChamberLabel(c))} [${tags}]</option>`;
+          // где есть k_Q для камеры: TRS-398 табл. 20 (калибровка в ⁶⁰Co), 21 (перекрёстная), Report 385
+          const t = [c.trsT20 ? '20' : null, c.trsT21 ? '21' : null].filter(Boolean);
+          const src = [t.length ? L(`TRS-398 табл. ${t.join(', ')}`, `TRS-398 Table${t.length > 1 ? 's' : ''} ${t.join(', ')}`) : null, c.r385 ? 'Report 385' : null].filter(Boolean).join('; ');
+          return `<option value="${c.id}">${esc(eChamberLabel(c))}${src ? ` — ${L('kQ', 'kQ')}: ${src}` : L(' — kQ нет', ' — no kQ')}</option>`;
         })
         .join('')}</optgroup>`;
     const cyl = group('cyl', L('Цилиндрические', 'Cylindrical'));
@@ -154,14 +155,14 @@ function renderPositions(box, p, protocol) {
     return;
   }
   box.hidden = false;
-  box.innerHTML = `<h4>${L('Положение камеры', 'Chamber position')} (${PROTO[protocol].name})</h4><ul><li>${esc(p[protocol].text)}</li></ul>`;
+  box.innerHTML = `<h4>${L('Положение камеры', 'Chamber position')} (${PROTO[protocol].name})</h4><ul><li>${richText(p[protocol].text)}</li></ul>`;
 }
 
 function applyVisibility(data, r) {
   applyShowRules(ROOT(), data, r.protocolUsed);
   const type = r.type;
-  $('#cc-ref-info').textContent = chamberInfo(r.ref, type);
-  $('#cc-fld-info').textContent = chamberInfo(r.fld, type);
+  $('#cc-ref-info').innerHTML = richText(chamberInfo(r.ref, type));
+  $('#cc-fld-info').innerHTML = richText(chamberInfo(r.fld, type));
   renderPositions($('#cc-ref-positions'), r.positions.ref, r.protocolUsed);
   renderPositions($('#cc-fld-positions'), r.positions.fld, r.protocolUsed);
   for (const who of ['ref', 'fld']) {
@@ -210,8 +211,8 @@ function qualityText(r, html = true) {
 function doseText(r, x, html = true) {
   const z = html ? 'z<sub>ref</sub>' : 'z_ref';
   return r.type === 'co60'
-    ? L(`Мощность дозы по опорной камере на ${z}: ${fmt(x.DperMin, 4)} Гр/мин (без учёта ошибки таймера)`, `Dose rate from the reference chamber at ${z}: ${fmt(x.DperMin, 4)} Gy/min (timer error not included)`)
-    : L(`Доза по опорной камере на ${z}: ${fmt(x.DperMU, 4)} Гр на 100 МЕ`, `Dose from the reference chamber at ${z}: ${fmt(x.DperMU, 4)} Gy per 100 MU`);
+    ? L(`Мощность дозы по опорной камере на ${z}: ${fmt(x.DperMin, 4)} Гр/мин (без учёта ошибки таймера) — для сверки с вкладкой «⁶⁰Co»`, `Dose rate from the reference chamber at ${z}: ${fmt(x.DperMin, 4)} Gy/min (timer error not included), for a cross-check with the ⁶⁰Co tab`)
+    : L(`Доза по опорной камере на ${z}: ${fmt(x.DperMU, 4)} Гр на 100 МЕ — для сверки с вкладкой дозиметрии`, `Dose from the reference chamber at ${z}: ${fmt(x.DperMU, 4)} Gy per 100 MU, for a cross-check with the dosimetry tab`);
 }
 
 function snapshot(r) {
@@ -250,6 +251,7 @@ function renderTransfer(r, ok) {
       `Fills section 2 of the selected tab: chamber, N<sub>D,w</sub> in ⁶⁰Co, T₀, P₀, electrometer; the laboratory corrections are marked as applied.${r.fld?.type === 'pp' ? ' A plane-parallel chamber cannot be transferred to the photons tab.' : ''}`,
     );
   }
+  if (ok) note += L(' Прежние значения этих полей заменятся.', ' The previous values of these fields will be replaced.');
   $('#cc-transfer-note').innerHTML = note;
 }
 
@@ -283,7 +285,7 @@ function renderReadout(r, data) {
   const scopeName = { common: '', trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
   const list = r.messages.filter((m) => m.scope === 'common' || m.scope === r.protocolUsed);
   $('#cc-messages').innerHTML = list.length
-    ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
+    ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${richText(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
     : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
 
   // таблица: опорная и рабочая камеры рядом

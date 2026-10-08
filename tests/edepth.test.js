@@ -146,21 +146,39 @@ test('поправки по глубине: k_pol по кривой при об�
   assert.equal(p.corr.pol, true);
   p.points.forEach((q) => near(q.kpol, 0.9975, 5e-5));
   near(p.i50, computeEdepth(SAMPLE_EDEPTH).i50, 1e-5);
-  // рекомбинация: на максимуме k_s = введённому, глубже — 1 + C_init + общая часть × M/M_max
-  const r = computeEdepth({ ...SAMPLE_EDEPTH, ed_rec_on: true, ed_rec_ksmax: '1,010', ed_rec_cinit: '0,1' });
+  // рекомбинация: на опорной глубине k_s = введённому, на любой глубине — 1 + C_init + общая часть × M/M_max
+  const r0 = computeEdepth(SAMPLE_EDEPTH);
+  const r = computeEdepth({ ...SAMPLE_EDEPTH, ed_rec_on: true, ed_rec_ks: '1,010', ed_rec_cinit: '0,1' });
   const vMax = Math.max(...r.points.map((q) => q.vRaw));
-  r.points.forEach((q) => near(q.ks, 1.001 + 0.009 * (q.vRaw / vMax), 1e-9));
-  const top = r.points.find((q) => q.vRaw === vMax);
-  near(top.ks, 1.01, 1e-12);
+  const frac = r.corr.fracRef;
+  near(frac, valueAtTest(r0.points.map((q) => q.zEff), r0.points.map((q) => q.I), r0.zref) / 100, 1e-12);
+  r.points.forEach((q) => near(q.ks, 1.001 + (0.009 / frac) * (q.vRaw / vMax), 1e-9));
+  near(valueAtTest(r.points.map((q) => q.zEff), r.points.map((q) => q.ks), r0.zref), 1.01, 1e-5);
+  near(r.corr.ksMax, 1.001 + 0.009 / frac, 1e-12);
   // общая часть на спаде меньше — I50 смещается к поверхности, но меньше чем на 0,1 мм
   assert.ok(r.corr.dI50mm < 0 && r.corr.dI50mm > -0.1, `ΔI50 ${r.corr.dI50mm}`);
   assert.match(curveCsv(r).split('\n')[0], /k_s/);
-  // ошибки: включено без данных
-  assert.equal(computeEdepth({ ...SAMPLE_EDEPTH, ed_rec_on: true }).flags.ed_rec_ksmax, 'error');
-  assert.equal(computeEdepth({ ...SAMPLE_EDEPTH, ed_pol_on: true }).flags.ed_pol_data, 'error');
+  // файлы версии 0.8: k_s на максимуме (ed_rec_ksmax) читается как k_s поправки
+  near(computeEdepth({ ...SAMPLE_EDEPTH, ed_rec_on: true, ed_rec_ksmax: '1,010', ed_rec_cinit: '0,1' }).corr.ksRef, 1.01, 1e-12);
+  // включено без данных — предупреждение, расчёт без поправки
+  const noKs = computeEdepth({ ...SAMPLE_EDEPTH, ed_rec_on: true });
+  assert.equal(noKs.flags.ed_rec_ks, 'warn');
+  assert.equal(noKs.blocked, false);
+  near(noKs.i50, r0.i50, 1e-12);
+  const noPol = computeEdepth({ ...SAMPLE_EDEPTH, ed_pol_on: true });
+  assert.equal(noPol.flags.ed_pol_data, 'warn');
+  assert.equal(noPol.blocked, false);
+  // неверное значение — ошибка
+  assert.equal(computeEdepth({ ...SAMPLE_EDEPTH, ed_rec_on: true, ed_rec_ks: '0,99' }).flags.ed_rec_ks, 'error');
   // детектор дозы — поправки не применяются
-  const d = computeEdepth({ ...SAMPLE_EDEPTH, ed_detector: 'dose', ed_rec_on: true, ed_rec_ksmax: '1,01' });
+  const d = computeEdepth({ ...SAMPLE_EDEPTH, ed_detector: 'dose', ed_rec_on: true, ed_rec_ks: '1,01' });
   assert.equal(d.corr.rec, false);
   // из файла приходят строки 'true' / 'false'
   assert.equal(normalizeEdepth({ ed_rec_on: 'true', ed_pol_on: 'false' }).ed_rec_on, true);
 });
+
+/** Линейная интерполяция для проверок (глубины по возрастанию). */
+function valueAtTest(xs, ys, x) {
+  for (let i = 1; i < xs.length; i++) if (x >= xs[i - 1] && x <= xs[i]) return ys[i - 1] + ((ys[i] - ys[i - 1]) * (x - xs[i - 1])) / (xs[i] - xs[i - 1]);
+  return NaN;
+}

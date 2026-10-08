@@ -123,7 +123,7 @@
           </div>
         </div>
         <div class="field">
-          <span class="label">Стандартные условия из сертификата</span>
+          <span class="label">Стандартные условия из свидетельства</span>
           <div class="inline">
             <input type="text" id="co_T0" class="num" inputmode="decimal" aria-label="T₀, °C">
             <span class="unit-note">°C</span>
@@ -413,7 +413,7 @@
     </section>
 
     <!-- 7 -->
-    <section class="step" aria-labelledby="co-s7">
+    <section class="step" aria-labelledby="co-s7" data-optional>
       <header><span class="step-no">8</span><h2 id="co-s7">Примечания</h2></header>
       <div class="field"><label for="co_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="co_notes"></textarea></div>
     </section>
@@ -587,7 +587,7 @@
           <span class="sub">поправочный множитель K из протокола поверки (ВНИИФТРИ); N<sub>D,w</sub> умножается на него; 1,000, если не указан</span>
         </div>
         <div class="field">
-          <span class="label">Стандартные условия из сертификата</span>
+          <span class="label">Стандартные условия из свидетельства</span>
           <div class="inline">
             <input type="text" id="ch_T0" class="num" inputmode="decimal" aria-label="T₀, °C">
             <span class="unit-note">°C</span>
@@ -752,7 +752,7 @@
           <div class="grid three">
             <div class="field"><label for="qtrs_v20" id="lbl-v20">M на 20 см</label><input type="text" id="qtrs_v20" class="num" inputmode="decimal"></div>
             <div class="field"><label for="qtrs_v10" id="lbl-v10">M на 10 см</label><input type="text" id="qtrs_v10" class="num" inputmode="decimal"></div>
-            <div class="field out-cell"><span class="label">TPR<sub>20,10</sub></span><output data-out="trs.tpr" data-digits="4" data-flag="tpr"></output></div>
+            <div class="field out-cell"><span class="label">TPR<sub>20,10</sub></span><output data-out="trs.tpr" data-digits="4" data-flag="tpr"></output><span class="sub" id="tpr-rec-note"></span></div>
           </div>
           <p class="eq" data-out-text="trs.tprEquation"></p>
 
@@ -804,7 +804,7 @@
           <div class="field" data-show="q51_method:foil50,foil30"><label for="q51_pdd10pb">%dd(10)<sub>Pb</sub>, с фольгой, %</label><input type="text" id="q51_pdd10pb" class="num" inputmode="decimal"></div>
           <div class="field" data-show="q51_method:manual"><label for="q51_manual">%dd(10)<sub>x</sub>, %</label><input type="text" id="q51_manual" class="num" inputmode="decimal"></div>
           <div class="grid">
-            <div class="field out-cell"><span class="label">%dd(10)<sub>x</sub></span><output data-out="tg51.pdd10x" data-digits="2" data-flag="pdd10x"></output></div>
+            <div class="field out-cell"><span class="label">%dd(10)<sub>x</sub></span><output data-out="tg51.pdd10x" data-digits="2" data-flag="pdd10x"></output><span class="sub" id="pdd-rec-note"></span></div>
             <div class="field out-cell used"><span class="label">k<sub>Q</sub> в расчёте</span><output data-out="tg51.kQ" data-digits="4" data-flag="kQ51"></output></div>
           </div>
           <p class="eq"><span data-out-text="tg51.pdd10xEquation"></span> <span data-out-text="tg51.kQSource"></span></p>
@@ -813,13 +813,14 @@
         </div>
       </div>
       <div class="rec-depth">
-        <label class="check"><input type="checkbox" id="q_rec_on"> <span>Поправка на рекомбинацию по глубине — для пучков БВФ и других пучков с высокой дозой за импульс</span></label>
+        <label class="check"><input type="checkbox" id="q_rec_on"> <span>Поправка на рекомбинацию по глубине</span></label>
+        <p class="sub-hint">На двух глубинах доза за импульс разная, поэтому разная и общая рекомбинация, и отношение показаний немного смещено. Заметнее всего это в пучках БВФ и других пучках с высокой дозой за импульс. Включите поправку, чтобы учесть смещение или оценить его для своего пучка: изменение k<sub>Q</sub> и дозы появится ниже (TRS-398, разд. 4.4.3.4 e, 6.3.2).</p>
         <div class="grid three" data-show="q_rec_on:true">
-          <div class="field"><label for="q_rec_ks"><span data-protocol="trs">k<sub>s</sub></span><span data-protocol="tg51">P<sub>ion</sub></span> <span>на глубине 10 см</span></label><input type="text" id="q_rec_ks" class="num" inputmode="decimal"><span class="sub" id="q-rec-ks-sub">пусто — из раздела 4, если значения на двух глубинах сняты той же камерой</span></div>
-          <div class="field"><label for="q_rec_cinit">Начальная рекомбинация C<sub>init</sub>, %</label><input type="text" id="q_rec_cinit" class="num" inputmode="decimal"><span class="sub">от глубины не зависит; пусто — 0</span><button type="button" class="link-btn" id="btn-q-cinit-jaffe">Взять из графика Яффе</button></div>
-          <div class="field out-cell"><span class="label">Поправка к отношению</span><output id="q-rec-out"></output><span class="sub" id="q-rec-sub"></span></div>
+          <div class="field"><label for="q_rec_ks"><span data-protocol="trs">k<sub>s</sub></span><span data-protocol="tg51">P<sub>ion</sub></span> <span>на глубине 10 см</span></label><input type="text" id="q_rec_ks" class="num" inputmode="decimal"><span class="sub" id="q-rec-ks-sub"></span></div>
+          <div class="field"><label for="q_rec_cinit">Начальная рекомбинация C<sub>init</sub>, %</label><input type="text" id="q_rec_cinit" class="num" inputmode="decimal"><span class="sub">не зависит от глубины; пусто — 0</span><button type="button" class="link-btn" id="btn-q-cinit-jaffe">Взять из графика Яффе</button><span class="sub" id="q-cinit-note"></span></div>
+          <div class="field out-cell"><span class="label"><span>Множитель к</span> <span data-protocol="trs">TPR<sub>20,10</sub></span><span data-protocol="tg51">%dd(10)</span></span><output id="q-rec-out"></output><span class="sub" id="q-rec-sub"></span></div>
         </div>
-        <p class="eq" data-show="q_rec_on:true">Общая рекомбинация пропорциональна дозе за импульс, то есть показанию: k<sub>s</sub>(z) = 1 + C<sub>init</sub> + (k<sub>s</sub>(10) − 1 − C<sub>init</sub>)·M(z)/M(10). Отношение показаний на двух глубинах умножается на k<sub>s</sub>(20)/k<sub>s</sub>(10) (TPR<sub>20,10</sub>) или на P<sub>ion</sub>(10)/P<sub>ion</sub>(d<sub>max</sub>) (%dd(10)). TRS-398, разд. 4.4.3.4 e и 6.3.2: если отношение меняется из-за рекомбинации, её учитывают на обеих глубинах.</p>
+        <p class="eq" data-show="q_rec_on:true"><span data-protocol="trs">Общая рекомбинация пропорциональна дозе за импульс, то есть показанию: k<sub>s</sub>(z) = 1 + C<sub>init</sub> + (k<sub>s</sub>(10) − 1 − C<sub>init</sub>)·M(z)/M(10). Отношение показаний умножается на k<sub>s</sub>(20)/k<sub>s</sub>(10).</span><span data-protocol="tg51">Общая рекомбинация пропорциональна дозе за импульс, то есть показанию: P<sub>ion</sub>(z) = 1 + C<sub>init</sub> + (P<sub>ion</sub>(10) − 1 − C<sub>init</sub>)·M(z)/M(10). %dd(10) умножается на P<sub>ion</sub>(10)/P<sub>ion</sub>(d<sub>max</sub>).</span></p>
       </div>
     </section>
 
@@ -943,7 +944,7 @@
     </section>
 
     <!-- 9/10 -->
-    <section class="step" aria-labelledby="s8">
+    <section class="step" aria-labelledby="s8" data-optional>
       <header><span class="step-no" id="notes-step-no">9</span><h2 id="s8">Примечания</h2></header>
       <div class="field"><label for="meta_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="meta_notes"></textarea></div>
     </section>
@@ -1076,7 +1077,7 @@
           </div>
         </div>
         <div class="field">
-          <span class="label">Стандартные условия из сертификата</span>
+          <span class="label">Стандартные условия из свидетельства</span>
           <div class="inline">
             <input type="text" id="e_T0" class="num" inputmode="decimal" aria-label="T₀, °C">
             <span class="unit-note">°C</span>
@@ -1126,8 +1127,9 @@
           <label for="e_r50_method">Как получен R<sub>50</sub></label>
           <select id="e_r50_method">
             <option value="i50">по глубине 50 % ионизации R50,ion (I50)</option>
-            <option value="r50">R50 известен (детектор, отвечающий дозе)</option>
+            <option value="r50">R50 известен (по кривой дозы)</option>
           </select>
+          <span class="sub">I<sub>50</sub>, R<sub>50</sub> и PDD(z<sub>ref</sub>) по кривой ионизации находит «Кривая дозы электронов» (вкладка «Инструменты») и переносит сюда кнопкой.</span>
         </div>
         <div class="field" data-show="e_r50_method:i50"><span class="label" id="e-lbl-i50">R<sub>50,ion</sub> (I<sub>50</sub>), <button type="button" class="term" data-term="gcm2">г/см²</button></span><input type="text" id="e_i50" class="num" inputmode="decimal" placeholder="4,80" aria-labelledby="e-lbl-i50"></div>
         <div class="field" data-show="e_r50_method:r50"><span class="label" id="e-lbl-r50">R<sub>50</sub>, <button type="button" class="term" data-term="gcm2">г/см²</button></span><input type="text" id="e_r50" class="num" inputmode="decimal" aria-labelledby="e-lbl-r50"></div>
@@ -1376,7 +1378,7 @@
     </section>
 
     <!-- 9/10 -->
-    <section class="step" aria-labelledby="e-s8">
+    <section class="step" aria-labelledby="e-s8" data-optional>
       <header><span class="step-no" id="e-notes-step-no">9</span><h2 id="e-s8">Примечания</h2></header>
       <div class="field"><label for="e_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="e_notes"></textarea></div>
     </section>
@@ -1430,7 +1432,12 @@
       <a href="#jaffe" data-module="jaffe">График Яффе</a>
       <a href="#edepth" data-module="edepth">Кривая дозы электронов</a>
     </nav>
-    <p class="intro"><button type="button" class="term" data-term="crosscal">Перекрёстная калибровка</button> рабочей камеры по опорной камере, откалиброванной в ⁶⁰Co, — в пучке ⁶⁰Co, в клиническом пучке МВ фотонов или в пучке электронов (TRS-398 Rev.1, разд. 4.5, 5.5, 6.6, 7.6; для электронов — также Report 385, разд. 5.3.2). Результат переносится кнопкой в раздел «Камера и электрометр» нужной вкладки.</p>
+    <p class="intro"><button type="button" class="term" data-term="crosscal">Перекрёстная калибровка</button> — калибровка рабочей камеры сравнением с опорной камерой, у которой есть свидетельство о калибровке в ⁶⁰Co (TRS-398 Rev.1, разд. 4.5, 5.5, 6.6, 7.6; Report 385, разд. 5.3.2).</p>
+    <ul class="purpose">
+      <li><b>Когда:</b> у рабочей камеры нет своего свидетельства о калибровке. Типичный случай — плоскопараллельная камера для электронов: её калибруют по цилиндрической в пучке электронов наибольшей энергии. Так же калибровку переносят на рабочую камеру в ⁶⁰Co или в клиническом пучке фотонов.</li>
+      <li><b>Что делать:</b> обе камеры поочерёдно облучают на опорной глубине в одних условиях (раздел 1); введите данные опорной камеры из её свидетельства (раздел 2), рабочую камеру (раздел 3), температуру и давление (раздел 4) и показания обеих камер (разделы 5 и 6).</li>
+      <li><b>Результат:</b> калибровочный коэффициент рабочей камеры — N<sub>D,w</sub> в ⁶⁰Co или N<sub>D,w,Qcross</sub> в пучке перекрёстной калибровки (по TG-51 для электронов — k<sub>Qecal</sub>N<sub>D,w</sub>). Кнопка «Перенести во вкладку…» справа записывает его в раздел «Камера и электрометр» вкладки дозиметрии, и рабочая камера дальше используется там как обычно.</li>
+    </ul>
     <details class="howto" data-howto="crosscal" open>
       <summary>Как проводить и как считается</summary>
       <div class="howto-body">
@@ -1462,7 +1469,7 @@
         <p class="hint" data-show="cc_beam_type:photons">Клинический пучок МВ фотонов Q<sub>cross</sub> (TRS-398, разд. 4.5.2): РИП или РИК 100 см, поле 10 × 10 см, z<sub>ref</sub> = 10 г/см². k<sub>Q</sub> опорной камеры в этом пучке — по TPR<sub>20,10</sub> (табл. 16). TG-51 перекрёстную калибровку в фотонных пучках не описывает — расчёт только по TRS-398.</p>
         <p class="hint" data-show="cc_beam_type:electrons">Пучок электронов наибольшей энергии: TRS-398 рекомендует R<sub>50</sub> &gt; 7 г/см² (E₀ &gt; 16 МэВ), TG-51 — выше 10 МэВ. РИП 100 см, поле 10 × 10 см на поверхности воды. Метод замещения: камеры поочерёдно ставят на опорную глубину и облучают одним и тем же числом МЕ.</p></header>
       <div class="field cc-type-field">
-        <span class="label" id="cc-type-label">Пучок</span>
+        <span class="label" id="cc-type-label">Тип пучка</span>
         <div class="segmented" role="radiogroup" aria-labelledby="cc-type-label">
           <label><input type="radio" name="cc_beam_type" id="cc_beam_type_co60" value="co60"><span>⁶⁰Co</span></label>
           <label><input type="radio" name="cc_beam_type" id="cc_beam_type_photons" value="photons"><span>МВ фотоны</span></label>
@@ -1486,8 +1493,9 @@
           <label for="cc_r50_method">Как получен R<sub>50</sub></label>
           <select id="cc_r50_method">
             <option value="i50">по глубине 50 % ионизации R50,ion (I50)</option>
-            <option value="r50">R50 известен (детектор, отвечающий дозе)</option>
+            <option value="r50">R50 известен (по кривой дозы)</option>
           </select>
+          <span class="sub">I<sub>50</sub> и R<sub>50</sub> по кривой ионизации находит «Кривая дозы электронов» (вкладка «Инструменты»).</span>
         </div>
         <div class="field" data-show="cc_r50_method:i50"><span class="label" id="cc-lbl-i50">R<sub>50,ion</sub> (I<sub>50</sub>), <button type="button" class="term" data-term="gcm2">г/см²</button></span><input type="text" id="cc_i50" class="num" inputmode="decimal" placeholder="7,40" aria-labelledby="cc-lbl-i50"></div>
         <div class="field" data-show="cc_r50_method:r50"><span class="label" id="cc-lbl-r50">R<sub>50</sub>, <button type="button" class="term" data-term="gcm2">г/см²</button></span><input type="text" id="cc_r50" class="num" inputmode="decimal" aria-labelledby="cc-lbl-r50"></div>
@@ -1526,6 +1534,7 @@
         <div class="field" data-show="cc_beam_type:photons,electrons">
           <label for="cc_beam_mode">Режим пучка</label>
           <select id="cc_beam_mode"><option value="pulsed">импульсный</option><option value="scanned">импульсно-сканирующий</option></select>
+          <span class="sub">от него зависят коэффициенты табл. 10 для k<sub>s</sub> методом двух напряжений</span>
         </div>
         <div class="field" data-show="cc_beam_type:co60">
           <label for="cc_rec_co">k<sub>s</sub> в непрерывном пучке</label>
@@ -1535,7 +1544,7 @@
           <label for="cc_method">Установка камер</label>
           <select id="cc_method"><option value="sub">поочерёдно (замещение)</option><option value="side">бок о бок, с перестановкой</option></select>
         </div>
-        <div class="field span-all"><label class="check"><input type="checkbox" id="cc_monitor"> <span>Делить показания на показания внешнего монитора (TRS-398, разд. 6.6)</span></label></div>
+        <div class="field span-all"><label class="check"><input type="checkbox" id="cc_monitor"> <span>Делить показания на показания внешнего монитора (TRS-398, разд. 6.6)</span></label><span class="sub">учитывает нестабильность выхода ускорителя между облучениями камер; TRS-398 советует это при замещении. Появятся поля для показаний монитора в разделах 5 и 6</span></div>
       </div>
     </section>
 
@@ -1576,7 +1585,7 @@
           <span class="sub">поправочный множитель K из протокола поверки (ВНИИФТРИ); N<sub>D,w</sub> умножается на него; 1,000, если не указан</span>
         </div>
         <div class="field">
-          <span class="label">Стандартные условия из сертификата</span>
+          <span class="label">Стандартные условия из свидетельства</span>
           <div class="inline">
             <input type="text" id="cc_T0" class="num" inputmode="decimal" aria-label="T₀, °C">
             <span class="unit-note">°C</span>
@@ -1641,7 +1650,7 @@
     <!-- 3 -->
     <section class="step" aria-labelledby="cc-s3">
       <header><span class="step-no">3</span><h2 id="cc-s3">Рабочая камера</h2>
-        <p class="hint">Камера, которую калибруют. Её коэффициент относится к тем же стандартным условиям T₀, P₀ и к своему k<sub>elec</sub>: с ними его и применяют дальше.</p></header>
+        <p class="hint">Камера, которую калибруют. Найденный коэффициент действителен для этой камеры с её электрометром (с k<sub>elec</sub>, указанным здесь) и относится к стандартным условиям T₀, P₀ опорной камеры — кнопка переноса вводит их на вкладке дозиметрии вместе с ним.</p></header>
       <div class="grid two">
         <div class="field span-all">
           <label for="cc_fld_model">Ионизационная камера</label>
@@ -1669,8 +1678,8 @@
           <span class="sub">если тот же электрометр — то же значение, что у опорной камеры</span>
         </div>
       </div>
-      <p class="eq" data-protocol="trs" data-show="cc_beam_type:electrons">TRS-398: k<sub>Q</sub> рабочей камеры в ур. (41) не входит. Дальше в любом пучке электронов k<sub>Q,Qcross</sub> = k<sub>Q,Qint</sub>/k<sub>Qcross,Qint</sub> по табл. 21 (ур. 44) — его считает вкладка «Электроны» по R<sub>50</sub> этого пучка.</p>
-      <p class="eq" data-show="cc_beam_type:photons">TRS-398: k<sub>Q</sub> рабочей камеры в ур. (27) не входит. Дальше в любом фотонном пучке k<sub>Q,Qcross</sub> = k<sub>Q</sub>/k<sub>Qcross</sub> по табл. 16 (ур. 30) — его считает вкладка «МВ фотоны» по TPR<sub>20,10</sub> этого пучка.</p>
+      <p class="eq" data-protocol="trs" data-show="cc_beam_type:electrons">TRS-398: k<sub>Q</sub> рабочей камеры здесь не нужен — в ур. (41) он не входит. В любом пучке электронов вкладка «Электроны» сама найдёт k<sub>Q,Qcross</sub> по табл. 21 (ур. 44) по R<sub>50</sub> этого пучка.</p>
+      <p class="eq" data-show="cc_beam_type:photons">TRS-398: k<sub>Q</sub> рабочей камеры здесь не нужен — в ур. (27) он не входит. В любом фотонном пучке вкладка «МВ фотоны» сама найдёт k<sub>Q,Qcross</sub> = k<sub>Q</sub>/k<sub>Qcross</sub> по табл. 16 (ур. 30) по TPR<sub>20,10</sub> этого пучка.</p>
       <div class="grid four" data-show="cc_beam_type:photons">
         <div class="field out-cell"><span class="label">k<sub>Qcross</sub> рабочей камеры</span><output data-out="trs.kQcrossField" data-digits="4"></output><span class="sub">для справки</span></div>
       </div>
@@ -1874,7 +1883,7 @@
     </section>
 
     <!-- 7 -->
-    <section class="step" aria-labelledby="cc-s7">
+    <section class="step" aria-labelledby="cc-s7" data-optional>
       <header><span class="step-no">7</span><h2 id="cc-s7">Примечания</h2></header>
       <div class="field"><label for="cc_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="cc_notes"></textarea></div>
     </section>
@@ -1931,15 +1940,20 @@
       <a href="#jaffe" data-module="jaffe">График Яффе</a>
       <a href="#edepth" data-module="edepth">Кривая дозы электронов</a>
     </nav>
-    <p class="intro">Бюджет <button type="button" class="term" data-term="unc">неопределённости</button> поглощённой дозы в воде на опорной глубине. Образец — пример из протокола (TRS-398 Rev.1, табл. 13, 17, 24; аддендум TG-51, табл. II; Report 385, табл. 8, 9); его значения заменяются своими. Данные можно взять с вкладки дозиметрии кнопкой в разделе 1.</p>
+    <p class="intro">Бюджет <button type="button" class="term" data-term="unc">неопределённости</button> поглощённой дозы в воде на опорной глубине — для протокола калибровки.</p>
+    <ul class="purpose">
+      <li><b>Когда:</b> после расчёта дозы на вкладке «⁶⁰Co», «МВ фотоны» или «Электроны»: кнопка в разделе 1 переносит оттуда пучок, способ калибровки камеры, показания и результат дозиметрии.</li>
+      <li><b>Что делать:</b> введите расширенную неопределённость U из свидетельства о калибровке камеры (раздел 2) и, если есть, свои оценки строк (раздел 4). Строки без своих значений берутся из типового бюджета протокола: TRS-398 Rev.1, табл. 13, 17, 24; аддендум TG-51, табл. II; Report 385, табл. 8, 9.</li>
+      <li><b>Результат:</b> суммарная стандартная u<sub>c</sub> и расширенная U (k = 2) неопределённость — в процентах и в единицах дозы. В другие вкладки не переносится.</li>
+    </ul>
     <details class="howto" data-howto="uncertainty" open>
       <summary>Как составлять бюджет и как считается</summary>
       <div class="howto-body">
         <h3>Что откуда берётся</h3>
       <ul>
-        <li><b>Образец</b> — пример бюджета из протокола: по TRS-398 — табл. 13 (⁶⁰Co), 17 (МВ фотоны), 24 (электроны); по TG-51 — аддендум 2014, табл. II (фотоны), Report 385, табл. 8 и 9 (электроны). Выбирается сам по пучку, протоколу в шапке, типу камеры и способу её калибровки (раздел 1).</li>
-        <li><b>Свидетельство о калибровке</b> (раздел 2): расширенная неопределённость U и коэффициент охвата k из свидетельства камеры; для перекрёстно откалиброванной камеры — из свидетельства опорной. В бюджет идёт U/k вместо лабораторной части образца.</li>
-        <li><b>Показания и итог</b> (раздел 3): серия показаний, по которой посчитана доза, и сама доза. С вкладки дозиметрии их переносит кнопка в разделе 1.</li>
+        <li><b>Типовой бюджет</b> — пример из протокола: по TRS-398 — табл. 13 (⁶⁰Co), 17 (МВ фотоны), 24 (электроны); по TG-51 — аддендум 2014, табл. II (фотоны), Report 385, табл. 8 и 9 (электроны). Выбирается сам по пучку, протоколу в шапке, типу камеры и способу её калибровки (раздел 1).</li>
+        <li><b>Свидетельство о калибровке</b> (раздел 2): расширенная неопределённость U и коэффициент охвата k из свидетельства камеры; для перекрёстно откалиброванной камеры — из свидетельства опорной. В бюджет идёт U/k вместо лабораторной части типового бюджета.</li>
+        <li><b>Показания и результат</b> (раздел 3): серия показаний, по которой посчитана доза, и сама доза. С вкладки дозиметрии их переносит кнопка в разделе 1.</li>
         <li><b>Свои значения строк</b> (раздел 4): из своих проверок (стабильность камеры по контрольному источнику, разброс k<sub>pol</sub> и k<sub>s</sub> между сеансами), свидетельств (электрометр, термометр, барометр), оценок чувствительности (ошибка установки РИП, глубины, поля, пересчитанная в изменение показания) и литературы. Под каждой строкой — подсказка, откуда взять значение.</li>
       </ul>
         <h3>Как считается</h3>
@@ -1947,8 +1961,8 @@
         <li>Каждая составляющая — относительная стандартная неопределённость u<sub>i</sub> в процентах (k = 1). Если известны только пределы ±a: при равномерном распределении u = a/√3, при треугольном — a/√6; если ±a соответствуют примерно 95 % уверенности, u = a/2 (TRS-398, прил. IV, ур. 110–112).</li>
         <li>Повторяемость показаний (тип А): u<sub>A</sub> = s/(√n·M̄)·100 %, где M̄ — среднее n показаний, s = √(Σ(M<sub>i</sub> − M̄)²/(n − 1)) (ур. 106–109). Она сравнивается со строкой «показания относительно монитора» (TRS-398) или «стабильность ускорителя» (TG-51); в расчёт идёт большее.</li>
         <li>Суммарная стандартная неопределённость: u<sub>c</sub> = √(Σ u<sub>i</sub>²) — составляющие считаются независимыми (ур. 113). Для TRS-398 так же считаются итоги этапов 1 и 2.</li>
-        <li>Расширенная неопределённость: U = k·u<sub>c</sub> с k = 2 (около 95 %); в единицах дозы — ±U·итог/100.</li>
-        <li>Рабочая камера после перекрёстной калибровки (в ⁶⁰Co или в клиническом пучке фотонов): добавляется строка 0,6 % — по TRS-398 (разд. 5.7, 6.8) неопределённость дозы возрастает примерно на 0,2 %. В электронах её учитывает сам образец (TRS-398, разд. 7.10; Report 385, табл. 9).</li>
+        <li>Расширенная неопределённость: U = k·u<sub>c</sub> с k = 2 (около 95 %); в единицах дозы — ±U·результат/100.</li>
+        <li>Рабочая камера после перекрёстной калибровки (в ⁶⁰Co или в клиническом пучке фотонов): добавляется строка 0,6 % — в квадратуре она увеличивает u<sub>c</sub> примерно на 0,2 %, как оценивает TRS-398 (разд. 5.7, 6.8). В электронах перекрёстную калибровку учитывает сам типовой бюджет (TRS-398, разд. 7.10; Report 385, табл. 9).</li>
       </ol>
       </div>
     </details>
@@ -1956,7 +1970,7 @@
     <!-- 1 -->
     <section class="step" aria-labelledby="unc-s1">
       <header><span class="step-no">1</span><h2 id="unc-s1">Пучок и камера</h2>
-        <p class="hint">От пучка, протокола в шапке, типа камеры и способа её калибровки зависит образец бюджета.</p></header>
+        <p class="hint">От пучка, протокола в шапке, типа камеры и способа её калибровки зависит типовой бюджет.</p></header>
       <div class="pull">
         <span class="label" id="unc-pull-label">Взять данные с вкладки</span>
         <div class="pull-btns" role="group" aria-labelledby="unc-pull-label">
@@ -1964,10 +1978,10 @@
           <button type="button" data-pull="photons">МВ фотоны</button>
           <button type="button" data-pull="electrons">Электроны</button>
         </div>
-        <span class="sub">пучок, тип камеры, способ калибровки, R<sub>50</sub>, показания, итог и сведения об аппарате; свидетельство и свои значения бюджета не меняются</span>
+        <span class="sub">пучок, тип камеры, способ калибровки, R<sub>50</sub>, показания, результат дозиметрии и сведения об аппарате; свидетельство и свои значения бюджета не меняются</span>
       </div>
       <div class="field cc-type-field">
-        <span class="label" id="unc-type-label">Пучок</span>
+        <span class="label" id="unc-type-label">Тип пучка</span>
         <div class="segmented" role="radiogroup" aria-labelledby="unc-type-label">
           <label><input type="radio" name="unc_beam_type" id="unc_beam_type_co60" value="co60"><span>⁶⁰Co</span></label>
           <label><input type="radio" name="unc_beam_type" id="unc_beam_type_photons" value="photons" checked><span>МВ фотоны</span></label>
@@ -1988,7 +2002,7 @@
         <div class="field span-2" data-protocol="tg51" data-show="unc_beam_type:photons,electrons">
           <label for="unc_sit">Пример TG-51</label>
           <select id="unc_sit"><option value="i">(i) всё оценено, оборудование эталонного класса</option><option value="ii">(ii) типичные допущения, оборудование не проверялось</option></select>
-          <span class="sub">меняет только столбец «Образец»</span>
+          <span class="sub">меняет только столбец «Типовое»</span>
         </div>
       </div>
       <div class="grid subgrid">
@@ -2007,9 +2021,9 @@
     <!-- 2 -->
     <section class="step" aria-labelledby="unc-s2">
       <header><span class="step-no">2</span><h2 id="unc-s2">Свидетельство о калибровке</h2>
-        <p class="hint">Расширенная неопределённость N<sub>D,w</sub> из свидетельства о калибровке (поверке) камеры заменяет лабораторную часть образца: этап 1 TRS-398 или строку N<sub>D,w</sub> TG-51. Для перекрёстно откалиброванной камеры — из свидетельства опорной камеры.</p></header>
+        <p class="hint">Расширенная неопределённость N<sub>D,w</sub> из свидетельства о калибровке (поверке) камеры заменяет лабораторную часть типового бюджета: этап 1 TRS-398 или строку N<sub>D,w</sub> TG-51. Для перекрёстно откалиброванной камеры — из свидетельства опорной камеры.</p></header>
       <div class="grid">
-        <div class="field"><label for="unc_cert_U">U из свидетельства, %</label><input type="text" id="unc_cert_U" class="num" inputmode="decimal"><span class="sub">пусто — значения образца</span></div>
+        <div class="field"><label for="unc_cert_U">U из свидетельства, %</label><input type="text" id="unc_cert_U" class="num" inputmode="decimal"><span class="sub">пусто — типовые значения</span></div>
         <div class="field"><label for="unc_cert_k">Коэффициент охвата k</label><input type="text" id="unc_cert_k" class="num" inputmode="decimal"><span class="sub">как в свидетельстве, обычно 2</span></div>
         <div class="field out-cell"><span class="label">Стандартная, U/k</span><output data-out="budget.cert.u" data-digits="2" data-suffix=" %"></output></div>
       </div>
@@ -2017,8 +2031,8 @@
 
     <!-- 3 -->
     <section class="step" aria-labelledby="unc-s3">
-      <header><span class="step-no">3</span><h2 id="unc-s3">Показания и итог</h2>
-        <p class="hint">Показания, по которым посчитан итог (контрольные измерения или M₁ при обычной полярности), — для повторяемости (тип А): стандартное отклонение среднего s/√n. Она сравнивается со строкой бюджета «показания относительно монитора» (TRS-398) или «стабильность ускорителя» (TG-51), в расчёт идёт большее. Итог нужен, чтобы выразить U в единицах дозы.</p></header>
+      <header><span class="step-no">3</span><h2 id="unc-s3">Показания и результат</h2>
+        <p class="hint">Показания, по которым посчитана доза (M₁ при обычной полярности или контрольные измерения, если они были), — для повторяемости (тип А): стандартное отклонение среднего s/√n. Она сравнивается со строкой бюджета «показания относительно монитора» (TRS-398) или «стабильность ускорителя» (TG-51), в расчёт идёт большее. Результат дозиметрии нужен, чтобы выразить U в единицах дозы.</p></header>
       <div class="series">
         <div class="cells" data-series="unc_M" data-label="Показания, нКл">
           <span class="label">Показания, нКл</span>
@@ -2034,21 +2048,21 @@
       </div>
       <div class="grid">
         <div class="field out-cell"><span class="label">Повторяемость (тип А), %</span><output data-out="typeA.pct" data-digits="3"></output><span class="sub" id="unc-typea-sub"></span></div>
-        <div class="field"><label for="unc_value">Итог</label><input type="text" id="unc_value" class="num" inputmode="decimal"><span class="sub">по желанию</span></div>
-        <div class="field"><label for="unc_unit">Единицы итога</label><select id="unc_unit"></select></div>
+        <div class="field"><label for="unc_value">Результат дозиметрии</label><input type="text" id="unc_value" class="num" inputmode="decimal"><span class="sub">по желанию. С вкладки берётся итоговая доза — на d<sub>max</sub> (z<sub>max</sub>), если там задан пересчёт; неопределённость PDD для пересчёта в бюджет не входит</span></div>
+        <div class="field"><label for="unc_unit">Единицы</label><select id="unc_unit"></select></div>
       </div>
     </section>
 
     <!-- 4 -->
-    <section class="step" aria-labelledby="unc-s4">
+    <section class="step" aria-labelledby="unc-s4" data-optional>
       <header><span class="step-no">4</span><h2 id="unc-s4">Бюджет</h2>
-        <p class="hint">Под каждой строкой написано, откуда взять значение. Пустое поле «Своё» — значение образца. Значения — относительные стандартные неопределённости в процентах (k = 1); составляющие считаются независимыми и складываются в квадратуре, U = 2·u<sub>c</sub> (TRS-398, прил. IV).</p></header>
+        <p class="hint">Под каждой строкой написано, откуда взять значение. Пустое поле «Своё» — типовое значение протокола. Значения — относительные стандартные неопределённости в процентах (k = 1); составляющие считаются независимыми и складываются в квадратуре, U = 2·u<sub>c</sub> (TRS-398, прил. IV).</p></header>
       <input type="hidden" id="unc_over">
       <div class="unc-budget" id="unc-budget" data-i18n-skip></div>
     </section>
 
     <!-- 5 -->
-    <section class="step" aria-labelledby="unc-s5">
+    <section class="step" aria-labelledby="unc-s5" data-optional>
       <header><span class="step-no">5</span><h2 id="unc-s5">Примечания</h2></header>
       <div class="field"><label for="unc_notes" class="muted">Откуда взяты свои значения, принятые решения</label><textarea id="unc_notes"></textarea></div>
     </section>
@@ -2101,7 +2115,12 @@
       <a href="#jaffe" data-module="jaffe" aria-current="page">График Яффе</a>
       <a href="#edepth" data-module="edepth">Кривая дозы электронов</a>
     </nav>
-    <p class="intro"><b>График Яффе</b> — проверка системы камера — кабель — электрометр при вводе в эксплуатацию: показания при ряде напряжений, <button type="button" class="term" data-term="ks">рекомбинация</button> (k<sub>s</sub>, P<sub>ion</sub>), напряжение начала умножения заряда, проверка метода двух напряжений и полярности, зависимость от дозы за импульс (TRS-398 Rev.1, разд. 4.4.3.4, табл. 3; WGTG51 Report 374, разд. 4.4.4, прил. A; аддендум TG-51, табл. III).</p>
+    <p class="intro"><b>График Яффе</b> — зависимость показаний камеры от напряжения на ней: по нему находят <button type="button" class="term" data-term="ks">рекомбинацию</button> и проверяют систему камера — кабель — электрометр (TRS-398 Rev.1, разд. 4.4.3.4, табл. 3; WGTG51 Report 374, разд. 4.4.4, прил. A; аддендум TG-51, табл. III).</p>
+    <ul class="purpose">
+      <li><b>Когда:</b> при вводе системы в эксплуатацию и после замены камеры, кабеля или электрометра. При каждой калибровке достаточно метода двух напряжений на вкладках дозиметрии, а график показывает, верен ли он при выбранных напряжениях.</li>
+      <li><b>Что делать:</b> снимите показания при 6–8 напряжениях (раздел 3) и укажите рабочее и пониженное напряжения (раздел 2); по желанию — показания при обратной полярности и при нескольких мощностях дозы (раздел 5).</li>
+      <li><b>Результат:</b> k<sub>s</sub> (P<sub>ion</sub>) при рабочем напряжении, наибольшее допустимое напряжение V<sub>max</sub> (выше начинается умножение заряда) и сводка проверок по критериям камеры эталонного класса. Начальную рекомбинацию C<sub>init</sub> (раздел 5) забирают кнопки «Взять из графика Яффе» в поправках на рекомбинацию по глубине: вкладка «МВ фотоны», раздел 5, и «Кривая дозы электронов», раздел 4.</li>
+    </ul>
     <details class="howto" data-howto="jaffe" open>
       <summary>Как проводить и как считается</summary>
       <div class="howto-body">
@@ -2129,7 +2148,7 @@
       <header><span class="step-no">1</span><h2 id="jf-s1">Система и условия</h2>
         <p class="hint">Проверяется связка камера — кабель — электрометр: при замене любой её части график строят заново.</p></header>
       <div class="field cc-type-field">
-        <span class="label" id="jf-beam-label">Пучок</span>
+        <span class="label" id="jf-beam-label">Тип пучка</span>
         <div class="segmented stack" role="radiogroup" aria-labelledby="jf-beam-label">
           <label><input type="radio" name="jf_beam_type" id="jf_beam_type_pulsed" value="pulsed" checked><span>Импульсный</span></label>
           <label><input type="radio" name="jf_beam_type" id="jf_beam_type_scanned" value="scanned"><span>Импульсно-сканирующий</span></label>
@@ -2159,7 +2178,7 @@
 
     <!-- 2 -->
     <section class="step" aria-labelledby="jf-s2">
-      <header><span class="step-no">2</span><h2 id="jf-s2">Напряжения и аппроксимация</h2>
+      <header><span class="step-no">2</span><h2 id="jf-s2">Напряжения и линейная область</h2>
         <p class="hint">Напряжения вводятся по модулю. Протокол в шапке задаёт формулы метода двух напряжений и обозначение поправки (k<sub>s</sub> или P<sub>ion</sub>).</p></header>
       <div class="grid">
         <div class="field"><label for="jf_v_man">Напряжение производителя, В</label><input type="text" id="jf_v_man" class="num" inputmode="decimal"><span class="sub">наибольшее рекомендованное; по желанию</span></div>
@@ -2215,9 +2234,10 @@
     </section>
 
     <!-- 5 -->
-    <section class="step" aria-labelledby="jf-s5">
+    <section class="step" aria-labelledby="jf-s5" data-optional>
       <header><span class="step-no">5</span><h2 id="jf-s5">Рекомбинация при разных мощностях дозы</h2>
-        <p class="hint">По желанию. Для трёх и более условий с разной мощностью дозы (меняют РИП или глубину; у ускорителей — не частоту импульсов) введите показания при V₁ и V₂ из раздела 2 — k<sub>s</sub> посчитается методом двух напряжений — или готовый k<sub>s</sub>. По показаниям строится прямая M₁/M₂ от M₁ (обобщённый подход ди Алмейды и Ниателя, TRS-398, ур. 17), по ней k<sub>s</sub> находится для любого показания M₁. Для ускорителей с указанной дозой за импульс — ещё прямая k<sub>s</sub> = 1 + C<sub>init</sub> + C<sub>gen</sub>·D<sub>pp</sub> (аддендум TG-51, ур. 2).</p></header>
+        <p class="hint">По желанию. Общая рекомбинация растёт с дозой за импульс, поэтому k<sub>s</sub> зависит от РИП и глубины. Раздел проверяет, что зависимость линейная (критерий камеры эталонного класса), и даёт начальную рекомбинацию C<sub>init</sub> для поправок на рекомбинацию по глубине.</p></header>
+      <p class="sub-hint">Для трёх и более условий с разной мощностью дозы (меняют РИП или глубину; у ускорителей — не частоту импульсов) введите показания при V₁ и V₂ из раздела 2 — k<sub>s</sub> посчитается методом двух напряжений — или готовый k<sub>s</sub>; для ускорителей можно указать и дозу за импульс D<sub>pp</sub>. «Откл.» — отклонение k<sub>s</sub> условия от прямой по D<sub>pp</sub> (если её нет — от прямой ур. 17), %.</p>
       <div class="grid">
         <div class="field" data-show="jf_beam_type:pulsed,scanned"><label for="jf_dpp_unit">Единицы D<sub>pp</sub></label><select id="jf_dpp_unit"><option value="mGy">мГр за импульс</option><option value="rel">относительные</option></select></div>
       </div>
@@ -2236,16 +2256,17 @@
       <div class="grid">
         <div class="field out-cell"><span class="label">b₀</span><output id="jf-b0"></output></div>
         <div class="field out-cell"><span class="label">b₁</span><output id="jf-b1"></output><span class="sub">на единицу показания</span></div>
-        <div class="field out-cell"><span class="label">b₀/(n − 1), %</span><output id="jf-e17-init"></output><span class="sub">начальная рекомбинация: меньше 0,2 % у камеры эталонного класса</span></div>
-        <div class="field"><label for="jf_dpp_mq">Показание M₁ для пересчёта</label><input type="text" id="jf_dpp_mq" class="num" inputmode="decimal"><span class="sub">при V₁, в тех же единицах</span></div>
+        <div class="field out-cell"><span class="label">b₀/(n − 1), %</span><output id="jf-e17-init"></output><span class="sub">начальная рекомбинация: меньше 0,2 % у камеры эталонного класса</span><span class="sub use-note" id="jf-e17-use"></span></div>
+        <div class="field"><label for="jf_dpp_mq">Показание M₁ для пересчёта</label><input type="text" id="jf_dpp_mq" class="num" inputmode="decimal"><span class="sub">по желанию: k<sub>s</sub> при другой мощности дозы (другой глубине или РИП) без измерения при V₂; показание при V₁ в тех же единицах и при том же числе МЕ</span></div>
         <div class="field out-cell"><span class="label"><span data-protocol="trs">k<sub>s</sub></span><span data-protocol="tg51">P<sub>ion</sub></span> <span>при этом M₁</span></span><output id="jf-e17-ksq"></output></div>
         <div class="field out-cell"><span class="label"><span data-protocol="trs">k<sub>s</sub></span><span data-protocol="tg51">P<sub>ion</sub></span> <span>при M₁ из раздела 3</span></span><output id="jf-e17-ksref"></output><span class="sub" id="jf-e17-ksref-sub"></span></div>
       </div>
       <div class="chart-box small" id="jf-e17-chart" data-i18n-skip></div>
       <div data-show="jf_beam_type:pulsed,scanned">
         <h3 class="sub-h">Зависимость от дозы за импульс (аддендум TG-51)</h3>
+        <p class="sub-hint">Вторая, независимая оценка той же начальной рекомбинации — по дозе за импульс. Если она есть, её берут поправки по глубине; расхождение с b₀/(n − 1) показывает, насколько точна оценка.</p>
         <div class="grid">
-          <div class="field out-cell"><span class="label">C<sub>init</sub>, %</span><output id="jf-cinit"></output><span class="sub">меньше 0,2 % у камеры эталонного класса</span></div>
+          <div class="field out-cell"><span class="label">C<sub>init</sub>, %</span><output id="jf-cinit"></output><span class="sub">меньше 0,2 % у камеры эталонного класса</span><span class="sub use-note" id="jf-cinit-use"></span></div>
           <div class="field out-cell"><span class="label">C<sub>gen</sub></span><output id="jf-cgen"></output><span class="sub" id="jf-cgen-sub"></span></div>
           <div class="field out-cell"><span class="label">Наибольшее отклонение, %</span><output id="jf-dpp-dev"></output><span class="sub">от прямой; зависимость должна быть линейной</span></div>
         </div>
@@ -2254,7 +2275,7 @@
     </section>
 
     <!-- 6 -->
-    <section class="step" aria-labelledby="jf-s6">
+    <section class="step" aria-labelledby="jf-s6" data-optional>
       <header><span class="step-no">6</span><h2 id="jf-s6">Примечания</h2></header>
       <div class="field"><label for="jf_notes" class="muted">Порядок измерений, время установления, принятые решения</label><textarea id="jf_notes"></textarea></div>
     </section>
@@ -2311,7 +2332,12 @@
       <a href="#jaffe" data-module="jaffe">График Яффе</a>
       <a href="#edepth" data-module="edepth" aria-current="page">Кривая дозы электронов</a>
     </nav>
-    <p class="intro">Пересчёт кривой ионизации, измеренной камерой в пучке электронов, в кривую глубинной дозы: сдвиг к точке измерения, <button type="button" class="term" data-term="r50">R<sub>50</sub></button> по I<sub>50</sub>, умножение на s<sub>w,air</sub>(z), параметры пучка и PDD на опорной глубине (TRS-398 Rev.1, разд. 7.3, 7.7.1, табл. 22; Report 385, разд. 4). Результат переносится кнопкой во вкладку «Электроны».</p>
+    <p class="intro">Пересчёт кривой ионизации, снятой камерой в воде в пучке электронов, в кривую глубинной дозы и параметры пучка (TRS-398 Rev.1, разд. 7.3, 7.7.1, табл. 22; Report 385, разд. 4).</p>
+    <ul class="purpose">
+      <li><b>Когда:</b> при референсной дозиметрии электронов — чтобы получить <button type="button" class="term" data-term="r50">R<sub>50</sub></button>, опорную глубину и PDD на ней; а также чтобы проверить кривую дозы, которую выдаёт программа сканера.</li>
+      <li><b>Что делать:</b> выберите камеру (раздел 1), укажите, какую глубину записал сканер (раздел 2), и вставьте кривую или откройте её файл (раздел 3). Поправки на рекомбинацию и полярность по глубине — по желанию (раздел 4).</li>
+      <li><b>Результат:</b> R<sub>50</sub>, z<sub>ref</sub>, PDD(z<sub>ref</sub>), R<sub>100</sub>, R<sub>80</sub>, R<sub>p</sub>, график и кривая дозы в CSV. Кнопка справа переносит R<sub>50</sub> (через I<sub>50</sub>), PDD(z<sub>ref</sub>) и z<sub>max</sub> во вкладку «Электроны».</li>
+    </ul>
     <details class="howto" data-howto="edepth" open>
       <summary>Как проводить и как считается</summary>
       <div class="howto-body">
@@ -2321,7 +2347,7 @@
         <li><b>Данные</b> (раздел 3) — два столбца из экспорта сканера: глубина и показание, в любых единицах. Подходят CSV, TXT и PTW .mcc (берётся первая кривая); заголовки и комментарии пропускаются.</li>
         <li><b>Глубина в данных</b> (раздел 2) — глубина опорной точки камеры: центра цилиндрической камеры или наружной поверхности входного окна плоскопараллельной. Если программа сканера уже пересчитала глубину на точку измерения, выберите «сдвиг уже учтён».</li>
         <li><b>Детектор дозы</b> (диод, алмаз) — если сравнением с камерой подтверждено, что он отвечает дозе: тогда кривая уже кривая дозы, пересчёта нет.</li>
-        <li><b>Поправки по глубине</b> (раздел 4, по желанию) — k<sub>s</sub> на глубине максимума (метод двух напряжений), начальная рекомбинация (её можно взять из «Графика Яффе») и кривая при обратной полярности. Общая рекомбинация пересчитывается на каждую глубину пропорционально показанию (TRS-398, разд. 7.3.2, сноска 46).</li>
+        <li><b>Поправки по глубине</b> (раздел 4, по желанию) — k<sub>s</sub> на опорной глубине (метод двух напряжений; его можно взять из вкладки «Электроны»), начальная рекомбинация (из «Графика Яффе») и кривая при обратной полярности. Общая рекомбинация пересчитывается на каждую глубину пропорционально показанию (TRS-398, разд. 7.3.2, сноска 46).</li>
       </ul>
         <h3>Как считается</h3>
       <ol>
@@ -2344,6 +2370,7 @@
           <label><input type="radio" name="ed_detector" id="ed_detector_chamber" value="chamber" checked><span>Ионизационная камера</span></label>
           <label><input type="radio" name="ed_detector" id="ed_detector_dose" value="dose"><span>Детектор дозы</span></label>
         </div>
+        <span class="sub" data-show="ed_detector:dose">Диод (для электронов — неэкранированный) или другой детектор, показания которого, как подтверждено сравнением с камерой, пропорциональны дозе: кривая уже является кривой дозы, пересчёт не нужен.</span>
       </div>
       <div class="grid">
         <div class="field span-2" data-show="ed_detector:chamber"><label for="ed_ch_model">Камера</label><select id="ed_ch_model"></select></div>
@@ -2409,19 +2436,19 @@
     <!-- 4 -->
     <section class="step" aria-labelledby="ed-s3c" data-show="ed_detector:chamber">
       <header><span class="step-no">4</span><h2 id="ed-s3c">Поправки по глубине</h2>
-        <p class="hint">По желанию. В идеале показания камеры на всех глубинах исправляют на рекомбинацию и полярность (TRS-398, разд. 7.3.2). В импульсных пучках общая рекомбинация пропорциональна дозе за импульс, а она на глубине пропорциональна показанию (сноска 46; разд. 4.4.3.4 e). Поправки вносятся до определения I<sub>50</sub>; в итогах видно, насколько они его изменили.</p></header>
+        <p class="hint">По желанию. TRS-398 (разд. 7.3.2) советует в идеале исправлять показания камеры на всех глубинах на рекомбинацию и полярность: обе поправки меняются с глубиной, и форма кривой немного смещается. Обычно это сотые доли миллиметра в I<sub>50</sub>, заметнее — при высокой дозе за импульс. Включите поправки, чтобы учесть их или оценить для своего пучка: изменение I<sub>50</sub> и PDD(z<sub>ref</sub>) появится в сводке справа. Поправки вносятся до определения I<sub>50</sub>.</p></header>
       <label class="check"><input type="checkbox" id="ed_rec_on"> <span>Поправка на рекомбинацию по глубине</span></label>
       <div class="grid subgrid" data-show="ed_rec_on:true">
-        <div class="field"><label for="ed_rec_ksmax">k<sub>s</sub> на глубине максимума ионизации</label><input type="text" id="ed_rec_ksmax" class="num" inputmode="decimal"><span class="sub">методом двух напряжений, в тех же условиях</span></div>
-        <div class="field"><label for="ed_rec_cinit">Начальная рекомбинация C<sub>init</sub>, %</label><input type="text" id="ed_rec_cinit" class="num" inputmode="decimal"><span class="sub">от глубины не зависит; пусто — 0</span><button type="button" class="link-btn" id="ed-btn-cinit-jaffe">Взять из графика Яффе</button></div>
-        <div class="field out-cell span-2"><span class="label">k<sub>s</sub>(z) = 1 + C<sub>init</sub> + (k<sub>s,max</sub> − 1 − C<sub>init</sub>)·M(z)/M<sub>max</sub></span><output id="ed-rec-out"></output></div>
+        <div class="field"><label for="ed_rec_ks">k<sub>s</sub> на опорной глубине z<sub>ref</sub></label><input type="text" id="ed_rec_ks" class="num" inputmode="decimal"><span class="sub">методом двух напряжений той же камерой при том же напряжении, в том же пучке</span><button type="button" class="link-btn" id="ed-btn-ks-electrons">Взять из вкладки «Электроны»</button><span class="sub" id="ed-ks-note"></span></div>
+        <div class="field"><label for="ed_rec_cinit">Начальная рекомбинация C<sub>init</sub>, %</label><input type="text" id="ed_rec_cinit" class="num" inputmode="decimal"><span class="sub">не зависит от глубины; пусто — 0</span><button type="button" class="link-btn" id="ed-btn-cinit-jaffe">Взять из графика Яффе</button><span class="sub" id="ed-cinit-note"></span></div>
+        <div class="field out-cell span-2"><span class="label">k<sub>s</sub> по глубине</span><output id="ed-rec-out"></output><span class="sub">Общая рекомбинация пропорциональна дозе за импульс, а она — показанию (сноска 46; разд. 4.4.3.4 e): k<sub>s</sub>(z) = 1 + C<sub>init</sub> + (k<sub>s</sub>(z<sub>ref</sub>) − 1 − C<sub>init</sub>)·M(z)/M(z<sub>ref</sub>).</span></div>
       </div>
       <label class="check"><input type="checkbox" id="ed_pol_on"> <span>Поправка на полярность по глубине — по кривой при обратной полярности</span></label>
       <div class="subgrid" data-show="ed_pol_on:true">
         <div class="field">
           <label for="ed_pol_data">Кривая при обратной полярности</label>
           <textarea id="ed_pol_data" class="curve-data short" spellcheck="false"></textarea>
-          <span class="sub">В тех же единицах глубины и при тех же условиях, что и основная кривая: сырые показания или нормированные так же — для формы кривой важно только изменение k<sub>pol</sub> с глубиной. k<sub>pol</sub>(z) = (|M₊| + |M₋|)/(2|M|).</span>
+          <span class="sub">Та же камера, тот же пучок и те же единицы глубины, что у основной кривой; показания — сырые или нормированные так же, как основные (для формы кривой важно только изменение k<sub>pol</sub> с глубиной). k<sub>pol</sub>(z) = (|M₊| + |M₋|)/(2|M|).</span>
         </div>
         <div class="row-tools">
           <button type="button" class="link-btn" id="ed-btn-pol-file">Открыть файл кривой при обратной полярности</button>
@@ -2443,7 +2470,7 @@
     </section>
 
     <!-- 6 -->
-    <section class="step" aria-labelledby="ed-s5">
+    <section class="step" aria-labelledby="ed-s5" data-optional>
       <header><span class="step-no" id="ed-step-notes">6</span><h2 id="ed-s5">Примечания</h2></header>
       <div class="field"><label for="ed_notes" class="muted">Сканер, шаг, поправки на полярность и рекомбинацию по глубине, сглаживание</label><textarea id="ed_notes"></textarea></div>
     </section>

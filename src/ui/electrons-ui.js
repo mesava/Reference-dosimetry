@@ -10,8 +10,7 @@ import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
-  notifyUpdate, flashFields,
-} from './common.js';
+  notifyUpdate, flashFields, richText } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.electrons.v1';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'electrons', version: 1 };
@@ -40,7 +39,7 @@ function fillSelects() {
     `<option value="">${L('— выберите камеру —', '— select a chamber —')}</option>` +
     group('pp', L('Плоскопараллельные', 'Plane-parallel')) +
     group('cyl', L('Цилиндрические', 'Cylindrical')) +
-    `<option value="OTHER">${L('Другая камера (k_Q вручную)…', 'Other chamber (k_Q entered manually)…')}</option>`;
+    `<option value="OTHER">${L('Другая камера (kQ вводится вручную)…', 'Other chamber (kQ entered manually)…')}</option>`;
   const ndw = Object.entries(NDW_UNITS).map(([k, u]) => `<option value="${k}">${unitLabel(u)}</option>`).join('');
   for (const id of ['#e_ndw_unit', '#e_cross_ndw_unit', '#e_cross_kn_unit']) $(id).innerHTML = ndw;
   $('#e_env_P_unit').innerHTML = Object.entries(PRESSURE_UNITS).map(([k, u]) => `<option value="${k}">${unitLabel(u)}</option>`).join('');
@@ -171,7 +170,7 @@ function renderChamberInfo(r) {
   }
   const keys = [r.protocol];
   box.hidden = false;
-  box.innerHTML = `<h4>${L('Положение камеры', 'Chamber position')}</h4><ul>${keys.map((k) => `<li><b>${PROTO[k].name}:</b> ${esc(p[k].text)}</li>`).join('')}</ul>`;
+  box.innerHTML = `<h4>${L('Положение камеры', 'Chamber position')}</h4><ul>${keys.map((k) => `<li><b>${PROTO[k].name}:</b> ${richText(p[k].text)}</li>`).join('')}</ul>`;
 }
 
 // ------------------------------------------------------------ вывод
@@ -291,7 +290,7 @@ function renderReadout(r, data) {
   const scopeName = { common: '', depth: L('Пересчёт на z_max · ', 'Transfer to z_max · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), recal: L('Калибровка · ', 'Calibration · '), trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
   const list = r.messages.filter((m) => ['common', 'depth', 'ctrl', 'recal'].includes(m.scope) || keys.includes(m.scope));
   $('#e-messages').innerHTML = list.length
-    ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
+    ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${richText(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
     : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
 
   const t = r.trs;
@@ -541,6 +540,20 @@ export function electronsUncSource() {
     unit: 'Gy100MU',
     meta: { institution: data.e_institution, machine: data.e_machine, beam: data.e_beam, date: data.e_date, staff: data.e_staff },
   };
+}
+/**
+ * k_s (P_ion) на опорной глубине, измеренный методом двух напряжений (без деления на k_s в пучке калибровки), —
+ * для поправки на рекомбинацию по глубине в «Кривой дозы электронов». null, если его нет.
+ */
+export function electronsKsInfo() {
+  const { data, result } = current;
+  if (!result) return null;
+  const tg = result.protocol === 'tg51';
+  const ks = tg ? result.tg51?.PionRaw : result.trs?.ksRaw;
+  if (!Number.isFinite(ks)) return null;
+  const c = result.chamber;
+  const chamber = [c && c.maker && c.model ? eChamberLabel(c) : '', data.e_ch_serial ? `№ ${data.e_ch_serial}` : ''].filter(Boolean).join(' ');
+  return { ks, tg, chamber, V1: data.e_V1, beam: data.e_beam, date: data.e_date };
 }
 /** Открытый файл: пока форму не меняли, итог сверяется с сохранённым в файле. */
 let openedFile = null;

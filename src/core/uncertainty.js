@@ -76,7 +76,7 @@ function trsRows(ctx) {
   );
   return {
     lab_psdl: {
-      label: L('Калибровка вторичного эталона в ДЛПЭ (N_D,w)', 'Calibration of the secondary standard at the PSDL (N_D,w)'),
+      label: L('Калибровка вторичного эталона в дозиметрической лаборатории первичного эталона, ДЛПЭ (N_D,w)', 'Calibration of the secondary standard at the PSDL (N_D,w)'),
       how: L(
         'Три строки этапа 1 — то, что входит в неопределённость N_D,w из свидетельства о калибровке (поверке) вашей камеры. Введите её выше — она заменит эти строки.',
         'The three rows of step 1 make up the N_D,w uncertainty stated in the calibration certificate of your chamber. Enter it above and it will replace these rows.',
@@ -381,9 +381,9 @@ export function uncertaintyBudget(o) {
       add('warn', L(`Коэффициент охвата k = ${ru(k, 2)} необычен: в свидетельствах обычно k = 2.`, `Coverage factor k = ${ru(k, 2)} is unusual: certificates usually state k = 2.`), `${prefix}unc_cert_k`);
     }
     if (!Number.isFinite(U)) {
-      add('warn', L('Не удалось прочитать U из свидетельства: лабораторная часть бюджета взята из образца.', 'Could not read U from the certificate: the laboratory part of the budget is taken from the example.'), `${prefix}unc_cert_U`);
+      add('warn', L('Не удалось прочитать U из свидетельства: лабораторная часть бюджета взята из типового.', 'Could not read U from the certificate: the laboratory part of the budget is taken from the typical budget.'), `${prefix}unc_cert_U`);
     } else if (U <= 0 || U > 10) {
-      add('warn', L(`U = ${ru(U, 2)} % из свидетельства неправдоподобно: введите расширенную неопределённость N_D,w в процентах. Лабораторная часть бюджета взята из образца.`, `U = ${ru(U, 2)}% from the certificate is implausible: enter the expanded uncertainty of N_D,w in percent. The laboratory part of the budget is taken from the example.`), `${prefix}unc_cert_U`);
+      add('warn', L(`U = ${ru(U, 2)} % из свидетельства неправдоподобно: введите расширенную неопределённость N_D,w в процентах. Лабораторная часть бюджета взята из типового.`, `U = ${ru(U, 2)}% from the certificate is implausible: enter the expanded uncertainty of N_D,w in percent. The laboratory part of the budget is taken from the example.`), `${prefix}unc_cert_U`);
     } else {
       cert = { U, k, u: U / k };
     }
@@ -406,8 +406,8 @@ export function uncertaintyBudget(o) {
         row.value = NaN;
         row.how = spec.key === 'lab_psdl'
           ? L(
-              'Три строки этапа 1 — то, что входит в неопределённость N_D,w из свидетельства. Вы ввели U из свидетельства (раздел 2), поэтому вместо них в расчёт идёт строка «N_D,w из свидетельства о калибровке (U/k)» ниже. Значения образца оставлены для сравнения; чтобы вернуть их в расчёт, очистите поле «U из свидетельства».',
-              'The three rows of step 1 make up the N_D,w uncertainty stated in the certificate. You entered U from the certificate (section 2), so the “N_D,w from the calibration certificate (U/k)” row below is used instead. The example values are kept for comparison; to use them again, clear the “U from the certificate” field.',
+              'Три строки этапа 1 — то, что входит в неопределённость N_D,w из свидетельства. Вы ввели U из свидетельства (раздел 2), поэтому вместо них в расчёт идёт строка «N_D,w из свидетельства о калибровке (U/k)» ниже. Типовые значения оставлены для сравнения; чтобы вернуть их в расчёт, очистите поле «U из свидетельства».',
+              'The three rows of step 1 make up the N_D,w uncertainty stated in the certificate. You entered U from the certificate (section 2), so the “N_D,w from the calibration certificate (U/k)” row below is used instead. The typical values are kept for comparison; to use them again, clear the “U from the certificate” field.',
             )
           : '';
       } else {
@@ -416,7 +416,7 @@ export function uncertaintyBudget(o) {
           row.value = cert.u;
           row.fromCert = true;
           row.how = L(
-            `Из свидетельства: U = ${pct(cert.U)} % при k = ${ru(cert.k, cert.k % 1 ? 2 : 0)}, приведённая к k = 1. В образце — ${pct(spec.def)} % (лаборатории AAPM).`,
+            `Из свидетельства: U = ${pct(cert.U)} % при k = ${ru(cert.k, cert.k % 1 ? 2 : 0)}, приведённая к k = 1. В типовом бюджете — ${pct(spec.def)} % (лаборатории AAPM).`,
             `From the certificate: U = ${pct(cert.U)}% at k = ${ru(cert.k, cert.k % 1 ? 2 : 0)}, converted to k = 1. The example uses ${pct(spec.def)}% (AAPM laboratories).`,
           );
         }
@@ -435,7 +435,7 @@ export function uncertaintyBudget(o) {
           row.raw = String(raw);
           if (!Number.isFinite(x) || x < 0) {
             row.invalid = true;
-            add('warn', L(`«${row.label}»: своё значение «${raw}» не прочитано — взято значение образца.`, `"${row.label}": your value "${raw}" could not be read; the example value is used.`), row.id);
+            add('warn', L(`«${row.label}»: своё значение «${raw}» не прочитано — взято типовое значение.`, `"${row.label}": your value "${raw}" could not be read; the typical value is used.`), row.id);
           } else {
             if (x > 10) add('warn', L(`«${row.label}»: ${ru(x, 2)} % — очень большая стандартная неопределённость. Значения вводятся в процентах (k = 1).`, `"${row.label}": ${ru(x, 2)}% is a very large standard uncertainty. Values are entered in percent (k = 1).`), row.id);
             row.value = x;
@@ -493,8 +493,8 @@ function typeAText(typeA, def) {
   if (!typeA) return L('Повторяемость ваших показаний (тип А) появится, когда введено не меньше двух значений.', 'The repeatability of your readings (type A) appears once at least two values are entered.');
   const v = pct(typeA.pct, 3);
   return typeA.pct > def
-    ? L(`Повторяемость ваших показаний (тип А): ${v} % по ${typeA.n} значениям — больше значения образца, в расчёт идёт она.`, `Repeatability of your readings (type A): ${v}% from ${typeA.n} values — larger than the example value, so it is used.`)
-    : L(`Повторяемость ваших показаний (тип А): ${v} % по ${typeA.n} значениям — не больше значения образца, в расчёт идёт оно.`, `Repeatability of your readings (type A): ${v}% from ${typeA.n} values — not larger than the example value, so the latter is used.`);
+    ? L(`Повторяемость ваших показаний (тип А): ${v} % по ${typeA.n} значениям — больше типового значения, в расчёт идёт она.`, `Repeatability of your readings (type A): ${v}% from ${typeA.n} values — larger than the typical value, so it is used.`)
+    : L(`Повторяемость ваших показаний (тип А): ${v} % по ${typeA.n} значениям — не больше типового значения, в расчёт идёт оно.`, `Repeatability of your readings (type A): ${v}% from ${typeA.n} values — not larger than the typical value, so the latter is used.`);
 }
 
 /** Добавляет замечания бюджета к замечаниям расчёта (область 'unc', на итог дозы не влияют). */

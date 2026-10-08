@@ -7,13 +7,12 @@ import { CHAMBERS, chamberLabel, chamberNote } from '../core/chambers.js';
 import { PRESSURE_UNITS, NDW_UNITS, parseBeamName, parseNumber, unitLabel } from '../core/units.js';
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
-import { jaffeRecInfo } from './jaffe-ui.js';
+import { jaffeRecInfo, jaffeSourceText } from './jaffe-ui.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
-  notifyUpdate, flashFields,
-} from './common.js';
+  notifyUpdate, flashFields, richText } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.photons.v2';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'photons', version: 2 };
@@ -230,15 +229,24 @@ function applyVisibility(data, result) {
   const tg = result.protocol === 'tg51';
   const rd = tg ? result.tg51?.recDepth : result.trs?.recDepth;
   $('#q-rec-out').textContent = rd ? fmt(rd.factor, 5) : '—';
-  $('#q-rec-sub').textContent = rd
-    ? tg
-      ? L(`P_ion(10)/P_ion(d_max); %dd(10) без поправки ${fmt(rd.raw, 2)} %`, `P_ion(10)/P_ion(d_max); %dd(10) without it ${fmt(rd.raw, 2)}%`)
-      : L(`k_s(20)/k_s(10); отношение без поправки ${fmt(rd.raw, 4)}`, `k_s(20)/k_s(10); ratio without it ${fmt(rd.raw, 4)}`)
+  const eff = (x) => (Number.isFinite(x) ? L(`${fmtSigned(x, 3)} %`, `${fmtSigned(x, 3)}%`) : '—');
+  $('#q-rec-sub').innerHTML = rd
+    ? richText(
+        tg
+          ? L(`P_ion(10)/P_ion(d_max). Без поправки %dd(10) = ${fmt(rd.raw, 2)} %. Влияние поправки на k_Q и дозу: ${eff(rd.dKQ)}.`, `P_ion(10)/P_ion(d_max). Without the correction %dd(10) = ${fmt(rd.raw, 2)}%. Effect of the correction on k_Q and the dose: ${eff(rd.dKQ)}.`)
+          : L(`k_s(20)/k_s(10). Без поправки отношение ${fmt(rd.raw, 4)}. Влияние поправки на k_Q и дозу: ${eff(rd.dKQ)}.`, `k_s(20)/k_s(10). Without the correction the ratio is ${fmt(rd.raw, 4)}. Effect of the correction on k_Q and the dose: ${eff(rd.dKQ)}.`),
+      )
     : '';
+  const recNote = (x) => (x ? L('с поправкой на рекомбинацию по глубине (ниже)', 'with the recombination correction with depth (below)') : '');
+  $('#tpr-rec-note').textContent = recNote(!tg && rd);
+  $('#pdd-rec-note').textContent = recNote(tg && rd);
   const ksTab = tg ? result.tg51?.PionRaw : result.trs?.ksRaw;
-  $('#q-rec-ks-sub').textContent = Number.isFinite(ksTab)
-    ? L(`пусто — из раздела 4 (${fmt(ksTab, 4)}), если значения на двух глубинах сняты той же камерой`, `blank — from section 4 (${fmt(ksTab, 4)}) if the values at both depths were taken with the same chamber`)
-    : L('пусто — из раздела 4, если значения на двух глубинах сняты той же камерой', 'blank — from section 4 if the values at both depths were taken with the same chamber');
+  const ksName = tg ? 'P_ion' : 'k_s';
+  $('#q-rec-ks-sub').innerHTML = richText(
+    Number.isFinite(ksTab)
+      ? L(`пусто — ${ksName} из раздела 4 (${fmt(ksTab, 4)}): годится, если ${tg ? '%dd(10)' : 'TPR20,10'} измерен той же камерой при том же напряжении`, `blank — ${ksName} from section 4 (${fmt(ksTab, 4)}): valid if ${tg ? '%dd(10)' : 'TPR20,10'} was measured with the same chamber at the same voltage`)
+      : L(`пусто — ${ksName} из раздела 4 (там он пока не определён)`, `blank — ${ksName} from section 4 (not determined there yet)`),
+  );
 }
 
 // ------------------------------------------------------------ вывод
@@ -399,7 +407,7 @@ function renderReadout(result, data) {
   const scopeName = { common: '', depth: L('Пересчёт на d_max · ', 'Transfer to d_max · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), recal: L('Калибровка · ', 'Calibration · '), trs: 'TRS-398 · ', tg51: 'TG-51 · ' };
   const list = result.messages.filter((m) => ['common', 'depth', 'ctrl', 'recal'].includes(m.scope) || keys.includes(m.scope));
   $('#messages').innerHTML = list.length
-    ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${esc(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
+    ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope]}${lvlName[m.level]}</span><span>${richText(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
     : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
 
   const t = result.trs;
@@ -767,13 +775,14 @@ export function initPhotons() {
 
   $('#btn-q-cinit-jaffe').addEventListener('click', () => {
     const info = jaffeRecInfo();
+    const note = $('#q-cinit-note');
     if (!info) {
-      setStatus(L('В «Графике Яффе» нет начальной рекомбинации: нужны условия с разной дозой за импульс (раздел 5) или непрерывный пучок.', 'The Jaffé plot has no initial recombination: conditions with different dose per pulse (section 5) or a continuous beam are needed.'));
+      note.innerHTML = richText(L('В «Графике Яффе» нет начальной рекомбинации: нужны показания при V₁ и V₂ в трёх и более условиях (раздел 5) или непрерывный пучок с осью 1/V.', 'The Jaffé plot has no initial recombination: readings at V₁ and V₂ in three or more conditions (section 5) or a continuous beam with the 1/V axis are needed.'));
       return;
     }
     $('#q_rec_cinit').value = fmt(Math.max(0, info.cInit) * 100, 3);
     $('#q_rec_cinit').dispatchEvent(new Event('input', { bubbles: true }));
-    setStatus(L('C_init взят из «Графика Яффе».', 'C_init taken from the Jaffé plot.'));
+    note.innerHTML = richText(jaffeSourceText(info));
   });
   $('#btn-add-staff').addEventListener('click', () => {
     const cur = readStaff($('#staff-list'));

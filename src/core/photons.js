@@ -621,6 +621,7 @@ export function computePhotons(form) {
         trs.recDepth = { ks10: rc.ks, ks20, factor: ks20 / rc.ks, raw: ratio, ksSource: rc.src };
         ratio *= ks20 / rc.ks;
         add('info', 'trs', L(`Поправка на рекомбинацию по глубине: k_s(20)/k_s(10) = ${ru(ks20 / rc.ks, 5)}; без неё отношение ${ru(trs.recDepth.raw, 4)}.`, `Recombination correction with depth: k_s(20)/k_s(10) = ${ru(ks20 / rc.ks, 5)}; without it the ratio is ${ru(trs.recDepth.raw, 4)}.`), `${REF.trs}, разд. 4.4.3.4 e, 6.3.2`);
+        messages[messages.length - 1].recDepth = true;
       }
       if (f.qtrs_method === 'pdd2010') {
         tpr = TRS.tprFromPdd2010(ratio);
@@ -876,6 +877,7 @@ export function computePhotons(form) {
         if (foil) pdd10PbIn = raw * tg.recDepth.factor;
         else pdd10In = raw * tg.recDepth.factor;
         add('info', 'tg51', L(`Поправка на рекомбинацию по глубине: P_ion(10)/P_ion(d_max) = ${ru(tg.recDepth.factor, 5)}; %dd(10)${foil ? 'Pb' : ''} без неё ${ru(raw, 2)} %.`, `Recombination correction with depth: P_ion(10)/P_ion(d_max) = ${ru(tg.recDepth.factor, 5)}; %dd(10)${foil ? 'Pb' : ''} without it ${ru(raw, 2)}%.`), `${REF.trs}, разд. 4.4.3.4 e`);
+        messages[messages.length - 1].recDepth = true;
       }
     }
     const q = TG51.pdd10x({
@@ -1357,6 +1359,22 @@ export function computePhotons(form) {
   const activeKey = wantTRS ? 'trs' : 'tg51';
   const shown = actual(wantTRS ? trs : tg, activeKey);
   const compliance = complianceOf(messages, activeKey, Number.isFinite(shown.DperMU));
+
+  // что изменила поправка на рекомбинацию по глубине: k_Q и доза на опорной глубине без неё
+  if (trs.recDepth || tg.recDepth) {
+    const base = computePhotons({ ...f, q_rec_on: false });
+    const rel = (a, b) => (Number.isFinite(a) && Number.isFinite(b) && b !== 0 ? (a / b - 1) * 100 : NaN);
+    for (const [x, b, scope] of [[trs, base.trs, 'trs'], [tg, base.tg51, 'tg51']]) {
+      if (!x.recDepth) continue;
+      x.recDepth.kQRaw = b.kQ;
+      x.recDepth.dKQ = rel(x.kQ, b.kQ);
+      x.recDepth.dDose = rel(x.DperMU, b.DperMU);
+      const m = messages.find((q) => q.recDepth && q.scope === scope);
+      const d = x.recDepth.dDose;
+      const dTxt = `${d > 0 ? '+' : ''}${ru(d, 3)}`;
+      if (m && Number.isFinite(d)) m.text += L(` k_Q и доза изменились на ${dTxt} %.`, ` k_Q and the dose change by ${dTxt}%.`);
+    }
+  }
 
   return {
     protocol: f.protocol,

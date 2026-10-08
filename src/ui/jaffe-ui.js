@@ -7,8 +7,7 @@ import { makeCombo, renderStaff, readStaff } from './widgets.js';
 import { scatterChart, legendSwatch } from './chart.js';
 import {
   $, $$, localizeDemo, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, currentProtocol, renderFlags, applyShowRules,
-  armButton, renderSignBlock, printToPdf, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, notifyUpdate,
-} from './common.js';
+  armButton, renderSignBlock, printToPdf, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, notifyUpdate, richText, dateText } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.jaffe.v1';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'jaffe', version: 1 };
@@ -26,9 +25,8 @@ const V = (v) => L(`${fmt(v, 0)} В`, `${fmt(v, 0)} V`);
 const pct = (v, d = 2) => L(`${fmt(v, d)} %`, `${fmt(v, d)}%`);
 const pctS = (v, d = 2) => L(`${fmtSigned(v, d)} %`, `${fmtSigned(v, d)}%`);
 
-/** Обозначения с индексом в тексте (уже экранированном): k_s → k<sub>s</sub>, V_max, C_init, P_ion, M_нас. */
-const subs = (html) => html.replace(/\b([kPVCMD])_([a-zа-яё]+)\b/gi, '$1<sub>$2</sub>');
-const rich = (s) => subs(esc(s));
+/** Обозначения с индексом в тексте: k_s → k<sub>s</sub>, V_max, C_init, P_ion, M_нас. */
+const rich = richText;
 
 /** Число с n значащими цифрами (для малых коэффициентов вроде b₁). */
 const sig = (v, n) => (Number.isFinite(v) && v !== 0 ? fmt(v, Math.max(0, n - 1 - Math.floor(Math.log10(Math.abs(v))))) : fmt(v, n));
@@ -181,6 +179,11 @@ function fillRows(r) {
   $('#jf-cgen').textContent = d ? fmt(d.cGen, 4) : '—';
   $('#jf-cgen-sub').textContent = r.form.jf_dpp_unit === 'rel' ? L('на единицу относительной дозы за импульс', 'per unit of relative dose per pulse') : L('на мГр за импульс', 'per mGy per pulse');
   $('#jf-dpp-dev').textContent = d ? fmt(d.maxDev, 3) : '—';
+  // какое значение начальной рекомбинации забирают кнопки «Взять из графика Яффе»
+  const use = r.blocked ? null : d ? 'dpp' : e ? 'eq17' : null;
+  const useText = L('→ это значение берут кнопки «Взять из графика Яффе» (поправки по глубине)', '→ this value is taken by the "Take from the Jaffé plot" buttons (corrections with depth)');
+  $('#jf-e17-use').textContent = use === 'eq17' ? useText : '';
+  $('#jf-cinit-use').textContent = use === 'dpp' ? useText : '';
 }
 
 let lastResult = null;
@@ -322,7 +325,14 @@ function renderReadout(r) {
   const KS = ksHtml(r.protocol);
   const proto = `${esc(beamName(r.beam))} · ${PROTO[r.protocol]}`;
   const fails = (r.checks || []).filter((c) => c.status === 'fail').length;
-  const chip = r.blocked ? '' : fails ? `<span class="chip bad">${esc(L(`не выполнено: ${fails}`, `not met: ${fails}`))}</span>` : `<span class="chip good">${esc(L('проверки: норма', 'checks: OK'))}</span>`;
+  const warns = (r.messages || []).filter((m) => m.level === 'warn').length;
+  const chip = r.blocked
+    ? ''
+    : fails
+      ? `<span class="chip bad">${esc(L(`проверок не выполнено: ${fails}`, `checks not met: ${fails}`))}</span>`
+      : warns
+        ? `<span class="chip warn">${esc(L(`предупреждений: ${warns}`, `warnings: ${warns}`))}</span>`
+        : `<span class="chip good">${esc(L('проверки выполнены', 'checks met'))}</span>`;
   if (r.blocked || !Number.isFinite(r.ks1)) {
     $('#jf-result').innerHTML = `<div class="dose-row blocked"><div class="proto"><span>${proto}</span>${chip}</div><div class="dose-big">—</div><div class="secondary">${esc(L('Нет результата: исправьте ошибки в данных (см. замечания).', 'No result: correct the errors in the data (see Messages).'))}</div></div>`;
     $('#jf-mobile-value').innerHTML = '—';
@@ -356,7 +366,7 @@ function renderChecks(r) {
   el.innerHTML = r.checks
     .map((c) => {
       const [icon, word] = STATUS[c.status]();
-      return `<li class="${c.status}"><span class="st"><span aria-hidden="true">${icon}</span> ${esc(word)}</span><span class="txt">${rich(c.label)}</span><span class="val">${esc(c.value)}</span><span class="ref">${esc(refText(c.ref))}</span></li>`;
+      return `<li class="${c.status}"><span class="st"><span aria-hidden="true">${icon}</span> ${esc(word)}</span><span class="txt">${rich(c.label)}</span><span class="val">${rich(c.value)}</span><span class="ref">${esc(refText(c.ref))}</span></li>`;
     })
     .join('');
 }
@@ -364,7 +374,7 @@ function renderChecks(r) {
 function renderMessages(r) {
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
   $('#jf-messages').innerHTML = r.messages.length
-    ? r.messages.map((m) => `<li class="${m.level}"><span class="lvl">${lvlName[m.level]}</span><span>${rich(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
+    ? r.messages.map((m) => `<li class="${m.level}"><span class="lvl">${lvlName[m.level]}</span><span>${richText(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
     : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
 }
 
@@ -524,10 +534,23 @@ let current = { data: null, result: null };
 export function jaffeRecInfo() {
   const r = current.result;
   if (!r || r.blocked) return null;
-  if (r.dpp?.fit) return { cInit: r.dpp.cInit, source: 'dpp' };
-  if (r.eq17) return { cInit: r.eq17.cInit, source: 'eq17' };
-  if (!r.pulsed && Number.isFinite(r.cInit)) return { cInit: r.cInit, source: 'cont' };
+  const d = current.data || {};
+  const sys = { chamber: [d.jf_chamber, d.jf_ch_serial ? `№ ${d.jf_ch_serial}` : ''].filter(Boolean).join(' '), date: d.jf_date || '' };
+  if (r.dpp?.fit) return { cInit: r.dpp.cInit, source: 'dpp', ...sys };
+  if (r.eq17) return { cInit: r.eq17.cInit, source: 'eq17', ...sys };
+  if (!r.pulsed && Number.isFinite(r.cInit)) return { cInit: r.cInit, source: 'cont', ...sys };
   return null;
+}
+
+/** Откуда взята начальная рекомбинация — подпись у кнопки «Взять из графика Яффе». */
+export function jaffeSourceText(info) {
+  const how = {
+    dpp: L('по дозе за импульс (раздел 5)', 'from the dose per pulse (section 5)'),
+    eq17: L('b₀/(n − 1) по ур. 17 (раздел 5)', 'b₀/(n − 1) per Eq. 17 (section 5)'),
+    cont: L('k_s − 1 при оси 1/V (непрерывный пучок)', 'k_s − 1 on the 1/V axis (continuous beam)'),
+  }[info.source];
+  const who = [info.chamber, info.date ? dateText(info.date) : ''].filter(Boolean).join(', ');
+  return L(`Из «Графика Яффе»${who ? ` (${who})` : ''}: C_init ${how}. Проверьте, что это та же камера.`, `From the Jaffé plot${who ? ` (${who})` : ''}: C_init ${how}. Check that it is the same chamber.`);
 }
 let openedFile = null;
 function update() {
