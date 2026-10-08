@@ -342,6 +342,12 @@ export function computeCrossCal(form) {
       }
     }
   }
+  if (type === 'electrons' && wantTRS && ref && ref.type === 'pp') {
+    add('info', 'trs', L(
+      'Опорная камера плоскопараллельная. TRS-398 описывает перекрёстную калибровку по опорной цилиндрической камере, откалиброванной в ⁶⁰Co (разд. 7.6, рис. 6); ур. (41) допускает и плоскопараллельную, если известен её k_Q (табл. 20 — Roos, NACP-02 — или измеренный в лаборатории). Сами плоскопараллельные камеры TRS-398 советует калибровать в пучке электронов (разд. 7.2.1).',
+      'The reference chamber is plane-parallel. TRS-398 describes cross-calibration against a cylindrical reference chamber calibrated in ⁶⁰Co (Sec. 7.6, Fig. 6); Eq. (41) also allows a plane-parallel one if its k_Q is known (Table 20 for Roos and NACP-02, or measured by a laboratory). TRS-398 advises calibrating plane-parallel chambers themselves in an electron beam (Sec. 7.2.1).',
+    ), `${REF.trs}, разд. 7.2.1, 7.6`, 'cc_ref_model');
+  }
   if (want51) {
     if (ref && ref.type === 'pp') {
       add('error', 'tg51', L(

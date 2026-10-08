@@ -38,17 +38,22 @@ const EMPTY_OPTION = () => `<option value="">${L('— выберите каме�
 /** Список камер для пучка: электроны — электронная база; фотоны — цилиндрические; ⁶⁰Co — цилиндрические и плоскопараллельные. */
 function chamberOptions(type, who) {
   if (type === 'electrons') {
+    // где есть нужные этой роли данные: опорной — k_Q в ⁶⁰Co (TRS-398 табл. 20; для TG-51 — цилиндрическая из Report 385),
+    // рабочей — k_Q,Qint для дальнейшей работы (TRS-398 табл. 21) и k′_Q плоскопараллельной (Report 385)
+    const sources = (c) =>
+      who === 'ref'
+        ? [c.trsT20 ? L('TRS-398 табл. 20', 'TRS-398 Table 20') : null, c.type === 'cyl' && c.r385 ? 'Report 385' : null]
+        : [c.trsT21 ? L('TRS-398 табл. 21', 'TRS-398 Table 21') : null, c.type === 'pp' && c.r385 ? 'Report 385' : null];
     const group = (t, label) =>
       `<optgroup label="${label}">${E_CHAMBERS.filter((c) => c.type === t)
+        .sort((a, b) => (who === 'ref' && t === 'pp' ? Number(!!b.trsT20) - Number(!!a.trsT20) : 0))
         .map((c) => {
-          // где есть k_Q для камеры: TRS-398 табл. 20 (калибровка в ⁶⁰Co), 21 (перекрёстная), Report 385
-          const t = [c.trsT20 ? '20' : null, c.trsT21 ? '21' : null].filter(Boolean);
-          const src = [t.length ? L(`TRS-398 табл. ${t.join(', ')}`, `TRS-398 Table${t.length > 1 ? 's' : ''} ${t.join(', ')}`) : null, c.r385 ? 'Report 385' : null].filter(Boolean).join('; ');
-          return `<option value="${c.id}">${esc(eChamberLabel(c))}${src ? ` — ${L('kQ', 'kQ')}: ${src}` : L(' — kQ нет', ' — no kQ')}</option>`;
+          const src = sources(c).filter(Boolean).join(', ');
+          return `<option value="${c.id}">${esc(eChamberLabel(c))} — ${src ? `kQ: ${src}` : L('kQ вручную', 'kQ entered manually')}</option>`;
         })
         .join('')}</optgroup>`;
     const cyl = group('cyl', L('Цилиндрические', 'Cylindrical'));
-    const pp = group('pp', L('Плоскопараллельные', 'Plane-parallel'));
+    const pp = group('pp', who === 'ref' ? L('Плоскопараллельные (не для Report 385)', 'Plane-parallel (not for Report 385)') : L('Плоскопараллельные', 'Plane-parallel'));
     return EMPTY_OPTION() + (who === 'ref' ? cyl + pp : pp + cyl) + OTHER_OPTION();
   }
   const groups = new Map();

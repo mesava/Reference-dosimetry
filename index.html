@@ -1552,7 +1552,8 @@
     <section class="step" aria-labelledby="cc-s2">
       <header><span class="step-no">2</span><h2 id="cc-s2">Опорная камера</h2>
         <p class="hint">Камера с калибровочным коэффициентом N<sub>D,w</sub> в пучке ⁶⁰Co — обычно цилиндрическая эталонного класса.</p>
-        <p class="hint" data-show="cc_beam_type:electrons">По Report 385 опорной может быть только цилиндрическая камера.</p></header>
+        <p class="hint" data-show="cc_beam_type:electrons" data-protocol="tg51">По Report 385 (разд. 5.3.2) опорной должна быть откалиброванная в ⁶⁰Co цилиндрическая камера эталонного класса.</p>
+        <p class="hint" data-show="cc_beam_type:electrons" data-protocol="trs">TRS-398 описывает перекрёстную калибровку по опорной цилиндрической камере (разд. 7.6, рис. 6). Плоскопараллельная опорная камера по ур. (41) возможна, если для неё есть k<sub>Q</sub> в табл. 20 (Roos, NACP-02) или k<sub>Q</sub> из лаборатории; при TG-51 — нет. В списке у каждой камеры указано, где есть её k<sub>Q</sub>.</p></header>
       <div class="grid two">
         <div class="field span-all">
           <label for="cc_ref_model">Ионизационная камера</label>
@@ -2156,7 +2157,8 @@
         </div>
       </div>
       <div class="grid">
-        <div class="field"><label for="jf_chamber">Камера</label><input type="text" id="jf_chamber" placeholder="Модель"></div>
+        <div class="field span-2"><label for="jf_ch_model">Камера</label><select id="jf_ch_model"></select><span class="sub">из базы калькулятора; если её нет в списке — «Другая камера» и название вручную</span></div>
+        <div class="field" data-show="jf_ch_model:OTHER"><label for="jf_chamber">Название камеры</label><input type="text" id="jf_chamber" placeholder="Производитель, модель"></div>
         <div class="field"><label for="jf_ch_serial">Заводской № камеры</label><input type="text" id="jf_ch_serial"></div>
         <div class="field"><label for="jf_electrometer">Электрометр</label><input type="text" id="jf_electrometer" placeholder="Модель"></div>
         <div class="field"><label for="jf_el_serial">Заводской № электрометра</label><input type="text" id="jf_el_serial"></div>

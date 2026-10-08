@@ -2,7 +2,7 @@
 // сравнение с методом двух напряжений, обратная полярность, зависимость от дозы за импульс, ошибки ввода.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeJaffe, linearFit, autoWindow, normalizeJaffe, JF_DEFAULTS } from '../src/core/jaffe.js';
+import { computeJaffe, linearFit, autoWindow, normalizeJaffe, jaffeChamber, JF_DEFAULTS } from '../src/core/jaffe.js';
 import { SAMPLE_JAFFE } from '../src/core/sample-jaffe.js';
 import * as TRS from '../src/core/trs398.js';
 
@@ -261,4 +261,18 @@ test('образец: ур. 17 при показании раздела 3 сов
   near(r.eq17.ksRef, r.ks1, 0.0001);
   assert.ok(r.dpp.fit && r.eq17);
   assert.ok(Math.abs(r.dpp.cInit - r.eq17.cInit) < 0.0003);
+});
+
+test('камера: список базы (цилиндрические и плоскопараллельные) или своё название; старые файлы — подбор по названию', () => {
+  assert.deepEqual(jaffeChamber({ jf_ch_model: 'PTW30013' }), { label: 'PTW 30013', type: 'cyl', other: false });
+  assert.equal(jaffeChamber({ jf_ch_model: 'PP:ROOS' }).type, 'pp');
+  assert.deepEqual(jaffeChamber({ jf_ch_model: 'OTHER', jf_chamber: ' Своя камера ' }), { label: 'Своя камера', type: null, other: true });
+  assert.equal(jaffeChamber({ jf_ch_model: '' }), null);
+  // файлы до появления списка: jf_ch_model нет
+  assert.equal(normalizeJaffe({ jf_chamber: 'PTW 30013' }).jf_ch_model, 'PTW30013');
+  assert.equal(normalizeJaffe({ jf_chamber: 'Камера (демо)' }).jf_ch_model, 'OTHER');
+  assert.equal(normalizeJaffe({}).jf_ch_model, '');
+  // неизвестный id — как своё название (если оно есть)
+  assert.equal(normalizeJaffe({ jf_ch_model: 'NOPE', jf_chamber: 'X' }).jf_ch_model, 'OTHER');
+  assert.equal(computeJaffe(SAMPLE_JAFFE).chamber.label, 'PTW 30013');
 });

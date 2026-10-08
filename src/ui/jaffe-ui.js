@@ -1,5 +1,6 @@
 // Вкладка «Инструменты» → «График Яффе»: проверка системы камера — кабель — электрометр (ядро — core/jaffe.js).
-import { computeJaffe, JF_DEFAULTS, normalizeJaffe } from '../core/jaffe.js';
+import { computeJaffe, JF_DEFAULTS, normalizeJaffe, jaffeChamber } from '../core/jaffe.js';
+import { coChamberGroups } from '../core/co60-chambers.js';
 import { SAMPLE_JAFFE, SAMPLE_JAFFE_EN } from '../core/sample-jaffe.js';
 import { L, getLang, refText } from '../core/i18n.js';
 import { localizeDecimals } from './i18n.js';
@@ -75,6 +76,20 @@ function renderDpp(f) {
 }
 
 const vals = (sel) => $$(sel, ROOT()).map((i) => i.value);
+
+// ------------------------------------------------------------ список камер
+/** Камеры из базы калькулятора (цилиндрические и плоскопараллельные) и «другая» с названием вручную. */
+function fillChambers() {
+  const sel = $('#jf_ch_model');
+  const cur = sel.value;
+  sel.innerHTML =
+    `<option value="">${esc(L('— выберите камеру —', '— select a chamber —'))}</option>` +
+    coChamberGroups().map((g) => `<optgroup label="${esc(g.label)}">${g.items.map((i) => `<option value="${esc(i.id)}">${esc(i.label)}</option>`).join('')}</optgroup>`).join('') +
+    `<option value="OTHER">${esc(L('Другая камера — ввести название…', 'Other chamber: enter the name…'))}</option>`;
+  sel.value = cur;
+}
+/** Название камеры с заводским номером — для протокола, файла и подписи у кнопок «Взять из графика Яффе». */
+const chamberText = (d, sep = ', ') => [jaffeChamber(d)?.label, d.jf_ch_serial ? `№ ${d.jf_ch_serial}` : ''].filter(Boolean).join(sep);
 
 // ------------------------------------------------------------ форма ↔ данные
 function readForm() {
@@ -384,6 +399,7 @@ function summaryRows(r) {
   const v2 = r.axis === 'v2';
   const rows = [
     [L('Протокол', 'Protocol'), PROTO[r.protocol]],
+    [L('Камера', 'Chamber'), r.chamber ? esc(`${r.chamber.label}${r.chamber.type ? ` (${r.chamber.type === 'pp' ? L('плоскопараллельная', 'plane-parallel') : L('цилиндрическая', 'cylindrical')})` : ''}`) : '—'],
     [L('Пучок', 'Beam'), esc(beamName(r.beam))],
     [L('Ось графика', 'Plot axis'), v2 ? '1/V²' : '1/V'],
     [L('Линейная область', 'Linear region'), r.form.jf_fit === 'manual' ? L('выбрана вручную', 'selected manually') : L(`автоматически, допуск ${pct(r.tol, 2)}`, `automatic, tolerance ${pct(r.tol, 2)}`)],
@@ -446,7 +462,7 @@ function reportText(data, r) {
   line(L('Учреждение', 'Institution'), data.jf_institution || '—');
   line(L('Дата', 'Date'), data.jf_date || '—');
   line(L('Выполнил', 'Performed by'), data.jf_staff.filter((s) => s.trim()).join(', ') || '—');
-  line(L('Камера', 'Chamber'), [data.jf_chamber, data.jf_ch_serial && `№ ${data.jf_ch_serial}`].filter(Boolean).join(', ') || '—');
+  line(L('Камера', 'Chamber'), chamberText(data) || '—');
   line(L('Электрометр', 'Electrometer'), [data.jf_electrometer, data.jf_el_serial && `№ ${data.jf_el_serial}`].filter(Boolean).join(', ') || '—');
   line(L('Кабель', 'Cable'), data.jf_cable || '—');
   line(L('Аппарат и пучок', 'Machine and beam'), [data.jf_machine, data.jf_beam].filter(Boolean).join(', ') || '—');
@@ -535,7 +551,7 @@ export function jaffeRecInfo() {
   const r = current.result;
   if (!r || r.blocked) return null;
   const d = current.data || {};
-  const sys = { chamber: [d.jf_chamber, d.jf_ch_serial ? `№ ${d.jf_ch_serial}` : ''].filter(Boolean).join(' '), date: d.jf_date || '' };
+  const sys = { chamber: chamberText(d, ' '), date: d.jf_date || '' };
   if (r.dpp?.fit) return { cInit: r.dpp.cInit, source: 'dpp', ...sys };
   if (r.eq17) return { cInit: r.eq17.cInit, source: 'eq17', ...sys };
   if (!r.pulsed && Number.isFinite(r.cInit)) return { cInit: r.cInit, source: 'cont', ...sys };
@@ -584,6 +600,7 @@ function localizeDppDemo() {
 }
 
 function refreshForLang() {
+  fillChambers();
   const f = normalizeJaffe(readForm());
   renderPoints(f);
   renderDpp(f);
@@ -597,6 +614,7 @@ function refreshForLang() {
 export function initJaffe() {
   setStatus = makeStatus($('#jf-status'));
   $$('#jf-sheet > section .combo').forEach((c) => makeCombo(c));
+  fillChambers();
 
   const draft = loadDraft();
   writeForm(draft ? draft : sampleData());
@@ -674,7 +692,7 @@ export function initJaffe() {
 
   const payload = () => JSON.stringify({ ...FILE_TAG, ...fileStamp(snapshot(current.result)), savedAt: new Date().toISOString(), form: current.data }, null, 2);
   $('#jf-btn-save').addEventListener('click', () => {
-    const name = [current.data.jf_chamber, current.data.jf_ch_serial, current.data.jf_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-') || 'jaffe';
+    const name = [jaffeChamber(current.data)?.label, current.data.jf_ch_serial, current.data.jf_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-') || 'jaffe';
     downloadText(payload(), `jaffe_${name}.json`);
     setStatus(L('Файл сохранён.', 'File saved.'));
   });
@@ -694,6 +712,6 @@ export function initJaffe() {
     copyText(payload(), L('Данные скопированы. Чтобы вставить их обратно, нажмите Ctrl+V на странице вне полей ввода.', 'Data copied. To paste them back, press Ctrl+V on the page outside the input fields.'), setStatus),
   );
   $('#jf-btn-copy-report').addEventListener('click', () => copyText(reportText(current.data, current.result), L('Протокол скопирован в буфер обмена.', 'Report copied to the clipboard.'), setStatus));
-  $('#jf-btn-pdf').addEventListener('click', () => printToPdf([L('График Яффе', 'Jaffe plot'), current.data.jf_chamber, current.data.jf_ch_serial, current.data.jf_date].filter(Boolean).join('_'), setStatus));
+  $('#jf-btn-pdf').addEventListener('click', () => printToPdf([L('График Яффе', 'Jaffe plot'), jaffeChamber(current.data)?.label, current.data.jf_ch_serial, current.data.jf_date].filter(Boolean).join('_'), setStatus));
   $('#jf-btn-print').addEventListener('click', () => window.print());
 }

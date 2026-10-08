@@ -408,7 +408,6 @@ export const STATIC_EN = {
   "бок о бок, с перестановкой": "side by side, swapped",
   "Делить показания на показания внешнего монитора (TRS-398, разд. 6.6)": "Divide the readings by those of an external monitor (TRS-398, Sec. 6.6)",
   "Камера с калибровочным коэффициентом N<sub>D,w</sub> в пучке ⁶⁰Co — обычно цилиндрическая эталонного класса.": "A chamber with an N<sub>D,w</sub> calibration coefficient in a ⁶⁰Co beam, usually a reference-class cylindrical chamber.",
-  "По Report 385 опорной может быть только цилиндрическая камера.": "Per Report 385, the reference chamber can only be cylindrical.",
   "ур. (22) TRS-398": "TRS-398 Eq. (22)",
   "Q<sub>cross</sub> = Q₀ = ⁶⁰Co, поэтому k<sub>Q</sub> = 1: N<sub>D,w</sub> рабочей камеры = (M<sub>опорн</sub>/M<sub>рабоч</sub>)·N<sub>D,w</sub> опорной (TRS-398, ур. 25, 32, 36).": "Q<sub>cross</sub> = Q₀ = ⁶⁰Co, so k<sub>Q</sub> = 1: N<sub>D,w</sub> of the field chamber = (M<sub>ref</sub>/M<sub>field</sub>)·N<sub>D,w</sub> of the reference chamber (TRS-398, Eqs. 25, 32, 36).",
   "k<sub>Qcross</sub> рабочей камеры": "k<sub>Qcross</sub> of the field chamber",
@@ -667,4 +666,9 @@ export const STATIC_EN = {
   "от него зависят коэффициенты табл. 10 для k<sub>s</sub> методом двух напряжений": "the Table 10 coefficients for k<sub>s</sub> by the two-voltage method depend on it",
   "учитывает нестабильность выхода ускорителя между облучениями камер; TRS-398 советует это при замещении. Появятся поля для показаний монитора в разделах 5 и 6": "accounts for linac output instability between the irradiations of the two chambers; TRS-398 recommends it for the substitution method. Fields for the monitor readings will appear in sections 5 and 6",
   "Вторая, независимая оценка той же начальной рекомбинации — по дозе за импульс. Если она есть, её берут поправки по глубине; расхождение с b₀/(n − 1) показывает, насколько точна оценка.": "A second, independent estimate of the same initial recombination, from the dose per pulse. If it is available, the corrections with depth use it; the difference from b₀/(n − 1) shows how precise the estimate is.",
+  "По Report 385 (разд. 5.3.2) опорной должна быть откалиброванная в ⁶⁰Co цилиндрическая камера эталонного класса.": "Per Report 385 (Sec. 5.3.2), the reference chamber must be a reference-class cylindrical chamber calibrated in ⁶⁰Co.",
+  "TRS-398 описывает перекрёстную калибровку по опорной цилиндрической камере (разд. 7.6, рис. 6). Плоскопараллельная опорная камера по ур. (41) возможна, если для неё есть k<sub>Q</sub> в табл. 20 (Roos, NACP-02) или k<sub>Q</sub> из лаборатории; при TG-51 — нет. В списке у каждой камеры указано, где есть её k<sub>Q</sub>.": "TRS-398 describes cross-calibration against a cylindrical reference chamber (Sec. 7.6, Fig. 6). A plane-parallel reference chamber is possible with Eq. (41) if its k<sub>Q</sub> is given in Table 20 (Roos, NACP-02) or by a laboratory; with TG-51 it is not. The list shows where each chamber's k<sub>Q</sub> is found.",
+  "из базы калькулятора; если её нет в списке — «Другая камера» и название вручную": "from the calculator's database; if it is not listed, choose “Other chamber” and enter the name",
+  "Название камеры": "Chamber name",
+  "Производитель, модель": "Manufacturer, model",
 };

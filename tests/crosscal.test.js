@@ -145,6 +145,11 @@ test('TG-51: опорная камера — только цилиндричес
   assert.ok(errors(b).some((m) => /только плоскопараллельной камеры/.test(m.text)));
   // TRS-398 таких ограничений не ставит
   assert.deepEqual(errors(computeCrossCal({ ...SAMPLE_CROSSCAL, protocol: 'trs', cc_fld_model: 'FC65G' })), []);
+  // плоскопараллельная опорная по TRS-398 (k_Q в табл. 20): расчёт есть, справка о том, что TRS описывает цилиндрическую (разд. 7.6)
+  const c = computeCrossCal({ ...SAMPLE_CROSSCAL, protocol: 'trs', cc_ref_model: 'NACP02' });
+  assert.deepEqual(errors(c), []);
+  assert.equal(c.trs.blocked, false);
+  assert.ok(c.messages.some((m) => m.level === 'info' && /по опорной цилиндрической камере/.test(m.text)));
 });
 
 test('TRS-398: опорная камера без данных табл. 20 — ошибка; ручной k_Q снимает её', () => {

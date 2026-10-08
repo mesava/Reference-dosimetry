@@ -18,6 +18,7 @@ import { parseNumber, isBlank, ru } from './units.js';
 import { L } from './i18n.js';
 import * as TRS from './trs398.js';
 import * as TG51 from './tg51.js';
+import { resolveCoChamber, matchCoChamberByName } from './co60-chambers.js';
 
 export const JF_ROWS = 8;
 export const DPP_ROWS = 3;
@@ -29,7 +30,8 @@ export const JF_DEFAULTS = {
   jf_date: '',
   jf_staff: [''],
   jf_notes: '',
-  jf_chamber: '',
+  jf_ch_model: '', // камера из базы: id цилиндрической (chambers.js) или 'PP:' + id плоскопараллельной; 'OTHER' — название в jf_chamber
+  jf_chamber: '', // название камеры, если её нет в списке
   jf_ch_serial: '',
   jf_electrometer: '',
   jf_el_serial: '',
@@ -92,7 +94,19 @@ export function normalizeJaffe(input) {
   const m = Math.max(1, given(dk, DPP_ROWS));
   for (const k of dk) f[k] = cut(f[k], m).map(String);
   if (!Array.isArray(f.jf_staff) || f.jf_staff.length === 0) f.jf_staff = [''];
+  // файлы до появления списка камер: название подбирается по базе, иначе остаётся своим текстом
+  if (!input || !('jf_ch_model' in input)) f.jf_ch_model = matchCoChamberByName(f.jf_chamber) ?? (isBlank(f.jf_chamber) ? '' : 'OTHER');
+  if (f.jf_ch_model && f.jf_ch_model !== 'OTHER' && !resolveCoChamber({ co_ch_model: f.jf_ch_model })) f.jf_ch_model = isBlank(f.jf_chamber) ? '' : 'OTHER';
   return f;
+}
+
+/** Камера графика Яффе: { label, type: 'cyl' | 'pp' | null } или null, если не выбрана. */
+export function jaffeChamber(f) {
+  const id = String(f.jf_ch_model ?? '');
+  if (!id) return null;
+  if (id === 'OTHER') return isBlank(f.jf_chamber) ? null : { label: String(f.jf_chamber).trim(), type: null, other: true };
+  const c = resolveCoChamber({ co_ch_model: id });
+  return c ? { label: c.label, type: c.type, other: false } : null;
 }
 
 /** Линейная регрессия y = a + b·x методом наименьших квадратов, с остатками и неопределённостью свободного члена. */
@@ -224,7 +238,7 @@ export function computeJaffe(form) {
   pts.sort((p, q) => p.V - q.V);
   const n = pts.length;
 
-  const out = { form: f, protocol: f.protocol, beam, pulsed, axis, vMan, V1, V2, tol, points: pts, fit: null, window: [], messages, flags };
+  const out = { form: f, protocol: f.protocol, chamber: jaffeChamber(f), beam, pulsed, axis, vMan, V1, V2, tol, points: pts, fit: null, window: [], messages, flags };
 
   if (n < 3) {
     add('error', L('Для графика Яффе нужно не меньше трёх напряжений (лучше 6–8, от трети рабочего напряжения до напряжения производителя).', 'A Jaffé plot needs at least three voltages (6–8 is better, from a third of the working voltage up to the manufacturer voltage).'), `${REF.r374}, прил. A.5`, 'jf_V.0');

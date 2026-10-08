@@ -8,7 +8,8 @@ export const SAMPLE_JAFFE = {
   jf_date: '2026-10-07',
   jf_staff: [''],
   jf_notes: 'Демонстрационные данные, не результаты реальных измерений.',
-  jf_chamber: 'Цилиндрическая камера 0,6 см³ (демо)',
+  jf_ch_model: 'PTW30013',
+  jf_chamber: '',
   jf_ch_serial: '0000',
   jf_electrometer: 'Электрометр (демо)',
   jf_el_serial: '0000',
@@ -40,7 +41,6 @@ export const SAMPLE_JAFFE = {
 export const SAMPLE_JAFFE_EN = {
   jf_institution: 'Example',
   jf_notes: 'Demo data, not results of real measurements.',
-  jf_chamber: 'Cylindrical chamber 0.6 cm³ (demo)',
   jf_electrometer: 'Electrometer (demo)',
   jf_cable: 'Extension cable 10 m',
   jf_machine: 'Linear accelerator (demo)',
