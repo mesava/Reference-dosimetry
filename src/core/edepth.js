@@ -299,7 +299,7 @@ export function computeEdepth(form) {
     out.corr.pol = true;
     out.corr.kpolMin = Math.min(...kp);
     out.corr.kpolMax = Math.max(...kp);
-    if (Math.max(...kp.map((x) => Math.abs(x - 1))) > 0.05) add('warn', L('k_pol отличается от 1 больше чем на 5 %: показания при двух полярностях должны быть сырыми (не нормированными), в одних единицах и при одинаковом числе МЕ.', 'k_pol differs from 1 by more than 5%: the readings at the two polarities must be raw (not normalized), in the same units and with the same MU.'), null, 'ed_pol_data');
+    if (Math.max(...kp.map((x) => Math.abs(x - 1))) > 0.05) add('warn', L('k_pol отличается от 1 больше чем на 5 %: показания при двух полярностях должны быть в одних единицах и при одинаковом числе МЕ (или нормированы одинаково).', 'k_pol differs from 1 by more than 5%: the readings at the two polarities must be in the same units and with the same MU (or normalized the same way).'), null, 'ed_pol_data');
     for (const p of pts) p.v *= p.kpol;
   }
   if (chamberMode && f.ed_rec_on) {

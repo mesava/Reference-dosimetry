@@ -88,6 +88,12 @@ export const FORM_DEFAULTS = {
   qtrs_v10: '',
   qtrs_fff_pdd10: '',
 
+  // поправка на рекомбинацию по глубине для показателя качества (TRS-398 Rev.1, разд. 4.4.3.4 e и разд. 6 о TPR20,10:
+  // при изменении с глубиной учесть рекомбинацию на обеих глубинах); общая часть k_s пропорциональна показанию
+  q_rec_on: false,
+  q_rec_ks: '', // k_s (P_ion) на 10 см для камеры, которой измерено отношение; пусто — из раздела 4
+  q_rec_cinit: '', // начальная рекомбинация, %; пусто — 0
+
   kqtrs_mode: 'formula', // 'formula' | 'table' | 'manual'
   kqtrs_manual: '',
   kq51_manual_on: false,
@@ -208,6 +214,16 @@ function geometry(f) {
   return { kind: 'SSD', ssd: 100, field: 10, depth: 10 };
 }
 
+/**
+ * Поправка на рекомбинацию по глубине для отношения показаний: общая часть k_s пропорциональна показанию
+ * (дозе за импульс), k_s(z) = 1 + C_init + (k_s,ref − 1 − C_init)·M(z)/M_ref.
+ * Возвращает k_s на другой глубине при известном k_s на опорной и отношении показаний M(z)/M_ref.
+ */
+export function ksAtRatio(ksRef, cInit, ratio) {
+  const gen = Math.max(0, ksRef - 1 - cInit);
+  return 1 + cInit + gen * ratio;
+}
+
 export function computePhotons(form) {
   const f = normalizeForm(form);
   const messages = [];
@@ -220,6 +236,22 @@ export function computePhotons(form) {
   const add = (level, scope, text, ref = null, field = null, nonstd = null) => {
     messages.push(nonstd ? { level, scope, text, ref, nonstd } : { level, scope, text, ref });
     if (field) [].concat(field).forEach((k) => flag(k, level));
+  };
+  /** Параметры поправки на рекомбинацию по глубине для показателя качества; null — поправка не вносится. */
+  const recDepth = (ksTab, scope) => {
+    if (!f.q_rec_on) return null;
+    const own = !isBlank(f.q_rec_ks);
+    const ks = own ? parseNumber(f.q_rec_ks) : ksTab;
+    if (!Number.isFinite(ks) || ks < 1 || ks > 1.1) {
+      add('warn', scope, L('Поправка на рекомбинацию по глубине не внесена: нужен k_s на 10 см (от 1 до 1,1) — введите его или снимите показания при двух напряжениях в разделе 4.', 'The recombination correction with depth is not applied: k_s at 10 cm (1 to 1.1) is needed — enter it or take readings at two voltages in section 4.'), null, 'q_rec_ks');
+      return null;
+    }
+    const ci = isBlank(f.q_rec_cinit) ? 0 : parseNumber(f.q_rec_cinit) / 100;
+    if (!Number.isFinite(ci) || ci < 0 || ci > 0.01) {
+      add('warn', scope, L('Начальная рекомбинация вводится в процентах, от 0 до 1 %: поправка по глубине не внесена.', 'Initial recombination is entered in percent, from 0 to 1%: the depth correction is not applied.'), null, 'q_rec_cinit');
+      return null;
+    }
+    return { ks, ci, src: own ? 'entered' : 'section4' };
   };
 
   const want51 = f.protocol === 'tg51';
@@ -581,7 +613,15 @@ export function computePhotons(form) {
     if (!Number.isFinite(v10)) read('qtrs_v10', label10, 'trs');
     if (Number.isFinite(v10) && v10 === 0) add('error', 'trs', L(`${label10} не может быть нулевым.`, `${label10} cannot be zero.`), null, 'qtrs_v10');
     if (Number.isFinite(v20) && Number.isFinite(v10) && v10 !== 0) {
-      const ratio = Math.abs(v20) / Math.abs(v10);
+      let ratio = Math.abs(v20) / Math.abs(v10);
+      // поправка на рекомбинацию по глубине: k_s(20)/k_s(10), общая часть пропорциональна показанию
+      const rc = recDepth(trs.ksRaw, 'trs');
+      if (rc) {
+        const ks20 = ksAtRatio(rc.ks, rc.ci, ratio);
+        trs.recDepth = { ks10: rc.ks, ks20, factor: ks20 / rc.ks, raw: ratio, ksSource: rc.src };
+        ratio *= ks20 / rc.ks;
+        add('info', 'trs', L(`Поправка на рекомбинацию по глубине: k_s(20)/k_s(10) = ${ru(ks20 / rc.ks, 5)}; без неё отношение ${ru(trs.recDepth.raw, 4)}.`, `Recombination correction with depth: k_s(20)/k_s(10) = ${ru(ks20 / rc.ks, 5)}; without it the ratio is ${ru(trs.recDepth.raw, 4)}.`), `${REF.trs}, разд. 4.4.3.4 e, 6.3.2`);
+      }
       if (f.qtrs_method === 'pdd2010') {
         tpr = TRS.tprFromPdd2010(ratio);
         trs.tprEquation = L('сноска 36: TPR20,10 = 1,2661·PDD(20)/PDD(10) − 0,0595', 'footnote 36: TPR20,10 = 1.2661·PDD(20)/PDD(10) − 0.0595');
@@ -823,10 +863,25 @@ export function computePhotons(form) {
       tg.Pion = NaN;
     }
 
+    // поправка на рекомбинацию по глубине: %dd(10) × P_ion(10)/P_ion(d_max), общая часть пропорциональна показанию
+    let pdd10In = parseNumber(f.q51_pdd10);
+    let pdd10PbIn = parseNumber(f.q51_pdd10pb);
+    if (f.q_rec_on && ['open', 'interim', 'foil50', 'foil30'].includes(f.q51_method)) {
+      const foil = f.q51_method.startsWith('foil');
+      const raw = foil ? pdd10PbIn : pdd10In;
+      const rc = Number.isFinite(raw) && raw > 0 ? recDepth(tg.PionRaw, 'tg51') : null;
+      if (rc) {
+        const ksMax = ksAtRatio(rc.ks, rc.ci, 100 / raw);
+        tg.recDepth = { ks10: rc.ks, ksMax, factor: rc.ks / ksMax, raw, ksSource: rc.src };
+        if (foil) pdd10PbIn = raw * tg.recDepth.factor;
+        else pdd10In = raw * tg.recDepth.factor;
+        add('info', 'tg51', L(`Поправка на рекомбинацию по глубине: P_ion(10)/P_ion(d_max) = ${ru(tg.recDepth.factor, 5)}; %dd(10)${foil ? 'Pb' : ''} без неё ${ru(raw, 2)} %.`, `Recombination correction with depth: P_ion(10)/P_ion(d_max) = ${ru(tg.recDepth.factor, 5)}; %dd(10)${foil ? 'Pb' : ''} without it ${ru(raw, 2)}%.`), `${REF.trs}, разд. 4.4.3.4 e`);
+      }
+    }
     const q = TG51.pdd10x({
       method: f.q51_method,
-      pdd10: parseNumber(f.q51_pdd10),
-      pdd10Pb: parseNumber(f.q51_pdd10pb),
+      pdd10: pdd10In,
+      pdd10Pb: pdd10PbIn,
       manual: parseNumber(f.q51_manual),
     });
     if (q.error) add('error', 'tg51', cap(q.error) + '.', `${REF.tg51}, разд. VIII.B`, 'pdd10x');

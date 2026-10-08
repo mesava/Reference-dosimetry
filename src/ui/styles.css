@@ -796,6 +796,7 @@ table.jf-table input.flag-error { border-color: var(--err); background: var(--er
 table.jf-dpp td.ks output.calc { display: none; font: 13px var(--font-mono); font-variant-numeric: tabular-nums; }
 table.jf-dpp tr.has-m td.ks input { display: none; }
 table.jf-dpp tr.has-m td.ks output.calc { display: block; padding: 6px 2px; }
+.rec-depth { margin-top: 12px; display: grid; gap: 8px; }
 .sub-h { margin: 16px 0 2px; font: 600 13px var(--font-display); color: var(--ink); }
 .sub-hint { margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
 .row-tools .link-btn:disabled { color: var(--muted); cursor: default; text-decoration: none; }

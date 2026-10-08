@@ -7,6 +7,7 @@ import { CHAMBERS, chamberLabel, chamberNote } from '../core/chambers.js';
 import { PRESSURE_UNITS, NDW_UNITS, parseBeamName, parseNumber, unitLabel } from '../core/units.js';
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
+import { jaffeRecInfo } from './jaffe-ui.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
@@ -224,6 +225,20 @@ function applyVisibility(data, result) {
   );
   const src = result.trs?.fffEstimate?.source;
   $('#fff-pdd-src').textContent = src && src !== L('введено', 'entered') ? L(`Взято: ${src}.`, `Source: ${src}.`) : '';
+
+  // поправка на рекомбинацию по глубине для показателя качества
+  const tg = result.protocol === 'tg51';
+  const rd = tg ? result.tg51?.recDepth : result.trs?.recDepth;
+  $('#q-rec-out').textContent = rd ? fmt(rd.factor, 5) : '—';
+  $('#q-rec-sub').textContent = rd
+    ? tg
+      ? L(`P_ion(10)/P_ion(d_max); %dd(10) без поправки ${fmt(rd.raw, 2)} %`, `P_ion(10)/P_ion(d_max); %dd(10) without it ${fmt(rd.raw, 2)}%`)
+      : L(`k_s(20)/k_s(10); отношение без поправки ${fmt(rd.raw, 4)}`, `k_s(20)/k_s(10); ratio without it ${fmt(rd.raw, 4)}`)
+    : '';
+  const ksTab = tg ? result.tg51?.PionRaw : result.trs?.ksRaw;
+  $('#q-rec-ks-sub').textContent = Number.isFinite(ksTab)
+    ? L(`пусто — из раздела 4 (${fmt(ksTab, 4)}), если значения на двух глубинах сняты той же камерой`, `blank — from section 4 (${fmt(ksTab, 4)}) if the values at both depths were taken with the same chamber`)
+    : L('пусто — из раздела 4, если значения на двух глубинах сняты той же камерой', 'blank — from section 4 if the values at both depths were taken with the same chamber');
 }
 
 // ------------------------------------------------------------ вывод
@@ -750,6 +765,16 @@ export function initPhotons() {
   });
   document.addEventListener('langchange', refreshForLang);
 
+  $('#btn-q-cinit-jaffe').addEventListener('click', () => {
+    const info = jaffeRecInfo();
+    if (!info) {
+      setStatus(L('В «Графике Яффе» нет начальной рекомбинации: нужны условия с разной дозой за импульс (раздел 5) или непрерывный пучок.', 'The Jaffé plot has no initial recombination: conditions with different dose per pulse (section 5) or a continuous beam are needed.'));
+      return;
+    }
+    $('#q_rec_cinit').value = fmt(Math.max(0, info.cInit) * 100, 3);
+    $('#q_rec_cinit').dispatchEvent(new Event('input', { bubbles: true }));
+    setStatus(L('C_init взят из «Графика Яффе».', 'C_init taken from the Jaffé plot.'));
+  });
   $('#btn-add-staff').addEventListener('click', () => {
     const cur = readStaff($('#staff-list'));
     cur.push('');

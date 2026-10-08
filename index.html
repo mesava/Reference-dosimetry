@@ -812,6 +812,15 @@
           <div class="field" data-show="kq51_manual_on:true"><label for="kq51_manual">k<sub>Q</sub> (TG-51)</label><input type="text" id="kq51_manual" class="num" inputmode="decimal"></div>
         </div>
       </div>
+      <div class="rec-depth">
+        <label class="check"><input type="checkbox" id="q_rec_on"> <span>Поправка на рекомбинацию по глубине — для пучков БВФ и других пучков с высокой дозой за импульс</span></label>
+        <div class="grid three" data-show="q_rec_on:true">
+          <div class="field"><label for="q_rec_ks"><span data-protocol="trs">k<sub>s</sub></span><span data-protocol="tg51">P<sub>ion</sub></span> <span>на глубине 10 см</span></label><input type="text" id="q_rec_ks" class="num" inputmode="decimal"><span class="sub" id="q-rec-ks-sub">пусто — из раздела 4, если значения на двух глубинах сняты той же камерой</span></div>
+          <div class="field"><label for="q_rec_cinit">Начальная рекомбинация C<sub>init</sub>, %</label><input type="text" id="q_rec_cinit" class="num" inputmode="decimal"><span class="sub">от глубины не зависит; пусто — 0</span><button type="button" class="link-btn" id="btn-q-cinit-jaffe">Взять из графика Яффе</button></div>
+          <div class="field out-cell"><span class="label">Поправка к отношению</span><output id="q-rec-out"></output><span class="sub" id="q-rec-sub"></span></div>
+        </div>
+        <p class="eq" data-show="q_rec_on:true">Общая рекомбинация пропорциональна дозе за импульс, то есть показанию: k<sub>s</sub>(z) = 1 + C<sub>init</sub> + (k<sub>s</sub>(10) − 1 − C<sub>init</sub>)·M(z)/M(10). Отношение показаний на двух глубинах умножается на k<sub>s</sub>(20)/k<sub>s</sub>(10) (TPR<sub>20,10</sub>) или на P<sub>ion</sub>(10)/P<sub>ion</sub>(d<sub>max</sub>) (%dd(10)). TRS-398, разд. 4.4.3.4 e и 6.3.2: если отношение меняется из-за рекомбинации, её учитывают на обеих глубинах.</p>
+      </div>
     </section>
 
     <!-- 6 -->
@@ -2412,7 +2421,7 @@
         <div class="field">
           <label for="ed_pol_data">Кривая при обратной полярности</label>
           <textarea id="ed_pol_data" class="curve-data short" spellcheck="false"></textarea>
-          <span class="sub">Сырые показания (не нормированные) — в тех же единицах глубины и показаний и при том же числе МЕ, что и основная кривая. k<sub>pol</sub>(z) = (|M₊| + |M₋|)/(2|M|).</span>
+          <span class="sub">В тех же единицах глубины и при тех же условиях, что и основная кривая: сырые показания или нормированные так же — для формы кривой важно только изменение k<sub>pol</sub> с глубиной. k<sub>pol</sub>(z) = (|M₊| + |M₋|)/(2|M|).</span>
         </div>
         <div class="row-tools">
           <button type="button" class="link-btn" id="ed-btn-pol-file">Открыть файл кривой при обратной полярности</button>

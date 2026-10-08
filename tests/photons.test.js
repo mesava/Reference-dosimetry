@@ -492,3 +492,30 @@ test('Калибровка ускорителя при отклонении бо
   assert.ok(Math.abs(n.deviation) < 2);
   assert.ok(!r.messages.some((m) => /больше 2 %/.test(m.text)), 'после калибровки в допуске — без предупреждения');
 });
+
+test('Поправка на рекомбинацию по глубине для TPR20,10 и %dd(10): общая часть k_s пропорциональна показанию', () => {
+  const base = computeP(SAMPLE);
+  // TRS-398: k_s из раздела 4, C_init = 0,1 %
+  const on = computePhotons({ ...SAMPLE_FORM, protocol: 'trs', q_rec_on: true, q_rec_cinit: '0,1' });
+  const off = computePhotons({ ...SAMPLE_FORM, protocol: 'trs' });
+  const rd = on.trs.recDepth;
+  near(rd.ks10, off.trs.ksRaw, 1e-12);
+  const ratio = rd.raw;
+  near(rd.ks20, 1.001 + (rd.ks10 - 1.001) * ratio, 1e-12);
+  near(on.trs.tpr, off.trs.tpr * rd.ks20 / rd.ks10, 1e-12);
+  assert.ok(on.trs.tpr < off.trs.tpr, 'на 20 см рекомбинация меньше — отношение уменьшается');
+  // свой k_s (камера, которой снималась кривая)
+  const own = computePhotons({ ...SAMPLE_FORM, protocol: 'trs', q_rec_on: true, q_rec_ks: '1,010' });
+  near(own.trs.recDepth.ks20, 1 + 0.01 * own.trs.recDepth.raw, 1e-12);
+  // TG-51: %dd(10) × P_ion(10)/P_ion(d_max)
+  const t = computePhotons({ ...SAMPLE_FORM, protocol: 'tg51', q_rec_on: true, q_rec_ks: '1,008' });
+  const tr = t.tg51.recDepth;
+  near(tr.ksMax, 1 + 0.008 * (100 / tr.raw), 1e-12);
+  near(tr.factor, 1.008 / tr.ksMax, 1e-12);
+  assert.ok(tr.factor < 1);
+  // без k_s поправка не вносится — предупреждение
+  const none = computePhotons({ ...SAMPLE_FORM, protocol: 'trs', rd_M2: ['', '', ''], q_rec_on: true });
+  assert.equal(none.trs.recDepth, undefined);
+  assert.ok(none.messages.some((m) => /по глубине не внесена/.test(m.text)));
+  assert.ok(base.trs.tpr > 0);
+});
