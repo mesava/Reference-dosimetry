@@ -33,6 +33,9 @@ const MODULES = {
   co60: { title: () => L('⁶⁰Co — референсная дозиметрия', '⁶⁰Co — reference dosimetry'), file: 'cobalt', importData: importCobalt, status: cobaltStatus, tab: 'dosimetry' },
   photons: { title: () => L('МВ фотоны — референсная дозиметрия', 'MV photons — reference dosimetry'), file: 'photons', importData: importPhotons, status: photonsStatus, tab: 'dosimetry' },
   electrons: { title: () => L('Электроны — референсная дозиметрия', 'Electrons — reference dosimetry'), file: 'electrons', importData: importElectrons, status: electronsStatus, tab: 'dosimetry' },
+  // в разработке: страница с планом, без расчёта; последним подразделом «Дозиметрии» не запоминается
+  kv: { title: () => L('kV-рентген — в разработке', 'kV x-rays — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', wip: true },
+  brachy: { title: () => L('Брахитерапия — в разработке', 'Brachytherapy — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', wip: true },
   jaffe: { title: () => L('Камера и пучок — график Яффе', 'Chamber and beam — Jaffé plot'), file: 'jaffe', importData: importJaffe, status: jaffeStatus, tab: 'prep' },
   tools: { title: () => L('Камера и пучок — перекрёстная калибровка', 'Chamber and beam — cross-calibration'), file: 'crosscal', importData: importCrossCal, status: crossCalStatus, tab: 'prep' },
   edepth: { title: () => L('Камера и пучок — кривая дозы электронов', 'Chamber and beam — electron depth dose'), file: 'edepth', importData: importEdepth, status: edepthStatus, tab: 'prep' },
@@ -112,8 +115,10 @@ function showModule(name) {
   }
   setActiveModule(name);
   document.title = MODULES[name].title();
-  store.set(TAB_KEY, name);
-  store.set(subKey(tabOf(name)), name);
+  if (!MODULES[name].wip) {
+    store.set(TAB_KEY, name);
+    store.set(subKey(tabOf(name)), name);
+  }
   if (name === 'start') renderStart();
   // «Мои камеры» меняются на вкладках дозиметрии: кнопку переноса в журнал обновить при открытии «Оборудования»
   if (name === 'equipment') renderMyChambersTool();
