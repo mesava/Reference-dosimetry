@@ -94,12 +94,12 @@ function chamberCard(c, j = getJournal()) {
           ${field(L('k<sub>лаб</sub>', 'k<sub>lab</sub>'), input(k, c.id, 'form.ch_klab', f.ch_klab ?? '1,000', { num: true }), { forId: fieldId(k, c.id, 'form.ch_klab'), sub: L('поправочный множитель из протокола поверки; обычно 1,000', 'correction multiplier from the calibration certificate; usually 1.000') })}`
         : ''}
       ${phCross
-        ? `${field(L('N<sub>D,w,Qcross</sub> — фотоны', 'N<sub>D,w,Qcross</sub>: photons'), input(k, c.id, 'form.ch_cross_ndw', f.ch_cross_ndw, { num: true }), { forId: fieldId(k, c.id, 'form.ch_cross_ndw'), sub: L('TRS-398, ур. 27; из «Инструментов»', 'TRS-398, Eq. 27; from Tools') })}
+        ? `${field(L('N<sub>D,w,Qcross</sub> — фотоны', 'N<sub>D,w,Qcross</sub>: photons'), input(k, c.id, 'form.ch_cross_ndw', f.ch_cross_ndw, { num: true }), { forId: fieldId(k, c.id, 'form.ch_cross_ndw'), sub: L('TRS-398, ур. 27; из «Камеры и пучка»', 'TRS-398, Eq. 27; from Chamber and beam') })}
           ${field(L('Единицы', 'Units'), select(k, c.id, 'form.ch_cross_ndw_unit', f.ch_cross_ndw_unit || 'Gy/nC', units), { forId: fieldId(k, c.id, 'form.ch_cross_ndw_unit') })}
           ${field(L('TPR<sub>20,10</sub> пучка калибровки', 'TPR<sub>20,10</sub> of the calibration beam'), input(k, c.id, 'form.ch_cross_tpr', f.ch_cross_tpr, { num: true }), { forId: fieldId(k, c.id, 'form.ch_cross_tpr'), sub: L('k<sub>Q,Qcross</sub> = k<sub>Q</sub>/k<sub>Qcross</sub> (ур. 30)', 'k<sub>Q,Qcross</sub> = k<sub>Q</sub>/k<sub>Qcross</sub> (Eq. 30)') })}`
         : ''}
       ${elCross
-        ? `${field(L('N<sub>D,w,Qcross</sub> — электроны (TRS-398)', 'N<sub>D,w,Qcross</sub>: electrons (TRS-398)'), input(k, c.id, 'form.e_cross_ndw', f.e_cross_ndw, { num: true }), { forId: fieldId(k, c.id, 'form.e_cross_ndw'), sub: L('ур. 41; из «Инструментов»', 'Eq. 41; from Tools') })}
+        ? `${field(L('N<sub>D,w,Qcross</sub> — электроны (TRS-398)', 'N<sub>D,w,Qcross</sub>: electrons (TRS-398)'), input(k, c.id, 'form.e_cross_ndw', f.e_cross_ndw, { num: true }), { forId: fieldId(k, c.id, 'form.e_cross_ndw'), sub: L('ур. 41; из «Камеры и пучка»', 'Eq. 41; from Chamber and beam') })}
           ${field(L('Единицы', 'Units'), select(k, c.id, 'form.e_cross_ndw_unit', f.e_cross_ndw_unit || 'Gy/nC', units), { forId: fieldId(k, c.id, 'form.e_cross_ndw_unit') })}
           ${field(L('R<sub>50</sub> пучка калибровки, г/см²', 'R<sub>50</sub> of the calibration beam, g/cm²'), input(k, c.id, 'form.e_cross_r50', f.e_cross_r50, { num: true }), { forId: fieldId(k, c.id, 'form.e_cross_r50') })}
           ${field(L('(k<sub>Qecal</sub>·N<sub>D,w</sub>)<sub>pp</sub> — электроны (Report 385)', '(k<sub>Qecal</sub>·N<sub>D,w</sub>)<sub>pp</sub>: electrons (Report 385)'), input(k, c.id, 'form.e_cross_kn', f.e_cross_kn, { num: true }), { forId: fieldId(k, c.id, 'form.e_cross_kn'), sub: L('ур. 5; для TG-51', 'Eq. 5; for TG-51') })}

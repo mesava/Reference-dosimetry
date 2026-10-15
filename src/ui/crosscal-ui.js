@@ -1,4 +1,4 @@
-// Вкладка «Инструменты»: перекрёстная калибровка рабочей камеры в пучке ⁶⁰Co, МВ фотонов или электронов
+// Вкладка «Камера и пучок»: перекрёстная калибровка рабочей камеры в пучке ⁶⁰Co, МВ фотонов или электронов
 // (ядро — core/crosscal.js) и перенос результата в раздел «Камера и электрометр» нужной вкладки.
 import { computeCrossCal, crossCalTargets, CC_DEFAULTS, CC_SERIES, normalizeCrossCal, ccChamberLabel, PP_PREFIX } from '../core/crosscal.js';
 import { E_CHAMBERS, eChamberLabel } from '../core/electron-chambers.js';

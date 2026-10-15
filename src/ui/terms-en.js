@@ -70,7 +70,7 @@ export const TERMS_EN = {
 <li>Extrapolating the straight line to 1/V = 0 gives the saturation reading M<sub>0</sub>, and P<sub>ion</sub> = M<sub>0</sub>/M — this is used to verify the result of the two-voltage method.</li>
 <li>Report 374: a Jaffé plot is mandatory for at least one modality (photons or electrons), and at commissioning it is also obtained at different values of dose per pulse. Dose per pulse is varied via SSD or depth: changing the dose rate via the pulse repetition frequency does not change it. For a reference-class chamber, P<sub>ion</sub> depends linearly on dose per pulse.</li>
 </ol>
-<p>In the calculator the Jaffé plot is built under Tools → Jaffé plot, together with the comparison with the two-voltage method, the polarity check and the dose-per-pulse dependence.</p>
+<p>In the calculator the Jaffé plot is built under Chamber and beam → Jaffé plot, together with the comparison with the two-voltage method, the polarity check and the dose-per-pulse dependence.</p>
 <p>Some chambers have V<sub>max</sub> of only about 100 V, whereas the manufacturer specifies 300 V. Adopting the manufacturer's voltage without verification can lead to an error of 0.5% or more. After commissioning, the two-voltage method at each calibration is sufficient.</p>
 <h4>Requirements for a reference-class chamber</h4>
 <ul>
@@ -302,7 +302,7 @@ export const TERMS_EN = {
 <p class="formula">D(z<sub>max</sub>) = D(z<sub>ref</sub>) / (PDD(z<sub>ref</sub>)/100)</p>
 <ul>
 <li>Use the clinical depth-dose curve — the one entered into the treatment planning system.</li>
-<li>If the curve was measured with an ionization chamber, ionization is converted to dose by multiplying by the water/air stopping-power ratio s<sub>w,air</sub> for the given depth (TRS-398, Table 22) — in the calculator this is done under Tools → Electron depth dose. For reference-class chambers, the variation of the perturbation correction with depth affects R<sub>50</sub> by less than 0.05 g/cm².</li>
+<li>If the curve was measured with an ionization chamber, ionization is converted to dose by multiplying by the water/air stopping-power ratio s<sub>w,air</sub> for the given depth (TRS-398, Table 22) — in the calculator this is done under Chamber and beam → Electron depth dose. For reference-class chambers, the variation of the perturbation correction with depth affects R<sub>50</sub> by less than 0.05 g/cm².</li>
 <li>Report 385: incorrect transfer of dose from d<sub>ref</sub> to d<sub>max</sub> is one of the most common errors in electron beam calibration.</li>
 </ul>
 <p class="src">TRS-398 Rev.1, Secs. 7.4.3, 7.7.1, Table 22; Report 385, Sec. 4; TG-51, Sec. X.D.</p>`,

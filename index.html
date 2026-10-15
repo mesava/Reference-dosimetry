@@ -18,11 +18,11 @@
       <span class="tag">TRS-398 Rev.1 · TG-51</span>
     </div>
     <nav class="modules" aria-label="Разделы">
-      <a href="#co60" id="tab-co60" data-module="co60" aria-controls="module-co60">⁶⁰Co</a>
-      <a href="#photons" id="tab-photons" data-module="photons" aria-controls="module-photons">МВ фотоны</a>
-      <a href="#electrons" id="tab-electrons" data-module="electrons" aria-controls="module-electrons">Электроны</a>
-      <a href="#tools" id="tab-tools" data-module="tools" aria-controls="module-tools">Инструменты</a>
+      <a href="#start" id="tab-start" data-module="start" aria-controls="module-start">Начало</a>
       <a href="#session" id="tab-journal" data-module="journal" aria-controls="module-session">Журнал</a>
+      <a href="#photons" id="tab-dosimetry" data-module="dosimetry" aria-controls="module-photons">Дозиметрия</a>
+      <a href="#jaffe" id="tab-prep" data-module="prep" aria-controls="module-jaffe">Камера и пучок</a>
+      <a href="#uncertainty" id="tab-uncertainty" data-module="uncertainty" aria-controls="module-uncertainty">Неопределённость</a>
     </nav>
     <div class="lang-switch" data-i18n-skip>
       <button type="button" class="theme-toggle" id="theme-toggle" data-state="auto" aria-label="Тема: как в системе" title="Тема: как в системе">
@@ -45,9 +45,18 @@
   </div>
 </header>
 
-<div class="module" id="module-co60" role="tabpanel" aria-labelledby="tab-co60" hidden>
+<div class="module" id="module-start" role="tabpanel" aria-labelledby="tab-start" hidden>
+<main class="start" id="start-root" data-i18n-skip></main>
+</div>
+
+<div class="module" id="module-co60" role="tabpanel" aria-labelledby="tab-dosimetry" hidden>
 <main class="layout">
   <form id="co-sheet" class="sheet" autocomplete="off" novalidate>
+    <nav class="subtools" aria-label="Дозиметрия">
+      <a href="#co60" data-module="co60" aria-current="page">⁶⁰Co</a>
+      <a href="#photons" data-module="photons">МВ фотоны</a>
+      <a href="#electrons" data-module="electrons">Электроны</a>
+    </nav>
     <p class="intro">Рабочий лист калибровки пучка гамма-излучения ⁶⁰Co: мощность поглощённой дозы в воде на опорной глубине и на z<sub>max</sub>. Для ⁶⁰Co k<sub>Q</sub> = 1, качество пучка не измеряют: D<sub>w</sub> = M · N<sub>D,w</sub>. Числа можно вводить с запятой или точкой; обозначения с пунктирным подчёркиванием открывают справку.</p>
     <div class="journal-bar no-print" id="co-journal-bar" hidden data-i18n-skip></div>
 
@@ -477,9 +486,14 @@
 <div class="mobile-result"><span id="co-mobile-value">—</span><a href="#co-readout">к результату</a></div>
 </div>
 
-<div class="module" id="module-photons" role="tabpanel" aria-labelledby="tab-photons" hidden>
+<div class="module" id="module-photons" role="tabpanel" aria-labelledby="tab-dosimetry" hidden>
 <main class="layout">
   <form id="sheet" class="sheet" autocomplete="off" novalidate>
+    <nav class="subtools" aria-label="Дозиметрия">
+      <a href="#co60" data-module="co60">⁶⁰Co</a>
+      <a href="#photons" data-module="photons" aria-current="page">МВ фотоны</a>
+      <a href="#electrons" data-module="electrons">Электроны</a>
+    </nav>
     <p class="intro">Рабочий лист калибровки пучка МВ фотонов: поглощённая доза в воде на опорной глубине и на d<sub>max</sub>. Числа можно вводить с запятой или точкой. Обозначения коэффициентов с пунктирным подчёркиванием открывают справку. Всё считается в браузере, данные никуда не отправляются.</p>
     <div class="journal-bar no-print" id="ph-journal-bar" hidden data-i18n-skip></div>
 
@@ -576,7 +590,7 @@
             <option value="co60">N_D,w в пучке ⁶⁰Co</option>
             <option value="cross">перекрёстная калибровка в пучке МВ фотонов (TRS-398)</option>
           </select>
-          <span class="sub" data-show="ch_cal_route:co60">из сертификата или после перекрёстной калибровки в ⁶⁰Co (вкладка «Инструменты»)</span>
+          <span class="sub" data-show="ch_cal_route:co60">из сертификата или после перекрёстной калибровки в ⁶⁰Co (вкладка «Камера и пучок»)</span>
         </div>
         <div class="field" data-show="ch_cal_route:co60">
           <span class="label"><button type="button" class="term" data-term="ndw">N<sub>D,w</sub></button> (⁶⁰Co)</span>
@@ -591,7 +605,7 @@
             <input type="text" id="ch_cross_ndw" class="num" inputmode="decimal" aria-label="N_D,w,Qcross">
             <select id="ch_cross_ndw_unit" aria-label="Единица N_D,w,Qcross"></select>
           </div>
-          <span class="sub">рассчитывается на вкладке «Инструменты» и переносится кнопкой</span>
+          <span class="sub">рассчитывается на вкладке «Камера и пучок» и переносится кнопкой</span>
         </div>
         <div class="field" data-show="ch_cal_route:cross">
           <label for="ch_cross_tpr">TPR<sub>20,10</sub> пучка перекрёстной калибровки</label>
@@ -1017,9 +1031,14 @@
 <div class="mobile-result"><span id="mobile-value">—</span><a href="#readout">к результату</a></div>
 </div>
 
-<div class="module" id="module-electrons" role="tabpanel" aria-labelledby="tab-electrons" hidden>
+<div class="module" id="module-electrons" role="tabpanel" aria-labelledby="tab-dosimetry" hidden>
 <main class="layout">
   <form id="e-sheet" class="sheet" autocomplete="off" novalidate>
+    <nav class="subtools" aria-label="Дозиметрия">
+      <a href="#co60" data-module="co60">⁶⁰Co</a>
+      <a href="#photons" data-module="photons">МВ фотоны</a>
+      <a href="#electrons" data-module="electrons" aria-current="page">Электроны</a>
+    </nav>
     <p class="intro">Рабочий лист калибровки пучка электронов: поглощённая доза в воде на опорной глубине z<sub>ref</sub> = 0,6·R50 − 0,1 и на z<sub>max</sub>. TRS-398 Rev.1 — глава 7; TG-51 — с аддендумом для электронов WGTG51 Report 385 (2024). Числа можно вводить с запятой или точкой; обозначения с пунктирным подчёркиванием открывают справку.</p>
     <div class="journal-bar no-print" id="e-journal-bar" hidden data-i18n-skip></div>
 
@@ -1160,7 +1179,7 @@
             <option value="i50">по глубине 50 % ионизации R50,ion (I50)</option>
             <option value="r50">R50 известен (по кривой дозы)</option>
           </select>
-          <span class="sub">I<sub>50</sub>, R<sub>50</sub> и PDD(z<sub>ref</sub>) по кривой ионизации находит «Кривая дозы электронов» (вкладка «Инструменты») и переносит сюда кнопкой.</span>
+          <span class="sub">I<sub>50</sub>, R<sub>50</sub> и PDD(z<sub>ref</sub>) по кривой ионизации находит «Кривая дозы электронов» (вкладка «Камера и пучок») и переносит сюда кнопкой.</span>
         </div>
         <div class="field" data-show="e_r50_method:i50"><span class="label" id="e-lbl-i50">R<sub>50,ion</sub> (I<sub>50</sub>), <button type="button" class="term" data-term="gcm2">г/см²</button></span><input type="text" id="e_i50" class="num" inputmode="decimal" placeholder="4,80" aria-labelledby="e-lbl-i50"></div>
         <div class="field" data-show="e_r50_method:r50"><span class="label" id="e-lbl-r50">R<sub>50</sub>, <button type="button" class="term" data-term="gcm2">г/см²</button></span><input type="text" id="e_r50" class="num" inputmode="decimal" aria-labelledby="e-lbl-r50"></div>
@@ -1462,13 +1481,12 @@
 <div class="mobile-result"><span id="e-mobile-value">—</span><a href="#e-readout">к результату</a></div>
 </div>
 
-<div class="module" id="module-tools" role="tabpanel" aria-labelledby="tab-tools" hidden>
+<div class="module" id="module-tools" role="tabpanel" aria-labelledby="tab-prep" hidden>
 <main class="layout">
   <form id="cc-sheet" class="sheet" autocomplete="off" novalidate>
-    <nav class="subtools" aria-label="Инструменты">
-      <a href="#tools" data-module="tools" aria-current="page">Перекрёстная калибровка</a>
-      <a href="#uncertainty" data-module="uncertainty">Неопределённость</a>
+    <nav class="subtools" aria-label="Камера и пучок">
       <a href="#jaffe" data-module="jaffe">График Яффе</a>
+      <a href="#tools" data-module="tools" aria-current="page">Перекрёстная калибровка</a>
       <a href="#edepth" data-module="edepth">Кривая дозы электронов</a>
     </nav>
     <p class="intro"><button type="button" class="term" data-term="crosscal">Перекрёстная калибровка</button> — калибровка рабочей камеры сравнением с опорной камерой, у которой есть свидетельство о калибровке в ⁶⁰Co (TRS-398 Rev.1, разд. 4.5, 5.5, 6.6, 7.6; Report 385, разд. 5.3.2).</p>
@@ -1534,7 +1552,7 @@
             <option value="i50">по глубине 50 % ионизации R50,ion (I50)</option>
             <option value="r50">R50 известен (по кривой дозы)</option>
           </select>
-          <span class="sub">I<sub>50</sub> и R<sub>50</sub> по кривой ионизации находит «Кривая дозы электронов» (вкладка «Инструменты»).</span>
+          <span class="sub">I<sub>50</sub> и R<sub>50</sub> по кривой ионизации находит «Кривая дозы электронов» (вкладка «Камера и пучок»).</span>
         </div>
         <div class="field" data-show="cc_r50_method:i50"><span class="label" id="cc-lbl-i50">R<sub>50,ion</sub> (I<sub>50</sub>), <button type="button" class="term" data-term="gcm2">г/см²</button></span><input type="text" id="cc_i50" class="num" inputmode="decimal" placeholder="7,40" aria-labelledby="cc-lbl-i50"></div>
         <div class="field" data-show="cc_r50_method:r50"><span class="label" id="cc-lbl-r50">R<sub>50</sub>, <button type="button" class="term" data-term="gcm2">г/см²</button></span><input type="text" id="cc_r50" class="num" inputmode="decimal" aria-labelledby="cc-lbl-r50"></div>
@@ -1971,18 +1989,12 @@
 <div class="mobile-result"><span id="cc-mobile-value">—</span><a href="#cc-readout">к результату</a></div>
 </div>
 
-<div class="module" id="module-uncertainty" role="tabpanel" aria-labelledby="tab-tools" hidden>
+<div class="module" id="module-uncertainty" role="tabpanel" aria-labelledby="tab-uncertainty" hidden>
 <main class="layout">
   <form id="unc-sheet" class="sheet" autocomplete="off" novalidate>
-    <nav class="subtools" aria-label="Инструменты">
-      <a href="#tools" data-module="tools">Перекрёстная калибровка</a>
-      <a href="#uncertainty" data-module="uncertainty" aria-current="page">Неопределённость</a>
-      <a href="#jaffe" data-module="jaffe">График Яффе</a>
-      <a href="#edepth" data-module="edepth">Кривая дозы электронов</a>
-    </nav>
     <p class="intro">Бюджет <button type="button" class="term" data-term="unc">неопределённости</button> поглощённой дозы в воде на опорной глубине — для протокола калибровки.</p>
     <ul class="purpose">
-      <li><b>Когда:</b> после расчёта дозы на вкладке «⁶⁰Co», «МВ фотоны» или «Электроны»: кнопка в разделе 1 переносит оттуда пучок, способ калибровки камеры, показания и результат дозиметрии.</li>
+      <li><b>Когда:</b> после расчёта дозы на вкладке «Дозиметрия» (⁶⁰Co, МВ фотоны или электроны): кнопка в разделе 1 переносит оттуда пучок, способ калибровки камеры, показания и результат дозиметрии.</li>
       <li><b>Что делать:</b> введите расширенную неопределённость U из свидетельства о калибровке камеры (раздел 2) и, если есть, свои оценки строк (раздел 4). Строки без своих значений берутся из типового бюджета протокола: TRS-398 Rev.1, табл. 13, 17, 24; аддендум TG-51, табл. II; Report 385, табл. 8, 9.</li>
       <li><b>Результат:</b> суммарная стандартная u<sub>c</sub> и расширенная U (k = 2) неопределённость — в процентах и в единицах дозы. В другие вкладки не переносится.</li>
     </ul>
@@ -2146,13 +2158,12 @@
 <div class="mobile-result"><span id="unc-mobile-value">—</span><a href="#unc-readout">к результату</a></div>
 </div>
 
-<div class="module" id="module-jaffe" role="tabpanel" aria-labelledby="tab-tools" hidden>
+<div class="module" id="module-jaffe" role="tabpanel" aria-labelledby="tab-prep" hidden>
 <main class="layout">
   <form id="jf-sheet" class="sheet" autocomplete="off" novalidate>
-    <nav class="subtools" aria-label="Инструменты">
-      <a href="#tools" data-module="tools">Перекрёстная калибровка</a>
-      <a href="#uncertainty" data-module="uncertainty">Неопределённость</a>
+    <nav class="subtools" aria-label="Камера и пучок">
       <a href="#jaffe" data-module="jaffe" aria-current="page">График Яффе</a>
+      <a href="#tools" data-module="tools">Перекрёстная калибровка</a>
       <a href="#edepth" data-module="edepth">Кривая дозы электронов</a>
     </nav>
     <p class="intro"><b>График Яффе</b> — зависимость показаний камеры от напряжения на ней: по нему находят <button type="button" class="term" data-term="ks">рекомбинацию</button> и проверяют систему камера — кабель — электрометр (TRS-398 Rev.1, разд. 4.4.3.4, табл. 3; WGTG51 Report 374, разд. 4.4.4, прил. A; аддендум TG-51, табл. III).</p>
@@ -2364,13 +2375,12 @@
 <div class="mobile-result"><span id="jf-mobile-value">—</span><a href="#jf-readout">к результату</a></div>
 </div>
 
-<div class="module" id="module-edepth" role="tabpanel" aria-labelledby="tab-tools" hidden>
+<div class="module" id="module-edepth" role="tabpanel" aria-labelledby="tab-prep" hidden>
 <main class="layout">
   <form id="ed-sheet" class="sheet" autocomplete="off" novalidate>
-    <nav class="subtools" aria-label="Инструменты">
-      <a href="#tools" data-module="tools">Перекрёстная калибровка</a>
-      <a href="#uncertainty" data-module="uncertainty">Неопределённость</a>
+    <nav class="subtools" aria-label="Камера и пучок">
       <a href="#jaffe" data-module="jaffe">График Яффе</a>
+      <a href="#tools" data-module="tools">Перекрёстная калибровка</a>
       <a href="#edepth" data-module="edepth" aria-current="page">Кривая дозы электронов</a>
     </nav>
     <p class="intro">Пересчёт кривой ионизации, снятой камерой в воде в пучке электронов, в кривую глубинной дозы и параметры пучка (TRS-398 Rev.1, разд. 7.3, 7.7.1, табл. 22; Report 385, разд. 4).</p>
@@ -2563,8 +2573,8 @@
 <main class="layout">
   <form id="js-sheet" class="sheet" autocomplete="off" novalidate>
     <nav class="subtools" aria-label="Журнал">
-      <a href="#session" data-module="session" aria-current="page">Сеанс</a>
       <a href="#equipment" data-module="equipment">Оборудование</a>
+      <a href="#session" data-module="session" aria-current="page">Сеанс</a>
       <a href="#history" data-module="history">Журнал и тренды</a>
     </nav>
     <p class="intro">Сеанс на весь аппарат: калибровка или проверка выхода всех пучков ускорителя (фотоны и электроны) или аппарата ⁶⁰Co за один заход. Камеры, электрометры и настройки пучков берутся из «Оборудования», результат записывается в журнал.</p>
@@ -2644,8 +2654,8 @@
 <main class="layout">
   <form id="eq-sheet" class="sheet" autocomplete="off" novalidate>
     <nav class="subtools" aria-label="Журнал">
-      <a href="#session" data-module="session">Сеанс</a>
       <a href="#equipment" data-module="equipment" aria-current="page">Оборудование</a>
+      <a href="#session" data-module="session">Сеанс</a>
       <a href="#history" data-module="history">Журнал и тренды</a>
     </nav>
     <p class="intro">Оборудование отделения для сеансов: камеры, электрометры и аппараты с пучками. Заполняется один раз и хранится в файле журнала вместе с сеансами.</p>
@@ -2703,8 +2713,8 @@
 <main class="layout">
   <form id="hs-sheet" class="sheet" autocomplete="off" novalidate>
     <nav class="subtools" aria-label="Журнал">
-      <a href="#session" data-module="session">Сеанс</a>
       <a href="#equipment" data-module="equipment">Оборудование</a>
+      <a href="#session" data-module="session">Сеанс</a>
       <a href="#history" data-module="history" aria-current="page">Журнал и тренды</a>
     </nav>
     <p class="intro">Журнал сеансов аппарата: отклонение выхода от номинала (у ⁶⁰Co — мощности дозы от ожидаемой) по датам для каждого пучка, k<sub>pol</sub>, k<sub>s</sub> и ошибка таймера по калибровкам, сроки калибровки камер и электрометров.</p>

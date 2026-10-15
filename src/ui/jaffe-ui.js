@@ -1,4 +1,4 @@
-// Вкладка «Инструменты» → «График Яффе»: проверка системы камера — кабель — электрометр (ядро — core/jaffe.js).
+// Вкладка «Камера и пучок» → «График Яффе»: проверка системы камера — кабель — электрометр (ядро — core/jaffe.js).
 import { computeJaffe, JF_DEFAULTS, normalizeJaffe, jaffeChamber } from '../core/jaffe.js';
 import { coChamberGroups } from '../core/co60-chambers.js';
 import { SAMPLE_JAFFE, SAMPLE_JAFFE_EN } from '../core/sample-jaffe.js';

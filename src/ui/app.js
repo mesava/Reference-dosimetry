@@ -12,28 +12,45 @@ import { initUncTool, importUncTool, uncToolStatus, setUncSources } from './unce
 import { initJaffe, importJaffe, jaffeStatus } from './jaffe-ui.js';
 import { initEdepth, importEdepth, edepthStatus, setEdepthTransfer } from './edepth-ui.js';
 import { initSectionNavs, refreshSectionNav } from './section-nav.js';
-import { initJournalStore, importJournalObject } from './journal-store.js';
+import { initJournalStore, importJournalObject, getJournal, onJournal } from './journal-store.js';
+import { initStart, renderStart } from './start-ui.js';
 import { initSession, sessionStatus, setSessionBridge, loadSession, sessionUnsaved } from './journal-session-ui.js';
 import { initEquipment, equipmentStatus, setEquipmentBridge, saveBeamFromTab, revealBeam } from './journal-equipment-ui.js';
 import { initHistory, historyStatus, setHistoryBridge } from './journal-history-ui.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
-const TOOL_KEY = 'reference-dosimetry.tool'; // последний открытый подраздел «Инструментов»
-const JOURNAL_SUB_KEY = 'reference-dosimetry.journal-sub'; // последний открытый подраздел «Журнала»
-// tab — вкладка в шапке, к которой относится модуль (подразделы «Инструментов» — к вкладке tools)
+// последний открытый подраздел вкладки в шапке («Дозиметрия», «Камера и пучок», «Журнал»)
+const subKey = (group) => `reference-dosimetry.sub.${group}`;
+// tab — вкладка в шапке, к которой относится модуль. Адреса модулей (#photons, #tools, #session…) прежние: так открываются
+// старые ссылки и закладки. Подразделы перечислены в порядке работы.
 const MODULES = {
-  co60: { title: () => L('⁶⁰Co — референсная дозиметрия', '⁶⁰Co — reference dosimetry'), file: 'cobalt', importData: importCobalt, status: cobaltStatus },
-  photons: { title: () => L('МВ фотоны — референсная дозиметрия', 'MV photons — reference dosimetry'), file: 'photons', importData: importPhotons, status: photonsStatus },
-  electrons: { title: () => L('Электроны — референсная дозиметрия', 'Electrons — reference dosimetry'), file: 'electrons', importData: importElectrons, status: electronsStatus },
-  tools: { title: () => L('Инструменты — перекрёстная калибровка', 'Tools — cross-calibration'), file: 'crosscal', importData: importCrossCal, status: crossCalStatus, tab: 'tools' },
-  uncertainty: { title: () => L('Инструменты — неопределённость', 'Tools — uncertainty'), file: 'uncertainty', importData: importUncTool, status: uncToolStatus, tab: 'tools' },
-  jaffe: { title: () => L('Инструменты — график Яффе', 'Tools — Jaffé plot'), file: 'jaffe', importData: importJaffe, status: jaffeStatus, tab: 'tools' },
-  edepth: { title: () => L('Инструменты — кривая дозы электронов', 'Tools — electron depth dose'), file: 'edepth', importData: importEdepth, status: edepthStatus, tab: 'tools' },
-  session: { title: () => L('Журнал — сеанс на весь аппарат', 'Journal — whole-machine session'), file: 'journal', importData: (obj) => importJournalObject(obj), status: (t) => sessionStatus(t), tab: 'journal' },
+  start: { title: () => L('Референсная дозиметрия', 'Reference dosimetry'), file: '-', importData: () => {}, status: () => {}, tab: 'start' },
   equipment: { title: () => L('Журнал — оборудование', 'Journal — equipment'), file: '-', importData: () => {}, status: (t) => equipmentStatus(t), tab: 'journal' },
+  session: { title: () => L('Журнал — сеанс на весь аппарат', 'Journal — whole-machine session'), file: 'journal', importData: (obj) => importJournalObject(obj), status: (t) => sessionStatus(t), tab: 'journal' },
   history: { title: () => L('Журнал — сеансы и тренды', 'Journal — sessions and trends'), file: '-', importData: () => {}, status: (t) => historyStatus(t), tab: 'journal' },
+  co60: { title: () => L('⁶⁰Co — референсная дозиметрия', '⁶⁰Co — reference dosimetry'), file: 'cobalt', importData: importCobalt, status: cobaltStatus, tab: 'dosimetry' },
+  photons: { title: () => L('МВ фотоны — референсная дозиметрия', 'MV photons — reference dosimetry'), file: 'photons', importData: importPhotons, status: photonsStatus, tab: 'dosimetry' },
+  electrons: { title: () => L('Электроны — референсная дозиметрия', 'Electrons — reference dosimetry'), file: 'electrons', importData: importElectrons, status: electronsStatus, tab: 'dosimetry' },
+  jaffe: { title: () => L('Камера и пучок — график Яффе', 'Chamber and beam — Jaffé plot'), file: 'jaffe', importData: importJaffe, status: jaffeStatus, tab: 'prep' },
+  tools: { title: () => L('Камера и пучок — перекрёстная калибровка', 'Chamber and beam — cross-calibration'), file: 'crosscal', importData: importCrossCal, status: crossCalStatus, tab: 'prep' },
+  edepth: { title: () => L('Камера и пучок — кривая дозы электронов', 'Chamber and beam — electron depth dose'), file: 'edepth', importData: importEdepth, status: edepthStatus, tab: 'prep' },
+  uncertainty: { title: () => L('Неопределённость поглощённой дозы', 'Absorbed dose uncertainty'), file: 'uncertainty', importData: importUncTool, status: uncToolStatus, tab: 'uncertainty' },
 };
 const tabOf = (name) => MODULES[name]?.tab ?? name;
+/** Подраздел по умолчанию для вкладки в шапке (если с ней ещё не работали). */
+const GROUP_DEFAULT = { start: 'start', journal: 'session', dosimetry: 'photons', prep: 'jaffe', uncertainty: 'uncertainty' };
+/** Журнал пуст (нет ни аппаратов, ни камер): работа с ним начинается с «Оборудования». */
+const journalEmpty = () => {
+  const j = getJournal();
+  return !j.machines.length && !j.chambers.length && !j.electrometers.length;
+};
+/** Какой подраздел открыть по щелчку на вкладке в шапке: тот, с которым работали последним. */
+function moduleForGroup(group) {
+  if (group === 'journal' && journalEmpty()) return 'equipment';
+  const last = store.get(subKey(group));
+  if (last && MODULES[last] && tabOf(last) === group) return last;
+  return GROUP_DEFAULT[group] ?? 'start';
+}
 
 const store = {
   get(key) {
@@ -78,9 +95,9 @@ function initTheme() {
 }
 
 function showModule(name) {
-  if (!MODULES[name]) name = 'co60';
+  if (!MODULES[name]) name = 'start';
   for (const key of Object.keys(MODULES)) $(`#module-${key}`).hidden = key !== name;
-  // вкладка в шапке и переключатель подразделов «Инструментов»
+  // вкладка в шапке и переключатель подразделов вкладки
   for (const a of $$('.modules a[data-module]')) {
     if (a.dataset.module === tabOf(name)) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
@@ -92,8 +109,8 @@ function showModule(name) {
   setActiveModule(name);
   document.title = MODULES[name].title();
   store.set(TAB_KEY, name);
-  if (tabOf(name) === 'tools') store.set(TOOL_KEY, name);
-  if (tabOf(name) === 'journal') store.set(JOURNAL_SUB_KEY, name);
+  store.set(subKey(tabOf(name)), name);
+  if (name === 'start') renderStart();
   refreshSectionNav($(`#module-${name}`));
 }
 
@@ -324,6 +341,7 @@ function init() {
   initEquipment();
   initHistory();
   initJournalBridges();
+  initStart();
   setUncSources({ co60: cobaltUncSource, photons: photonsUncSource, electrons: electronsUncSource });
   initTransfer();
   initPaste();
@@ -332,7 +350,14 @@ function init() {
   // ячейки, списки и подписи модули отрисовали до перевода статического текста: по-английски перерисовать
   if (getLang() === 'en') document.dispatchEvent(new CustomEvent('langchange', { detail: { lang: 'en' } }));
   initSectionNavs();
-  showModule(moduleFromHash() ?? store.get(TAB_KEY) ?? 'co60');
+  // подразделы, с которыми работали в версиях до 0.12.0 («Инструменты» и «Журнал» в шапке)
+  const oldTool = store.get('reference-dosimetry.tool');
+  if (!store.get(subKey('prep')) && ['jaffe', 'tools', 'edepth'].includes(oldTool)) store.set(subKey('prep'), oldTool);
+  const oldJournal = store.get('reference-dosimetry.journal-sub');
+  if (!store.get(subKey('journal')) && MODULES[oldJournal]) store.set(subKey('journal'), oldJournal);
+  // первое открытие — «Начало»; дальше — то место, где работали в прошлый раз
+  const saved = store.get(TAB_KEY);
+  showModule(moduleFromHash() ?? (MODULES[saved] ? saved : 'start'));
   window.addEventListener('hashchange', () => {
     const m = moduleFromHash();
     if (m) {
@@ -340,18 +365,23 @@ function init() {
       window.scrollTo({ top: 0 });
     }
   });
-  for (const a of $$('.modules a[data-module], .subtools a[data-module]')) {
-    a.addEventListener('click', (e) => {
-      e.preventDefault();
-      // «Инструменты» и «Журнал» в шапке открывают подраздел, с которым работали последним
-      const top = a.closest('.modules');
-      const want = a.dataset.module;
-      const last = top && want === 'tools' ? store.get(TOOL_KEY) : top && want === 'journal' ? store.get(JOURNAL_SUB_KEY) : null;
-      const group = want === 'journal' ? 'journal' : 'tools';
-      switchTo(last && MODULES[last] && tabOf(last) === group ? last : want === 'journal' ? 'session' : want);
-      window.scrollTo({ top: 0 });
-    });
-  }
+  // вкладка в шапке открывает подраздел, с которым работали последним; переключатель подразделов — сам подраздел
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('.modules a[data-module], .subtools a[data-module], a[data-goto]');
+    if (!a || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    e.preventDefault();
+    const want = a.dataset.goto || a.dataset.module;
+    goTo(a.closest('.modules') ? moduleForGroup(want) : want);
+  });
+  onJournal(() => {
+    if (getActiveModule() === 'start') renderStart();
+  });
+}
+
+/** Открыть подраздел и прокрутить страницу в начало. */
+function goTo(name) {
+  switchTo(MODULES[name] ? name : 'start');
+  window.scrollTo({ top: 0 });
 }
 
 init();
