@@ -33,13 +33,15 @@ const MODULES = {
   co60: { title: () => L('⁶⁰Co — референсная дозиметрия', '⁶⁰Co — reference dosimetry'), file: 'cobalt', importData: importCobalt, status: cobaltStatus, tab: 'dosimetry' },
   photons: { title: () => L('МВ фотоны — референсная дозиметрия', 'MV photons — reference dosimetry'), file: 'photons', importData: importPhotons, status: photonsStatus, tab: 'dosimetry' },
   electrons: { title: () => L('Электроны — референсная дозиметрия', 'Electrons — reference dosimetry'), file: 'electrons', importData: importElectrons, status: electronsStatus, tab: 'dosimetry' },
-  // в разработке: страница с планом, без расчёта; последним подразделом «Дозиметрии» не запоминается
-  kv: { title: () => L('kV-рентген — в разработке', 'kV x-rays — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', wip: true },
-  brachy: { title: () => L('Брахитерапия — в разработке', 'Brachytherapy — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', wip: true },
+  // в разработке: страница с планом, без расчёта; transient — не запоминается местом работы (последним подразделом)
+  kv: { title: () => L('kV-рентген — в разработке', 'kV x-rays — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', transient: true },
+  brachy: { title: () => L('Брахитерапия — в разработке', 'Brachytherapy — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', transient: true },
   jaffe: { title: () => L('Камера и пучок — график Яффе', 'Chamber and beam — Jaffé plot'), file: 'jaffe', importData: importJaffe, status: jaffeStatus, tab: 'prep' },
   tools: { title: () => L('Камера и пучок — перекрёстная калибровка', 'Chamber and beam — cross-calibration'), file: 'crosscal', importData: importCrossCal, status: crossCalStatus, tab: 'prep' },
   edepth: { title: () => L('Камера и пучок — кривая дозы электронов', 'Chamber and beam — electron depth dose'), file: 'edepth', importData: importEdepth, status: edepthStatus, tab: 'prep' },
   uncertainty: { title: () => L('Неопределённость поглощённой дозы', 'Absorbed dose uncertainty'), file: 'uncertainty', importData: importUncTool, status: uncToolStatus, tab: 'uncertainty' },
+  // «Литература»: открывается из подвала и с «Начала»; вкладки в шапке у неё нет, местом работы не запоминается
+  refs: { title: () => L('Литература', 'References'), file: '-', importData: () => {}, status: () => {}, tab: 'refs', transient: true },
 };
 const tabOf = (name) => MODULES[name]?.tab ?? name;
 /** Подраздел по умолчанию для вкладки в шапке (если с ней ещё не работали). */
@@ -115,7 +117,7 @@ function showModule(name) {
   }
   setActiveModule(name);
   document.title = MODULES[name].title();
-  if (!MODULES[name].wip) {
+  if (!MODULES[name].transient) {
     store.set(TAB_KEY, name);
     store.set(subKey(tabOf(name)), name);
   }

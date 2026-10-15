@@ -433,6 +433,10 @@ footer.page-foot p { max-width: 90ch; }
 .refs-list { list-style: none; margin: 0; padding: 0; }
 .refs-list li { margin: 0 0 6px; padding-left: 1.5em; text-indent: -1.5em; overflow-wrap: anywhere; }
 .refs-list a { color: inherit; }
+.refs-page .refs { margin-top: 0; max-width: 110ch; }
+.refs-page .refs h2 { font-size: 20px; margin: 0; }
+.refs-page .refs-list { font-size: 14px; line-height: 1.45; }
+.refs-page .refs-list li { margin-bottom: 8px; }
 
 /* мобильная строка с результатом */
 .mobile-result {

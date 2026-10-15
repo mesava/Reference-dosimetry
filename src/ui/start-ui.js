@@ -101,7 +101,7 @@ export function renderStart() {
     <p class="start-foot">${esc(L(
       'Все расчёты — в браузере, данные никуда не отправляются. Измерения сохраняются в файлы JSON, журнал отделения — тоже файл: его удобно держать на общем диске.',
       'All calculations run in the browser; no data are sent anywhere. Measurements are saved to JSON files; the department journal is a file too, best kept on a shared drive.',
-    ))} <span class="start-ver">${esc(L('Калькулятор', 'Calculator'))}, ${esc(versionText())} · <a href="https://github.com/mesava/Reference-dosimetry#readme" target="_blank" rel="noopener">${esc(L('описание и исходный код', 'description and source code'))}</a></span></p>`;
+    ))} <span class="start-ver">${esc(L('Калькулятор', 'Calculator'))}, ${esc(versionText())} · <a href="#refs" data-goto="refs">${esc(L('литература', 'references'))}</a></span></p>`;
 }
 
 export function initStart() {
