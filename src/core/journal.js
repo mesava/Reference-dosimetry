@@ -1,24 +1,35 @@
-// Журнал калибровок (вкладка «Журнал»): оборудование отделения — камеры, электрометры, аппараты с пучками —
+// Журнал калибровок (вкладка «Журнал»): оборудование отделения — камеры, электрометры, аппараты с пучками
+// (ускорители — фотоны и электроны, аппараты ⁶⁰Co) —
 // и сеансы на весь аппарат: калибровка (k_pol и k_s измеряются для каждого пучка) или проверка выхода (k_pol и k_s
 // берутся из последней калибровки этого же пучка). Всё хранится одним файлом JSON, который можно держать на общем
 // диске отделения.
 //
-// Расчёт каждого пучка выполняет ядро вкладки дозиметрии (photons.js — фотоны, electrons.js — электроны): форма
+// Расчёт каждого пучка выполняет ядро вкладки дозиметрии (photons.js — фотоны, electrons.js — электроны,
+// cobalt.js — ⁶⁰Co): форма
 // вкладки собирается из профиля пучка, записи камеры, записи электрометра и показаний сеанса. В сеанс записывается
 // и сама форма — результат старого сеанса воспроизводится, даже если потом изменились N_D,w камеры или настройки пучка.
 //
-// Запись камеры одна для фотонов и электронов (та же физическая камера, тот же N_D,w): общие поля хранятся под
+// Запись камеры одна для фотонов, электронов и ⁶⁰Co (та же физическая камера, тот же N_D,w): общие поля хранятся под
 // именами вкладки «МВ фотоны» (ch_model, ch_ndw, …), а то, что есть только у электронов (перекрёстная калибровка
 // в пучке электронов, «другая камера»), — под именами вкладки «Электроны» (e_cal_route, e_cross_*, e_other_*).
+// У вкладки «⁶⁰Co» своих полей камеры нет: её список камер — те же базы фотонов и электронов.
 
 import { computePhotons, FORM_DEFAULTS, normalizeForm } from './photons.js';
 import { computeElectrons, E_DEFAULTS, normalizeElectrons, parseElectronBeam } from './electrons.js';
+import { computeCobalt, CO_DEFAULTS, normalizeCobalt } from './cobalt.js';
+import { PP_PREFIX } from './co60-chambers.js';
 import { findChamber, chamberLabel } from './chambers.js';
 import { findEChamber, eChamberLabel } from './electron-chambers.js';
 import { parseNumber, isBlank, parseBeamName } from './units.js';
 import { L } from './i18n.js';
 
-export const JOURNAL_TAG = { app: 'reference-dosimetry', module: 'journal', version: 1 };
+/** version — наибольший формат файла, который понимает эта версия калькулятора (2 — с аппаратами ⁶⁰Co). */
+export const JOURNAL_TAG = { app: 'reference-dosimetry', module: 'journal', version: 2 };
+/**
+ * Формат файла журнала: 2, если в нём есть аппараты или пучки ⁶⁰Co (прежняя версия страницы сочла бы их фотонами и
+ * должна отказаться открыть файл), иначе 1 — такой журнал открывается и прежней версией.
+ */
+export const journalFormat = (j) => (j.machines.some((m) => m.kind === 'cobalt' || m.beams.some((b) => b.kind === 'cobalt')) ? 2 : 1);
 
 /** Короткий идентификатор записи: префикс, время и случайная часть. */
 export function uid(prefix) {
@@ -64,22 +75,45 @@ export const E_BEAM_KEYS = Object.keys(E_DEFAULTS).filter((k) => ![...E_CHAMBER_
 /** Качество пучка электронов: R50 (или I50) и PDD(z_ref) — по одной кривой, измеряются вместе. */
 export const E_QUALITY_KEYS = ['e_i50', 'e_r50', 'e_pdd'];
 
+// ---------------------------------------------------------------- поля формы вкладки «⁶⁰Co» по владельцу
+export const CO_CHAMBER_KEYS = [
+  'co_ch_model', 'co_cc_maker', 'co_cc_model', 'co_cc_type', 'co_ch_serial', 'co_ndw', 'co_ndw_unit', 'co_klab', 'co_T0', 'co_P0',
+  'co_lab_pol_applied', 'co_lab_kpol', 'co_lab_ks_applied', 'co_lab_ks',
+];
+export const CO_ELECTROMETER_KEYS = ['co_el_model', 'co_el_serial', 'co_kelec'];
+/** Сеанс: сведения, условия, показания (и для ошибки таймера — облучения с разным временем или t против n·t/n), проверка выхода. */
+export const CO_SESSION_KEYS = [
+  'protocol', 'co_institution', 'co_machine', 'co_date', 'co_staff', 'co_notes',
+  'co_env_T', 'co_env_H', 'co_env_P', 'co_env_P_unit',
+  'co_M1', 'co_Mopp', 'co_M2', 'co_Mc', 'co_tt', 'co_tm', 'co_nx_M1', 'co_nx_Mn',
+  'co_fixed', 'co_fixed_kpol', 'co_fixed_ks', 'co_fixed_from',
+];
+/** Пучок ⁶⁰Co: геометрия, время облучения и способ ошибки таймера, напряжения, пересчёт на z_max, источник, сравнение. */
+export const CO_BEAM_KEYS = Object.keys(CO_DEFAULTS).filter((k) => ![...CO_CHAMBER_KEYS, ...CO_ELECTROMETER_KEYS, ...CO_SESSION_KEYS].includes(k));
+/** Показания сеанса калибровки ⁶⁰Co для ошибки таймера (кроме основных серий). */
+export const CO_TIMER_KEYS = ['co_tt', 'co_tm', 'co_nx_M1', 'co_nx_Mn'];
+
 // общие поля записи камеры: имя на вкладке «МВ фотоны» ↔ имя на вкладке «Электроны»
 const CH_COMMON = [['ch_serial', 'e_ch_serial'], ['ch_ndw', 'e_ndw'], ['ch_ndw_unit', 'e_ndw_unit'], ['ch_klab', 'e_klab'], ['ch_T0', 'e_T0'], ['ch_P0', 'e_P0'], ['lab_pol_applied', 'e_lab_pol_applied'], ['lab_kpol', 'e_lab_kpol'], ['lab_ks_applied', 'e_lab_ks_applied'], ['lab_ks', 'e_lab_ks']];
 // только для электронов
 const CH_E_ONLY = ['e_cal_route', 'e_cross_ndw', 'e_cross_ndw_unit', 'e_cross_r50', 'e_cross_kn', 'e_cross_kn_unit', 'e_other_name', 'e_other_type', 'e_other_r'];
 const EL_COMMON = [['el_model', 'e_el_model'], ['el_serial', 'e_el_serial'], ['el_kelec', 'e_kelec']];
+// общие поля записи камеры и электрометра ↔ имена вкладки «⁶⁰Co»
+const CO_CH_COMMON = [['ch_serial', 'co_ch_serial'], ['ch_ndw', 'co_ndw'], ['ch_ndw_unit', 'co_ndw_unit'], ['ch_klab', 'co_klab'], ['ch_T0', 'co_T0'], ['ch_P0', 'co_P0'], ['lab_pol_applied', 'co_lab_pol_applied'], ['lab_kpol', 'co_lab_kpol'], ['lab_ks_applied', 'co_lab_ks_applied'], ['lab_ks', 'co_lab_ks']];
+const CO_EL_COMMON = [['el_model', 'co_el_model'], ['el_serial', 'co_el_serial'], ['el_kelec', 'co_kelec']];
 
-/** Для каких пучков журнала выбрана камера: { photon, electron }. */
+/** Для каких пучков журнала выбрана камера: { photon, electron, cobalt }. */
 export function chamberUses(j, chamberId) {
-  const u = { photon: false, electron: false };
-  for (const m of j.machines) for (const b of m.beams) if (b.chamberId === chamberId && b.active !== false) u[b.kind === 'electron' ? 'electron' : 'photon'] = true;
+  const u = { photon: false, electron: false, cobalt: false };
+  for (const m of j.machines) for (const b of m.beams) if (b.chamberId === chamberId && b.active !== false) u[beamKind(b)] = true;
   return u;
 }
 /** Камеру можно взять для фотонов: она есть в базе вкладки «МВ фотоны» или своя. */
 export const photonCapable = (cf) => !!findChamber(cf?.ch_model) || cf?.ch_model === 'CUSTOM' || String(cf?.ch_model || '').startsWith('MY:');
 /** Камеру можно взять для электронов: она есть в базе вкладки «Электроны», «другая» или своя (цилиндрическая). */
 export const electronCapable = (cf) => !!findEChamber(cf?.ch_model) || cf?.ch_model === 'OTHER' || cf?.ch_model === 'CUSTOM';
+/** Камеру можно взять для ⁶⁰Co: любую — в пучке ⁶⁰Co допускаются и цилиндрические, и плоскопараллельные (TRS-398, разд. 5.2.1). */
+export const cobaltCapable = (cf) => !isBlank(cf?.ch_model);
 
 /** Запись камеры → поля камеры вкладки «Электроны». */
 export function electronChamberForm(cf = {}) {
@@ -107,12 +141,49 @@ export function chamberFormFromElectrons(ef = {}) {
 const electronElForm = (ef = {}) => Object.fromEntries(EL_COMMON.filter(([ph]) => ph in ef).map(([ph, e]) => [e, ef[ph]]));
 export const elFormFromElectrons = (f = {}) => Object.fromEntries(EL_COMMON.filter(([, e]) => e in f).map(([ph, e]) => [ph, f[e]]));
 
+/**
+ * Запись камеры → поля камеры вкладки «⁶⁰Co». Камеры из базы фотонов — тем же id, плоскопараллельные из базы
+ * электронов — с префиксом PP:, своя, «другая» и цилиндрическая только из базы электронов — как своя камера
+ * (k_Q = 1, от модели зависят только опорная точка и замечания).
+ */
+export function cobaltChamberForm(cf = {}) {
+  const out = {};
+  const m = String(cf.ch_model ?? '');
+  const ec = findEChamber(m);
+  if (isBlank(m) || findChamber(m)) out.co_ch_model = m;
+  else if (ec && ec.type === 'pp') out.co_ch_model = PP_PREFIX + m;
+  else {
+    out.co_ch_model = 'CUSTOM';
+    if (m === 'OTHER') Object.assign(out, { co_cc_maker: '', co_cc_model: String(cf.e_other_name ?? ''), co_cc_type: cf.e_other_type === 'cyl' ? 'cyl' : 'pp' });
+    else if (ec) Object.assign(out, { co_cc_maker: '', co_cc_model: eChamberLabel(ec), co_cc_type: 'cyl' });
+    else Object.assign(out, { co_cc_maker: String(cf.cc_maker ?? ''), co_cc_model: m === 'CUSTOM' || m.startsWith('MY:') ? String(cf.cc_model ?? '') : m, co_cc_type: 'cyl' });
+  }
+  for (const [ph, co] of CO_CH_COMMON) if (ph in cf) out[co] = cf[ph];
+  return out;
+}
+/** Поля камеры вкладки «⁶⁰Co» → запись камеры (своя плоскопараллельная — «другая» камера, как у электронов). */
+export function chamberFormFromCobalt(cof = {}) {
+  const id = String(cof.co_ch_model ?? '');
+  const out = {};
+  if (id.startsWith(PP_PREFIX)) out.ch_model = id.slice(PP_PREFIX.length);
+  else if (id === 'CUSTOM' || id.startsWith('MY:')) {
+    if (cof.co_cc_type === 'pp') Object.assign(out, { ch_model: 'OTHER', e_other_name: [cof.co_cc_maker, cof.co_cc_model].filter((x) => !isBlank(x)).join(' '), e_other_type: 'pp' });
+    else Object.assign(out, { ch_model: 'CUSTOM', cc_maker: cof.co_cc_maker ?? '', cc_model: cof.co_cc_model ?? '' });
+  } else out.ch_model = id;
+  for (const [ph, co] of CO_CH_COMMON) if (co in cof) out[ph] = cof[co];
+  return out;
+}
+const cobaltElForm = (ef = {}) => Object.fromEntries(CO_EL_COMMON.filter(([ph]) => ph in ef).map(([ph, co]) => [co, ef[ph]]));
+export const elFormFromCobalt = (f = {}) => Object.fromEntries(CO_EL_COMMON.filter(([, co]) => co in f).map(([ph, co]) => [ph, f[co]]));
+
 const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj && k in obj).map((k) => [k, obj[k]]));
 
 // ---------------------------------------------------------------- записи по умолчанию
 export const CHAMBER_DEFAULTS = { id: '', kind: 'photon', form: {}, calDate: '', dueDate: '', notes: '' };
 export const ELECTROMETER_DEFAULTS = { id: '', form: {}, calDate: '', dueDate: '', notes: '' };
+/** kind: 'linac' — ускоритель (пучки фотонов и электронов), 'cobalt' — аппарат ⁶⁰Co. */
 export const MACHINE_DEFAULTS = { id: '', name: '', serial: '', kind: 'linac', notes: '', beams: [] };
+/** kind: 'photon' | 'electron' | 'cobalt'. refSrc (⁶⁰Co): с чем сравнивать мощность дозы — 'last' (последняя калибровка в журнале с поправкой на распад) или 'profile' (значение из настроек пучка). */
 export const BEAM_DEFAULTS = { id: '', kind: 'photon', name: '', chamberId: '', electrometerId: '', form: {}, active: true };
 export const SESSION_DEFAULTS = { id: '', machineId: '', date: '', mode: 'cal', protocol: 'trs', staff: [''], notes: '', env: { T: '', P: '', P_unit: 'kPa', H: '' }, beams: [], saved: '' };
 
@@ -169,17 +240,19 @@ export function electrometerText(e) {
 /**
  * Чего не хватает записи камеры для расчёта: модель и калибровочные коэффициенты — N_D,w в ⁶⁰Co или перекрёстные
  * (для фотонов — N_D,w,Qcross и TPR20,10, для электронов — N_D,w,Qcross с R50 или (k_Qecal·N_D,w)pp).
- * uses — для каких пучков камера выбрана ({ photon, electron }); без него — для фотонов, если камера для них годится.
+ * uses — для каких пучков камера выбрана ({ photon, electron, cobalt }); без него — для фотонов, если камера для них годится.
+ * Для ⁶⁰Co нужен N_D,w в пучке ⁶⁰Co (перекрёстная калибровка к нему не относится).
  */
 export function chamberMissing(c, uses = null, protocol = '') {
   const f = c?.form || {};
   if (isBlank(f.ch_model)) return [L('модель', 'model')];
-  const u = uses && (uses.photon || uses.electron) ? uses : photonCapable(f) ? { photon: true } : { electron: true };
+  const u = uses && (uses.photon || uses.electron || uses.cobalt) ? uses : photonCapable(f) ? { photon: true } : { electron: true };
   const ph = !!u.photon && photonCapable(f);
   const el = !!u.electron && electronCapable(f);
+  const co = !!u.cobalt;
   const phCross = ph && f.ch_cal_route === 'cross';
   const elCross = el && f.e_cal_route === 'cross';
-  const needNdw = (ph && !phCross) || (el && !elCross);
+  const needNdw = (ph && !phCross) || (el && !elCross) || co;
   return [
     f.ch_model === 'OTHER' && isBlank(f.e_other_name) && L('название', 'name'),
     needNdw && isBlank(f.ch_ndw) && 'N_D,w',
@@ -280,12 +353,36 @@ const KINDS = {
       V1: 'e_V1', mu: 'e_mu',
     },
   },
+  // ⁶⁰Co: вместо МЕ — время облучения, подстройки выхода нет; ошибка таймера измеряется при калибровке, а при проверке
+  // выхода берётся из неё (как k_pol и k_s). Качество пучка не измеряют (k_Q = 1).
+  cobalt: {
+    defaults: CO_DEFAULTS,
+    normalize: normalizeCobalt,
+    compute: computeCobalt,
+    beamKeys: CO_BEAM_KEYS,
+    chamberKeys: CO_CHAMBER_KEYS,
+    electrometerKeys: CO_ELECTROMETER_KEYS,
+    qualityKeys: [],
+    timerKeys: CO_TIMER_KEYS,
+    chamberForm: (cf) => cobaltChamberForm(cf),
+    chamberFromTab: (f) => chamberFormFromCobalt(pick(f, CO_CHAMBER_KEYS)),
+    electrometerForm: (ef) => cobaltElForm(ef),
+    electrometerFromTab: (f) => elFormFromCobalt(pick(f, CO_ELECTROMETER_KEYS)),
+    atMax: 'zmax',
+    k: {
+      M1: 'co_M1', Mopp: 'co_Mopp', M2: 'co_M2', ctrl: 'co_Mc', recal: '', recalNeeded: '',
+      fixed: 'co_fixed', fixedKpol: 'co_fixed_kpol', fixedKs: 'co_fixed_ks', fixedFrom: 'co_fixed_from', fixedTau: 'co_tau',
+      T: 'co_env_T', P: 'co_env_P', PUnit: 'co_env_P_unit', H: 'co_env_H',
+      institution: 'co_institution', machine: 'co_machine', beam: '', date: 'co_date', staff: 'co_staff', notes: 'co_notes',
+      V1: 'co_V1', mu: '', time: 'co_time',
+    },
+  },
 };
-const kindOf = (kind) => KINDS[kind === 'electron' ? 'electron' : 'photon'];
-/** Имена полей сеанса для пучка данного вида: показания, проверка выхода, качество пучка. */
-export const beamKeys = (kind) => ({ ...kindOf(kind).k, quality: kindOf(kind).qualityKeys });
-/** Вид пучка по записи ('photon' | 'electron'). */
-export const beamKind = (beam) => (beam?.kind === 'electron' ? 'electron' : 'photon');
+const kindOf = (kind) => KINDS[kind] ?? KINDS.photon;
+/** Имена полей сеанса для пучка данного вида: показания, проверка выхода, качество пучка, ошибка таймера (⁶⁰Co). */
+export const beamKeys = (kind) => ({ ...kindOf(kind).k, quality: kindOf(kind).qualityKeys, timer: kindOf(kind).timerKeys ?? [] });
+/** Вид пучка по записи ('photon' | 'electron' | 'cobalt'). */
+export const beamKind = (beam) => (beam?.kind === 'electron' || beam?.kind === 'cobalt' ? beam.kind : 'photon');
 
 // ---------------------------------------------------------------- сеанс
 /** Последняя калибровка пучка до даты (не включая сеанс exceptId): k_pol, k_s, показатель качества. */
@@ -298,12 +395,18 @@ export function lastCalibration(j, beamId, { before = '9999-12-31', exceptId = '
   }
   if (!best) return null;
   const K = kindOf(beamKind(beamOf(j, beamId)?.beam));
+  const sum = best.beam.summary;
   return {
     date: best.session.date,
     sessionId: best.session.id,
-    ks: best.beam.summary.ksRaw,
-    kpol: best.beam.summary.kpolRaw,
+    ks: sum.ksRaw,
+    kpol: sum.kpolRaw,
     quality: pick(best.beam.form || {}, K.qualityKeys),
+    // ⁶⁰Co: мощность дозы (сГр/мин на z_ref и на z_max), ошибка таймера в минутах, дата установки источника
+    rate: sum.rate,
+    rateMax: sum.rateMax,
+    tauMin: sum.tauMin,
+    actDate: String(best.beam.form?.co_act_date ?? ''),
   };
 }
 
@@ -318,7 +421,7 @@ const dateText = (iso, en) => {
 export function recordedBase(form, kind = 'photon') {
   if (!form) return null;
   const K = kindOf(kind);
-  return pick(form, [...K.beamKeys, ...K.chamberKeys, ...K.electrometerKeys, K.k.fixedKpol, K.k.fixedKs, K.k.fixedFrom]);
+  return pick(form, [...K.beamKeys, ...K.chamberKeys, ...K.electrometerKeys, K.k.fixedKpol, K.k.fixedKs, K.k.fixedFrom].filter(Boolean));
 }
 
 /**
@@ -340,8 +443,10 @@ export function beamForm(j, session, machine, beam, input = {}, { en = false } =
     : { ...K.defaults, ...pick(beam.form, K.beamKeys), ...K.chamberForm(ch?.form || {}), ...K.electrometerForm(el?.form || {}) };
   f.protocol = session.protocol === 'tg51' ? 'tg51' : 'trs';
   f[k.institution] = j.institution;
-  f[k.machine] = [machine.name, machine.serial ? `${L('№', 'S/N')} ${machine.serial}` : ''].filter(Boolean).join(', ');
-  f[k.beam] = beam.name;
+  const machineText = [machine.name, machine.serial ? `${L('№', 'S/N')} ${machine.serial}` : ''].filter(Boolean).join(', ');
+  // у вкладки «⁶⁰Co» нет поля пучка: название пучка (установки) — после аппарата
+  f[k.machine] = k.beam ? machineText : [machineText, beam.name].filter((x) => !isBlank(x)).join(' — ');
+  if (k.beam) f[k.beam] = beam.name;
   f[k.date] = session.date;
   f[k.staff] = Array.isArray(session.staff) && session.staff.length ? session.staff : [''];
   f[k.notes] = session.notes ?? '';
@@ -353,29 +458,40 @@ export function beamForm(j, session, machine, beam, input = {}, { en = false } =
   f[k.H] = env.H ?? '';
   f[k.M1] = input[k.M1] ?? ['', '', ''];
   f[k.ctrl] = input[k.ctrl] ?? ['', '', ''];
-  f[k.recalNeeded] = input[k.recalNeeded] ?? '';
-  f[k.recal] = input[k.recal] ?? ['', '', ''];
+  if (k.recalNeeded) f[k.recalNeeded] = input[k.recalNeeded] ?? '';
+  if (k.recal) f[k.recal] = input[k.recal] ?? ['', '', ''];
+  // шесть знаков после запятой: на дозу это влияет меньше чем на 10⁻⁶, а во вкладке читается
+  const six = (v) => (en ? v.toFixed(6) : v.toFixed(6).replace('.', ','));
   let last = null;
-  // откуда k_pol и k_s при проверке выхода: 'manual' — введены в сеансе, 'recorded' — из записанного сеанса,
-  // 'journal' — из последней калибровки пучка в журнале, 'none' — неоткуда
-  const fixedSrc = { kpol: 'none', ks: 'none' };
+  // откуда k_pol и k_s (у ⁶⁰Co — и τ) при проверке выхода: 'manual' — введены в сеансе, 'recorded' — из записанного
+  // сеанса, 'journal' — из последней калибровки пучка в журнале, 'profile' — τ из настроек пучка, 'none' — неоткуда,
+  // '' — не нужно (ошибка таймера не учитывается или заряд накоплен при выдвинутом источнике)
+  const fixedSrc = kind === 'cobalt' ? { kpol: 'none', ks: 'none', tau: '' } : { kpol: 'none', ks: 'none' };
+  // ⁶⁰Co: ошибка таймера нужна, если она не исключена способом измерения
+  const timed = kind === 'cobalt' && f.co_timer_mode !== 'window' && f.co_timer_mode !== 'none';
   if (session.mode === 'check') {
     last = lastCalibration(j, beam.id, { before: session.date || '9999-12-31', exceptId: session.id });
     f[k.fixed] = true;
     f[k.Mopp] = ['', '', ''];
     f[k.M2] = ['', '', ''];
-    // шесть знаков после запятой: на дозу это влияет меньше чем на 10⁻⁶, а во вкладке читается
-    const six = (v) => (en ? v.toFixed(6) : v.toFixed(6).replace('.', ','));
     // своё значение (например, калибровка была до журнала) важнее записанного в сеансе, записанное — важнее журнала
     const choose = (key, fromLast) => {
       if (!isBlank(input[key])) return ['manual', input[key]];
       if (base && !isBlank(base[key])) return ['recorded', base[key]];
-      if (last) return ['journal', six(fromLast)];
+      if (last && Number.isFinite(fromLast)) return ['journal', six(fromLast)];
       return ['none', ''];
     };
     [fixedSrc.kpol, f[k.fixedKpol]] = choose(k.fixedKpol, last?.kpol);
     [fixedSrc.ks, f[k.fixedKs]] = choose(k.fixedKs, last?.ks);
-    const srcs = [fixedSrc.kpol, fixedSrc.ks];
+    if (timed) {
+      // τ из калибровки (в единицах времени пучка); без калибровки — известное значение из настроек пучка
+      const profileTau = f.co_timer_mode === 'manual' && !base ? f.co_tau : '';
+      const lastTau = Number.isFinite(last?.tauMin) ? last.tauMin * (f.co_time_unit === 's' ? 60 : 1) : NaN;
+      [fixedSrc.tau, f.co_tau] = choose(k.fixedTau, lastTau);
+      if (fixedSrc.tau === 'none' && !isBlank(profileTau)) [fixedSrc.tau, f.co_tau] = ['profile', profileTau];
+      f.co_timer_mode = 'manual';
+    }
+    const srcs = [fixedSrc.kpol, fixedSrc.ks, fixedSrc.tau];
     f[k.fixedFrom] = !isBlank(input[k.fixedFrom])
       ? String(input[k.fixedFrom])
       : srcs.includes('recorded') && !isBlank(base?.[k.fixedFrom])
@@ -391,11 +507,44 @@ export function beamForm(j, session, machine, beam, input = {}, { en = false } =
     f[k.M2] = input[k.M2] ?? ['', '', ''];
     // качество пучка: измеренное в этом сеансе, иначе последнее из профиля
     for (const q of K.qualityKeys) if (!isBlank(input[q])) f[q] = input[q];
+    // ⁶⁰Co: облучения для ошибки таймера; известное τ можно ввести в сеансе вместо значения из настроек пучка
+    for (const t of K.timerKeys ?? []) if (input[t] !== undefined) f[t] = input[t];
+    if (kind === 'cobalt' && f.co_timer_mode === 'manual' && !isBlank(input.co_tau)) f.co_tau = input.co_tau;
+  }
+  // ⁶⁰Co: с чем сравнивать мощность дозы. По умолчанию — с последней калибровкой этого пучка в журнале (до даты
+  // сеанса), приведённой к дате сеанса по распаду; после замены источника — со значением из настроек пучка, если оно
+  // относится к новому источнику. У записанного сеанса значение для сравнения уже в его форме.
+  let ref = null;
+  if (kind === 'cobalt') {
+    if (base) ref = { src: 'recorded' };
+    else {
+      const act = String(f.co_act_date ?? '').trim();
+      const prev = beam.refSrc === 'profile' ? null : last ?? lastCalibration(j, beam.id, { before: session.date || '9999-12-31', exceptId: session.id });
+      // источник заменён после той калибровки: она сделана раньше даты установки или с другой датой установки
+      const newSource = !!prev && !isBlank(act) && (String(prev.date) < act || (!isBlank(prev.actDate) && prev.actDate !== act));
+      let atMax = !!f.co_dd_on && f.co_ref_at !== 'zref';
+      // в калибровке не было пересчёта на z_max — сравнение на z_ref (и итог показывается там же)
+      const atFallback = !!prev && atMax && !Number.isFinite(prev.rateMax) && Number.isFinite(prev.rate);
+      if (atFallback) atMax = false;
+      const v = prev ? (atMax ? prev.rateMax : prev.rate) : NaN;
+      if (prev && !newSource && Number.isFinite(v)) {
+        if (atFallback) f.co_ref_at = 'zref';
+        f.co_ref_rate = six(v);
+        f.co_ref_date = prev.date;
+        ref = { src: 'journal', last: prev, at: atMax ? 'zmax' : 'zref', atFallback };
+      } else {
+        // значение из настроек пучка, датированное раньше установки источника, относится к прежнему источнику
+        const refDate = String(f.co_ref_date ?? '').trim();
+        const staleProfile = !isBlank(f.co_ref_rate) && !isBlank(refDate) && !isBlank(act) && refDate < act;
+        if (staleProfile) f.co_ref_rate = '';
+        ref = { src: isBlank(f.co_ref_rate) ? 'none' : 'profile', newSource, staleProfile, last: prev, wanted: beam.refSrc !== 'profile' };
+      }
+    }
   }
   // у записанного сеанса камера и электрометр — как при записи (для подписей; поля — как у записи камеры)
-  const chamber = base ? { id: input.chamberId || '', form: kind === 'electron' ? chamberFormFromElectrons(pick(base, E_CHAMBER_KEYS)) : pick(base, PH_CHAMBER_KEYS) } : ch;
-  const electrometer = base ? { id: input.electrometerId || '', form: kind === 'electron' ? elFormFromElectrons(pick(base, E_ELECTROMETER_KEYS)) : pick(base, PH_ELECTROMETER_KEYS) } : el;
-  return { form: K.normalize(f), chamber, electrometer, last, fixedSrc, recorded: !!base, kind };
+  const chamber = base ? { id: input.chamberId || '', form: K.chamberFromTab(base) } : ch;
+  const electrometer = base ? { id: input.electrometerId || '', form: K.electrometerFromTab(base) } : el;
+  return { form: K.normalize(f), chamber, electrometer, last, fixedSrc, recorded: !!base, kind, ref };
 }
 /** Прежнее имя (фотоны). */
 export const photonBeamForm = beamForm;
@@ -405,8 +554,56 @@ const mean = (cells) => {
   return v.length ? v.reduce((s, x) => s + x, 0) / v.length : NaN;
 };
 
+/**
+ * Итог пучка ⁶⁰Co: мощность дозы (сГр/мин) на глубине, где задано значение для сравнения (z_max или z_ref),
+ * отклонение от ожидаемой, поправки и ошибка таймера (в минутах — для проверок выхода с другой единицей времени).
+ */
+function cobaltSummary(r) {
+  const tg = r.protocol === 'tg51';
+  const x = tg ? r.tg51 : r.trs;
+  const errors = r.messages.filter((m) => m.level === 'error').length;
+  const warns = r.messages.filter((m) => m.level === 'warn').length;
+  const ctrlFailed = !x.blocked && !!x.ctrl?.blocked;
+  const p = x.ctrl && !x.ctrl.blocked && !x.blocked ? x.ctrl : x;
+  const atMax = r.depth.expectedAt === 'zmax' && Number.isFinite(p.rateMax);
+  const none = x.blocked || ctrlFailed;
+  const value = none ? NaN : atMax ? p.rateMax : p.rate;
+  const hasValue = Number.isFinite(value);
+  const ok = hasValue && errors === 0;
+  const dev = none ? NaN : p.deviation;
+  const tol = r.depth.tolerance;
+  const timed = ['measured', 'nexp', 'manual'].includes(r.timer?.mode);
+  const toMin = r.form?.co_time_unit === 's' ? 1 / 60 : 1;
+  return {
+    ok,
+    hasValue,
+    value, // сГр/мин
+    at: atMax ? 'zmax' : 'zref',
+    rate: hasValue ? p.rate : NaN, // на z_ref
+    rateMax: hasValue ? p.rateMax : NaN, // на z_max
+    DperMU: NaN,
+    DmaxPerMU: NaN,
+    deviation: dev,
+    tol,
+    expected: r.depth.expected,
+    status: !ok ? 'error' : !Number.isFinite(dev) ? 'nonominal' : Math.abs(dev) > tol ? 'out' : 'ok',
+    source: p === x.ctrl ? 'ctrl' : 'main',
+    preDeviation: NaN,
+    ksRaw: tg ? x.PionRaw : x.ksRaw,
+    kpolRaw: tg ? x.PpolRaw : x.kpolRaw,
+    ksFixed: !!(tg ? x.PionFixed : x.ksFixed),
+    kQ: 1,
+    kQName: 'k_Q',
+    quality: NaN,
+    tauMin: timed && Number.isFinite(r.timer.tau) ? r.timer.tau * toMin : NaN,
+    errors,
+    warns,
+  };
+}
+
 /** Итог пучка: доза в точке номинала, отклонение, статус, поправки — для таблицы сеанса, журнала и трендов. */
 export function beamSummary(r, kind = 'photon') {
+  if (kind === 'cobalt') return cobaltSummary(r);
   const tg = r.protocol === 'tg51';
   const x = tg ? r.tg51 : r.trs;
   const atMax = kindOf(kind).atMax;
@@ -506,6 +703,7 @@ export function trendSeries(j, machineId) {
         tol: b.summary.tol,
         ks: b.summary.ksFixed ? NaN : b.summary.ksRaw,
         kpol: b.summary.ksFixed ? NaN : b.summary.kpolRaw,
+        tau: b.summary.ksFixed ? NaN : b.summary.tauMin,
         status: b.summary.status,
       });
     }
@@ -522,6 +720,13 @@ const sameElectrometer = (ef, f) => norm(ef.el_model) === norm(f.el_model) && no
  */
 function sameChamber(cf, chForm, kind) {
   if (norm(cf.ch_serial) !== norm(chForm.ch_serial)) return false;
+  if (kind === 'cobalt') {
+    // как камера видна на вкладке «⁶⁰Co»: «другая» и своя — своей камерой с тем же названием и типом
+    const a = cobaltChamberForm(cf);
+    const b = cobaltChamberForm(chForm);
+    if (a.co_ch_model !== b.co_ch_model) return false;
+    return a.co_ch_model !== 'CUSTOM' || (norm(a.co_cc_model) === norm(b.co_cc_model) && a.co_cc_type === b.co_cc_type);
+  }
   if (kind === 'electron') {
     const a = electronChamberForm(cf);
     if (a.e_ch_model !== chForm.ch_model) return false;
@@ -533,6 +738,13 @@ function sameChamber(cf, chForm, kind) {
 /** Форма вкладки: нормализованная; «Мои камеры» хранятся в браузере — в журнал камера попадает своими полями. */
 function tabForm(form, kind) {
   if (kind === 'electron') return normalizeElectrons(form);
+  if (kind === 'cobalt') {
+    const f = normalizeCobalt(form);
+    if (String(f.co_ch_model).startsWith('MY:')) f.co_ch_model = 'CUSTOM';
+    // поля своей камеры у камеры из базы скрыты и не относятся к ней: не сравнивать и не переносить
+    if (f.co_ch_model !== 'CUSTOM') Object.assign(f, { co_cc_maker: CO_DEFAULTS.co_cc_maker, co_cc_model: CO_DEFAULTS.co_cc_model, co_cc_type: CO_DEFAULTS.co_cc_type });
+    return f;
+  }
   const f = normalizeForm(form);
   if (String(f.ch_model).startsWith('MY:')) f.ch_model = 'CUSTOM';
   return f;
@@ -554,15 +766,15 @@ function matchElectrometer(journal, elForm) {
   journal.electrometers.push(added);
   return { el: added, added: true };
 }
-/** Поля записи камеры, которые вкладка данного вида может изменить (у электронов модель записи не трогаем). */
+/** Поля записи камеры, которые вкладка данного вида может изменить (у электронов и ⁶⁰Co модель записи не трогаем). */
 const chamberUpdate = (chForm, kind) => {
-  if (kind !== 'electron') return chForm;
+  if (kind !== 'electron' && kind !== 'cobalt') return chForm;
   const { ch_model, ...rest } = chForm;
   return rest;
 };
 
 /**
- * Пучок из формы вкладки («МВ фотоны» или «Электроны»): настройки пучка и последний показатель качества; камера и
+ * Пучок из формы вкладки («МВ фотоны», «Электроны» или «⁶⁰Co»): настройки пучка и последний показатель качества; камера и
  * электрометр находятся в журнале по модели и номеру или добавляются.
  * Возвращает { journal, beam, addedChamber, addedElectrometer }.
  */
@@ -572,14 +784,16 @@ export function beamFromTabForm(j, machineId, form, kind = 'photon') {
   const journal = copyJournal(j);
   const { ch, added: addedChamber } = matchChamber(journal, K.chamberFromTab(f), kind);
   const { el, added: addedElectrometer } = matchElectrometer(journal, K.electrometerFromTab(f));
-  const name = String(f[K.k.beam] || '').trim() || (kind === 'electron' ? L('Пучок электронов', 'Electron beam') : L('Пучок фотонов', 'Photon beam'));
+  const name = kind === 'cobalt'
+    ? `⁶⁰Co, ${f.co_geometry === 'SAD' ? L('РИК', 'SCD') : L('РИП', 'SSD')} ${String(f.co_distance || '').trim() || '—'} ${L('см', 'cm')}`
+    : String(f[K.k.beam] || '').trim() || (kind === 'electron' ? L('Пучок электронов', 'Electron beam') : L('Пучок фотонов', 'Photon beam'));
   const beamForm = pick(f, K.beamKeys);
   if (kind === 'electron') {
     if (isBlank(beamForm.e_energy)) {
       const e = parseElectronBeam(name).energy;
       if (Number.isFinite(e)) beamForm.e_energy = String(e).replace('.', ',');
     }
-  } else beamForm.meta_fff = !!f.meta_fff || !!parseBeamName(name).fff;
+  } else if (kind === 'photon') beamForm.meta_fff = !!f.meta_fff || !!parseBeamName(name).fff;
   const beam = { ...BEAM_DEFAULTS, id: uid('b'), kind, name, chamberId: ch?.id ?? '', electrometerId: el?.id ?? '', form: beamForm };
   const m = journal.machines.find((x) => x.id === machineId);
   if (m) m.beams.push(beam);
@@ -604,7 +818,7 @@ export function applyTabFormToBeam(j, machineId, beamId, form, kind = 'photon') 
   const b = m?.beams.find((x) => x.id === beamId);
   if (!b) return { journal: j, chamber: 'none', electrometer: 'none', sharedChamber: [], sharedElectrometer: [] };
   b.form = { ...pick(f, K.beamKeys) };
-  if (!isBlank(f[K.k.beam])) b.name = String(f[K.k.beam]).trim();
+  if (K.k.beam && !isBlank(f[K.k.beam])) b.name = String(f[K.k.beam]).trim();
   // другие пучки с той же записью — только если запись действительно изменилась (иначе сообщать не о чем)
   const others = (key, id) => journal.machines.flatMap((mm) => mm.beams.filter((x) => x.id !== beamId && x[key] === id).map((x) => `${mm.name} — ${x.name}`));
   const changed = (current, keys) => {

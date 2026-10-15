@@ -8,7 +8,10 @@ import {
   dueStatus, equipmentDue, beamFromPhotonsForm, photonBeamForm, applyPhotonsFormToBeam, recordedBase, chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable,
   electronChamberForm, chamberFormFromElectrons, beamFromTabForm, applyTabFormToBeam,
   E_BEAM_KEYS, E_CHAMBER_KEYS, E_ELECTROMETER_KEYS, E_SESSION_KEYS, E_QUALITY_KEYS, PH_BEAM_KEYS, PH_CHAMBER_KEYS, PH_SESSION_KEYS, PH_ELECTROMETER_KEYS,
+  CO_BEAM_KEYS, CO_CHAMBER_KEYS, CO_ELECTROMETER_KEYS, CO_SESSION_KEYS, cobaltChamberForm, chamberFormFromCobalt, cobaltCapable, journalFormat,
 } from '../src/core/journal.js';
+import { computeCobalt, CO_DEFAULTS, decayFactor } from '../src/core/cobalt.js';
+import { SAMPLE_COBALT } from '../src/core/sample-cobalt.js';
 import { computePhotons, FORM_DEFAULTS } from '../src/core/photons.js';
 import { computeElectrons, E_DEFAULTS } from '../src/core/electrons.js';
 import { parseNumber } from '../src/core/units.js';
@@ -338,8 +341,8 @@ test('общая запись камеры: N_D,w, k_лаб, T₀, P₀ и по�
   assert.deepEqual(chamberMissing({ form: { ch_model: 'ROOS', e_cal_route: 'cross', e_cross_kn: '0,08' } }, { electron: true }), []);
   assert.deepEqual(chamberMissing({ form: { ch_model: 'PTW30013', ch_cal_route: 'cross', ch_cross_ndw: '0,054', ch_cross_tpr: '0,68' } }, { photon: true, electron: true }), ['N_D,w']);
   const j = ejournal();
-  assert.deepEqual(chamberUses(j, 'croos'), { photon: false, electron: true });
-  assert.deepEqual(chamberUses(j, 'c30013'), { photon: true, electron: false });
+  assert.deepEqual(chamberUses(j, 'croos'), { photon: false, electron: true, cobalt: false });
+  assert.deepEqual(chamberUses(j, 'c30013'), { photon: true, electron: false, cobalt: false });
 });
 
 test('пучок из вкладки «Электроны» и «Все настройки»: камера находится по модели и номеру, своя «фотонная» камера не переписывается', () => {
@@ -370,4 +373,186 @@ test('пучок из вкладки «Электроны» и «Все наст
 test('тренды: пучки фотонов и электронов одного аппарата помечены видом', () => {
   const tr = trendSeries(ejournal(), 'm1');
   assert.deepEqual(tr.map((t) => t.kind), ['photon', 'photon', 'photon', 'electron', 'electron', 'electron', 'electron', 'electron']);
+});
+
+// ---------------------------------------------------------------- ⁶⁰Co
+const pickKeys = (o, keys) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]]));
+function cojournal(extra = {}) {
+  const j = newJournal();
+  j.institution = 'Пример';
+  j.chambers = [{ id: 'cNE', form: { ch_model: 'NE2571', ch_serial: '0000', ch_ndw: '0,04523', ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', ch_T0: '20', ch_P0: '101,325' } }];
+  j.electrometers = [{ id: 'e1', form: { el_model: 'Электрометр (демо)', el_serial: '', el_kelec: '1,000' } }];
+  j.machines = [{ id: 'mc', name: 'Аппарат ⁶⁰Co', kind: 'cobalt', beams: [{ id: 'bco', kind: 'cobalt', name: '⁶⁰Co', chamberId: 'cNE', electrometerId: 'e1', form: { ...pickKeys(SAMPLE_COBALT, CO_BEAM_KEYS), ...extra } }] }];
+  return normalizeJournal(j);
+}
+const CO_READ = { co_M1: SAMPLE_COBALT.co_M1, co_Mopp: SAMPLE_COBALT.co_Mopp, co_M2: SAMPLE_COBALT.co_M2, co_Mc: SAMPLE_COBALT.co_Mc, co_tt: SAMPLE_COBALT.co_tt, co_tm: SAMPLE_COBALT.co_tm };
+const CO_ENV = { T: '21,0', P: '100,5', P_unit: 'kPa', H: '' };
+
+test('⁶⁰Co: ключи формы разделены между пучком, камерой, электрометром и сеансом без пересечений и пропусков', () => {
+  const all = [...CO_BEAM_KEYS, ...CO_CHAMBER_KEYS, ...CO_ELECTROMETER_KEYS, ...CO_SESSION_KEYS];
+  assert.equal(new Set(all).size, all.length);
+  for (const k of Object.keys(CO_DEFAULTS)) assert.ok(all.includes(k), k);
+  for (const k of ['co_time', 'co_timer_mode', 'co_tau', 'co_act_date', 'co_ref_rate', 'co_tol']) assert.ok(CO_BEAM_KEYS.includes(k), k);
+});
+
+test('⁶⁰Co: калибровка в журнале совпадает с вкладкой; проверка выхода — k_pol, k_s и τ из калибровки, сравнение с ней по распаду', () => {
+  let j = cojournal();
+  const tab = computeCobalt(SAMPLE_COBALT);
+  const cal = finalizeSession(j, { machineId: 'mc', date: '2026-09-15', mode: 'cal', protocol: 'trs', env: CO_ENV, beams: [{ beamId: 'bco', ...CO_READ }] });
+  const sb = cal.beams[0];
+  assert.equal(sb.kind, 'cobalt');
+  assert.equal(sb.summary.ok, true);
+  assert.equal(sb.summary.source, 'ctrl');
+  assert.equal(sb.summary.at, 'zmax');
+  near(sb.summary.value, tab.trs.ctrl.rateMax, 1e-12, 'сГр/мин на z_max');
+  near(sb.summary.rate, tab.trs.ctrl.rate, 1e-12, 'на z_ref');
+  // первая калибровка: сравнение со значением из настроек пучка (148,6 сГр/мин на 15.08.2026 с поправкой на распад)
+  near(sb.summary.deviation, tab.trs.ctrl.deviation, 1e-9, 'отклонение');
+  near(sb.summary.tauMin, tab.timer.tau, 1e-12, 'τ, мин');
+  assert.equal(computeSessionBeam(j, { ...cal, id: '' }, { beamId: 'bco', ...CO_READ }).ref.src, 'profile');
+  j = upsertSession(j, cal);
+  const last = lastCalibration(j, 'bco');
+  near(last.rateMax, sb.summary.rateMax, 1e-12);
+  // проверка через месяц теми же показаниями: та же мощность дозы, ожидаемая — калибровка × распад
+  const sess = { machineId: 'mc', date: '2026-10-15', mode: 'check', protocol: 'trs', env: CO_ENV, beams: [] };
+  const c = computeSessionBeam(j, sess, { beamId: 'bco', co_M1: SAMPLE_COBALT.co_M1, co_Mc: SAMPLE_COBALT.co_Mc });
+  assert.deepEqual(c.result.messages.filter((m) => m.level === 'error'), []);
+  assert.deepEqual(c.fixedSrc, { kpol: 'journal', ks: 'journal', tau: 'journal' });
+  assert.equal(c.form.co_timer_mode, 'manual');
+  assert.equal(c.ref.src, 'journal');
+  near(c.summary.value, sb.summary.value, 1e-6, 'та же мощность дозы (τ и k — с шестью знаками)');
+  const d = decayFactor('2026-09-15', '2026-10-15').factor;
+  near(c.summary.deviation, (1 / d - 1) * 100, 1e-4, 'отклонение = распад за месяц');
+  assert.equal(c.summary.ksFixed, true);
+  assert.ok(c.summary.deviation > 1 && c.summary.status === 'ok');
+  // время в секундах: τ из калибровки пересчитывается
+  let js = cojournal({ co_time: '60', co_time_unit: 's' });
+  const calS = finalizeSession(js, { machineId: 'mc', date: '2026-09-15', mode: 'cal', protocol: 'trs', env: CO_ENV, beams: [{ beamId: 'bco', ...CO_READ, co_tt: ['30', '60', '120'] }] });
+  near(calS.beams[0].summary.tauMin, tab.timer.tau, 1e-9, 'τ из секунд в минуты');
+  near(calS.beams[0].summary.value, sb.summary.value, 1e-9, 'та же мощность дозы');
+  js = upsertSession(js, calS);
+  const cs = computeSessionBeam(js, sess, { beamId: 'bco', co_M1: SAMPLE_COBALT.co_M1, co_Mc: SAMPLE_COBALT.co_Mc });
+  near(parseNumber(cs.form.co_tau), tab.timer.tau * 60, 1e-5, 'τ в секундах');
+  near(cs.summary.value, sb.summary.value, 1e-6);
+  // своё τ при проверке важнее журнала
+  assert.equal(computeSessionBeam(j, sess, { beamId: 'bco', co_M1: SAMPLE_COBALT.co_M1, co_tau: '0,02' }).fixedSrc.tau, 'manual');
+  // без калибровки в журнале: k_pol, k_s и τ неоткуда — ошибки
+  const none = computeSessionBeam(cojournal(), sess, { beamId: 'bco', co_M1: SAMPLE_COBALT.co_M1 });
+  assert.deepEqual(none.fixedSrc, { kpol: 'none', ks: 'none', tau: 'none' });
+  assert.ok(none.result.messages.some((m) => m.level === 'error' && /τ/.test(m.text)));
+  // известное τ из настроек пучка — когда калибровки нет
+  const known = computeSessionBeam(cojournal({ co_timer_mode: 'manual', co_tau: '0,012' }), sess, { beamId: 'bco', co_M1: SAMPLE_COBALT.co_M1 });
+  assert.equal(known.fixedSrc.tau, 'profile');
+  // заряд на интервале при выдвинутом источнике: τ не нужна
+  const win = computeSessionBeam(cojournal({ co_timer_mode: 'window' }), sess, { beamId: 'bco', co_M1: SAMPLE_COBALT.co_M1 });
+  assert.equal(win.fixedSrc.tau, '');
+  assert.equal(win.form.co_timer_mode, 'window');
+});
+
+test('⁶⁰Co: замена источника и выбор значения для сравнения; записанный сеанс считается по своей форме', () => {
+  let j = cojournal();
+  const cal = finalizeSession(j, { machineId: 'mc', date: '2026-09-15', mode: 'cal', protocol: 'trs', env: CO_ENV, beams: [{ beamId: 'bco', ...CO_READ }] });
+  j = upsertSession(j, cal);
+  const sess = { machineId: 'mc', date: '2026-10-15', mode: 'cal', protocol: 'trs', env: CO_ENV, beams: [] };
+  // калибровка после замены источника: прежняя калибровка для сравнения не годится
+  const jNew = { ...j, machines: j.machines.map((m) => ({ ...m, beams: m.beams.map((b) => ({ ...b, form: { ...b.form, co_act_date: '2026-10-01', co_ref_rate: '', co_ref_date: '' } })) })) };
+  const r1 = computeSessionBeam(jNew, sess, { beamId: 'bco', ...CO_READ });
+  assert.equal(r1.ref.src, 'none');
+  assert.equal(r1.ref.newSource, true);
+  assert.equal(r1.summary.status, 'nonominal');
+  // сравнение со значением из настроек пучка, даже если есть калибровка
+  const jProf = { ...j, machines: j.machines.map((m) => ({ ...m, beams: m.beams.map((b) => ({ ...b, refSrc: 'profile' })) })) };
+  const r2 = computeSessionBeam(jProf, sess, { beamId: 'bco', ...CO_READ });
+  assert.equal(r2.ref.src, 'profile');
+  assert.equal(r2.form.co_ref_rate, SAMPLE_COBALT.co_ref_rate);
+  // записанный сеанс: после смены N_D,w камеры результат тот же
+  const chk = finalizeSession(j, { machineId: 'mc', date: '2026-10-15', mode: 'check', protocol: 'trs', env: CO_ENV, beams: [{ beamId: 'bco', co_M1: SAMPLE_COBALT.co_M1, co_Mc: SAMPLE_COBALT.co_Mc }] });
+  j = upsertSession(j, chk);
+  const changed = { ...j, chambers: j.chambers.map((x) => ({ ...x, form: { ...x.form, ch_ndw: '0,04600' } })) };
+  const b = chk.beams[0];
+  const again = computeSessionBeam(changed, chk, { ...b, base: recordedBase(b.form, 'cobalt') });
+  assert.equal(again.recorded, true);
+  assert.equal(again.ref.src, 'recorded');
+  assert.deepEqual(again.fixedSrc, { kpol: 'recorded', ks: 'recorded', tau: 'recorded' });
+  near(again.summary.value, b.summary.value, 1e-12, 'та же мощность дозы');
+  near(again.summary.deviation, b.summary.deviation, 1e-9);
+  // тренд: отклонение и τ по сеансам
+  const t = trendSeries(j, 'mc')[0];
+  assert.equal(t.kind, 'cobalt');
+  assert.equal(t.points.length, 2);
+  assert.ok(Number.isFinite(t.points[0].tau) && Number.isNaN(t.points[1].tau));
+});
+
+test('⁶⁰Co: камера — общая запись; перенос пучка из вкладки и «Все настройки»', () => {
+  // базы фотонов и электронов → список вкладки «⁶⁰Co» и обратно
+  assert.equal(cobaltChamberForm({ ch_model: 'PTW30013' }).co_ch_model, 'PTW30013');
+  assert.equal(cobaltChamberForm({ ch_model: 'ROOS' }).co_ch_model, 'PP:ROOS');
+  assert.deepEqual(chamberFormFromCobalt({ co_ch_model: 'PP:ROOS', co_ndw: '0,08' }), { ch_model: 'ROOS', ch_ndw: '0,08' });
+  const other = cobaltChamberForm({ ch_model: 'OTHER', e_other_name: 'Камера X', e_other_type: 'pp' });
+  assert.deepEqual([other.co_ch_model, other.co_cc_model, other.co_cc_type], ['CUSTOM', 'Камера X', 'pp']);
+  assert.deepEqual(chamberFormFromCobalt({ co_ch_model: 'CUSTOM', co_cc_maker: 'A', co_cc_model: 'Камера X', co_cc_type: 'pp' }), { ch_model: 'OTHER', e_other_name: 'A Камера X', e_other_type: 'pp' });
+  assert.deepEqual(chamberFormFromCobalt({ co_ch_model: 'MY:1', co_cc_maker: 'A', co_cc_model: 'Y', co_cc_type: 'cyl' }), { ch_model: 'CUSTOM', cc_maker: 'A', cc_model: 'Y' });
+  assert.equal(cobaltCapable({ ch_model: 'ROOS' }), true);
+  // камера пучка ⁶⁰Co: нужен N_D,w в ⁶⁰Co, даже если для фотонов она калибруется перекрёстно
+  assert.deepEqual(chamberMissing({ form: { ch_model: 'PTW30013', ch_cal_route: 'cross', ch_cross_ndw: '0,054', ch_cross_tpr: '0,68' } }, { photon: true, cobalt: true }), ['N_D,w']);
+  const j0 = cojournal();
+  assert.deepEqual(chamberUses(j0, 'cNE'), { photon: false, electron: false, cobalt: true });
+  // пучок из вкладки: камера и электрометр находятся по модели и номеру
+  const { journal: j1, beam, addedChamber, addedElectrometer } = beamFromTabForm(j0, 'mc', { ...SAMPLE_COBALT, co_ref_rate: '150' }, 'cobalt');
+  assert.equal(beam.kind, 'cobalt');
+  assert.equal(beam.name, '⁶⁰Co, РИП 80 см');
+  assert.equal(addedChamber, false);
+  assert.equal(addedElectrometer, false);
+  assert.equal(beam.chamberId, 'cNE');
+  assert.equal(beam.form.co_ref_rate, '150');
+  assert.ok(!('co_M1' in beam.form) && !('co_ndw' in beam.form));
+  // «Все настройки»: та же камера обновляется (N_D,w, k_лаб), модель записи не меняется
+  const r = applyTabFormToBeam(j1, 'mc', beam.id, { ...SAMPLE_COBALT, co_ndw: '0,04530', co_klab: '1,002', co_zref: '10' }, 'cobalt');
+  assert.equal(r.chamber, 'same');
+  const ch = r.journal.chambers.find((x) => x.id === 'cNE');
+  assert.deepEqual([ch.form.ch_model, ch.form.ch_ndw, ch.form.ch_klab], ['NE2571', '0,04530', '1,002']);
+  assert.equal(r.journal.machines[0].beams.find((x) => x.id === beam.id).form.co_zref, '10');
+  // своя плоскопараллельная камера из вкладки — «другая» камера журнала, и та же при повторном переносе
+  const tabPP = { ...SAMPLE_COBALT, co_ch_model: 'MY:abc', co_cc_maker: 'A', co_cc_model: 'PP-1', co_cc_type: 'pp', co_ch_serial: '7' };
+  const a = beamFromTabForm(j0, 'mc', tabPP, 'cobalt');
+  assert.equal(a.addedChamber, true);
+  assert.equal(a.journal.chambers.at(-1).form.ch_model, 'OTHER');
+  assert.equal(beamFromTabForm(a.journal, 'mc', tabPP, 'cobalt').addedChamber, false);
+});
+
+test('⁶⁰Co: замена источника без даты в прежней калибровке, устаревшее значение из настроек, сравнение на z_ref; формат файла', () => {
+  // калибровка пучка без даты установки источника
+  let j = cojournal({ co_act_date: '', co_ref_rate: '', co_ref_date: '' });
+  j = upsertSession(j, finalizeSession(j, { machineId: 'mc', date: '2026-01-15', mode: 'cal', protocol: 'trs', env: CO_ENV, beams: [{ beamId: 'bco', ...CO_READ }] }));
+  const withBeam = (jj, patch) => ({ ...jj, machines: jj.machines.map((m) => ({ ...m, beams: m.beams.map((b) => ({ ...b, form: { ...b.form, ...patch } })) })) });
+  const sess = { machineId: 'mc', date: '2026-07-01', mode: 'check', protocol: 'trs', env: CO_ENV, beams: [] };
+  // потом указали дату установки нового источника и его мощность дозы: калибровка раньше установки — не опора
+  const r1 = computeSessionBeam(withBeam(j, { co_act_date: '2026-06-01', co_ref_rate: '200', co_ref_date: '2026-06-01' }), sess, { beamId: 'bco', co_M1: SAMPLE_COBALT.co_M1 });
+  assert.equal(r1.ref.newSource, true);
+  assert.equal(r1.ref.src, 'profile');
+  near(r1.result.depth.expected, 200 * decayFactor('2026-06-01', '2026-07-01').factor, 1e-12, 'ожидаемая — значение нового источника');
+  // значение из настроек датировано раньше установки источника — относится к прежнему, сравнивать не с чем
+  const r2 = computeSessionBeam(withBeam(j, { co_act_date: '2026-06-01', co_ref_rate: '148,6', co_ref_date: '2026-01-15' }), sess, { beamId: 'bco', co_M1: SAMPLE_COBALT.co_M1 });
+  assert.deepEqual([r2.ref.src, r2.ref.staleProfile, r2.summary.status], ['none', true, 'nonominal']);
+  assert.ok(computeCobalt({ ...SAMPLE_COBALT, co_ref_date: '2024-01-01' }).messages.some((m) => m.level === 'warn' && /раньше установки источника/.test(m.text)));
+  // калибровка без пересчёта на z_max, сейчас он включён: сравнение на z_ref
+  let jz = cojournal({ co_dd_on: false });
+  jz = upsertSession(jz, finalizeSession(jz, { machineId: 'mc', date: '2026-09-15', mode: 'cal', protocol: 'trs', env: CO_ENV, beams: [{ beamId: 'bco', ...CO_READ }] }));
+  const r3 = computeSessionBeam(withBeam(jz, { co_dd_on: true }), { ...sess, date: '2026-10-15' }, { beamId: 'bco', co_M1: SAMPLE_COBALT.co_Mc });
+  assert.deepEqual([r3.ref.src, r3.ref.atFallback, r3.summary.at], ['journal', true, 'zref']);
+  near(r3.summary.deviation, (1 / decayFactor('2026-09-15', '2026-10-15').factor - 1) * 100, 1e-4);
+  // формат файла: 2 — с ⁶⁰Co, 1 — без
+  assert.equal(journalFormat(j), 2);
+  assert.equal(journalFormat(journal()), 1);
+});
+
+test('⁶⁰Co: скрытые поля своей камеры на вкладке не считаются изменением общей камеры', () => {
+  const j0 = cojournal();
+  const j = normalizeJournal({ ...j0, machines: [...j0.machines, { id: 'ml', name: 'Linac', kind: 'linac', beams: [{ id: 'b6', kind: 'photon', name: '6 MV', chamberId: 'cNE', electrometerId: 'e1', form: {} }] }] });
+  const r = applyTabFormToBeam(j, 'mc', 'bco', { ...SAMPLE_COBALT, co_cc_maker: 'X', co_cc_model: 'Y' }, 'cobalt');
+  assert.equal(r.chamber, 'same');
+  assert.deepEqual(r.sharedChamber, []);
+  assert.ok(!('cc_model' in r.journal.chambers[0].form));
+  // настоящее изменение N_D,w — сообщается, что камера общая
+  assert.deepEqual(applyTabFormToBeam(j, 'mc', 'bco', { ...SAMPLE_COBALT, co_ndw: '0,04600' }, 'cobalt').sharedChamber, ['Linac — 6 MV']);
 });

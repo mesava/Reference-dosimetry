@@ -6,10 +6,11 @@ import { localizeDecimals } from './i18n.js';
 import { coChamberGroups } from '../core/co60-chambers.js';
 import { PRESSURE_UNITS, NDW_UNITS, unitLabel } from '../core/units.js';
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
+import { makeJournalView } from './journal-view.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, renderPairs, readPairs, setupPairs } from './widgets.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
-  currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
+  currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
   notifyUpdate, flashFields, richText } from './common.js';
 
@@ -230,7 +231,8 @@ function doseRow(key, x, result) {
   const none = x.blocked || failed;
   let chip = '';
   if (Number.isFinite(p.deviation) && !none) {
-    const cls = Math.abs(p.deviation) <= 1 ? 'good' : Math.abs(p.deviation) > 2 ? 'bad' : '';
+    const tol = result.depth.tolerance;
+    const cls = Math.abs(p.deviation) <= tol / 2 ? 'good' : Math.abs(p.deviation) > tol ? 'bad' : '';
     chip = `<span class="chip ${cls}" title="${L('Отклонение от ожидаемой мощности дозы', 'Deviation from the expected dose rate')}">${fmtSigned(p.deviation, 2)} %</span>`;
   }
   const i = result.inputs;
@@ -309,7 +311,8 @@ function renderReadout(result, data) {
     [L('Полярность', 'Polarity'), ['k<sub>pol</sub>', t.kpol, 4], ['P<sub>pol</sub>', g.Ppol, 4]],
     [L('Рекомбинация', 'Recombination'), ['k<sub>s</sub>', t.ks, 4], ['P<sub>ion</sub>', g.Pion, 4]],
     [L('Утечка', 'Leakage'), ['k<sub>leak</sub>', t.kleak, 4], ['P<sub>leak</sub>', g.Pleak, 4]],
-    [L('N<sub>D,w</sub>, Гр/нКл', 'N<sub>D,w</sub>, Gy/nC'), ['', i.ndw, 5], ['', i.ndw, 5]],
+    [L('N<sub>D,w</sub> из свидетельства, Гр/нКл', 'N<sub>D,w</sub> from the certificate, Gy/nC'), ['', i.ndwCert, 5], ['', i.ndwCert, 5]],
+    [L('k<sub>лаб</sub>', 'k<sub>lab</sub>'), ['', i.klab, 4], ['', i.klab, 4]],
     [L('Поправка на качество', 'Beam quality correction'), ['k<sub>Q</sub>', t.enabled ? 1 : NaN, 3], ['k<sub>Q</sub>', g.enabled ? 1 : NaN, 3]],
   ];
   if (result.depth.on) rows.push([result.depth.label || 'PDD/TMR', ['', result.depth.factor, 4], ['', result.depth.factor, 4]]);
@@ -366,7 +369,8 @@ function reportText(data, r) {
     L('Камера', 'Chamber'),
     `${r.chamber ? `${r.chamber.label} (${r.chamber.type === 'pp' ? L('плоскопараллельная', 'plane-parallel') : L('цилиндрическая', 'cylindrical')})` : '—'}, ${L('№', 'S/N')} ${data.co_ch_serial || '—'}`,
   );
-  line('N_D,w', L(`${data.co_ndw} ${unitLabel(NDW_UNITS[data.co_ndw_unit])} (= ${fmt(i.ndw, 6)} Гр/нКл); T0 = ${data.co_T0} °C, P0 = ${data.co_P0} кПа`, `${data.co_ndw} ${unitLabel(NDW_UNITS[data.co_ndw_unit])} (= ${fmt(i.ndw, 6)} Gy/nC); T0 = ${data.co_T0} °C, P0 = ${data.co_P0} kPa`));
+  const klabTxt = Number.isFinite(i.klab) && Math.abs(i.klab - 1) > 1e-12 ? L(`; k_лаб = ${fmt(i.klab, 4)}, N_D,w · k_лаб = ${fmt(i.ndw, 6)} Гр/нКл`, `; k_lab = ${fmt(i.klab, 4)}, N_D,w · k_lab = ${fmt(i.ndw, 6)} Gy/nC`) : '';
+  line('N_D,w', L(`${data.co_ndw} ${unitLabel(NDW_UNITS[data.co_ndw_unit])} (= ${fmt(i.ndwCert, 6)} Гр/нКл)${klabTxt}; T0 = ${data.co_T0} °C, P0 = ${data.co_P0} кПа`, `${data.co_ndw} ${unitLabel(NDW_UNITS[data.co_ndw_unit])} (= ${fmt(i.ndwCert, 6)} Gy/nC)${klabTxt}; T0 = ${data.co_T0} °C, P0 = ${data.co_P0} kPa`));
   line(L('Электрометр', 'Electrometer'), `${data.co_el_model || '—'}, ${L('№', 'S/N')} ${data.co_el_serial || '—'}, k_elec = ${data.co_kelec}`);
   line(
     L('Условия', 'Conditions'),
@@ -397,11 +401,17 @@ function reportText(data, r) {
       ),
     );
   } else line(L('Время облучения', 'Irradiation time'), `t = ${data.co_time} ${i.unitLabel}; τ = ${fmt(tm.tau, 4)} ${i.unitLabel} (${timerTxt}); t + τ = ${fmt(i.tEff, 4)} ${i.unitLabel}`);
-  line(L('Напряжения', 'Voltages'), L(`V1 = ${data.co_V1} В, V2 = ${data.co_V2} В, обычная полярность ${data.co_polarity}`, `V1 = ${data.co_V1} V, V2 = ${data.co_V2} V, normal polarity ${data.co_polarity}`));
+  const fixed = data.co_fixed;
+  line(L('Напряжения', 'Voltages'), fixed ? L(`V1 = ${data.co_V1} В, обычная полярность ${data.co_polarity}`, `V1 = ${data.co_V1} V, normal polarity ${data.co_polarity}`) : L(`V1 = ${data.co_V1} В, V2 = ${data.co_V2} В, обычная полярность ${data.co_polarity}`, `V1 = ${data.co_V1} V, V2 = ${data.co_V2} V, normal polarity ${data.co_polarity}`));
   const mean = L('среднее', 'mean');
   line(L('M(V1, обычная), нКл', 'M(V1, normal), nC'), `${cells(data.co_M1)} → ${mean} ${fmt(Math.abs(i.M1.mean), 4)}`);
-  line(L('M(V1, обратная), нКл', 'M(V1, opposite), nC'), `${cells(data.co_Mopp)} → ${mean} ${fmt(Math.abs(i.Mopp.mean), 4)}`);
-  line(L('M(V2), нКл', 'M(V2), nC'), `${cells(data.co_M2)} → ${mean} ${fmt(Math.abs(i.M2.mean), 4)}`);
+  if (fixed) {
+    const [kp, kx] = data.protocol === 'tg51' ? ['P_pol', 'P_ion'] : ['k_pol', 'k_s'];
+    line(L('Проверка выхода', 'Output check'), L(`${kp} = ${data.co_fixed_kpol}, ${kx} = ${data.co_fixed_ks} — из калибровки${data.co_fixed_from ? ` от ${data.co_fixed_from}` : ''}; обратная полярность и V2 не измерялись`, `${kp} = ${data.co_fixed_kpol}, ${kx} = ${data.co_fixed_ks} from the calibration${data.co_fixed_from ? ` of ${data.co_fixed_from}` : ''}; the opposite polarity and V2 were not measured`));
+  } else {
+    line(L('M(V1, обратная), нКл', 'M(V1, opposite), nC'), `${cells(data.co_Mopp)} → ${mean} ${fmt(Math.abs(i.Mopp.mean), 4)}`);
+    line(L('M(V2), нКл', 'M(V2), nC'), `${cells(data.co_M2)} → ${mean} ${fmt(Math.abs(i.M2.mean), 4)}`);
+  }
   if (r.ctrl.on) line(L('Контрольные измерения M(V1), нКл', 'Check measurements M(V1), nC'), `${cells(data.co_Mc)} → ${mean} ${fmt(r.ctrl.mean, 4)} ${L('за', 'for')} ${fmt(r.ctrl.t, 2)} ${i.unitLabel}`);
   if (Number.isFinite(r.source.A)) {
     line(
@@ -421,8 +431,8 @@ function reportText(data, r) {
     else {
       out.push(
         L(
-          `P_TP = ${fmt(x.PTP)}; P_elec = ${fmt(x.Pelec)}; P_pol = ${fmt(x.Ppol)}; P_ion = ${fmt(x.Pion)} (ур. 11); P_leak = ${fmt(x.Pleak)}; k_Q = 1,000`,
-          `P_TP = ${fmt(x.PTP)}; P_elec = ${fmt(x.Pelec)}; P_pol = ${fmt(x.Ppol)}; P_ion = ${fmt(x.Pion)} (Eq. 11); P_leak = ${fmt(x.Pleak)}; k_Q = 1.000`,
+          `P_TP = ${fmt(x.PTP)}; P_elec = ${fmt(x.Pelec)}; P_pol = ${fmt(x.Ppol)}; P_ion = ${fmt(x.Pion)} (${x.PionFixed ? `из калибровки${data.co_fixed_from ? ` от ${data.co_fixed_from}` : ''} — проверка выхода` : 'ур. 11'}); P_leak = ${fmt(x.Pleak)}; k_Q = 1,000`,
+          `P_TP = ${fmt(x.PTP)}; P_elec = ${fmt(x.Pelec)}; P_pol = ${fmt(x.Ppol)}; P_ion = ${fmt(x.Pion)} (${x.PionFixed ? `from the calibration${data.co_fixed_from ? ` of ${data.co_fixed_from}` : ''}: output check` : 'Eq. 11'}); P_leak = ${fmt(x.Pleak)}; k_Q = 1.000`,
         ),
       );
     }
@@ -436,7 +446,10 @@ function reportText(data, r) {
           const dec = Number.isFinite(r.depth.decay)
             ? L(` (${data.co_ref_rate} сГр/мин на ${r.depth.refDate}, распад × ${fmt(r.depth.decay, 4)})`, ` (${data.co_ref_rate} cGy/min on ${r.depth.refDate}, decay × ${fmt(r.depth.decay, 4)})`)
             : '';
-          dev = L(`; ожидалось ${fmt(r.depth.expected, 2)} сГр/мин${dec}, отклонение ${fmtSigned(y.deviation, 2)} %`, `; expected ${fmt(r.depth.expected, 2)} cGy/min${dec}, deviation ${fmtSigned(y.deviation, 2)} %`);
+          const tol = r.depth.tolerance;
+          const tolTxt = fmt(tol, tol % 1 ? 1 : 0);
+          const inTol = Math.abs(y.deviation) <= tol ? L(`в допуске ±${tolTxt} %`, `within ±${tolTxt} %`) : L(`вне допуска ±${tolTxt} %`, `outside ±${tolTxt} %`);
+          dev = L(`; ожидалось ${fmt(r.depth.expected, 2)} сГр/мин${dec}, отклонение ${fmtSigned(y.deviation, 2)} % (${inTol})`, `; expected ${fmt(r.depth.expected, 2)} cGy/min${dec}, deviation ${fmtSigned(y.deviation, 2)} % (${inTol})`);
         }
         out.push(
           L(
@@ -511,6 +524,29 @@ export function importCobalt(obj) {
 // ------------------------------------------------------------ цикл
 let current = { data: null, result: null };
 
+// ------------------------------------------------------------ связь с журналом
+// «Все настройки» пучка ⁶⁰Co из «Оборудования» и «Открыть во вкладке» из сеанса — плашка над рабочим листом.
+const journalView = makeJournalView({
+  bar: () => $('#co-journal-bar'),
+  storageKey: 'reference-dosimetry.cobalt.journal-view.v1',
+  readForm: () => normalizeCobalt(readForm()),
+  writeForm: (form, withProtocol) => {
+    if (withProtocol) applyProtocol(normalizeCobalt(form).protocol);
+    writeForm(form);
+  },
+  refresh: () => {
+    openedFile = null;
+    update();
+  },
+  setStatus: (t) => setStatus(t),
+});
+/** Куда записывать настройки пучка из вкладки по «Сохранить в журнал». */
+export const setCobaltJournalSave = (fn) => journalView.setSave(fn);
+/** Текущая форма вкладки (для «Пучок из вкладки «⁶⁰Co»»). */
+export const cobaltCurrentForm = () => normalizeCobalt(readForm());
+/** Загрузить форму журнала во вкладку (протокол в шапке ставится по форме). */
+export const showInCobalt = (form, opts) => journalView.show(form, opts);
+
 /**
  * Данные вкладки для инструмента «Неопределённость» (кнопка «Взять данные с вкладки»): серия показаний итога,
  * мощность дозы и сведения об аппарате. Сама вкладка бюджет не показывает.
@@ -570,6 +606,7 @@ function refreshForLang() {
   localizeDemo(SAMPLE_COBALT, SAMPLE_COBALT_EN);
   localizeDecimals(ROOT());
   update();
+  journalView.render();
 }
 
 export function initCobalt() {
@@ -583,6 +620,8 @@ export function initCobalt() {
   const draft = loadDraft();
   writeForm(draft ? draft : sampleData());
   localizeDemo(SAMPLE_COBALT, SAMPLE_COBALT_EN);
+  // во вкладке был пучок журнала (страницу перезагрузили): плашка с возвратом прежних данных остаётся
+  journalView.load();
   update();
   if (!draft) setStatus(L('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.', 'Demo example loaded. Press "Clear" to enter your own data.'));
 

@@ -6,7 +6,7 @@
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
 import { L } from './i18n.js';
-import { temperaturePressure, polarity, environmentChecks, complianceOf } from './common.js';
+import { temperaturePressure, polarity, environmentChecks, complianceOf, readTolerance } from './common.js';
 import { resolveCoChamber, matchCoChamberByName } from './co60-chambers.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
@@ -31,6 +31,7 @@ export const CO_DEFAULTS = {
   co_ch_serial: '',
   co_ndw: '',
   co_ndw_unit: 'Gy/nC',
+  co_klab: '1,000', // поправочный множитель K из протокола поверки (например, ВНИИФТРИ); пусто — 1
   co_T0: '20',
   co_P0: '101,325',
   co_el_model: '',
@@ -67,6 +68,11 @@ export const CO_DEFAULTS = {
   co_M2: ['', '', ''],
   co_kleak: '1,000',
   co_rec_trs: 'eq13', // 'eq13' | 'eq16'
+  // проверка выхода: обратная полярность и V₂ не измеряются, k_pol и k_s — из калибровки
+  co_fixed: false,
+  co_fixed_kpol: '', // k_pol (P_pol), измеренный при калибровке
+  co_fixed_ks: '', // k_s (P_ion), измеренный при калибровке (до деления на значение лаборатории)
+  co_fixed_from: '', // дата калибровки, из которой взяты значения
 
   // контрольные измерения: обычная полярность, V₁; поправки — из основных серий
   co_Mc: ['', '', ''],
@@ -83,6 +89,7 @@ export const CO_DEFAULTS = {
   co_ref_rate: '', // сГр/мин при вводе в эксплуатацию или предыдущей калибровке
   co_ref_at: 'zmax', // на какой глубине задано значение для сравнения: 'zmax' | 'zref'
   co_ref_date: '', // дата, к которой относится co_ref_rate; пусто — дата установки источника, если указана
+  co_tol: '2', // допуск учреждения на отклонение от ожидаемой мощности дозы, %
 };
 
 export const ACTIVITY_UNITS = { Ci: { label: 'Ки', labelEn: 'Ci', toTBq: 0.037 }, TBq: { label: 'ТБк', labelEn: 'TBq', toTBq: 1 } };
@@ -129,6 +136,7 @@ export function normalizeCobalt(input) {
   if (!isBlank(input?.co_expected) && isBlank(f.co_ref_rate)) f.co_ref_rate = input.co_expected;
   delete f.co_expected;
   if (!Array.isArray(f.co_staff) || f.co_staff.length === 0) f.co_staff = [''];
+  f.co_fixed = f.co_fixed === true || f.co_fixed === 'true';
   return f;
 }
 
@@ -237,10 +245,17 @@ export function computeCobalt(form) {
   if (chamber?.sleeve) add('info', 'common', L('Камера не водонепроницаема: используйте тот же чехол (ПММА ≤ 1 мм), что и при калибровке.', 'The chamber is not waterproof: use the same waterproofing sleeve (PMMA ≤ 1 mm) as at calibration.'), `${REF.trs}, разд. 4.2.4; ${REF.tg51}, разд. V.A`);
   if (chamber?.notReferenceClass) add('info', 'common', L('По TRS-398 Rev.1 (табл. 4) камера не отвечает спецификации эталонного класса: для калибровки пучка лучше использовать камеру эталонного класса.', 'According to TRS-398 Rev.1 (Table 4), this chamber does not meet the reference-class specification: a reference-class chamber is preferable for beam calibration.'), `${REF.trs}, табл. 4`, null, L('камера не эталонного класса (TRS-398 Rev.1, табл. 4)', 'chamber not of reference class (TRS-398 Rev.1, Table 4)'));
   const ndwRaw = read('co_ndw', 'N_D,w');
-  const ndw = Number.isFinite(ndwRaw) ? ndwToGyPerNC(ndwRaw, f.co_ndw_unit) : NaN;
-  if (Number.isFinite(ndw) && (ndw < 1e-3 || ndw > 5)) {
-    add('warn', 'common', L(`N_D,w = ${dec(ndw.toPrecision(4))} Гр/нКл выглядит неправдоподобно: проверьте единицы.`, `N_D,w = ${dec(ndw.toPrecision(4))} Gy/nC looks implausible: check the units.`), null, 'co_ndw');
+  const ndwCert = Number.isFinite(ndwRaw) ? ndwToGyPerNC(ndwRaw, f.co_ndw_unit) : NaN;
+  if (Number.isFinite(ndwCert) && (ndwCert < 1e-3 || ndwCert > 5)) {
+    add('warn', 'common', L(`N_D,w = ${dec(ndwCert.toPrecision(4))} Гр/нКл выглядит неправдоподобно: проверьте единицы.`, `N_D,w = ${dec(ndwCert.toPrecision(4))} Gy/nC looks implausible: check the units.`), null, 'co_ndw');
   }
+  // поправочный множитель лаборатории: N_D,w из свидетельства умножается на него
+  let klab = isBlank(f.co_klab) ? 1 : parseNumber(f.co_klab);
+  if (!Number.isFinite(klab) || klab <= 0) {
+    add('error', 'common', L('Не удалось прочитать k_лаб: введите поправочный множитель из протокола поверки (обычно 1,000).', 'Could not read k_lab: enter the correction multiplier from the calibration certificate (usually 1.000).'), null, 'co_klab');
+    klab = NaN;
+  } else if (Math.abs(klab - 1) > 0.05) add('warn', 'common', L('k_лаб отличается от 1 больше чем на 5 %: проверьте протокол поверки.', 'k_lab differs from 1 by more than 5%: check the calibration certificate.'), null, 'co_klab');
+  const ndw = ndwCert * klab;
   const T0 = read('co_T0', L('T₀ из сертификата', 'T₀ from the certificate'));
   const P0 = read('co_P0', L('P₀ из сертификата', 'P₀ from the certificate'));
   if (Number.isFinite(T0) && (T0 < 15 || T0 > 25)) add('error', 'common', L('T₀ задаётся в °C (обычно 20 или 22).', 'T₀ is entered in °C (usually 20 or 22).'), null, 'co_T0');
@@ -307,13 +322,31 @@ export function computeCobalt(form) {
   const tEffMin = tEff * toMin;
 
   // ------------------------------------------------------------- показания
+  const fixed = f.co_fixed;
   const V1 = read('co_V1', L('Рабочее напряжение V₁', 'Operating voltage V₁'));
-  const V2 = read('co_V2', L('Пониженное напряжение V₂', 'Reduced voltage V₂'));
+  const V2 = fixed ? NaN : read('co_V2', L('Пониженное напряжение V₂', 'Reduced voltage V₂'));
   if (Number.isFinite(V1) && Number.isFinite(V2) && Math.abs(V1) <= Math.abs(V2)) add('error', 'common', L('Рабочее напряжение V₁ должно быть больше пониженного V₂.', 'Operating voltage V₁ must be higher than reduced voltage V₂.'), null, ['co_V1', 'co_V2']);
   if (want51 && Number.isFinite(V1) && Math.abs(V1) > 300 && chamber?.type !== 'pp') add('warn', 'tg51', L('Аддендум TG-51 рекомендует для цилиндрических камер не более 300 В.', 'The TG-51 addendum recommends no more than 300 V for cylindrical chambers.'), `${REF.add}, разд. 4.E`, 'co_V1');
   const M1 = readCells('co_M1', L('M при V₁, обычная полярность', 'M at V₁, normal polarity'));
-  const Mopp = readCells('co_Mopp', L('M при V₁, обратная полярность', 'M at V₁, opposite polarity'));
-  const M2 = readCells('co_M2', L('M при V₂', 'M at V₂'));
+  // при проверке выхода обратная полярность и V₂ не измеряются: k_pol и k_s — из калибровки
+  const Mopp = fixed ? parseCells([]) : readCells('co_Mopp', L('M при V₁, обратная полярность', 'M at V₁, opposite polarity'));
+  const M2 = fixed ? parseCells([]) : readCells('co_M2', L('M при V₂', 'M at V₂'));
+  let fixedKs = NaN;
+  let fixedKpol = NaN;
+  if (fixed) {
+    const [kp, kx] = want51 ? ['P_pol', 'P_ion'] : ['k_pol', 'k_s'];
+    fixedKpol = read('co_fixed_kpol', L(`${kp} из калибровки`, `${kp} from the calibration`));
+    fixedKs = read('co_fixed_ks', L(`${kx} из калибровки`, `${kx} from the calibration`));
+    if (Number.isFinite(fixedKpol) && Math.abs(fixedKpol - 1) > 0.05) add('error', 'common', L(`${kp} из калибровки ${ru(fixedKpol, 4)} неправдоподобен.`, `${kp} from the calibration ${ru(fixedKpol, 4)} is implausible.`), null, 'co_fixed_kpol');
+    if (Number.isFinite(fixedKs) && (fixedKs < 1 || fixedKs > 1.05)) add('error', 'common', L(`${kx} из калибровки ${ru(fixedKs, 4)} вне 1–1,05.`, `${kx} from the calibration ${ru(fixedKs, 4)} is outside 1–1.05.`), null, 'co_fixed_ks');
+    const from = String(f.co_fixed_from ?? '').trim();
+    if (Number.isFinite(fixedKpol) && Number.isFinite(fixedKs)) {
+      add('info', 'common', L(
+        `Проверка выхода: ${kp} = ${ru(fixedKpol, 4)} и ${kx} = ${ru(fixedKs, 4)} взяты из калибровки${from ? ` от ${from}` : ''}, обратная полярность и V₂ не измерялись.`,
+        `Output check: ${kp} = ${ru(fixedKpol, 4)} and ${kx} = ${ru(fixedKs, 4)} are taken from the calibration${from ? ` of ${from}` : ''}; the opposite polarity and V₂ were not measured.`,
+      ));
+    }
+  }
   spread(M1, L('при V₁', 'at V₁'), 'co_M1');
   spread(Mopp, L('обратной полярности', 'at opposite polarity'), 'co_Mopp');
   spread(M2, L('при V₂', 'at V₂'), 'co_M2');
@@ -322,8 +355,8 @@ export function computeCobalt(form) {
 
   const readingsOk = M1.n > 0 && !M1.error && M1.mean !== 0;
   const m1 = readingsOk ? Math.abs(M1.mean) : NaN;
-  let kpolRaw = NaN;
-  if (readingsOk && Mopp.n > 0 && !Mopp.error) {
+  let kpolRaw = fixed ? fixedKpol : NaN;
+  if (!fixed && readingsOk && Mopp.n > 0 && !Mopp.error) {
     kpolRaw = polarity(M1.mean, Mopp.mean);
     if (Math.abs(kpolRaw - 1) > 0.004) {
       add('warn', 'common', L(`k_pol = ${ru(kpolRaw, 4)} выходит за пределы 1 ± 0,004: для камеры эталонного класса эффект полярности должен быть меньше 0,4 %.`, `k_pol = ${ru(kpolRaw, 4)} is outside 1 ± 0.004: for a reference-class chamber the polarity effect should be below 0.4 %.`), `${REF.trs}, табл. 3; ${REF.add}, табл. III`, 'kpol', L(`k_pol = ${ru(kpolRaw, 4)}: эффект полярности больше 0,4 % (критерий эталонного класса)`, `k_pol = ${ru(kpolRaw, 4)}: polarity effect above 0.4 % (reference-class criterion)`));
@@ -373,8 +406,16 @@ export function computeCobalt(form) {
     trs.kTP = temperaturePressure({ T, P, T0, P0, abs0: TRS.TRS_ABS0 });
     trs.kelec = kelec;
     trs.kpol = kpol;
+    trs.kpolRaw = kpolRaw;
+    trs.kpolQ0 = kpolQ0;
     trs.kleak = kleak;
-    if (recOk) {
+    if (fixed) {
+      trs.ksRaw = fixedKs;
+      trs.ks = fixedKs / ksQ0;
+      trs.ksFixed = true;
+      const fromTxt = String(f.co_fixed_from ?? '').trim();
+      trs.ksEquation = L(`из калибровки${fromTxt ? ` от ${fromTxt}` : ''} — проверка выхода`, `from the calibration${fromTxt ? ` of ${fromTxt}` : ''}: output check`);
+    } else if (recOk) {
       if (f.co_rec_trs === 'eq16') {
         trs.ksRaw = (nV * nV - 1) / (nV * nV - ratio12);
         trs.ksEquation = L('ур. (16): k_s = (n² − 1)/(n² − M₁/M₂), общая рекомбинация в непрерывном пучке', 'Eq. (16): k_s = (n² − 1)/(n² − M₁/M₂), general recombination in a continuous beam');
@@ -398,8 +439,14 @@ export function computeCobalt(form) {
     tg.PTP = temperaturePressure({ T, P, T0, P0, abs0: TG51.TG51_ABS0 });
     tg.Pelec = kelec;
     tg.Ppol = kpol;
+    tg.PpolRaw = kpolRaw;
+    tg.PpolQ0 = kpolQ0;
     tg.Pleak = kleak;
-    if (recOk) {
+    if (fixed) {
+      tg.PionRaw = fixedKs;
+      tg.Pion = fixedKs / ksQ0;
+      tg.PionFixed = true;
+    } else if (recOk) {
       tg.PionRaw = TG51.pIon({ mH: M1.mean, mL: M2.mean, vH: Math.abs(V1), vL: Math.abs(V2), beam: 'continuous' });
       if (nV < 2 - 1e-9) add('warn', 'tg51', L('TG-51: пониженное напряжение должно быть меньше рабочего как минимум вдвое.', 'TG-51: the reduced voltage must be at most half the operating voltage.'), `${REF.tg51}, разд. VII.D.2`, ['co_V1', 'co_V2']);
       tg.Pion = tg.PionRaw / ksQ0;
@@ -448,10 +495,15 @@ export function computeCobalt(form) {
   const refKey = isBlank(f.co_ref_date) ? 'co_act_date' : 'co_ref_date';
   depth.refDate = refDate;
   depth.refDateFromSource = isBlank(f.co_ref_date) && !isBlank(f.co_act_date);
+  depth.tolerance = readTolerance(f.co_tol, { add, parseNumber, isBlank, field: 'co_tol', expected: true });
   if (!isBlank(f.co_ref_rate) && !(refRate > 0)) add('warn', 'common', L('Мощность дозы для сравнения должна быть положительным числом (сГр/мин).', 'The comparison dose rate must be a positive number (cGy/min).'), null, 'co_ref_rate');
   if (refRate > 0) {
     depth.refRate = refRate;
     depth.expected = refRate;
+    // значение, датированное раньше установки источника, относится к прежнему источнику
+    if (!isBlank(f.co_ref_date) && !isBlank(f.co_act_date) && String(f.co_ref_date) < String(f.co_act_date)) {
+      add('warn', 'common', L(`Значение для сравнения датировано ${f.co_ref_date}, раньше установки источника (${f.co_act_date}): оно относится к прежнему источнику. После замены источника задайте мощность дозы нового источника.`, `The comparison value is dated ${f.co_ref_date}, before the source installation (${f.co_act_date}): it refers to the previous source. After a source replacement, enter the dose rate of the new source.`), null, ['co_ref_date', 'co_act_date']);
+    }
     if (!isBlank(refDate)) {
       if (depth.refDateFromSource) add('info', 'common', L(`Для мощности дозы сравнения не указана дата — она пересчитана от даты установки источника (${refDate}). Если это значение предыдущей калибровки, укажите его дату.`, `No date is given for the comparison dose rate, so it is decay-corrected from the source installation date (${refDate}). If this value comes from a previous calibration, enter its date.`), null, 'co_ref_date');
       if (isBlank(f.co_date)) add('warn', 'common', L('Укажите дату измерения (раздел 1), чтобы учесть распад ⁶⁰Co.', 'Enter the measurement date (section 1) to account for ⁶⁰Co decay.'), null, ['co_date', refKey]);
@@ -524,6 +576,19 @@ export function computeCobalt(form) {
   const hasError = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
   if (wantTRS && !trs.ok && !hasError('trs')) add('error', 'trs', L('Не удалось вычислить дозу: проверьте ввод.', 'Could not calculate the dose: check the input.'));
   if (want51 && !tg.ok && !hasError('tg51')) add('error', 'tg51', L('Не удалось вычислить дозу: проверьте ввод.', 'Could not calculate the dose: check the input.'));
+  // отклонение итога (по контрольным измерениям, если они введены) от ожидаемой мощности дозы больше допуска
+  {
+    const ax0 = wantTRS ? trs : tg;
+    const p = ctrl.on ? ax0.ctrl : ax0;
+    const tol = depth.tolerance;
+    if (p && !ctrlBlocked && !hasError(wantTRS ? 'trs' : 'tg51') && Number.isFinite(p.deviation) && Math.abs(p.deviation) > tol) {
+      const tolTxt = ru(tol, tol % 1 ? 1 : 0);
+      add('warn', 'common', L(
+        `Мощность дозы отличается от ожидаемой на ${p.deviation > 0 ? '+' : ''}${ru(p.deviation, 2)} % — больше допуска ±${tolTxt} %. Проверьте установку камеры, N_D,w, даты и значение для сравнения; если отклонение подтвердится повторным измерением, выясните причину, прежде чем менять мощность дозы для расчёта времени облучения.`,
+        `The dose rate differs from the expected one by ${p.deviation > 0 ? '+' : ''}${ru(p.deviation, 2)} %, more than the ±${tolTxt} % tolerance. Check the chamber setup, N_D,w, the dates and the comparison value; if a repeated measurement confirms the deviation, find the cause before changing the dose rate used for treatment time calculations.`,
+      ), null, 'co_ref_rate');
+    }
+  }
   const order = { error: 0, warn: 1, info: 2 };
   messages.sort((a, b) => order[a.level] - order[b.level]);
   trs.blocked = wantTRS && hasError('trs');
@@ -542,7 +607,7 @@ export function computeCobalt(form) {
     form: f,
     chamber,
     compliance,
-    inputs: { T, P, H: env.H, T0, P0, V1, V2, nV, ndw, kelec, kleak, M1, Mopp, M2, ratio12, tSet, tEff, tEffMin, unitLabel, distance, zref },
+    inputs: { T, P, H: env.H, T0, P0, V1, V2, nV, ndw, ndwCert, klab, kelec, kleak, M1, Mopp, M2, ratio12, tSet, tEff, tEffMin, unitLabel, distance, zref, fixed },
     timer,
     ctrl,
     source,

@@ -633,7 +633,7 @@ export function computePhotons(form) {
       trs.ksQ0 = ksQ0;
       trs.ksFixed = true;
       const fromTxt = String(f.rd_fixed_from ?? '').trim();
-      trs.ksEquation = L(`из калибровки${fromTxt ? ` от ${fromTxt}` : ''} (проверка выхода)`, `from the calibration${fromTxt ? ` of ${fromTxt}` : ''} (output check)`);
+      trs.ksEquation = L(`из калибровки${fromTxt ? ` от ${fromTxt}` : ''} — проверка выхода`, `from the calibration${fromTxt ? ` of ${fromTxt}` : ''}: output check`);
     } else {
       trs.ks = NaN;
     }

@@ -1,16 +1,18 @@
-// «Журнал» → «Оборудование»: учреждение, камеры, электрометры, аппараты с пучками фотонов и электронов. Всё хранится
+// «Журнал» → «Оборудование»: учреждение, камеры, электрометры, ускорители с пучками фотонов и электронов, аппараты ⁶⁰Co. Всё хранится
 // в журнале. Поля пучка здесь — основные; остальные настройки (k_vol, поправки по глубине и т. п.) редактируются на
 // вкладке дозиметрии кнопкой «Все настройки» и возвращаются в журнал кнопкой «Сохранить в журнал».
-import { L } from '../core/i18n.js';
+import { L, getLang } from '../core/i18n.js';
 import { CHAMBERS, chamberLabel, chamberNote } from '../core/chambers.js';
 import { NDW_UNITS, unitLabel, parseNumber, isBlank } from '../core/units.js';
 import { FORM_DEFAULTS, normalizeForm } from '../core/photons.js';
 import { E_DEFAULTS, normalizeElectrons, parseElectronBeam } from '../core/electrons.js';
 import { E_CHAMBERS, eChamberLabel } from '../core/electron-chambers.js';
+import { CO_DEFAULTS, normalizeCobalt, ACTIVITY_UNITS } from '../core/cobalt.js';
 import * as TRS from '../core/trs398.js';
 import {
   uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, beamFromTabForm, applyTabFormToBeam, equipmentDue,
   chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable, electronChamberForm, beamKind, lastCalibration,
+  cobaltCapable, cobaltChamberForm,
 } from '../core/journal.js';
 import { $, esc, fmt, makeStatus, armButton, notifyUpdate, today, richText, currentProtocol, plainSymbols } from './common.js';
 import { localizeDecimals } from './i18n.js';
@@ -54,7 +56,7 @@ function chamberModelOptions(cur) {
   for (const [maker, list] of groups) parts.push(`<optgroup label="${esc(maker)}">${list.map((c) => `<option value="${esc(c.id)}"${c.id === cur ? ' selected' : ''}>${esc(c.model)}${c.note ? ` — ${esc(plainSymbols(chamberNote(c)))}` : ''}</option>`).join('')}</optgroup>`);
   // плоскопараллельные — только для электронов (цилиндрические из базы электронов есть и в списках выше)
   const pp = E_CHAMBERS.filter((c) => c.type === 'pp');
-  parts.push(`<optgroup label="${esc(L('Плоскопараллельные — для электронов', 'Plane-parallel: for electrons'))}">${pp.map((c) => `<option value="${esc(c.id)}"${c.id === cur ? ' selected' : ''}>${esc(eChamberLabel(c))}</option>`).join('')}</optgroup>`);
+  parts.push(`<optgroup label="${esc(L('Плоскопараллельные — для электронов и ⁶⁰Co', 'Plane-parallel: for electrons and ⁶⁰Co'))}">${pp.map((c) => `<option value="${esc(c.id)}"${c.id === cur ? ' selected' : ''}>${esc(eChamberLabel(c))}</option>`).join('')}</optgroup>`);
   parts.push(`<option value="OTHER"${cur === 'OTHER' ? ' selected' : ''}>${esc(plainSymbols(L('Другая камера — для электронов, k_Q вручную…', 'Other chamber: for electrons, k_Q entered manually…')))}</option>`);
   if (cur === 'CUSTOM') parts.push(`<option value="CUSTOM" selected>${esc(L('Своя камера (из вкладки «МВ фотоны»)', 'Custom chamber (from the MV photons tab)'))}</option>`);
   return parts.join('');
@@ -69,14 +71,15 @@ function chamberCard(c, j = getJournal()) {
   const el = electronCapable(f);
   const phCross = ph && f.ch_cal_route === 'cross';
   const elCross = el && f.e_cal_route === 'cross';
-  // N_D,w в ⁶⁰Co нужен, если хоть для одного вида пучков камера калибруется в ⁶⁰Co (или модель ещё не выбрана)
-  const needNdw = isBlank(f.ch_model) || (ph && !phCross) || (el && !elCross);
-  const units = Object.entries(NDW_UNITS).map(([v, u]) => [v, unitLabel(u)]);
   const uses = chamberUses(j, c.id);
+  // N_D,w в ⁶⁰Co нужен, если хоть для одного вида пучков камера калибруется в ⁶⁰Co, если она выбрана у пучка ⁶⁰Co
+  // (или модель ещё не выбрана)
+  const needNdw = isBlank(f.ch_model) || (ph && !phCross) || (el && !elCross) || uses.cobalt;
+  const units = Object.entries(NDW_UNITS).map(([v, u]) => [v, unitLabel(u)]);
   return `<div class="jcard" data-card="chamber:${esc(c.id)}">
     <div class="jcard-head"><b>${esc(chamberText(c) || L('Новая камера', 'New chamber'))}</b><span class="chips">${missChip(chamberMissing(c, uses, currentProtocol()))}${dueChip(c.dueDate)}</span></div>
     <div class="grid">
-      ${field(L('Камера', 'Chamber'), `<select ${bind(k, c.id, 'form.ch_model')}>${chamberModelOptions(f.ch_model)}</select>`, { forId: fieldId(k, c.id, 'form.ch_model'), cls: 'span-2', sub: custom ? esc([f.cc_maker, f.cc_model].filter(Boolean).join(' ')) : ph && el ? esc(L('для фотонов и электронов', 'for photons and electrons')) : el ? esc(L('только для электронов', 'electrons only')) : ph ? esc(L('для фотонов', 'for photons')) : '' })}
+      ${field(L('Камера', 'Chamber'), `<select ${bind(k, c.id, 'form.ch_model')}>${chamberModelOptions(f.ch_model)}</select>`, { forId: fieldId(k, c.id, 'form.ch_model'), cls: 'span-2', sub: [custom ? esc([f.cc_maker, f.cc_model].filter(Boolean).join(' ')) : '', ph && el ? esc(L('для фотонов, электронов и ⁶⁰Co', 'for photons, electrons and ⁶⁰Co')) : el ? esc(L('для электронов и ⁶⁰Co', 'for electrons and ⁶⁰Co')) : ph ? esc(L('для фотонов и ⁶⁰Co', 'for photons and ⁶⁰Co')) : ''].filter(Boolean).join(' · ') })}
       ${field(L('Заводской №', 'Serial No.'), input(k, c.id, 'form.ch_serial', f.ch_serial), { forId: fieldId(k, c.id, 'form.ch_serial') })}
       ${other
         ? `${field(L('Название', 'Name'), input(k, c.id, 'form.e_other_name', f.e_other_name), { forId: fieldId(k, c.id, 'form.e_other_name') })}
@@ -158,6 +161,7 @@ export function beamMissing(j, b) {
   const chMiss = ch ? chamberMissing(ch, { photon: true }, currentProtocol()) : [];
   const elMiss = el ? electrometerMissing(el) : [];
   if (beamKind(b) === 'electron') return ebeamMissing(j, b, ch, chMiss, el, elMiss);
+  if (beamKind(b) === 'cobalt') return cobeamMissing(j, b, ch, el, elMiss);
   return [
     !ch && L('камера', 'chamber'),
     ch && !isBlank(ch.form?.ch_model) && !photonCapable(ch.form) && L('камера не для фотонов', 'chamber not for photons'),
@@ -198,9 +202,33 @@ function ebeamMissing(j, b, ch, _chMiss, el, elMiss) {
   ].filter(Boolean);
 }
 
+/** Что не заполнено у пучка ⁶⁰Co. */
+function cobeamMissing(j, b, ch, el, elMiss) {
+  const f = { ...CO_DEFAULTS, ...b.form };
+  const blank = (k) => isBlank(f[k]);
+  const chMiss = ch ? chamberMissing(ch, { cobalt: true }, currentProtocol()) : [];
+  const sad = f.co_geometry === 'SAD';
+  return [
+    !ch && L('камера', 'chamber'),
+    chMiss.length && L(`у камеры ${chMiss.join(', ')}`, `chamber ${chMiss.join(', ')}`),
+    !el && L('электрометр', 'electrometer'),
+    elMiss.length && L(`у электрометра ${elMiss.join(', ')}`, `electrometer ${elMiss.join(', ')}`),
+    blank('co_distance') && (sad ? L('РИК', 'SCD') : L('РИП', 'SSD')),
+    blank('co_V1') && 'V₁',
+    blank('co_V2') && 'V₂',
+    blank('co_time') && L('время облучения', 'irradiation time'),
+    // известное τ нужно и калибровке; при проверке выхода τ берётся из калибровки, а без неё — отсюда
+    f.co_timer_mode === 'manual' && blank('co_tau') && 'τ',
+    f.co_timer_mode === 'nexp' && (blank('co_nx_t') || blank('co_nx_n')) && L('t и n для ошибки таймера', 't and n for the timer error'),
+    f.co_dd_on && blank('co_zmax') && 'z_max',
+    f.co_dd_on && (sad && f.co_dd_sad !== 'pdd' ? blank('co_tmr') && `TMR(${f.co_zref || 5})` : blank('co_pdd') && `PDD(${f.co_zref || 5})`),
+  ].filter(Boolean);
+}
+
 /** Варианты камер для пучка: годные для этого вида пучков (и выбранная сейчас, даже если не годится). */
 function chamberOptions(j, b, kind) {
-  const ok = (c) => (kind === 'electron' ? electronCapable(c.form) : photonCapable(c.form)) || c.id === b.chamberId;
+  const can = { electron: electronCapable, cobalt: cobaltCapable }[kind] ?? photonCapable;
+  const ok = (c) => can(c.form) || c.id === b.chamberId;
   return [['', L('— камера —', '— chamber —')], ...j.chambers.filter(ok).map((c) => [c.id, chamberText(c)])];
 }
 
@@ -268,8 +296,94 @@ function ebeamCard(j, m, b) {
   </details>`;
 }
 
+/** Карточка пучка ⁶⁰Co. */
+function cobeamCard(j, m, b) {
+  const f = { ...CO_DEFAULTS, ...b.form };
+  const k = 'beam';
+  const id = b.id;
+  const elOpts = [['', L('— электрометр —', '— electrometer —')], ...j.electrometers.map((e) => [e.id, electrometerText(e)])];
+  const used = j.sessions.some((s) => s.beams.some((x) => x.beamId === id));
+  const sad = f.co_geometry === 'SAD';
+  const unit = f.co_time_unit === 's' ? L('с', 's') : L('мин', 'min');
+  const tolN = parseNumber(f.co_tol);
+  const tolT = Number.isFinite(tolN) && tolN > 0 ? fmt(tolN, 3).replace(/[.,]?0+$/, '') : '2';
+  const refSrc = b.refSrc === 'profile' ? 'profile' : 'last';
+  // число из поля — с десятичным разделителем текущего языка
+  const loc = (v) => (getLang() === 'en' ? String(v ?? '').replace(/(\d),(\d)/g, '$1.$2') : String(v ?? '').replace(/(\d)\.(\d)/g, '$1,$2'));
+  const last = lastCalibration(j, id);
+  const miss = b.active === false ? [] : beamMissing(j, b);
+  const timerName = { measured: L('τ по облучениям с разным временем', 'τ from exposures of different duration'), nexp: L('τ: t против n·t/n', 'τ: t vs n·t/n'), window: L('заряд при выдвинутом источнике', 'charge with the source exposed'), manual: L('τ известна', 'known τ'), none: L('τ не учитывается', 'τ not accounted for') }[f.co_timer_mode] ?? '';
+  const head = [
+    b.name || L('Новый пучок ⁶⁰Co', 'New ⁶⁰Co beam'),
+    chamberText(j.chambers.find((c) => c.id === b.chamberId)),
+    `t = ${loc(f.co_time) || '—'} ${unit}`,
+    timerName,
+    refSrc === 'last' ? L(`сравнение с калибровкой ±${tolT} %`, `compared with the calibration ±${tolT}%`) : !isBlank(f.co_ref_rate) ? L(`сравнение с ${loc(f.co_ref_rate)} сГр/мин ±${tolT} %`, `compared with ${loc(f.co_ref_rate)} cGy/min ±${tolT}%`) : '',
+  ].filter(Boolean).join(' · ');
+  const zOpts = [['5', L('5 г/см² (TRS-398)', '5 g/cm² (TRS-398)')], ['10', L('10 г/см² (TRS-398, TG-51)', '10 g/cm² (TRS-398, TG-51)')]];
+  const timerOpts = [['measured', L('по облучениям с разным временем', 'from exposures of different duration')], ['nexp', L('одно облучение t против n облучений по t/n', 'one exposure t vs n exposures of t/n')], ['window', L('заряд накоплен при выдвинутом источнике', 'charge collected with the source exposed')], ['manual', L('известное значение', 'known value')], ['none', L('не учитывать', 'do not account for')]];
+  const act = String(f.co_act_date ?? '').trim();
+  const oldSource = !!last && !isBlank(act) && (String(last.date) < act || (!isBlank(last.actDate) && last.actDate !== act));
+  const refNote = refSrc === 'last'
+    ? oldSource
+      ? L(`Последняя калибровка (от ${fmtDate(last.date)}) сделана с прежним источником: до калибровки нового источника используется значение ниже, если оно задано на дату не раньше установки.`, `The last calibration (of ${fmtDate(last.date)}) was made with the previous source: until the new source is calibrated, the value below is used if it is dated no earlier than the installation.`)
+      : last && Number.isFinite(last.rate)
+      ? L(`Сейчас: калибровка от ${fmtDate(last.date)} — ${fmt(f.co_dd_on && f.co_ref_at !== 'zref' && Number.isFinite(last.rateMax) ? last.rateMax : last.rate, 2)} сГр/мин, приводится к дате сеанса по распаду. До первой калибровки в журнале и после замены источника (другая дата установки) — значение ниже.`, `Now: the calibration of ${fmtDate(last.date)}: ${fmt(f.co_dd_on && f.co_ref_at !== 'zref' && Number.isFinite(last.rateMax) ? last.rateMax : last.rate, 2)} cGy/min, decay-corrected to the session date. Before the first calibration in the journal and after a source replacement (another installation date), the value below is used.`)
+      : L('В журнале ещё нет калибровки этого пучка: пока используется значение ниже (если задано).', 'The journal has no calibration of this beam yet: the value below is used for now (if given).')
+    : L('Значение ниже приводится к дате сеанса по распаду ⁶⁰Co.', 'The value below is decay-corrected to the session date.');
+  return `<details class="jbeam" data-card="beam:${esc(id)}"${b._open ? ' open' : ''}>
+    <summary><span class="jbeam-name">${richText(head)}</span>${b.active === false ? `<span class="chip none">${esc(L('не в сеансах', 'not in sessions'))}</span>` : missChip(miss)}</summary>
+    <div class="grid">
+      ${field(L('Пучок', 'Beam'), input(k, id, 'name', b.name, { placeholder: L('⁶⁰Co, РИП 80 см', '⁶⁰Co, SSD 80 cm') }), { forId: fieldId(k, id, 'name'), sub: L('как в протоколе', 'as in the report') })}
+      <div class="field">${check(k, id, 'active', b.active !== false, L('используется в сеансах', 'used in sessions'))}</div>
+      ${field(L('Камера', 'Chamber'), select(k, id, 'chamberId', b.chamberId, chamberOptions(j, b, 'cobalt')), { forId: fieldId(k, id, 'chamberId') })}
+      ${field(L('Электрометр', 'Electrometer'), select(k, id, 'electrometerId', b.electrometerId, elOpts), { forId: fieldId(k, id, 'electrometerId') })}
+      ${field(L('Установка', 'Setup'), select(k, id, 'form.co_geometry', f.co_geometry, [['SSD', L('РИП: поле 10 × 10 см на поверхности воды', 'SSD: 10 × 10 cm field at the water surface')], ['SAD', L('РИК (РИО): поле 10 × 10 см в плоскости камеры', 'SCD (SAD): 10 × 10 cm field in the chamber plane')]]), { forId: fieldId(k, id, 'form.co_geometry'), cls: 'span-2' })}
+      ${field(sad ? L('РИК, см', 'SCD, cm') : L('РИП, см', 'SSD, cm'), input(k, id, 'form.co_distance', f.co_distance, { num: true, placeholder: '80' }), { forId: fieldId(k, id, 'form.co_distance') })}
+      ${field(L('Опорная глубина z<sub>ref</sub>', 'Reference depth z<sub>ref</sub>'), select(k, id, 'form.co_zref', f.co_zref, zOpts), { forId: fieldId(k, id, 'form.co_zref') })}
+      ${field(L('V₁ рабочее, В', 'V₁ operating, V'), input(k, id, 'form.co_V1', f.co_V1, { num: true }), { forId: fieldId(k, id, 'form.co_V1') })}
+      ${field(L('V₂ пониженное, В', 'V₂ reduced, V'), input(k, id, 'form.co_V2', f.co_V2, { num: true }), { forId: fieldId(k, id, 'form.co_V2') })}
+      ${field(L('Полярность', 'Polarity'), select(k, id, 'form.co_polarity', f.co_polarity, [['+', L('положительная (+)', 'positive (+)')], ['-', L('отрицательная (−)', 'negative (−)')]]), { forId: fieldId(k, id, 'form.co_polarity') })}
+    </div>
+    <h4 class="sub-h">${esc(L('Время облучения и ошибка таймера', 'Irradiation time and timer error'))}</h4>
+    <div class="grid">
+      ${field(f.co_timer_mode === 'window' ? L('Время накопления заряда', 'Charge collection time') : L('Заданное время облучения', 'Set irradiation time'), input(k, id, 'form.co_time', f.co_time, { num: true }), { forId: fieldId(k, id, 'form.co_time') })}
+      ${field(L('Единица времени', 'Time unit'), select(k, id, 'form.co_time_unit', f.co_time_unit, [['min', L('мин', 'min')], ['s', L('с', 's')]]), { forId: fieldId(k, id, 'form.co_time_unit') })}
+      ${field(L('Ошибка таймера τ при калибровке', 'Timer error τ at calibration'), select(k, id, 'form.co_timer_mode', f.co_timer_mode, timerOpts), { forId: fieldId(k, id, 'form.co_timer_mode'), cls: 'span-2', sub: f.co_timer_mode === 'window' || f.co_timer_mode === 'none' ? '' : L('при проверке выхода τ берётся из последней калибровки', 'at an output check τ comes from the last calibration') })}
+      ${f.co_timer_mode === 'manual' ? field(`τ, ${unit}`, input(k, id, 'form.co_tau', f.co_tau, { num: true, placeholder: '0,010' }), { forId: fieldId(k, id, 'form.co_tau'), sub: L('может быть и отрицательной', 'may also be negative') }) : ''}
+      ${f.co_timer_mode === 'nexp' ? `${field(L(`Время одиночного облучения t, ${unit}`, `Single exposure time t, ${unit}`), input(k, id, 'form.co_nx_t', f.co_nx_t, { num: true }), { forId: fieldId(k, id, 'form.co_nx_t') })}${field(L('Число облучений n', 'Number of exposures n'), input(k, id, 'form.co_nx_n', f.co_nx_n, { num: true }), { forId: fieldId(k, id, 'form.co_nx_n') })}` : ''}
+    </div>
+    <h4 class="sub-h">${L('Пересчёт на z<sub>max</sub> и сравнение', 'Transfer to z<sub>max</sub> and comparison')}</h4>
+    <div class="grid">
+      <div class="field">${check(k, id, 'form.co_dd_on', f.co_dd_on, L('пересчитывать мощность дозы на z<sub>max</sub>', 'transfer the dose rate to z<sub>max</sub>'))}</div>
+      ${f.co_dd_on ? field(L('Глубина z<sub>max</sub>, см', 'Depth z<sub>max</sub>, cm'), input(k, id, 'form.co_zmax', f.co_zmax, { num: true, placeholder: '0,5' }), { forId: fieldId(k, id, 'form.co_zmax') }) : ''}
+      ${f.co_dd_on && sad ? field(L('Пересчёт при РИК', 'Transfer for SCD'), select(k, id, 'form.co_dd_sad', f.co_dd_sad, [['tmr', L('через TMR — на z_max в изоцентре', 'via TMR: to z_max at the isocenter')], ['pdd', L('через PDD при РИП = РИК − z_ref', 'via PDD at SSD = SCD − z_ref')]]), { forId: fieldId(k, id, 'form.co_dd_sad') }) : ''}
+      ${f.co_dd_on && sad && f.co_dd_sad !== 'pdd' ? field(`TMR(${f.co_zref})`, input(k, id, 'form.co_tmr', f.co_tmr, { num: true, placeholder: '0,904' }), { forId: fieldId(k, id, 'form.co_tmr'), sub: L('отношение, не проценты', 'a ratio, not a percentage') }) : ''}
+      ${f.co_dd_on && !(sad && f.co_dd_sad !== 'pdd') ? field(`PDD(${f.co_zref}), %`, input(k, id, 'form.co_pdd', f.co_pdd, { num: true }), { forId: fieldId(k, id, 'form.co_pdd') }) : ''}
+    </div>
+    <div class="grid">
+      ${field(L('Сравнивать мощность дозы с', 'Compare the dose rate with'), select(k, id, 'refSrc', refSrc, [['last', L('последней калибровкой в журнале', 'the last calibration in the journal')], ['profile', L('значением из настроек пучка', 'the value from the beam settings')]]), { forId: fieldId(k, id, 'refSrc'), cls: 'span-2', sub: `<span data-live="refnote">${esc(refNote)}</span>` })}
+      ${field(L('Мощность дозы для сравнения, сГр/мин', 'Comparison dose rate, cGy/min'), input(k, id, 'form.co_ref_rate', f.co_ref_rate, { num: true }), { forId: fieldId(k, id, 'form.co_ref_rate'), sub: L('при вводе в эксплуатацию или в системе планирования; можно не заполнять', 'at commissioning or in the planning system; may be left blank') })}
+      ${f.co_dd_on ? field(L('Значение задано', 'Value given'), select(k, id, 'form.co_ref_at', f.co_ref_at, [['zmax', L('на z_max', 'at z_max')], ['zref', L('на z_ref', 'at z_ref')]]), { forId: fieldId(k, id, 'form.co_ref_at') }) : ''}
+      ${field(L('на дату', 'as of'), input(k, id, 'form.co_ref_date', f.co_ref_date, { type: 'date' }), { forId: fieldId(k, id, 'form.co_ref_date'), sub: L('пусто — дата установки источника', 'blank: the source installation date') })}
+      ${field(L('Допуск, ±%', 'Tolerance, ±%'), input(k, id, 'form.co_tol', f.co_tol, { num: true, placeholder: '2' }), { forId: fieldId(k, id, 'form.co_tol') })}
+    </div>
+    <h4 class="sub-h">${esc(L('Источник', 'Source'))}</h4>
+    <div class="grid">
+      ${field(L('Активность при установке', 'Activity at installation'), input(k, id, 'form.co_act0', f.co_act0, { num: true }), { forId: fieldId(k, id, 'form.co_act0') })}
+      ${field(L('Единица', 'Unit'), select(k, id, 'form.co_act_unit', f.co_act_unit, Object.entries(ACTIVITY_UNITS).map(([v, u]) => [v, L(u.label, u.labelEn)])), { forId: fieldId(k, id, 'form.co_act_unit') })}
+      ${field(L('Дата установки (паспортной активности)', 'Installation date (certified activity)'), input(k, id, 'form.co_act_date', f.co_act_date, { type: 'date' }), { forId: fieldId(k, id, 'form.co_act_date'), sub: L('после замены источника измените её: прежние калибровки не будут ожидаемым значением', 'change it after a source replacement: earlier calibrations will no longer be the expected value') })}
+    </div>
+    <div class="row-tools">
+      <button type="button" class="link-btn" data-edit-tab="${esc(m.id)}:${esc(id)}">${esc(L('Все настройки — во вкладке «⁶⁰Co»', 'All settings: in the ⁶⁰Co tab'))}</button>
+      <button type="button" class="link-btn danger" data-del="beam:${esc(m.id)}:${esc(id)}"${used ? ` disabled title="${esc(L('Пучок есть в сеансах журнала: снимите «используется в сеансах», чтобы убрать его из новых сеансов', 'The beam is in journal sessions: clear "used in sessions" to exclude it from new sessions'))}"` : ''}>${esc(L('Удалить пучок', 'Delete beam'))}</button>
+    </div>
+  </details>`;
+}
+
 function beamCard(j, m, b) {
   if (beamKind(b) === 'electron') return ebeamCard(j, m, b);
+  if (beamKind(b) === 'cobalt') return cobeamCard(j, m, b);
   const f = { ...FORM_DEFAULTS, ...b.form };
   const k = 'beam';
   const id = b.id;
@@ -338,14 +452,30 @@ function beamCard(j, m, b) {
 function machineCard(j, m) {
   const k = 'machine';
   const hasSessions = j.sessions.some((s) => s.machineId === m.id);
+  const cobalt = m.kind === 'cobalt';
+  const has = (kind) => m.beams.some((b) => beamKind(b) === kind);
+  // у ускорителя — пучки фотонов и электронов, у аппарата ⁶⁰Co — пучки ⁶⁰Co (установки); чужие пучки видны, если есть
+  const linacPart = !cobalt || has('photon') || has('electron');
+  const coPart = cobalt || has('cobalt');
+  const coBeams = m.beams.filter((b) => beamKind(b) === 'cobalt');
+  const coSection = coPart
+    ? `<h3 class="sub-h">${esc(L('Пучки ⁶⁰Co', '⁶⁰Co beams'))}</h3>
+    <div class="jbeams">${coBeams.map((b) => beamCard(j, m, b)).join('') || `<p class="sub-hint">${esc(L('Пучков пока нет: обычно один — та установка (РИП или РИК), по которой калибруют аппарат.', 'No beams yet: usually one, the setup (SSD or SCD) used to calibrate the unit.'))}</p>`}</div>
+    <div class="row-tools">
+      <button type="button" class="link-btn" data-add-cobeam="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить пучок ⁶⁰Co', 'Add a ⁶⁰Co beam'))}</button>
+      <button type="button" class="link-btn" data-import-cobeam="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Пучок из вкладки «⁶⁰Co»', 'Beam from the ⁶⁰Co tab'))}</button>
+    </div>`
+    : '';
   return `<div class="jcard" data-card="machine:${esc(m.id)}">
-    <div class="jcard-head"><b>${esc(m.name || L('Новый аппарат', 'New machine'))}</b><span class="chip none">${esc(L('ускоритель', 'linac'))}</span></div>
+    <div class="jcard-head"><b>${esc(m.name || (cobalt ? L('Новый аппарат ⁶⁰Co', 'New ⁶⁰Co unit') : L('Новый ускоритель', 'New linac')))}</b><span class="chip none">${esc(cobalt ? L('аппарат ⁶⁰Co', '⁶⁰Co unit') : L('ускоритель', 'linac'))}</span></div>
     <div class="grid">
-      ${field(L('Аппарат', 'Machine'), input(k, m.id, 'name', m.name, { placeholder: 'Elekta Versa HD' }), { forId: fieldId(k, m.id, 'name') })}
+      ${field(L('Аппарат', 'Machine'), input(k, m.id, 'name', m.name, { placeholder: cobalt ? L('Тератрон', 'Theratron') : 'Elekta Versa HD' }), { forId: fieldId(k, m.id, 'name') })}
+      ${field(L('Тип', 'Type'), select(k, m.id, 'kind', cobalt ? 'cobalt' : 'linac', [['linac', L('ускоритель', 'linac')], ['cobalt', L('аппарат ⁶⁰Co', '⁶⁰Co unit')]]), { forId: fieldId(k, m.id, 'kind') })}
       ${field(L('Заводской №', 'Serial No.'), input(k, m.id, 'serial', m.serial), { forId: fieldId(k, m.id, 'serial') })}
       ${field(L('Примечания', 'Notes'), input(k, m.id, 'notes', m.notes), { forId: fieldId(k, m.id, 'notes') })}
     </div>
-    <h3 class="sub-h">${esc(L('Пучки фотонов', 'Photon beams'))}</h3>
+    ${cobalt ? coSection : ''}
+    ${linacPart ? `<h3 class="sub-h">${esc(L('Пучки фотонов', 'Photon beams'))}</h3>
     <div class="jbeams">${m.beams.filter((b) => beamKind(b) === 'photon').map((b) => beamCard(j, m, b)).join('') || `<p class="sub-hint">${esc(L('Пучков фотонов пока нет.', 'No photon beams yet.'))}</p>`}</div>
     <div class="row-tools">
       <button type="button" class="link-btn" data-add-beam="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить пучок фотонов', 'Add a photon beam'))}</button>
@@ -356,7 +486,8 @@ function machineCard(j, m) {
     <div class="row-tools">
       <button type="button" class="link-btn" data-add-ebeam="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить пучок электронов', 'Add an electron beam'))}</button>
       <button type="button" class="link-btn" data-import-ebeam="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Пучок из вкладки «Электроны»', 'Beam from the Electrons tab'))}</button>
-    </div>
+    </div>` : ''}
+    ${cobalt ? '' : coSection}
     <div class="row-tools">
       <button type="button" class="link-btn danger" data-del="machine:${esc(m.id)}"${hasSessions ? ` disabled title="${esc(L('У аппарата есть сеансы в журнале', 'The machine has sessions in the journal'))}"` : ''}>${esc(L('Удалить аппарат', 'Delete machine'))}</button>
     </div>
@@ -417,7 +548,7 @@ export function saveBeamFromTab(target, form, title = '') {
   if (!target?.beamId) return '';
   let info = null;
   updateJournal((j) => {
-    info = applyTabFormToBeam(j, target.machineId, target.beamId, form, target.kind === 'electron' ? 'electron' : 'photon');
+    info = applyTabFormToBeam(j, target.machineId, target.beamId, form, ['electron', 'cobalt'].includes(target.kind) ? target.kind : 'photon');
     return info.journal;
   }, 'equipment');
   openBeams.add(target.beamId);
@@ -477,6 +608,11 @@ function updateHead(el) {
   const a = card.querySelector(sel);
   const b = fresh.querySelector(sel);
   if (a && b) a.innerHTML = b.innerHTML;
+  // подписи, зависящие от вводимых полей (у ⁶⁰Co — с чем сравнивается мощность дозы после замены источника)
+  for (const live of fresh.querySelectorAll('[data-live]')) {
+    const cur = card.querySelector(`[data-live="${live.dataset.live}"]`);
+    if (cur) cur.innerHTML = live.innerHTML;
+  }
 }
 
 /** Записать значение поля в журнал. Списки и подписи полей перерисовываются после выбора в списке или флажка. */
@@ -563,18 +699,30 @@ function onClick(e) {
       return j;
     }, 'equipment');
     document.getElementById(fieldId('beam', id, 'name'))?.focus();
-  } else if (t.dataset.importBeam || t.dataset.importEbeam) {
-    const kind = t.dataset.importEbeam ? 'electron' : 'photon';
+  } else if (t.dataset.addCobeam) {
+    const id = uid('b');
+    openBeams.add(id);
+    updateJournal((j) => {
+      const ch = j.chambers.find((c) => cobaltCapable(c.form));
+      j.machines.find((m) => m.id === t.dataset.addCobeam)?.beams.push({
+        ...BEAM_DEFAULTS, id, kind: 'cobalt', name: '', refSrc: 'last', chamberId: ch?.id ?? '', electrometerId: j.electrometers[0]?.id ?? '',
+        form: { co_geometry: 'SSD', co_distance: '80', co_zref: '5', co_V1: CO_DEFAULTS.co_V1, co_V2: CO_DEFAULTS.co_V2, co_polarity: '+', co_time: '1', co_time_unit: 'min', co_timer_mode: 'measured', co_nx_t: '1', co_nx_n: '5', co_kleak: '1,000', co_rec_trs: 'eq13', co_dd_on: true, co_zmax: '0,5', co_dd_sad: 'tmr', co_ref_at: 'zmax', co_tol: '2', co_act_unit: 'Ci' },
+      });
+      return j;
+    }, 'equipment');
+    document.getElementById(fieldId('beam', id, 'name'))?.focus();
+  } else if (t.dataset.importBeam || t.dataset.importEbeam || t.dataset.importCobeam) {
+    const kind = t.dataset.importEbeam ? 'electron' : t.dataset.importCobeam ? 'cobalt' : 'photon';
     const form = tabBridge.current(kind);
     if (!form) return;
     let info;
     updateJournal((j) => {
-      info = beamFromTabForm(j, t.dataset.importBeam || t.dataset.importEbeam, form, kind);
+      info = beamFromTabForm(j, t.dataset.importBeam || t.dataset.importEbeam || t.dataset.importCobeam, form, kind);
       return info.journal;
     }, 'equipment');
     openBeams.add(info.beam.id);
     render();
-    const tab = kind === 'electron' ? L('«Электроны»', 'Electrons') : L('«МВ фотоны»', 'MV photons');
+    const tab = { electron: L('«Электроны»', 'Electrons'), cobalt: L('«⁶⁰Co»', '⁶⁰Co') }[kind] ?? L('«МВ фотоны»', 'MV photons');
     setStatus(
       L(
         `Добавлен пучок «${info.beam.name}» с настройками вкладки ${tab}.${info.addedChamber ? ' Камера добавлена в список камер — проверьте даты её калибровки.' : ' Камера найдена в журнале.'}${info.addedElectrometer ? ' Электрометр добавлен.' : ''}`,
@@ -594,7 +742,9 @@ function onClick(e) {
     const form =
       kind === 'electron'
         ? normalizeElectrons({ ...E_DEFAULTS, ...b.form, ...electronChamberForm(ch?.form || {}), e_el_model: el?.form?.el_model ?? '', e_el_serial: el?.form?.el_serial ?? '', e_kelec: el?.form?.el_kelec ?? '1,000', e_beam: b.name, e_machine: m.name, e_institution: j.institution, protocol: currentProtocol() })
-        : normalizeForm({ ...FORM_DEFAULTS, ...b.form, ...(ch?.form || {}), ...(el?.form || {}), meta_beam: b.name, meta_machine: m.name, meta_institution: j.institution, protocol: currentProtocol() });
+        : kind === 'cobalt'
+          ? normalizeCobalt({ ...CO_DEFAULTS, ...b.form, ...cobaltChamberForm(ch?.form || {}), co_el_model: el?.form?.el_model ?? '', co_el_serial: el?.form?.el_serial ?? '', co_kelec: el?.form?.el_kelec ?? '1,000', co_machine: [m.name, b.name].filter((x) => !isBlank(x)).join(' — '), co_institution: j.institution, protocol: currentProtocol() })
+          : normalizeForm({ ...FORM_DEFAULTS, ...b.form, ...(ch?.form || {}), ...(el?.form || {}), meta_beam: b.name, meta_machine: m.name, meta_institution: j.institution, protocol: currentProtocol() });
     tabBridge.edit(kind, form, { title: `${m.name || ''} — ${b.name || ''}`, target: { machineId: mid, beamId: bid, kind } });
   } else if (t.id === 'eq-add-chamber') {
     updateJournal((j) => {
@@ -606,9 +756,9 @@ function onClick(e) {
       j.electrometers.push({ ...ELECTROMETER_DEFAULTS, id: uid('el'), form: { el_model: '', el_serial: '', el_kelec: '1,000' } });
       return j;
     }, 'equipment');
-  } else if (t.id === 'eq-add-machine') {
+  } else if (t.id === 'eq-add-machine' || t.id === 'eq-add-cobalt') {
     updateJournal((j) => {
-      j.machines.push({ ...MACHINE_DEFAULTS, id: uid('m'), beams: [] });
+      j.machines.push({ ...MACHINE_DEFAULTS, id: uid('m'), kind: t.id === 'eq-add-cobalt' ? 'cobalt' : 'linac', beams: [] });
       return j;
     }, 'equipment');
   }

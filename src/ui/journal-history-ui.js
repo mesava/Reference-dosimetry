@@ -10,16 +10,25 @@ import { setupFilePanel, machineOptions, fmtDate, countWord } from './journal-co
 const ROOT = () => $('#module-history');
 let setStatus = () => {};
 let machineId = '';
-let kindFilter = 'photon'; // какие пучки показывать, если у аппарата есть и фотоны, и электроны
-/** Ряды трендов выбранного аппарата и вида пучков; переключатель вида — только если у аппарата есть оба. */
+let kindFilter = 'photon'; // какие пучки показывать, если у аппарата их несколько видов (фотоны, электроны, ⁶⁰Co)
+let kindChosen = false; // вид выбран переключателем (до смены аппарата)
+/** Ряды трендов выбранного аппарата и вида пучков; переключатель вида — только если у аппарата их несколько. */
 function seriesOf(j) {
   const all = trendSeries(j, machineId);
   const kinds = new Set(all.map((s) => s.kind));
-  const both = kinds.has('photon') && kinds.has('electron');
-  if (!both) kindFilter = kinds.has('electron') ? 'electron' : 'photon';
-  $('#hs-kind-field').hidden = !both;
-  const r = document.getElementById(`hs_kind_${kindFilter}`);
-  if (r) r.checked = true;
+  if (!kindChosen || !kinds.has(kindFilter)) {
+    // сначала вид, у которого есть сеансы; у аппарата ⁶⁰Co — пучки ⁶⁰Co
+    const order = machineOf(j, machineId)?.kind === 'cobalt' ? ['cobalt', 'photon', 'electron'] : ['photon', 'electron', 'cobalt'];
+    const withData = new Set(all.filter((s) => s.points.length).map((s) => s.kind));
+    kindFilter = order.find((k) => withData.has(k)) ?? order.find((k) => kinds.has(k)) ?? 'photon';
+  }
+  $('#hs-kind-field').hidden = kinds.size < 2;
+  for (const k of ['photon', 'electron', 'cobalt']) {
+    const r = document.getElementById(`hs_kind_${k}`);
+    if (!r) continue;
+    r.closest('label').hidden = !kinds.has(k);
+    r.checked = k === kindFilter;
+  }
   return all.filter((s) => s.kind === kindFilter);
 }
 let bridge = { openSession: () => {}, unsaved: () => false };
@@ -58,7 +67,7 @@ function renderChart(series) {
   const legend = $('#hs-legend');
   const withData = series.filter((s) => s.points.some((p) => Number.isFinite(p.deviation)));
   if (!withData.length) {
-    box.innerHTML = `<p class="chart-empty">${esc(L('График появится, когда в журнале будут сеансы этого аппарата с номинальным выходом.', 'The plot appears once the journal has sessions of this machine with a nominal output.'))}</p>`;
+    box.innerHTML = `<p class="chart-empty">${esc(kindFilter === 'cobalt' ? L('График появится, когда в журнале будут сеансы этого аппарата со значением для сравнения: после первой калибровки или со значением из «Оборудования».', 'The plot appears once the journal has sessions of this machine with a comparison value: after the first calibration or with the value from Equipment.') : L('График появится, когда в журнале будут сеансы этого аппарата с номинальным выходом.', 'The plot appears once the journal has sessions of this machine with a nominal output.'))}</p>`;
     legend.innerHTML = '';
     return;
   }
@@ -68,10 +77,11 @@ function renderChart(series) {
   const days = all.map((p) => p.day);
   const x0 = Math.min(...days);
   const x1 = Math.max(...days);
+  const co = kindFilter === 'cobalt';
   const spec = {
-    label: L('Отклонение выхода от номинала по датам сеансов', 'Output deviation from nominal by session date'),
+    label: co ? L('Отклонение мощности дозы от ожидаемой по датам сеансов', 'Dose rate deviation from the expected value by session date') : L('Отклонение выхода от номинала по датам сеансов', 'Output deviation from nominal by session date'),
     xLabel: L('Дата сеанса', 'Session date'),
-    yLabel: L('Отклонение от номинала, %', 'Deviation from nominal, %'),
+    yLabel: co ? L('Отклонение от ожидаемой, %', 'Deviation from expected, %') : L('Отклонение от номинала, %', 'Deviation from nominal, %'),
     fmt,
     xFmt: monthLabel,
     xTicks: monthTicks,
@@ -127,8 +137,8 @@ function renderTables(j, series) {
     ? `<table class="factors"><thead>${head}</thead><tbody>${shown
         .slice()
         .reverse()
-        .map((s) => `<tr><td>${esc(fmtDate(s.date))}</td><td>${esc(s.mode === 'cal' ? L('калибровка', 'calibration') : L('проверка', 'check'))}</td>${beams.map((b) => `<td class="v">${cell(s, b, (x) => (x.ok ? `${fmt(x.value, 4)}<br><small class="${x.status === 'out' ? 'st-out' : ''}">${Number.isFinite(x.deviation) ? `${fmtSigned(x.deviation, 2)} %` : ''}</small>` : '—'))}</td>`).join('')}</tr>`)
-        .join('')}</tbody></table>`
+        .map((s) => `<tr><td>${esc(fmtDate(s.date))}</td><td>${esc(s.mode === 'cal' ? L('калибровка', 'calibration') : L('проверка', 'check'))}</td>${beams.map((b) => `<td class="v">${cell(s, b, (x) => (x.ok ? `${fmt(x.value, kindFilter === 'cobalt' ? 2 : 4)}<br><small class="${x.status === 'out' ? 'st-out' : ''}">${Number.isFinite(x.deviation) ? `${fmtSigned(x.deviation, 2)} %` : ''}</small>` : '—'))}</td>`).join('')}</tr>`)
+        .join('')}</tbody></table><p class="sub-hint">${esc(kindFilter === 'cobalt' ? L('В ячейке: мощность дозы, сГр/мин (на z_max или z_ref — где задано значение для сравнения), и отклонение от ожидаемой.', 'In each cell: the dose rate, cGy/min (at z_max or z_ref, where the comparison value is given), and the deviation from the expected value.') : L('В ячейке: доза в точке номинала, Гр на 100 МЕ, и отклонение от номинала.', 'In each cell: the dose at the nominal point, Gy per 100 MU, and the deviation from nominal.'))}</p>`
     : `<p class="sub-hint">${esc(L('Сеансов этого аппарата нет.', 'No sessions for this machine.'))}</p>`;
   // k_pol и k_s по калибровкам
   const cals = shown.filter((s) => s.mode === 'cal');
@@ -137,8 +147,10 @@ function renderTables(j, series) {
     ? `<table class="factors"><thead>${kHead}</thead><tbody>${cals
         .slice()
         .reverse()
-        .map((s) => `<tr><td>${esc(fmtDate(s.date))}</td>${beams.map((b) => `<td class="v">${cell(s, b, (x) => (Number.isFinite(x.kpolRaw) ? `${fmt(x.kpolRaw, 4)}<br>${fmt(x.ksRaw, 4)}` : '—'))}</td>`).join('')}</tr>`)
-        .join('')}</tbody></table><p class="sub-hint">${richText(L('В ячейке: k_pol (сверху) и k_s, измеренные при калибровке. Их изменение от калибровки к калибровке — ранний признак неполадки камеры, кабеля или электрометра.', 'In each cell: k_pol (top) and k_s measured at the calibration. A change between calibrations is an early sign of a problem with the chamber, cable or electrometer.'))}</p>`
+        .map((s) => `<tr><td>${esc(fmtDate(s.date))}</td>${beams.map((b) => `<td class="v">${cell(s, b, (x) => (Number.isFinite(x.kpolRaw) ? `${fmt(x.kpolRaw, 4)}<br>${fmt(x.ksRaw, 4)}${kindFilter === 'cobalt' ? `<br>${Number.isFinite(x.tauMin) ? `${fmtSigned(x.tauMin * 60, 2)} ${esc(L('с', 's'))}` : '—'}` : ''}` : '—'))}</td>`).join('')}</tr>`)
+        .join('')}</tbody></table><p class="sub-hint">${richText(kindFilter === 'cobalt'
+          ? L('В ячейке: k_pol (сверху), k_s и ошибка таймера τ в секундах, измеренные при калибровке. Их изменение от калибровки к калибровке — ранний признак неполадки камеры, кабеля, электрометра или привода источника.', 'In each cell: k_pol (top), k_s and the timer error τ in seconds, measured at the calibration. A change between calibrations is an early sign of a problem with the chamber, cable, electrometer or source drive.')
+          : L('В ячейке: k_pol (сверху) и k_s, измеренные при калибровке. Их изменение от калибровки к калибровке — ранний признак неполадки камеры, кабеля или электрометра.', 'In each cell: k_pol (top) and k_s measured at the calibration. A change between calibrations is an early sign of a problem with the chamber, cable or electrometer.'))}</p>`
     : `<p class="sub-hint">${esc(L('Калибровок этого аппарата в журнале нет.', 'No calibrations of this machine in the journal.'))}</p>`;
   // список сеансов
   $('#hs-sessions').innerHTML = sessions.length
@@ -198,11 +210,13 @@ export function initHistory() {
   render();
   $('#hs_machine').addEventListener('change', (e) => {
     machineId = e.target.value;
+    kindChosen = false;
     render();
   });
   for (const r of document.querySelectorAll('input[name="hs_kind"]')) {
     r.addEventListener('change', () => {
-      kindFilter = r.value === 'electron' ? 'electron' : 'photon';
+      kindFilter = ['electron', 'cobalt'].includes(r.value) ? r.value : 'photon';
+      kindChosen = true;
       render();
     });
   }

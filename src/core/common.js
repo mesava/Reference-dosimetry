@@ -9,16 +9,17 @@ export const RECAL_TOL = 2;
  * Допуск учреждения на отклонение от номинального выхода, %. Пустое поле — значение по умолчанию (2 %).
  * Нечисловое или вне (0; 10] — предупреждение и значение по умолчанию.
  */
-export function readTolerance(raw, { add, parseNumber, isBlank, field }) {
+export function readTolerance(raw, { add, parseNumber, isBlank, field, expected = false }) {
   if (isBlank(raw)) return RECAL_TOL;
   const v = parseNumber(raw);
   if (Number.isFinite(v) && v > 0 && v <= 10) return v;
+  // expected — отклонение от ожидаемой мощности дозы (⁶⁰Co), а не от номинального выхода
   add(
     'warn',
     'common',
     L(
-      `Допуск на отклонение от номинала не распознан (нужно число больше 0 и не больше 10 %): используется ${RECAL_TOL} %.`,
-      `The tolerance for the deviation from nominal was not recognized (a number above 0 and up to 10 % is required): ${RECAL_TOL} % is used.`,
+      `Допуск на отклонение ${expected ? 'от ожидаемой мощности дозы' : 'от номинала'} не распознан (нужно число больше 0 и не больше 10 %): используется ${RECAL_TOL} %.`,
+      `The tolerance for the deviation ${expected ? 'from the expected dose rate' : 'from nominal'} was not recognized (a number above 0 and up to 10 % is required): ${RECAL_TOL} % is used.`,
     ),
     null,
     field,

@@ -196,3 +196,41 @@ test('⁶⁰Co: доза за облучение в сГр; значение д�
   near(off.trs.deviation, (off.trs.rate / off.depth.expected - 1) * 100, 1e-9);
   assert.equal(off.trs.rateMax, undefined);
 });
+
+test('⁶⁰Co: k_лаб умножает N_D,w; допуск на отклонение от ожидаемой мощности дозы', () => {
+  const base = computeCobalt(SAMPLE_COBALT);
+  const k = computeCobalt({ ...SAMPLE_COBALT, co_klab: '1,010' });
+  near(k.trs.D / base.trs.D, 1.01, 1e-12, 'k_лаб');
+  near(k.inputs.ndw, k.inputs.ndwCert * 1.01, 1e-15);
+  assert.ok(errorsOf(computeCobalt({ ...SAMPLE_COBALT, co_klab: 'abc' })).length > 0, 'нечитаемый k_лаб — ошибка');
+  assert.ok(computeCobalt({ ...SAMPLE_COBALT, co_klab: '1,08' }).messages.some((m) => m.level === 'warn' && /k_лаб/.test(m.text)));
+  // демо в допуске ±2 %: предупреждения нет; при допуске 0,1 % — есть
+  assert.ok(Number.isFinite(base.trs.ctrl.deviation));
+  assert.equal(base.depth.tolerance, 2);
+  assert.ok(!base.messages.some((m) => /больше допуска/.test(m.text)), 'демо в допуске');
+  const tight = computeCobalt({ ...SAMPLE_COBALT, co_tol: '0,1' });
+  assert.ok(Math.abs(tight.trs.ctrl.deviation) > 0.1);
+  assert.ok(tight.messages.some((m) => m.level === 'warn' && /больше допуска ±0,1 %/.test(m.text)));
+});
+
+test('⁶⁰Co: проверка выхода — k_pol и k_s из калибровки, обратная полярность и V₂ не нужны', () => {
+  const cal = computeCobalt(SAMPLE_COBALT);
+  const chk = computeCobalt({
+    ...SAMPLE_COBALT, co_fixed: true, co_Mopp: ['', '', ''], co_M2: ['', '', ''], co_V2: '',
+    co_fixed_kpol: String(cal.trs.kpolRaw), co_fixed_ks: String(cal.trs.ksRaw), co_fixed_from: '15.08.2026',
+  });
+  assert.deepEqual(errorsOf(chk), []);
+  near(chk.trs.ctrl.rate, cal.trs.ctrl.rate, 1e-9, 'та же мощность дозы');
+  assert.equal(chk.trs.ksFixed, true);
+  assert.match(chk.trs.ksEquation, /15\.08\.2026/);
+  assert.ok(chk.messages.some((m) => m.level === 'info' && /Проверка выхода/.test(m.text)));
+  // TG-51: P_pol и P_ion
+  const tg = computeCobalt({ ...SAMPLE_COBALT, protocol: 'tg51', co_zref: '10', co_pdd: '55,6', co_fixed: 'true', co_Mopp: [], co_M2: [], co_fixed_kpol: '1,0004', co_fixed_ks: '1,002' });
+  assert.equal(tg.tg51.PionFixed, true);
+  near(tg.tg51.PionRaw, 1.002, 1e-12);
+  near(tg.tg51.PpolRaw, 1.0004, 1e-12);
+  // без значений — ошибка с подписью по протоколу
+  const none = computeCobalt({ ...SAMPLE_COBALT, protocol: 'tg51', co_zref: '10', co_fixed: true, co_fixed_kpol: '', co_fixed_ks: '' });
+  assert.ok(errorsOf(none).some((m) => /P_pol из калибровки/.test(m.text)));
+  assert.ok(errorsOf(computeCobalt({ ...SAMPLE_COBALT, co_fixed: true, co_fixed_kpol: '1', co_fixed_ks: '0,98' })).some((m) => /вне 1–1,05/.test(m.text)));
+});

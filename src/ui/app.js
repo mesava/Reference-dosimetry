@@ -4,7 +4,7 @@ import { TERMS_EN } from './terms-en.js';
 import { L, setLang, getLang } from '../core/i18n.js';
 import { initialLang, saveLang, applyLang, translateStatic, localizeDecimal } from './i18n.js';
 import { $, $$, setActiveModule, getActiveModule, PROTOCOL_KEY, applyProtocol } from './common.js';
-import { initCobalt, importCobalt, cobaltStatus, applyCobaltPatch, cobaltUncSource } from './cobalt-ui.js';
+import { initCobalt, importCobalt, cobaltStatus, applyCobaltPatch, cobaltUncSource, cobaltCurrentForm, showInCobalt, setCobaltJournalSave } from './cobalt-ui.js';
 import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch, photonsUncSource, photonsCurrentForm, showInPhotons, setPhotonsJournalSave } from './photons-ui.js';
 import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch, electronsUncSource, electronsCurrentForm, showInElectrons, setElectronsJournalSave } from './electrons-ui.js';
 import { initCrossCal, importCrossCal, crossCalStatus, setCrossCalTransfer } from './crosscal-ui.js';
@@ -150,14 +150,17 @@ function initTransfer() {
   });
 }
 
-// ------------------------------------------------------------ журнал ↔ вкладка «МВ фотоны»
+// ------------------------------------------------------------ журнал ↔ вкладки дозиметрии
 function initJournalBridges() {
   const toTop = () => window.scrollTo({ top: 0 });
-  // пучок журнала во вкладке дозиметрии: фотоны или электроны
+  // пучок журнала во вкладке дозиметрии: фотоны, электроны или ⁶⁰Co
   const showInTab = (kind, form, opts) => {
     if (kind === 'electron') {
       switchTo('electrons');
       showInElectrons(form, opts);
+    } else if (kind === 'cobalt') {
+      switchTo('co60');
+      showInCobalt(form, opts);
     } else {
       switchTo('photons');
       showInPhotons(form, opts);
@@ -165,7 +168,7 @@ function initJournalBridges() {
     toTop();
   };
   setEquipmentBridge({
-    current: (kind) => (kind === 'electron' ? electronsCurrentForm() : photonsCurrentForm()),
+    current: (kind) => (kind === 'electron' ? electronsCurrentForm() : kind === 'cobalt' ? cobaltCurrentForm() : photonsCurrentForm()),
     edit: (kind, form, { title, target }) => showInTab(kind, form, { mode: 'edit', title, target }),
   });
   // «Сохранить в журнал» на вкладке дозиметрии (работает и после перезагрузки страницы)
@@ -177,6 +180,7 @@ function initJournalBridges() {
   };
   setPhotonsJournalSave((target, form, title) => saveToJournal({ kind: 'photon', ...target }, form, title));
   setElectronsJournalSave((target, form, title) => saveToJournal({ ...target, kind: 'electron' }, form, title));
+  setCobaltJournalSave((target, form, title) => saveToJournal({ ...target, kind: 'cobalt' }, form, title));
   setSessionBridge({
     openInTab: (kind, form, title) => showInTab(kind, form, { mode: 'view', title }),
     openEquipment: (beamId) => {

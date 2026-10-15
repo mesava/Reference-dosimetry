@@ -2,7 +2,7 @@
 // Рабочая копия хранится в браузере (черновик), чтобы обновление страницы её не стёрло; сам журнал — файл JSON,
 // который открывают и сохраняют явно. В Chrome и Edge (File System Access API) сохранение идёт прямо в открытый
 // файл, в остальных браузерах — скачиванием файла с тем же именем.
-import { newJournal, normalizeJournal, JOURNAL_TAG } from '../core/journal.js';
+import { newJournal, normalizeJournal, JOURNAL_TAG, journalFormat } from '../core/journal.js';
 import { APP_VERSION, APP_DATE } from '../core/version.js';
 import { L } from '../core/i18n.js';
 import { downloadText, esc } from './common.js';
@@ -56,7 +56,7 @@ export function updateJournal(fn, source = '') {
   setJournal(fn(structuredClone(state.journal)), source);
 }
 
-const fileText = () => JSON.stringify({ ...state.journal, ...JOURNAL_TAG, appVersion: APP_VERSION, appDate: APP_DATE, updated: new Date().toISOString() }, null, 1);
+const fileText = () => JSON.stringify({ ...state.journal, ...JOURNAL_TAG, version: journalFormat(state.journal), appVersion: APP_VERSION, appDate: APP_DATE, updated: new Date().toISOString() }, null, 1);
 const pickerTypes = [{ description: L('Журнал калибровок (JSON)', 'Calibration journal (JSON)'), accept: { 'application/json': ['.json'] } }];
 const defaultName = () => {
   const inst = String(state.journal.institution || '').trim().replace(/[^\p{L}\p{N}_.-]+/gu, '-');

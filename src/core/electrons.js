@@ -473,7 +473,7 @@ export function computeElectrons(form) {
       trs.ks = fixedKs / ksQ0;
       trs.ksFixed = true;
       const fromTxt = String(f.e_fixed_from ?? '').trim();
-      trs.ksEquation = L(`из калибровки${fromTxt ? ` от ${fromTxt}` : ''} (проверка выхода)`, `from the calibration${fromTxt ? ` of ${fromTxt}` : ''} (output check)`);
+      trs.ksEquation = L(`из калибровки${fromTxt ? ` от ${fromTxt}` : ''} — проверка выхода`, `from the calibration${fromTxt ? ` of ${fromTxt}` : ''}: output check`);
     } else trs.ks = NaN;
 
     // k_Q,Q₀: таблица (табл. 20/21, линейная интерполяция) и аппроксимация прил. II (табл. 47/48) — рядом для сравнения

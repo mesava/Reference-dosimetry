@@ -1,15 +1,16 @@
-// «Журнал» → «Сеанс»: калибровка или проверка выхода всех фотонных пучков аппарата за один заход.
-// Каждый пучок считается ядром вкладки «МВ фотоны» (journal.js собирает её форму из профилей и показаний);
+// «Журнал» → «Сеанс»: калибровка или проверка выхода всех пучков аппарата за один заход.
+// Каждый пучок считается ядром вкладки дозиметрии («МВ фотоны», «Электроны», «⁶⁰Co»; journal.js собирает её форму
+// из профилей и показаний);
 // результат записывается в журнал кнопкой «Записать сеанс в журнал».
 import { L, refText, getLang } from '../core/i18n.js';
 import { PRESSURE_UNITS, unitLabel, isBlank, parseNumber } from '../core/units.js';
 import {
   computeSessionBeam, finalizeSession, upsertSession, chamberText, electrometerText, machineOf, equipmentDue, recordedBase, SESSION_DEFAULTS, uid,
-  beamKeys, beamKind, chamberFormFromElectrons, elFormFromElectrons,
+  beamKeys, beamKind, chamberFormFromElectrons, elFormFromElectrons, chamberFormFromCobalt, elFormFromCobalt,
 } from '../core/journal.js';
 import { $, $$, esc, fmt, fmtSigned, today, makeStatus, copyText, currentProtocol, applyProtocol, notifyUpdate, richText, armButton, renderSignBlock, printToPdf, versionText } from './common.js';
 import { localizeDecimals } from './i18n.js';
-import { renderCells, readCells, setupCells, renderStaff, readStaff, makeCombo } from './widgets.js';
+import { renderCells, readCells, setupCells, renderStaff, readStaff, makeCombo, renderPairs, readPairs, setupPairs } from './widgets.js';
 import { getJournal, setJournal, onJournal } from './journal-store.js';
 import { setupFilePanel, machineOptions, fmtDate } from './journal-common.js';
 
@@ -46,13 +47,17 @@ function loadDraft() {
   }
 }
 
-/** Пучки сеанса: используемые в сеансах и те, что есть в открытом из журнала сеансе; сначала фотоны, затем электроны. */
+const KIND_ORDER = ['photon', 'electron', 'cobalt'];
+/** Пучки сеанса: используемые в сеансах и те, что есть в открытом из журнала сеансе; фотоны, электроны, ⁶⁰Co. */
 const activeBeams = (m) => {
   const list = m ? m.beams.filter((b) => b.active !== false || draft.beams[b.id]?.base) : [];
-  return [...list.filter((b) => beamKind(b) === 'photon'), ...list.filter((b) => beamKind(b) === 'electron')];
+  return KIND_ORDER.flatMap((kind) => list.filter((b) => beamKind(b) === kind));
 };
-/** Серии показаний пучка данного вида: имена полей. */
-const seriesKeys = (k) => [k.M1, k.Mopp, k.M2, k.ctrl, k.recal];
+/** Серии показаний пучка данного вида (ячейки): имена полей; у ⁶⁰Co — и показания для ошибки таймера t против n·t/n. */
+const seriesKeys = (k) => [k.M1, k.Mopp, k.M2, k.ctrl, k.recal, ...(k.timer || []).filter((x) => x === 'co_nx_M1' || x === 'co_nx_Mn')].filter(Boolean);
+/** Облучения с разным временем (⁶⁰Co): пары «время — показание». */
+const PAIRS = ['co_tt', 'co_tm'];
+const timeUnit = (f) => (f.co_time_unit === 's' ? L('с', 's') : L('мин', 'min'));
 const tg51 = () => currentProtocol() === 'tg51';
 /** Поле %dd(10) пучка по способу TG-51. */
 const q51Field = (f) => {
@@ -86,16 +91,42 @@ function beamCard(j, m, b, mode) {
   const k = beamKeys(kind);
   const electron = kind === 'electron';
   // у открытого из журнала сеанса — камера, электрометр и настройки, записанные в нём
-  const ch = d.base ? { form: electron ? chamberFormFromElectrons(d.base) : d.base } : j.chambers.find((c) => c.id === b.chamberId);
-  const el = d.base ? { form: electron ? elFormFromElectrons(d.base) : d.base } : j.electrometers.find((e) => e.id === b.electrometerId);
+  const cobalt = kind === 'cobalt';
+  const chFrom = { electron: chamberFormFromElectrons, cobalt: chamberFormFromCobalt }[kind] ?? ((x) => x);
+  const elFrom = { electron: elFormFromElectrons, cobalt: elFormFromCobalt }[kind] ?? ((x) => x);
+  const ch = d.base ? { form: chFrom(d.base) } : j.chambers.find((c) => c.id === b.chamberId);
+  const el = d.base ? { form: elFrom(d.base) } : j.electrometers.find((e) => e.id === b.electrometerId);
   const f = d.base || b.form || {};
   const noChamber = !d.base && !ch;
-  const info = [chamberText(ch) || L('камера не выбрана', 'no chamber selected'), electrometerText(el) || L('электрометр не выбран', 'no electrometer selected'), !isBlank(f[k.V1]) ? `V₁ ${locNum(f[k.V1])} ${L('В', 'V')}` : '', !isBlank(f[k.mu]) ? `${locNum(f[k.mu])} ${L('МЕ', 'MU')}` : ''].filter(Boolean).join(' · ');
+  const amount = cobalt ? (!isBlank(f.co_time) ? `t = ${locNum(f.co_time)} ${timeUnit(f)}` : '') : !isBlank(f[k.mu]) ? `${locNum(f[k.mu])} ${L('МЕ', 'MU')}` : '';
+  const info = [chamberText(ch) || L('камера не выбрана', 'no chamber selected'), electrometerText(el) || L('электрометр не выбран', 'no electrometer selected'), !isBlank(f[k.V1]) ? `V₁ ${locNum(f[k.V1])} ${L('В', 'V')}` : '', amount].filter(Boolean).join(' · ');
   const [kp, kx] = tg51() ? ['P<sub>pol</sub>', 'P<sub>ion</sub>'] : ['k<sub>pol</sub>', 'k<sub>s</sub>'];
   const inp = (key, label, { ph = '', sub = '', cls = '' } = {}) =>
     `<div class="field ${cls}"><label for="jsb-${id}-${key}">${label}</label><input type="text" id="jsb-${id}-${key}" data-sb="${key}" class="num" inputmode="decimal" value="${esc(d[key] ?? '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}>${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;
   let quality;
-  if (electron) {
+  if (cobalt) {
+    // качество пучка ⁶⁰Co не измеряют; при калибровке — облучения для ошибки таймера по способу из настроек пучка
+    const u = timeUnit(f);
+    const mode = f.co_timer_mode || 'measured';
+    quality = {
+      measured: `<div class="pairs" data-a="jsb-${id}-co_tt" data-b="jsb-${id}-co_tm" data-label-a="${esc(L('Заданное время', 'Set time'))}" data-label-b="${esc(L('Показание', 'Reading'))}">
+          <span class="label">${esc(L('Ошибка таймера: облучения с разным временем', 'Timer error: exposures of different duration'))}</span>
+          <div class="pairs-head"><span class="pair-no">№</span><span>${esc(L(`Заданное время, ${u}`, `Set time, ${u}`))}</span><span>${esc(L('Показание, нКл', 'Reading, nC'))}</span></div>
+          <div class="pairs-list"></div>
+          <div class="cells-tools">
+            <button type="button" class="icon-btn pair-add" aria-label="${esc(L('Добавить облучение', 'Add an exposure'))}" title="${esc(L('Добавить облучение', 'Add an exposure'))}">+</button>
+            <button type="button" class="icon-btn pair-remove" aria-label="${esc(L('Убрать последнее облучение', 'Remove the last exposure'))}" title="${esc(L('Убрать последнее облучение', 'Remove the last exposure'))}">−</button>
+          </div>
+        </div>`,
+      nexp: `<div class="series">
+          ${cellsHtml(`jsb-${id}-co_nx_M1`, L(`Ошибка таймера: показание за одно облучение t = ${locNum(f.co_nx_t)} ${u}`, `Timer error: reading for one exposure t = ${locNum(f.co_nx_t)} ${u}`), d.co_nx_M1 || blank3())}
+          ${cellsHtml(`jsb-${id}-co_nx_Mn`, L(`суммарное показание за n = ${locNum(f.co_nx_n)} облучений по t/n`, `total reading for n = ${locNum(f.co_nx_n)} exposures of t/n`), d.co_nx_Mn || blank3())}
+        </div>`,
+      manual: `<div class="grid three">${inp('co_tau', `τ, ${u}`, { ph: locNum(f.co_tau), sub: L('ошибка таймера; пусто — из «Оборудования»', 'timer error; blank: from Equipment') })}</div>`,
+      window: `<p class="sub-hint">${esc(L('Заряд накапливается при выдвинутом источнике: ошибка таймера в мощность дозы не входит.', 'Charge is collected with the source exposed: the timer error does not enter the dose rate.'))}</p>`,
+      none: `<p class="jsb-warn">${esc(L('Ошибка таймера не учитывается (так задано в «Оборудовании»).', 'The timer error is not accounted for (as set in Equipment).'))}</p>`,
+    }[mode] ?? '';
+  } else if (electron) {
     const i50 = f.e_r50_method !== 'r50';
     quality = `<div class="grid three">
             ${i50 ? inp('e_i50', L('R<sub>50,ion</sub> (I<sub>50</sub>), г/см²', 'R<sub>50,ion</sub> (I<sub>50</sub>), g/cm²'), { ph: locNum(f.e_i50) }) : inp('e_r50', L('R<sub>50</sub>, г/см²', 'R<sub>50</sub>, g/cm²'), { ph: locNum(f.e_r50) })}
@@ -133,19 +164,20 @@ function beamCard(j, m, b, mode) {
             ${inp(k.fixedKpol, L(`${kp} из калибровки`, `${kp} from the calibration`), { sub: L('пусто — из журнала', 'blank: from the journal') })}
             ${inp(k.fixedKs, L(`${kx} из калибровки`, `${kx} from the calibration`), { sub: L('пусто — из журнала', 'blank: from the journal') })}
             <div class="field"><label for="jsb-${id}-${k.fixedFrom}">${esc(L('Дата калибровки', 'Calibration date'))}</label><input type="text" id="jsb-${id}-${k.fixedFrom}" data-sb="${k.fixedFrom}" data-fixed-from value="${esc(d[k.fixedFrom] ?? '')}"><span class="sub">${esc(L('для протокола, если значения введены вручную', 'for the report if the values are entered manually'))}</span></div>
+            ${cobalt && f.co_timer_mode !== 'window' && f.co_timer_mode !== 'none' ? inp(k.fixedTau, L(`τ из калибровки, ${timeUnit(f)}`, `τ from the calibration, ${timeUnit(f)}`), { sub: L('пусто — из журнала', 'blank: from the journal') }) : ''}
           </div>
           <p class="sub-hint" data-fixed-note></p>`}
-      <details class="jsb-more"${hasValues(d[k.ctrl]) || hasValues(d[k.recal]) ? ' open' : ''}>
-        <summary>${esc(L('Контрольные измерения и подстройка ускорителя', 'Check measurements and linac adjustment'))}</summary>
+      <details class="jsb-more"${hasValues(d[k.ctrl]) || (k.recal && hasValues(d[k.recal])) ? ' open' : ''}>
+        <summary>${esc(cobalt ? L('Контрольные измерения', 'Check measurements') : L('Контрольные измерения и подстройка ускорителя', 'Check measurements and linac adjustment'))}</summary>
         <div class="series">
           ${cellsHtml(`jsb-${id}-${k.ctrl}`, L('Контрольные измерения, M при V₁', 'Check measurements, M at V₁'), d[k.ctrl] || blank3())}
         </div>
-        <div class="grid">
+        ${cobalt ? '' : `<div class="grid">
           <div class="field"><label for="jsb-${id}-${k.recalNeeded}">${esc(L('Ускоритель подстраивали?', 'Was the linac adjusted?'))}</label><select id="jsb-${id}-${k.recalNeeded}" data-sb="${k.recalNeeded}" data-recal-needed><option value="">—</option><option value="yes"${d[k.recalNeeded] === 'yes' ? ' selected' : ''}>${esc(L('да', 'yes'))}</option><option value="no"${d[k.recalNeeded] === 'no' ? ' selected' : ''}>${esc(L('нет', 'no'))}</option></select><span class="sub">${esc(L('если выход был вне допуска', 'if the output was out of tolerance'))}</span></div>
         </div>
         <div class="series" data-recal${d[k.recalNeeded] === 'yes' ? '' : ' hidden'}>
           ${cellsHtml(`jsb-${id}-${k.recal}`, L('После подстройки, M при V₁', 'After adjustment, M at V₁'), d[k.recal] || blank3())}
-        </div>
+        </div>`}
       </details>
       <div class="jsb-result" data-result></div>
     </div>
@@ -170,8 +202,8 @@ function renderBeams() {
       )}</p><button type="button" class="link-btn" id="js-btn-current">${esc(L('Пересчитать по текущему «Оборудованию»', 'Recalculate with the current Equipment'))}</button></div>`
     : '';
   // пучки фотонов и электронов — отдельными группами, если у аппарата есть и те и другие
-  const both = beams.some((b) => beamKind(b) === 'photon') && beams.some((b) => beamKind(b) === 'electron');
-  const groupTitle = (kind) => `<h3 class="sub-h jsb-group">${esc(kind === 'electron' ? L('Пучки электронов', 'Electron beams') : L('Пучки фотонов', 'Photon beams'))}</h3>`;
+  const both = new Set(beams.map(beamKind)).size > 1;
+  const groupTitle = (kind) => `<h3 class="sub-h jsb-group">${esc({ electron: L('Пучки электронов', 'Electron beams'), cobalt: L('Пучки ⁶⁰Co', '⁶⁰Co beams') }[kind] ?? L('Пучки фотонов', 'Photon beams'))}</h3>`;
   const cards = beams.map((b, i) => (both && (i === 0 || beamKind(beams[i - 1]) !== beamKind(b)) ? groupTitle(beamKind(b)) : '') + beamCard(j, m, b, draft.mode)).join('');
   box.innerHTML = note + (cards || `<p class="sub-hint">${esc(L('У аппарата нет пучков: добавьте их в «Оборудовании».', 'The machine has no beams: add them in Equipment.'))}</p>`);
   for (const b of beams) {
@@ -181,6 +213,11 @@ function renderBeams() {
       if (!c) continue;
       renderCells(c, d[key] || blank3());
       setupCells(c, onEdit);
+    }
+    const pairs = box.querySelector(`.pairs[data-a="jsb-${b.id}-co_tt"]`);
+    if (pairs) {
+      renderPairs(pairs, d.co_tt || ['', ''], d.co_tm || ['', '']);
+      setupPairs(pairs, onEdit);
     }
   }
   localizeDecimals(box);
@@ -219,6 +256,8 @@ function readDraft() {
       const c = card.querySelector(`.cells[data-series="jsb-${id}-${key}"]`);
       if (c) d[key] = readCells(c);
     }
+    const pairs = card.querySelector(`.pairs[data-a="jsb-${id}-co_tt"]`);
+    if (pairs) [d[PAIRS[0]], d[PAIRS[1]]] = Object.values(readPairs(pairs));
     draft.beams[id] = d;
   }
 }
@@ -242,11 +281,11 @@ function sessionObject() {
 }
 
 // ------------------------------------------------------------ расчёт и вывод
-const chipOf = (sum, started) => {
+const chipOf = (sum, started, kind = 'photon') => {
   if (!started) return ['empty', L('нет показаний', 'no readings')];
   if (!sum.ok) return ['error', L('есть ошибки', 'has errors')];
   if (sum.status === 'out') return ['out', L(`вне допуска ±${fmt(sum.tol, sum.tol % 1 ? 1 : 0)} %`, `out of ±${fmt(sum.tol, sum.tol % 1 ? 1 : 0)}%`)];
-  if (sum.status === 'nonominal') return ['ok', L('посчитано, номинал не задан', 'calculated, no nominal')];
+  if (sum.status === 'nonominal') return ['ok', kind === 'cobalt' ? L('посчитано, сравнивать не с чем', 'calculated, nothing to compare with') : L('посчитано, номинал не задан', 'calculated, no nominal')];
   return ['ok', L(`в допуске ±${fmt(sum.tol, sum.tol % 1 ? 1 : 0)} %`, `within ±${fmt(sum.tol, sum.tol % 1 ? 1 : 0)}%`)];
 };
 const atText = (s) => ({ dmax: 'd_max', zmax: 'z_max' })[s.at] ?? 'z_ref';
@@ -254,7 +293,29 @@ const atText = (s) => ({ dmax: 'd_max', zmax: 'z_max' })[s.at] ?? 'z_ref';
 const qualityText = (sum, kind, tg) =>
   !Number.isFinite(sum.quality) ? '' : kind === 'electron' ? L(`R50 = ${fmt(sum.quality, 3)} г/см²`, `R50 = ${fmt(sum.quality, 3)} g/cm²`) : tg ? `%dd(10)x = ${fmt(sum.quality, 2)}` : `TPR20,10 = ${fmt(sum.quality, 4)}`;
 /** Название вкладки дозиметрии для пучка данного вида. */
-const tabName = (kind) => (kind === 'electron' ? L('«Электроны»', 'Electrons') : L('«МВ фотоны»', 'MV photons'));
+const tabName = (kind) => ({ electron: L('«Электроны»', 'Electrons'), cobalt: L('«⁶⁰Co»', '⁶⁰Co') })[kind] ?? L('«МВ фотоны»', 'MV photons');
+/** Итог пучка: число и единица (Гр на 100 МЕ или сГр/мин у ⁶⁰Co). */
+const valueText = (sum, kind) => (kind === 'cobalt' ? [fmt(sum.value, 2), L('сГр/мин на', 'cGy/min at')] : [fmt(sum.value, 4), L('Гр на 100 МЕ на', 'Gy per 100 MU at')]);
+/** ⁶⁰Co: с чем сравнивалась мощность дозы (для подписи под итогом и протокола). */
+function comparisonText(calc) {
+  const ref = calc.ref;
+  const dpt = calc.result.depth;
+  if (!ref) return '';
+  const exp = Number.isFinite(dpt.expected) ? `${fmt(dpt.expected, 2)} ${L('сГр/мин', 'cGy/min')}` : '';
+  const decay = Number.isFinite(dpt.decay) ? L(`, распад × ${fmt(dpt.decay, 4)}`, `, decay × ${fmt(dpt.decay, 4)}`) : '';
+  const at = dpt.expectedAt === 'zmax' ? 'z_max' : 'z_ref';
+  const fb = ref.atFallback ? L(' — на z_ref: в той калибровке не было пересчёта на z_max', '; at z_ref: that calibration had no transfer to z_max') : '';
+  if (ref.src === 'journal') return L(`ожидалось ${exp} на ${at}: калибровка от ${fmtDate(ref.last.date)} (${fmt(dpt.refRate, 2)} сГр/мин${decay})${fb}`, `expected ${exp} at ${at}: the calibration of ${fmtDate(ref.last.date)} (${fmt(dpt.refRate, 2)} cGy/min${decay})${fb}`);
+  if (ref.src === 'recorded') return exp ? L(`ожидалось ${exp} на ${at}, как записано в сеансе (${fmt(dpt.refRate, 2)} сГр/мин на ${fmtDate(dpt.refDate)}${decay})`, `expected ${exp} at ${at}, as recorded in the session (${fmt(dpt.refRate, 2)} cGy/min on ${fmtDate(dpt.refDate)}${decay})`) : '';
+  const why = [
+    ref.newSource ? L(`после замены источника (калибровка от ${fmtDate(ref.last.date)} — с прежним источником)`, `after the source replacement (the calibration of ${fmtDate(ref.last.date)} used the previous source)`) : '',
+    ref.wanted && !ref.last ? L('калибровки этого пучка в журнале ещё нет', 'the journal has no calibration of this beam yet') : '',
+    ref.wanted && ref.last && !ref.newSource ? L(`в калибровке от ${fmtDate(ref.last.date)} нет мощности дозы на этой глубине`, `the calibration of ${fmtDate(ref.last.date)} has no dose rate at this depth`) : '',
+    ref.staleProfile ? L('значение из «Оборудования» датировано раньше установки источника — оно относится к прежнему источнику', 'the value in Equipment is dated before the source installation, so it refers to the previous source') : '',
+  ].filter(Boolean).join('; ');
+  if (ref.src === 'profile') return L(`ожидалось ${exp} на ${at}: значение из «Оборудования» (${fmt(dpt.refRate, 2)} сГр/мин${dpt.refDate ? ` на ${fmtDate(dpt.refDate)}` : ''}${decay})${why ? `, ${why}` : ''}`, `expected ${exp} at ${at}: the value from Equipment (${fmt(dpt.refRate, 2)} cGy/min${dpt.refDate ? ` on ${fmtDate(dpt.refDate)}` : ''}${decay})${why ? `, ${why}` : ''}`);
+  return L(`сравнивать не с чем${why ? `: ${why}` : ''} — задайте мощность дозы для сравнения в «Оборудовании»`, `nothing to compare with${why ? `: ${why}` : ''}; set the comparison dose rate in Equipment`);
+}
 const lvlName = () => ({ error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') });
 
 function compute() {
@@ -277,7 +338,7 @@ function renderResults() {
     const k = beamKeys(kind);
     card.classList.toggle('off', input.include === false);
     const sum = calc.summary;
-    const [cls, text] = chipOf(sum, started);
+    const [cls, text] = chipOf(sum, started, kind);
     const chip = card.querySelector('[data-chip]');
     chip.className = `chip jsb-chip ${cls}`;
     chip.textContent = input.include === false ? L('не участвует', 'excluded') : text;
@@ -301,19 +362,22 @@ function renderResults() {
           recorded: L(`как записано в сеансе${from ? ` (калибровка от ${from})` : ''}`, `as recorded in the session${from ? ` (calibration of ${from})` : ''}`),
           journal: L(`из калибровки этого пучка от ${fmtDate(calc.last?.date)}`, `from this beam's calibration of ${fmtDate(calc.last?.date)}`),
         })[code];
-      const part = (name, key, code) => (code === 'none' ? L(`${name}: нет ни калибровки в журнале, ни значения вручную`, `${name}: neither a calibration in the journal nor a manual value`) : `${name} = ${fmt(valOf(key), 4)} — ${whence(code)}`);
+      const part = (name, key, code, digits = 4) => (code === 'none' ? L(`${name}: нет ни калибровки в журнале, ни значения вручную`, `${name}: neither a calibration in the journal nor a manual value`) : `${name} = ${fmt(valOf(key), digits)}${name === 'τ' ? ` ${timeUnit(calc.form)}` : ''} — ${whence(code)}`);
       const q = qualityText(sum, kind, tg);
+      // τ (⁶⁰Co): из калибровки или, без неё, известное значение из «Оборудования»
+      const tauWhy = calc.last ? L(`в калибровке от ${fmtDate(calc.last.date)} τ не определялась`, `τ was not determined at the calibration of ${fmtDate(calc.last.date)}`) : L('калибровки в журнале нет', 'no calibration in the journal');
+      const tauPart = !src.tau ? '' : src.tau === 'profile' ? `; τ = ${fmt(valOf('co_tau'), 4)} ${timeUnit(calc.form)} — ${L(`из «Оборудования» (${tauWhy})`, `from Equipment (${tauWhy})`)}` : src.tau === 'none' && calc.last ? `; ${L(`τ: в калибровке от ${fmtDate(calc.last.date)} она не определялась — введите τ вручную или задайте известное значение в «Оборудовании»`, `τ: it was not determined at the calibration of ${fmtDate(calc.last.date)}; enter τ manually or set a known value in Equipment`)}` : `; ${part('τ', 'co_tau', src.tau)}`;
       let text;
       if (src.kpol === 'none' && src.ks === 'none') {
-        text = L(`В журнале нет калибровки этого пучка до даты сеанса: проведите сеанс «Калибровка» или введите ${kp} и ${kx} из последней калибровки вручную.`, `The journal has no calibration of this beam before the session date: run a Calibration session or enter ${kp} and ${kx} from the last calibration manually.`);
+        text = L(`В журнале нет калибровки этого пучка до даты сеанса: проведите сеанс «Калибровка» или введите ${kp} и ${kx}${src.tau ? ' и τ' : ''} из последней калибровки вручную.`, `The journal has no calibration of this beam before the session date: run a Calibration session or enter ${kp} and ${kx}${src.tau ? ' and τ' : ''} from the last calibration manually.`);
       } else if (src.kpol === src.ks) {
-        text = `${kp} = ${fmt(valOf(k.fixedKpol), 4)} ${L('и', 'and')} ${kx} = ${fmt(valOf(k.fixedKs), 4)} — ${whence(src.ks)}${q ? `; ${q}` : ''}.`;
+        text = `${kp} = ${fmt(valOf(k.fixedKpol), 4)} ${L('и', 'and')} ${kx} = ${fmt(valOf(k.fixedKs), 4)} — ${whence(src.ks)}${tauPart}${q ? `; ${q}` : ''}.`;
       } else {
-        text = `${part(kp, k.fixedKpol, src.kpol)}; ${part(kx, k.fixedKs, src.ks)}${q ? `; ${q}` : ''}.`;
+        text = `${part(kp, k.fixedKpol, src.kpol)}; ${part(kx, k.fixedKs, src.ks)}${tauPart}${q ? `; ${q}` : ''}.`;
       }
       note.innerHTML = richText(text);
       // в пустых полях — значения, которые будут использованы
-      for (const [key, code] of [[k.fixedKpol, src.kpol], [k.fixedKs, src.ks]]) {
+      for (const [key, code] of [[k.fixedKpol, src.kpol], [k.fixedKs, src.ks], ...(src.tau ? [['co_tau', src.tau]] : [])]) {
         const el = card.querySelector(`[data-sb="${key}"]`);
         if (el) el.placeholder = code !== 'manual' && Number.isFinite(valOf(key)) ? fmt(valOf(key), 4) : '';
       }
@@ -335,11 +399,18 @@ function renderResults() {
     }
     const lines = [];
     if (sum.hasValue) {
-      lines.push(`<p class="jsb-dose"><b>${fmt(sum.value, 4)}</b> ${esc(L('Гр на 100 МЕ на', 'Gy per 100 MU at'))} ${richText(atText(sum))}${Number.isFinite(sum.deviation) ? ` · ${esc(L('от номинала', 'from nominal'))} <b>${fmtSigned(sum.deviation, 2)} %</b>` : ''}${sum.source === 'ctrl' ? ` · ${esc(L('по контрольным измерениям', 'from check measurements'))}` : sum.source === 'recal' ? ` · ${esc(L('после подстройки', 'after adjustment'))}${Number.isFinite(sum.preDeviation) ? ` (${esc(L('до неё', 'before'))} ${fmtSigned(sum.preDeviation, 2)} %)` : ''}` : ''}</p>`);
+      const [vTxt, vUnit] = valueText(sum, kind);
+      lines.push(`<p class="jsb-dose"><b>${vTxt}</b> ${esc(vUnit)} ${richText(atText(sum))}${Number.isFinite(sum.deviation) ? ` · ${esc(kind === 'cobalt' ? L('от ожидаемой', 'from expected') : L('от номинала', 'from nominal'))} <b>${fmtSigned(sum.deviation, 2)} %</b>` : ''}${sum.source === 'ctrl' ? ` · ${esc(L('по контрольным измерениям', 'from check measurements'))}` : sum.source === 'recal' ? ` · ${esc(L('после подстройки', 'after adjustment'))}${Number.isFinite(sum.preDeviation) ? ` (${esc(L('до неё', 'before'))} ${fmtSigned(sum.preDeviation, 2)} %)` : ''}` : ''}</p>`);
       const ks = tg ? 'P_ion' : 'k_s';
       const kp = tg ? 'P_pol' : 'k_pol';
       const prev = calc.prev && s.mode === 'cal' ? L(` (прошлая калибровка ${fmtDate(calc.prev.date)}: ${fmt(calc.prev.kpol, 4)} и ${fmt(calc.prev.ks, 4)})`, ` (previous calibration ${fmtDate(calc.prev.date)}: ${fmt(calc.prev.kpol, 4)} and ${fmt(calc.prev.ks, 4)})`) : '';
-      lines.push(`<p class="jsb-k">${richText(`${kp} = ${fmt(sum.kpolRaw, 4)}, ${ks} = ${fmt(sum.ksRaw, 4)}${sum.ksFixed ? L(' (из калибровки)', ' (from the calibration)') : ''}${prev}; ${sum.kQName || 'k_Q'} = ${fmt(sum.kQ, 4)}${Number.isFinite(sum.quality) ? `; ${qualityText(sum, kind, tg)}` : ''}`).replace(/k′_Q/g, 'k′<sub>Q</sub>')}</p>`);
+      const tauTxt = kind === 'cobalt' && Number.isFinite(calc.result.timer?.tau) && calc.result.timer.mode !== 'window' && calc.result.timer.mode !== 'none' ? `; τ = ${fmt(calc.result.timer.tau, 4)} ${timeUnit(calc.form)}` : '';
+      const kqTxt = kind === 'cobalt' ? '' : `; ${sum.kQName || 'k_Q'} = ${fmt(sum.kQ, 4)}`;
+      lines.push(`<p class="jsb-k">${richText(`${kp} = ${fmt(sum.kpolRaw, 4)}, ${ks} = ${fmt(sum.ksRaw, 4)}${sum.ksFixed ? L(' (из калибровки)', ' (from the calibration)') : ''}${prev}${tauTxt}${kqTxt}${Number.isFinite(sum.quality) ? `; ${qualityText(sum, kind, tg)}` : ''}`).replace(/k′_Q/g, 'k′<sub>Q</sub>')}</p>`);
+      if (kind === 'cobalt') {
+        const rt = comparisonText(calc);
+        if (rt) lines.push(`<p class="jsb-k">${richText(rt)}</p>`);
+      }
       if (Number.isFinite(sum.dKpol) && Math.abs(sum.dKpol) > 0.2) lines.push(`<p class="jsb-warn">${richText(L(`k_pol изменился на ${fmtSigned(sum.dKpol, 2)} % с прошлой калибровки: при изменении больше 0,2 % Report 374 советует выяснить причину (камера, кабель, электрометр).`, `k_pol changed by ${fmtSigned(sum.dKpol, 2)}% since the previous calibration: for a change above 0.2%, Report 374 advises investigating the cause (chamber, cable, electrometer).`))}</p>`);
     }
     // справки со ссылкой на протокол (рекомендации) видны всегда; список свёрнут, если нет ошибок
@@ -372,12 +443,17 @@ function renderReadout(s) {
   const outN = rows.filter((c) => c.started && c.calc.summary.status === 'out').length;
   const errN = rows.filter((c) => c.started && !c.calc.summary.ok).length;
   const head = `${esc(m?.name || '—')} · ${esc(s.mode === 'cal' ? L('калибровка', 'calibration') : L('проверка выхода', 'output check'))} · ${esc(fmtDate(s.date))} · ${s.protocol === 'tg51' ? 'TG-51' : 'TRS-398 Rev.1'}`;
+  // единица итога: Гр на 100 МЕ (ускоритель) или сГр/мин (⁶⁰Co); если в сеансе и то и другое — единица в ячейке
+  const coRows = rows.filter((c) => c.kind === 'cobalt').length;
+  const mixed = coRows > 0 && coRows < rows.length;
+  const unitHead = mixed ? L('Итог', 'Result') : coRows ? L('сГр/мин', 'cGy/min') : L('Гр/100 МЕ', 'Gy/100 MU');
   const table = rows.length
-    ? `<table class="factors jsum"><thead><tr><th>${esc(L('Пучок', 'Beam'))}</th><th class="v">${esc(L('Гр/100 МЕ', 'Gy/100 MU'))}</th><th class="v">${esc(L('Δ, %', 'Δ, %'))}</th></tr></thead><tbody>${rows
-        .map(({ calc, started }) => {
+    ? `<table class="factors jsum"><thead><tr><th>${esc(L('Пучок', 'Beam'))}</th><th class="v">${esc(unitHead)}</th><th class="v">${esc(L('Δ, %', 'Δ, %'))}</th></tr></thead><tbody>${rows
+        .map(({ calc, started, kind }) => {
           const sum = calc.summary;
-          const [cls] = chipOf(sum, started);
-          return `<tr class="st-${cls}"><td>${esc(calc.beam.name)}</td><td class="v">${started && sum.hasValue ? fmt(sum.value, 4) : '—'}</td><td class="v">${started && Number.isFinite(sum.deviation) ? fmtSigned(sum.deviation, 2) : '—'}</td></tr>`;
+          const [cls] = chipOf(sum, started, kind);
+          const v = started && sum.hasValue ? `${valueText(sum, kind)[0]}${mixed ? ` <small>${esc(kind === 'cobalt' ? L('сГр/мин', 'cGy/min') : L('Гр/100 МЕ', 'Gy/100 MU'))}</small>` : ''}` : '—';
+          return `<tr class="st-${cls}"><td>${esc(calc.beam.name)}</td><td class="v">${v}</td><td class="v">${started && Number.isFinite(sum.deviation) ? fmtSigned(sum.deviation, 2) : '—'}</td></tr>`;
         })
         .join('')}</tbody></table>`
     : '';
@@ -416,7 +492,7 @@ function onEdit() {
 }
 
 /** В сеансе есть показания, не записанные в журнал (для подтверждения перед открытием другого сеанса). */
-export const sessionUnsaved = () => !!draft.dirty && Object.values(draft.beams).some((b) => hasValues(b?.rd_M1) || hasValues(b?.e_M1));
+export const sessionUnsaved = () => !!draft.dirty && Object.values(draft.beams).some((b) => hasValues(b?.rd_M1) || hasValues(b?.e_M1) || hasValues(b?.co_M1));
 
 // ------------------------------------------------------------ действия
 function record() {
@@ -526,7 +602,8 @@ function reportText() {
   out.push(L('СЕАНС НА ВЕСЬ АППАРАТ', 'WHOLE-MACHINE SESSION'));
   out.push(`${L('Учреждение', 'Institution')}: ${j.institution || '—'}`);
   out.push(`${L('Аппарат', 'Machine')}: ${[m?.name, m?.serial ? `${L('№', 'S/N')} ${m.serial}` : ''].filter(Boolean).join(', ') || '—'}`);
-  out.push(`${L('Дата', 'Date')}: ${fmtDate(s.date)}; ${L('режим', 'mode')}: ${s.mode === 'cal' ? L('калибровка', 'calibration') : L('проверка выхода (k_pol и k_s из последней калибровки)', 'output check (k_pol and k_s from the last calibration)')}; ${L('протокол', 'protocol')}: ${tg ? 'TG-51' : 'TRS-398 Rev.1'}`);
+  const coOnly = computed.length > 0 && computed.every((c) => c.kind === 'cobalt');
+  out.push(`${L('Дата', 'Date')}: ${fmtDate(s.date)}; ${L('режим', 'mode')}: ${s.mode === 'cal' ? L('калибровка', 'calibration') : coOnly ? L('проверка выхода (k_pol, k_s и τ из последней калибровки)', 'output check (k_pol, k_s and τ from the last calibration)') : L('проверка выхода (k_pol и k_s из последней калибровки)', 'output check (k_pol and k_s from the last calibration)')}; ${L('протокол', 'protocol')}: ${tg ? 'TG-51' : 'TRS-398 Rev.1'}`);
   out.push(`${L('Сотрудники', 'Staff')}: ${s.staff.filter((x) => x.trim()).join(', ') || '—'}`);
   out.push(`${L('Общие условия', 'Common conditions')}: T = ${s.env.T || '—'} °C; P = ${s.env.P || '—'} ${unitLabel(PRESSURE_UNITS[s.env.P_unit] || PRESSURE_UNITS.kPa)}${s.env.H ? `; ${L('влажность', 'humidity')} ${s.env.H} %` : ''}`);
   out.push('');
@@ -536,8 +613,13 @@ function reportText() {
     out.push(`${calc.beam.name}: ${chamberText(calc.chamber)}; ${electrometerText(calc.electrometer)}`);
     if (sum.hasValue) {
       if (!sum.ok) out.push(`  ${L('Есть ошибки: пучок не записан в журнал', 'There are errors: the beam is not recorded in the journal')}`);
-      out.push(`  ${L('Доза', 'Dose')}: ${fmt(sum.value, 4)} ${L('Гр на 100 МЕ на', 'Gy per 100 MU at')} ${atText(sum)}${Number.isFinite(sum.deviation) ? `; ${L('от номинала', 'from nominal')} ${fmtSigned(sum.deviation, 2)} % (${sum.status === 'out' ? L('вне допуска', 'out of tolerance') : L('в допуске', 'within tolerance')} ±${fmt(sum.tol, sum.tol % 1 ? 1 : 0)} %)` : ''}`);
-      out.push(`  ${tg ? 'P_pol' : 'k_pol'} = ${fmt(sum.kpolRaw, 4)}; ${tg ? 'P_ion' : 'k_s'} = ${fmt(sum.ksRaw, 4)}${sum.ksFixed ? ` (${[L('из калибровки', 'from the calibration'), calc.form[beamKeys(calc.kind).fixedFrom]].filter(Boolean).join(' ')})` : ''}; ${sum.kQName || 'k_Q'} = ${fmt(sum.kQ, 4)}${Number.isFinite(sum.quality) ? `; ${qualityText(sum, calc.kind, tg)}` : ''}`);
+      const co = calc.kind === 'cobalt';
+      const [vTxt, vUnit] = valueText(sum, calc.kind);
+      out.push(`  ${co ? L('Мощность дозы', 'Dose rate') : L('Доза', 'Dose')}: ${vTxt} ${vUnit} ${atText(sum)}${Number.isFinite(sum.deviation) ? `; ${co ? L('от ожидаемой', 'from expected') : L('от номинала', 'from nominal')} ${fmtSigned(sum.deviation, 2)} % (${sum.status === 'out' ? L('вне допуска', 'out of tolerance') : L('в допуске', 'within tolerance')} ±${fmt(sum.tol, sum.tol % 1 ? 1 : 0)} %)` : ''}`);
+      const tm = calc.result.timer;
+      const tauTxt = co && tm && tm.mode !== 'window' && tm.mode !== 'none' ? `; τ = ${fmt(tm.tau, 4)} ${timeUnit(calc.form)}` : co && tm?.mode === 'window' ? L('; заряд при выдвинутом источнике', '; charge with the source exposed') : '';
+      out.push(`  ${tg ? 'P_pol' : 'k_pol'} = ${fmt(sum.kpolRaw, 4)}; ${tg ? 'P_ion' : 'k_s'} = ${fmt(sum.ksRaw, 4)}${sum.ksFixed ? ` (${[L('из калибровки', 'from the calibration'), calc.form[beamKeys(calc.kind).fixedFrom]].filter(Boolean).join(' ')})` : ''}${tauTxt}${co ? '' : `; ${sum.kQName || 'k_Q'} = ${fmt(sum.kQ, 4)}`}${Number.isFinite(sum.quality) ? `; ${qualityText(sum, calc.kind, tg)}` : ''}`);
+      if (co && comparisonText(calc)) out.push(`  ${comparisonText(calc).replace(/^./, (x) => x.toUpperCase())}`);
     } else out.push(`  ${L('Нет результата: есть ошибки', 'No result: there are errors')}`);
     for (const msg of calc.result.messages.filter((x) => x.level !== 'info')) out.push(`  - ${msg.text}`);
   }
