@@ -47,6 +47,7 @@
 
 <div class="module" id="module-start" role="tabpanel" aria-labelledby="tab-start" hidden>
 <main class="start" id="start-root" data-i18n-skip></main>
+<p class="status-line start-status" id="start-status" role="status"></p>
 </div>
 
 <div class="module" id="module-co60" role="tabpanel" aria-labelledby="tab-dosimetry" hidden>
@@ -132,6 +133,7 @@
             <input type="text" id="co_ndw" class="num" inputmode="decimal" placeholder="0,05335" aria-label="Калибровочный коэффициент N_D,w">
             <select id="co_ndw_unit" aria-label="Единица N_D,w"></select>
           </div>
+          <span class="sub">из сертификата или после <a href="#tools" data-goto="tools">перекрёстной калибровки в ⁶⁰Co</a> (вкладка «Камера и пучок»)</span>
         </div>
         <div class="field">
           <label for="co_klab">k<sub>лаб</sub></label>
@@ -372,6 +374,7 @@
         <div class="field out-cell" data-show="co_fixed:false"><span class="label">M₁/M₂</span><output data-out="inputs.ratio12" data-digits="5"></output></div>
       </div>
       <p class="eq" data-protocol="trs">k<sub>s</sub>: <span data-out-text="trs.ksEquation"></span>.</p>
+      <p class="sub-hint no-print">Насыщение камеры и рекомбинацию при разных напряжениях подробно проверяет <a href="#jaffe" data-goto="jaffe">график Яффе</a> (вкладка «Камера и пучок»).</p>
     </section>
 
     <!-- 6 -->
@@ -590,7 +593,7 @@
             <option value="co60">N_D,w в пучке ⁶⁰Co</option>
             <option value="cross">перекрёстная калибровка в пучке МВ фотонов (TRS-398)</option>
           </select>
-          <span class="sub" data-show="ch_cal_route:co60">из сертификата или после перекрёстной калибровки в ⁶⁰Co (вкладка «Камера и пучок»)</span>
+          <span class="sub" data-show="ch_cal_route:co60">из сертификата или после <a href="#tools" data-goto="tools">перекрёстной калибровки в ⁶⁰Co</a> (вкладка «Камера и пучок»)</span>
         </div>
         <div class="field" data-show="ch_cal_route:co60">
           <span class="label"><button type="button" class="term" data-term="ndw">N<sub>D,w</sub></button> (⁶⁰Co)</span>
@@ -605,7 +608,7 @@
             <input type="text" id="ch_cross_ndw" class="num" inputmode="decimal" aria-label="N_D,w,Qcross">
             <select id="ch_cross_ndw_unit" aria-label="Единица N_D,w,Qcross"></select>
           </div>
-          <span class="sub">рассчитывается на вкладке «Камера и пучок» и переносится кнопкой</span>
+          <span class="sub">рассчитывается <a href="#tools" data-goto="tools">перекрёстной калибровкой</a> (вкладка «Камера и пучок») и переносится кнопкой</span>
         </div>
         <div class="field" data-show="ch_cal_route:cross">
           <label for="ch_cross_tpr">TPR<sub>20,10</sub> пучка перекрёстной калибровки</label>
@@ -772,6 +775,7 @@
         <div class="field out-cell"><span class="label">M₁/M₂</span><output data-out="inputs.ratio12" data-digits="5"></output></div>
       </div>
       <p class="eq" data-protocol="trs">k<sub>s</sub>: <span data-out-text="trs.ksEquation"></span>. <span>P<sub>ion</sub> по TG-51 — ур. (12) для импульсного пучка.</span></p>
+      <p class="sub-hint no-print">Насыщение камеры и рекомбинацию при разных напряжениях подробно проверяет <a href="#jaffe" data-goto="jaffe">график Яффе</a> (вкладка «Камера и пучок»).</p>
     </section>
 
     <!-- 5 -->
@@ -856,7 +860,7 @@
         <p class="sub-hint">На двух глубинах доза за импульс разная, поэтому разная и общая рекомбинация, и отношение показаний немного смещено. Заметнее всего это в пучках БВФ и других пучках с высокой дозой за импульс. Включите поправку, чтобы учесть смещение или оценить его для своего пучка: изменение k<sub>Q</sub> и дозы появится ниже (TRS-398, разд. 4.4.3.4 e, 6.3.2).</p>
         <div class="grid three" data-show="q_rec_on:true">
           <div class="field"><label for="q_rec_ks"><span data-protocol="trs">k<sub>s</sub></span><span data-protocol="tg51">P<sub>ion</sub></span> <span>на глубине 10 см</span></label><input type="text" id="q_rec_ks" class="num" inputmode="decimal"><span class="sub" id="q-rec-ks-sub"></span></div>
-          <div class="field"><label for="q_rec_cinit">Начальная рекомбинация C<sub>init</sub>, %</label><input type="text" id="q_rec_cinit" class="num" inputmode="decimal"><span class="sub">не зависит от глубины; пусто — 0</span><button type="button" class="link-btn" id="btn-q-cinit-jaffe">Взять из графика Яффе</button><span class="sub" id="q-cinit-note"></span></div>
+          <div class="field"><label for="q_rec_cinit">Начальная рекомбинация C<sub>init</sub>, %</label><input type="text" id="q_rec_cinit" class="num" inputmode="decimal"><span class="sub">не зависит от глубины; пусто — 0</span><button type="button" class="link-btn" id="btn-q-cinit-jaffe">Взять из графика Яффе</button><span class="sub" id="q-cinit-note" data-sec-target="jaffe"></span></div>
           <div class="field out-cell"><span class="label"><span>Множитель к</span> <span data-protocol="trs">TPR<sub>20,10</sub></span><span data-protocol="tg51">%dd(10)</span></span><output id="q-rec-out"></output><span class="sub" id="q-rec-sub"></span></div>
         </div>
         <p class="eq" data-show="q_rec_on:true"><span data-protocol="trs">Общая рекомбинация пропорциональна дозе за импульс, то есть показанию: k<sub>s</sub>(z) = 1 + C<sub>init</sub> + (k<sub>s</sub>(10) − 1 − C<sub>init</sub>)·M(z)/M(10). Отношение показаний умножается на k<sub>s</sub>(20)/k<sub>s</sub>(10).</span><span data-protocol="tg51">Общая рекомбинация пропорциональна дозе за импульс, то есть показанию: P<sub>ion</sub>(z) = 1 + C<sub>init</sub> + (P<sub>ion</sub>(10) − 1 − C<sub>init</sub>)·M(z)/M(10). %dd(10) умножается на P<sub>ion</sub>(10)/P<sub>ion</sub>(d<sub>max</sub>).</span></p>
@@ -1101,6 +1105,7 @@
             <input type="text" id="e_ndw" class="num" inputmode="decimal" aria-label="Калибровочный коэффициент N_D,w">
             <select id="e_ndw_unit" aria-label="Единица N_D,w"></select>
           </div>
+          <span class="sub">из сертификата или после <a href="#tools" data-goto="tools">перекрёстной калибровки в ⁶⁰Co</a> (вкладка «Камера и пучок»)</span>
         </div>
         <div class="field" data-show="e_cal_route:co60">
           <label for="e_klab">k<sub>лаб</sub></label>
@@ -1113,6 +1118,7 @@
             <input type="text" id="e_cross_ndw" class="num" inputmode="decimal" aria-label="N_D,w,Qcross">
             <select id="e_cross_ndw_unit" aria-label="Единица N_D,w,Qcross"></select>
           </div>
+          <span class="sub">рассчитывается <a href="#tools" data-goto="tools">перекрёстной калибровкой</a> (вкладка «Камера и пучок») и переносится кнопкой</span>
         </div>
         <div class="field" data-show="e_cal_route:cross" data-protocol="trs">
           <label for="e_cross_r50">R<sub>50</sub> пучка перекрёстной калибровки, г/см²</label>
@@ -1125,6 +1131,7 @@
             <input type="text" id="e_cross_kn" class="num" inputmode="decimal" aria-label="(k_Qecal·N_D,w)pp">
             <select id="e_cross_kn_unit" aria-label="Единица (k_Qecal·N_D,w)pp"></select>
           </div>
+          <span class="sub">рассчитывается <a href="#tools" data-goto="tools">перекрёстной калибровкой</a> (вкладка «Камера и пучок») и переносится кнопкой</span>
         </div>
         <div class="field">
           <span class="label">Стандартные условия из свидетельства</span>
@@ -1179,7 +1186,7 @@
             <option value="i50">по глубине 50 % ионизации R50,ion (I50)</option>
             <option value="r50">R50 известен (по кривой дозы)</option>
           </select>
-          <span class="sub">I<sub>50</sub>, R<sub>50</sub> и PDD(z<sub>ref</sub>) по кривой ионизации находит «Кривая дозы электронов» (вкладка «Камера и пучок») и переносит сюда кнопкой.</span>
+          <span class="sub">I<sub>50</sub>, R<sub>50</sub> и PDD(z<sub>ref</sub>) по кривой ионизации находит <a href="#edepth" data-goto="edepth">«Кривая дозы электронов»</a> (вкладка «Камера и пучок») и переносит сюда кнопкой.</span>
         </div>
         <div class="field" data-show="e_r50_method:i50"><span class="label" id="e-lbl-i50">R<sub>50,ion</sub> (I<sub>50</sub>), <button type="button" class="term" data-term="gcm2">г/см²</button></span><input type="text" id="e_i50" class="num" inputmode="decimal" placeholder="4,80" aria-labelledby="e-lbl-i50"></div>
         <div class="field" data-show="e_r50_method:r50"><span class="label" id="e-lbl-r50">R<sub>50</sub>, <button type="button" class="term" data-term="gcm2">г/см²</button></span><input type="text" id="e_r50" class="num" inputmode="decimal" aria-labelledby="e-lbl-r50"></div>
@@ -1305,6 +1312,7 @@
         <div class="field out-cell"><span class="label" id="e-lbl-ratio12">M₁/M₂</span><output data-out="inputs.ratio12" data-digits="5"></output></div>
       </div>
       <p class="eq" data-protocol="trs">k<sub>s</sub>: <span data-out-text="trs.ksEquation"></span>. <span>P<sub>ion</sub> по TG-51 — ур. (12) для импульсного пучка.</span></p>
+      <p class="sub-hint no-print">Насыщение камеры и рекомбинацию при разных напряжениях подробно проверяет <a href="#jaffe" data-goto="jaffe">график Яффе</a> (вкладка «Камера и пучок»).</p>
     </section>
 
     <!-- 6 -->
@@ -2170,7 +2178,7 @@
     <ul class="purpose">
       <li><b>Когда:</b> при вводе системы в эксплуатацию и после замены камеры, кабеля или электрометра. При каждой калибровке достаточно метода двух напряжений на вкладках дозиметрии, а график показывает, верен ли он при выбранных напряжениях.</li>
       <li><b>Что делать:</b> снимите показания при 6–8 напряжениях (раздел 3) и укажите рабочее и пониженное напряжения (раздел 2); по желанию — показания при обратной полярности и при нескольких мощностях дозы (раздел 5).</li>
-      <li><b>Результат:</b> k<sub>s</sub> (P<sub>ion</sub>) при рабочем напряжении, наибольшее допустимое напряжение V<sub>max</sub> (выше начинается умножение заряда) и сводка проверок по критериям камеры эталонного класса. Начальную рекомбинацию C<sub>init</sub> (раздел 5) забирают кнопки «Взять из графика Яффе» в поправках на рекомбинацию по глубине: вкладка «МВ фотоны», раздел 5, и «Кривая дозы электронов», раздел 4.</li>
+      <li><b>Результат:</b> k<sub>s</sub> (P<sub>ion</sub>) при рабочем напряжении, наибольшее допустимое напряжение V<sub>max</sub> (выше начинается умножение заряда) и сводка проверок по критериям камеры эталонного класса. Начальную рекомбинацию C<sub>init</sub> (раздел 5) забирают кнопки «Взять из графика Яффе» в поправках на рекомбинацию по глубине: <span data-sec-target="photons">вкладка «МВ фотоны», раздел 5</span>, и <span data-sec-target="edepth">«Кривая дозы электронов», раздел 4</span>.</li>
     </ul>
     <details class="howto" data-howto="jaffe" open>
       <summary>Как проводить и как считается</summary>
@@ -2490,8 +2498,8 @@
         <p class="hint">По желанию. TRS-398 (разд. 7.3.2) советует в идеале исправлять показания камеры на всех глубинах на рекомбинацию и полярность: обе поправки меняются с глубиной, и форма кривой немного смещается. Обычно это сотые доли миллиметра в I<sub>50</sub>, заметнее — при высокой дозе за импульс. Включите поправки, чтобы учесть их или оценить для своего пучка: изменение I<sub>50</sub> и PDD(z<sub>ref</sub>) появится в сводке справа. Поправки вносятся до определения I<sub>50</sub>.</p></header>
       <label class="check"><input type="checkbox" id="ed_rec_on"> <span>Поправка на рекомбинацию по глубине</span></label>
       <div class="grid subgrid" data-show="ed_rec_on:true">
-        <div class="field"><label for="ed_rec_ks">k<sub>s</sub> на опорной глубине z<sub>ref</sub></label><input type="text" id="ed_rec_ks" class="num" inputmode="decimal"><span class="sub">методом двух напряжений той же камерой при том же напряжении, в том же пучке</span><button type="button" class="link-btn" id="ed-btn-ks-electrons">Взять из вкладки «Электроны»</button><span class="sub" id="ed-ks-note"></span></div>
-        <div class="field"><label for="ed_rec_cinit">Начальная рекомбинация C<sub>init</sub>, %</label><input type="text" id="ed_rec_cinit" class="num" inputmode="decimal"><span class="sub">не зависит от глубины; пусто — 0</span><button type="button" class="link-btn" id="ed-btn-cinit-jaffe">Взять из графика Яффе</button><span class="sub" id="ed-cinit-note"></span></div>
+        <div class="field"><label for="ed_rec_ks">k<sub>s</sub> на опорной глубине z<sub>ref</sub></label><input type="text" id="ed_rec_ks" class="num" inputmode="decimal"><span class="sub">методом двух напряжений той же камерой при том же напряжении, в том же пучке</span><button type="button" class="link-btn" id="ed-btn-ks-electrons">Взять из вкладки «Электроны»</button><span class="sub" id="ed-ks-note" data-sec-target="electrons"></span></div>
+        <div class="field"><label for="ed_rec_cinit">Начальная рекомбинация C<sub>init</sub>, %</label><input type="text" id="ed_rec_cinit" class="num" inputmode="decimal"><span class="sub">не зависит от глубины; пусто — 0</span><button type="button" class="link-btn" id="ed-btn-cinit-jaffe">Взять из графика Яффе</button><span class="sub" id="ed-cinit-note" data-sec-target="jaffe"></span></div>
         <div class="field out-cell span-2"><span class="label">k<sub>s</sub> по глубине</span><output id="ed-rec-out"></output><span class="sub">Общая рекомбинация пропорциональна дозе за импульс, а она — показанию (сноска 46; разд. 4.4.3.4 e): k<sub>s</sub>(z) = 1 + C<sub>init</sub> + (k<sub>s</sub>(z<sub>ref</sub>) − 1 − C<sub>init</sub>)·M(z)/M(z<sub>ref</sub>).</span></div>
       </div>
       <label class="check"><input type="checkbox" id="ed_pol_on"> <span>Поправка на полярность по глубине — по кривой при обратной полярности</span></label>
@@ -2536,7 +2544,7 @@
       <div class="dose-rows" id="ed-result"></div>
       <div class="transfer">
         <div class="transfer-btns"><button type="button" class="primary" id="ed-btn-transfer">Перенести во вкладку «Электроны»</button></div>
-        <p class="transfer-note" id="ed-transfer-note"></p>
+        <p class="transfer-note" id="ed-transfer-note" data-sec-target="electrons"></p>
       </div>
     </section>
     <section class="panel">

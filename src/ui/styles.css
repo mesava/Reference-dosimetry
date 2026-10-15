@@ -202,6 +202,14 @@ a { color: var(--accent); }
 .purpose { margin: -4px 0 0; padding: 0; list-style: none; display: grid; gap: 5px; max-width: 80ch; font-size: 14px; line-height: 1.45; color: var(--muted); }
 .purpose b { color: var(--ink); font-weight: 600; }
 
+/* ------------------------------------------------------------ ссылки на разделы рабочего листа */
+a.sec-link { color: inherit; text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a.sec-link:hover { color: var(--accent); }
+.sec-flash { animation: sec-flash 1.6s ease-out; }
+@keyframes sec-flash { 0%, 30% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 3px transparent; } }
+@media (prefers-reduced-motion: reduce) { .sec-flash { animation: none; outline: 3px solid var(--accent); } }
+@media print { a.sec-link { text-decoration: none; } }
+
 /* ------------------------------------------------------------ «Начало»: сценарии работы */
 .start { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 18px; }
 .start-head { display: grid; gap: 6px; }
@@ -220,10 +228,10 @@ a { color: var(--accent); }
 .start-go small { font: 400 12.5px var(--font-body); color: var(--muted); }
 .start-go:hover { border-color: var(--accent); color: var(--accent); }
 .start-go:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.start-state { margin: 0; padding: 8px 10px; border-radius: var(--radius); background: var(--accent-soft); font-size: 13.5px; line-height: 1.45; }
+.start-state { margin: 0; overflow-wrap: anywhere; padding: 8px 10px; border-radius: var(--radius); background: var(--accent-soft); font-size: 13.5px; line-height: 1.45; }
 .start-note { margin: 0; font-size: 13px; color: var(--muted); }
+.start-status { max-width: 1180px; margin: -36px auto 36px; padding-inline: 16px; }
 .start-foot { margin: 0; font-size: 13px; color: var(--muted); max-width: 90ch; }
-@media print { #module-start { display: none !important; } }
 
 /* ------------------------------------------------------------ рабочий лист */
 .sheet { display: grid; gap: 14px; min-width: 0; }

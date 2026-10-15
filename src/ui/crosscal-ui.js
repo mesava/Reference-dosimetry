@@ -257,7 +257,13 @@ function renderTransfer(r, ok) {
     );
   }
   if (ok) note += L(' Прежние значения этих полей заменятся.', ' The previous values of these fields will be replaced.');
-  $('#cc-transfer-note').innerHTML = note;
+  const tn = $('#cc-transfer-note');
+  // «раздел 2» здесь — раздел вкладки дозиметрии (ссылка ведёт туда); при переносе в ⁶⁰Co вкладку выбирают кнопкой
+  const secTarget = ok && r.type === 'electrons' ? 'electrons' : ok && r.type === 'photons' ? 'photons' : '';
+  if (secTarget) tn.dataset.secTarget = secTarget;
+  else delete tn.dataset.secTarget;
+  tn.classList.toggle('no-sec-links', !secTarget);
+  tn.innerHTML = note;
 }
 
 function renderReadout(r, data) {

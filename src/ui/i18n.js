@@ -48,7 +48,9 @@ export function tStatic(text) {
  */
 const UNSAFE = 'input, select, textarea, output, [id], [data-out], [data-out-text], .cells, .combo';
 const hasDirectCyr = (el) => [...el.childNodes].some((n) => n.nodeType === 3 && CYR.test(n.nodeValue));
-export const blockKey = (el) => norm(el.innerHTML);
+// ссылки на разделы (sec-links.js) только оборачивают текст: для ключа перевода их снимаем вместе с подписью модальности
+const unlink = (html) => html.replace(/<a class="sec-link"[^>]*>(.*?)<\/a>/g, (m, inner) => inner.replace(/<span class="sec-suf">.*?<\/span>/g, ''));
+export const blockKey = (el) => norm(unlink(el.innerHTML));
 export const isBlock = (el) => hasDirectCyr(el) && !el.querySelector(UNSAFE);
 
 /** Переводит статический текст внутри root на текущий язык (или возвращает русский). */

@@ -9,6 +9,7 @@ import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import { jaffeRecInfo, jaffeSourceText } from './jaffe-ui.js';
 import { makeJournalView } from './journal-view.js';
+import { linkSections } from './sec-links.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
@@ -811,11 +812,13 @@ export function initPhotons() {
     const note = $('#q-cinit-note');
     if (!info) {
       note.innerHTML = richText(L('В «Графике Яффе» нет начальной рекомбинации: нужны показания при V₁ и V₂ в трёх и более условиях (раздел 5) или непрерывный пучок с осью 1/V.', 'The Jaffé plot has no initial recombination: readings at V₁ and V₂ in three or more conditions (section 5) or a continuous beam with the 1/V axis are needed.'));
+      linkSections(note);
       return;
     }
     $('#q_rec_cinit').value = fmt(Math.max(0, info.cInit) * 100, 3);
     $('#q_rec_cinit').dispatchEvent(new Event('input', { bubbles: true }));
     note.innerHTML = richText(jaffeSourceText(info));
+    linkSections(note);
   });
   $('#btn-add-staff').addEventListener('click', () => {
     const cur = readStaff($('#staff-list'));

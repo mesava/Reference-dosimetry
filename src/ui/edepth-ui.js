@@ -1,5 +1,6 @@
 // Вкладка «Камера и пучок» → «Кривая дозы электронов»: пересчёт кривой ионизации в кривую глубинной дозы
 // (ядро — core/edepth.js). Результат (R50,ion или R50, PDD(z_ref), z_max) переносится во вкладку «Электроны».
+import { linkSections } from './sec-links.js';
 import { computeEdepth, ED_DEFAULTS, ED_CHAMBERS, normalizeEdepth, curveCsv, valueAt, swAirBurns } from '../core/edepth.js';
 import { eChamberLabel } from '../core/electron-chambers.js';
 import { SAMPLE_EDEPTH, SAMPLE_EDEPTH_EN } from '../core/sample-edepth.js';
@@ -436,18 +437,21 @@ export function initEdepth() {
     const note = $('#ed-cinit-note');
     if (!info) {
       note.innerHTML = richText(L('В «Графике Яффе» нет начальной рекомбинации: нужны показания при V₁ и V₂ в трёх и более условиях (раздел 5) или непрерывный пучок с осью 1/V.', 'The Jaffé plot has no initial recombination: readings at V₁ and V₂ in three or more conditions (section 5) or a continuous beam with the 1/V axis are needed.'));
+      linkSections(note);
       return;
     }
     $('#ed_rec_cinit').value = fmt(Math.max(0, info.cInit) * 100, 3);
     openedFile = null;
     update();
     note.innerHTML = richText(jaffeSourceText(info));
+    linkSections(note);
   });
   $('#ed-btn-ks-electrons').addEventListener('click', () => {
     const info = electronsKsInfo();
     const note = $('#ed-ks-note');
     if (!info) {
       note.innerHTML = richText(L('Во вкладке «Электроны» k_s не определён: нужны показания при двух напряжениях (раздел 5).', 'The Electrons tab has no k_s: readings at two voltages are needed (section 5).'));
+      linkSections(note);
       return;
     }
     $('#ed_rec_ks').value = fmt(info.ks, 4);
@@ -455,6 +459,7 @@ export function initEdepth() {
     update();
     const who = [info.chamber, info.beam, info.V1 ? `V₁ = ${info.V1} ${L('В', 'V')}` : ''].filter(Boolean).join(', ');
     note.innerHTML = richText(L(`Из вкладки «Электроны»${who ? ` (${who})` : ''}: ${info.tg ? 'P_ion' : 'k_s'} методом двух напряжений. Проверьте, что это та же камера и тот же пучок.`, `From the Electrons tab${who ? ` (${who})` : ''}: ${info.tg ? 'P_ion' : 'k_s'} by the two-voltage method. Check that it is the same chamber and beam.`));
+    linkSections(note);
   });
   $('#ed-btn-pol-file').addEventListener('click', () => $('#ed-pol-input').click());
   $('#ed-pol-input').addEventListener('change', async (e) => {

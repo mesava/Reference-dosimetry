@@ -423,8 +423,8 @@ function renderResults() {
       const where = errs
         ? `<li class="info"><span class="lvl">${esc(L('Где исправить', 'Where to fix'))}</span><span>${esc(
             calc.recorded
-              ? L(`Замечания — те же, что на вкладке ${tab}, номера разделов в них — разделы вкладки. Показания и условия исправляются здесь. Сеанс посчитан по записанным в нём настройкам: чтобы применить исправленные в «Оборудовании», нажмите «Пересчитать по текущему «Оборудованию»» в начале раздела.`, `The messages are those of the ${tab} tab, and section numbers in them refer to the tab. Readings and conditions are fixed here. The session is calculated with the settings recorded in it: to apply settings fixed in Equipment, click "Recalculate with the current Equipment" at the start of the section.`)
-              : L(`Замечания — те же, что на вкладке ${tab}, номера разделов в них — разделы вкладки. Показания и условия исправляются здесь, настройки пучка, камеры и электрометра — в «Оборудовании».`, `The messages are those of the ${tab} tab, and section numbers in them refer to the tab. Readings and conditions are fixed here; beam, chamber and electrometer settings are fixed in Equipment.`),
+              ? L(`Замечания — те же, что на вкладке ${tab}; ссылка на раздел открывает пучок на вкладке, на этом разделе. Показания и условия исправляются здесь. Сеанс посчитан по записанным в нём настройкам: чтобы применить исправленные в «Оборудовании», нажмите «Пересчитать по текущему «Оборудованию»» в начале раздела.`, `The messages are those of the ${tab} tab; a section link opens the beam in the tab at that section. Readings and conditions are fixed here. The session is calculated with the settings recorded in it: to apply settings fixed in Equipment, click "Recalculate with the current Equipment" at the start of the section.`)
+              : L(`Замечания — те же, что на вкладке ${tab}; ссылка на раздел открывает пучок на вкладке, на этом разделе. Показания и условия исправляются здесь, настройки пучка, камеры и электрометра — в «Оборудовании».`, `The messages are those of the ${tab} tab; a section link opens the beam in the tab at that section. Readings and conditions are fixed here; beam, chamber and electrometer settings are fixed in Equipment.`),
           )}</span></li>`
         : '';
       lines.push(`<details class="jsb-msgs"${errs ? ' open' : ''}><summary>${esc(L(`Замечания: ${msgs.length}`, `Messages: ${msgs.length}`))}${errs ? ` · ${esc(L(`ошибок ${errs}`, `${errs} errors`))}` : ''}</summary><ul class="messages">${msgs.map((m) => `<li class="${m.level}"><span class="lvl">${esc(lvlName()[m.level])}</span><span>${richText(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')}${where}</ul></details>`);
@@ -674,6 +674,14 @@ export function initSession() {
     onEdit();
   });
   sheet.addEventListener('click', (e) => {
+    // «раздел N фотонов» в замечаниях пучка: пучок открывается на вкладке дозиметрии сразу на этом разделе
+    const sl = e.target.closest('a.sec-link[data-sec-beam]');
+    if (sl) {
+      e.preventDefault();
+      const c = computed.find((x) => x.input.beamId === sl.dataset.secBeam);
+      if (c?.calc) bridge.openInTab(c.kind, c.calc.form, `${c.calc.machine.name} — ${c.calc.beam.name}, ${fmtDate(draft.date)}`, sl.dataset.secNo);
+      return;
+    }
     if (e.target.closest('#js-btn-current')) {
       useCurrentEquipment();
       return;

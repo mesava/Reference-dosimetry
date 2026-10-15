@@ -14,6 +14,7 @@ import { initEdepth, importEdepth, edepthStatus, setEdepthTransfer } from './ede
 import { initSectionNavs, refreshSectionNav } from './section-nav.js';
 import { initJournalStore, importJournalObject, getJournal, onJournal } from './journal-store.js';
 import { initStart, renderStart } from './start-ui.js';
+import { initSecLinks, revealSection } from './sec-links.js';
 import { initSession, sessionStatus, setSessionBridge, loadSession, sessionUnsaved } from './journal-session-ui.js';
 import { initEquipment, equipmentStatus, setEquipmentBridge, saveBeamFromTab, revealBeam } from './journal-equipment-ui.js';
 import { initHistory, historyStatus, setHistoryBridge } from './journal-history-ui.js';
@@ -24,7 +25,7 @@ const subKey = (group) => `reference-dosimetry.sub.${group}`;
 // tab — вкладка в шапке, к которой относится модуль. Адреса модулей (#photons, #tools, #session…) прежние: так открываются
 // старые ссылки и закладки. Подразделы перечислены в порядке работы.
 const MODULES = {
-  start: { title: () => L('Референсная дозиметрия', 'Reference dosimetry'), file: '-', importData: () => {}, status: () => {}, tab: 'start' },
+  start: { title: () => L('Референсная дозиметрия', 'Reference dosimetry'), file: '-', importData: () => {}, status: (t) => { $('#start-status').textContent = t; }, tab: 'start' },
   equipment: { title: () => L('Журнал — оборудование', 'Journal — equipment'), file: '-', importData: () => {}, status: (t) => equipmentStatus(t), tab: 'journal' },
   session: { title: () => L('Журнал — сеанс на весь аппарат', 'Journal — whole-machine session'), file: 'journal', importData: (obj) => importJournalObject(obj), status: (t) => sessionStatus(t), tab: 'journal' },
   history: { title: () => L('Журнал — сеансы и тренды', 'Journal — sessions and trends'), file: '-', importData: () => {}, status: (t) => historyStatus(t), tab: 'journal' },
@@ -99,8 +100,10 @@ function showModule(name) {
   for (const key of Object.keys(MODULES)) $(`#module-${key}`).hidden = key !== name;
   // вкладка в шапке и переключатель подразделов вкладки
   for (const a of $$('.modules a[data-module]')) {
-    if (a.dataset.module === tabOf(name)) a.setAttribute('aria-current', 'page');
-    else a.removeAttribute('aria-current');
+    if (a.dataset.module === tabOf(name)) {
+      a.setAttribute('aria-current', 'page');
+      a.setAttribute('aria-controls', `module-${name}`);
+    } else a.removeAttribute('aria-current');
   }
   for (const a of $$('.subtools a[data-module]')) {
     if (a.dataset.module === name) a.setAttribute('aria-current', 'page');
@@ -171,18 +174,13 @@ function initTransfer() {
 function initJournalBridges() {
   const toTop = () => window.scrollTo({ top: 0 });
   // пучок журнала во вкладке дозиметрии: фотоны, электроны или ⁶⁰Co
-  const showInTab = (kind, form, opts) => {
-    if (kind === 'electron') {
-      switchTo('electrons');
-      showInElectrons(form, opts);
-    } else if (kind === 'cobalt') {
-      switchTo('co60');
-      showInCobalt(form, opts);
-    } else {
-      switchTo('photons');
-      showInPhotons(form, opts);
-    }
-    toTop();
+  const showInTab = (kind, form, opts, section = '') => {
+    const module = { electron: 'electrons', cobalt: 'co60' }[kind] ?? 'photons';
+    switchTo(module);
+    ({ electrons: showInElectrons, co60: showInCobalt, photons: showInPhotons })[module](form, opts);
+    // ссылка «раздел N» из журнала — сразу к этому разделу
+    if (section) requestAnimationFrame(() => revealSection(module, section) || toTop());
+    else toTop();
   };
   setEquipmentBridge({
     current: (kind) => (kind === 'electron' ? electronsCurrentForm() : kind === 'cobalt' ? cobaltCurrentForm() : photonsCurrentForm()),
@@ -199,7 +197,7 @@ function initJournalBridges() {
   setElectronsJournalSave((target, form, title) => saveToJournal({ ...target, kind: 'electron' }, form, title));
   setCobaltJournalSave((target, form, title) => saveToJournal({ ...target, kind: 'cobalt' }, form, title));
   setSessionBridge({
-    openInTab: (kind, form, title) => showInTab(kind, form, { mode: 'view', title }),
+    openInTab: (kind, form, title, section = '') => showInTab(kind, form, { mode: 'view', title }, section),
     openEquipment: (beamId) => {
       switchTo('equipment');
       revealBeam(beamId);
@@ -350,6 +348,7 @@ function init() {
   // ячейки, списки и подписи модули отрисовали до перевода статического текста: по-английски перерисовать
   if (getLang() === 'en') document.dispatchEvent(new CustomEvent('langchange', { detail: { lang: 'en' } }));
   initSectionNavs();
+  initSecLinks({ go: (name) => switchTo(name) });
   // подразделы, с которыми работали в версиях до 0.12.0 («Инструменты» и «Журнал» в шапке)
   const oldTool = store.get('reference-dosimetry.tool');
   if (!store.get(subKey('prep')) && ['jaffe', 'tools', 'edepth'].includes(oldTool)) store.set(subKey('prep'), oldTool);
