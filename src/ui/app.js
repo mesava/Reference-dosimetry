@@ -15,8 +15,9 @@ import { initSectionNavs, refreshSectionNav } from './section-nav.js';
 import { initJournalStore, importJournalObject, getJournal, onJournal } from './journal-store.js';
 import { initStart, renderStart } from './start-ui.js';
 import { initSecLinks, revealSection } from './sec-links.js';
+import { initTabEquipment } from './tab-equipment-ui.js';
 import { initSession, sessionStatus, setSessionBridge, loadSession, sessionUnsaved } from './journal-session-ui.js';
-import { initEquipment, equipmentStatus, setEquipmentBridge, saveBeamFromTab, revealBeam } from './journal-equipment-ui.js';
+import { initEquipment, equipmentStatus, setEquipmentBridge, saveBeamFromTab, revealBeam, renderMyChambersTool } from './journal-equipment-ui.js';
 import { initHistory, historyStatus, setHistoryBridge } from './journal-history-ui.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
@@ -114,6 +115,8 @@ function showModule(name) {
   store.set(TAB_KEY, name);
   store.set(subKey(tabOf(name)), name);
   if (name === 'start') renderStart();
+  // «Мои камеры» меняются на вкладках дозиметрии: кнопку переноса в журнал обновить при открытии «Оборудования»
+  if (name === 'equipment') renderMyChambersTool();
   refreshSectionNav($(`#module-${name}`));
 }
 
@@ -340,6 +343,12 @@ function init() {
   initHistory();
   initJournalBridges();
   initStart();
+  // камеры и электрометры журнала на вкладках дозиметрии (раздел 2 «Камера и электрометр»)
+  initTabEquipment([
+    { kind: 'cobalt', module: 'co60', box: '#co-jlink', read: cobaltCurrentForm, patch: applyCobaltPatch, status: cobaltStatus, demo: () => !$('#co-demo-flag').hidden },
+    { kind: 'photon', module: 'photons', box: '#ph-jlink', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden },
+    { kind: 'electron', module: 'electrons', box: '#e-jlink', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden },
+  ]);
   setUncSources({ co60: cobaltUncSource, photons: photonsUncSource, electrons: electronsUncSource });
   initTransfer();
   initPaste();

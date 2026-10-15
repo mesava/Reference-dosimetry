@@ -125,10 +125,13 @@ export function electronChamberForm(cf = {}) {
     out.e_ch_model = 'OTHER';
     out.e_other_name = m === 'CUSTOM' ? [cf.cc_maker, cf.cc_model].filter((x) => !isBlank(x)).join(' ') : findChamber(m) ? chamberLabel(findChamber(m)) : String(m);
     out.e_other_type = 'cyl';
-    out.e_other_r = cf.cc_radius ?? '';
+    // радиус полости: у своей камеры — её параметр, у камеры из базы фотонов — из базы
+    const dbR = findChamber(m)?.rCavMm;
+    out.e_other_r = m === 'CUSTOM' ? (cf.cc_radius ?? '') : Number.isFinite(dbR) ? String(dbR).replace('.', ',') : '';
   }
   for (const [ph, e] of CH_COMMON) if (ph in cf) out[e] = cf[ph];
-  for (const k of CH_E_ONLY) if (k in cf && !isBlank(cf[k])) out[k] = cf[k];
+  // название, тип и радиус «другой» камеры хранятся только у «другой»: у своей и у камеры из базы они берутся выше
+  for (const k of CH_E_ONLY) if (k in cf && !isBlank(cf[k]) && (m === 'OTHER' || !k.startsWith('e_other_'))) out[k] = cf[k];
   return out;
 }
 /** Поля камеры вкладки «Электроны» → запись камеры. */
@@ -747,6 +750,8 @@ function tabForm(form, kind) {
   }
   const f = normalizeForm(form);
   if (String(f.ch_model).startsWith('MY:')) f.ch_model = 'CUSTOM';
+  // то же у фотонов: поля своей камеры у камеры из базы — от прежней своей камеры
+  if (f.ch_model !== 'CUSTOM') for (const k of PH_CHAMBER_KEYS) if (k.startsWith('cc_')) f[k] = FORM_DEFAULTS[k];
   return f;
 }
 const copyJournal = (j) => ({ ...j, chambers: j.chambers.map((c) => ({ ...c, form: { ...c.form } })), electrometers: j.electrometers.map((e) => ({ ...e, form: { ...e.form } })), machines: j.machines.map((m) => ({ ...m, beams: m.beams.map((b) => ({ ...b, form: { ...b.form } })) })) });
@@ -766,10 +771,27 @@ function matchElectrometer(journal, elForm) {
   journal.electrometers.push(added);
   return { el: added, added: true };
 }
-/** Поля записи камеры, которые вкладка данного вида может изменить (у электронов и ⁶⁰Co модель записи не трогаем). */
-const chamberUpdate = (chForm, kind) => {
+/**
+ * Поля записи камеры, которые вкладка данного вида может изменить (у электронов и ⁶⁰Co модель записи не трогаем).
+ * recForm — запись журнала: у своей камеры и камеры из базы, показанных на вкладке «Электроны» «другой» камерой,
+ * название и тип не записываются, а радиус своей камеры записывается в её параметр cc_radius.
+ */
+const chamberUpdate = (chForm, kind, recForm = {}) => {
   if (kind !== 'electron' && kind !== 'cobalt') return chForm;
   const { ch_model, ...rest } = chForm;
+  if (kind === 'electron' && recForm.ch_model !== 'OTHER') {
+    const { e_other_name, e_other_type, e_other_r, ...own } = rest;
+    if (recForm.ch_model === 'CUSTOM' && e_other_r !== undefined) own.cc_radius = e_other_r;
+    return own;
+  }
+  if (kind === 'cobalt') {
+    // своя камера вкладки «⁶⁰Co» — это своя камера, «другая» или камера из базы электронов записи: её название
+    // хранится в поле своего вида, остальные поля названия в запись не попадают
+    const { e_other_name, e_other_type, cc_maker, cc_model, ...own } = rest;
+    if (recForm.ch_model === 'OTHER') return { ...own, ...pick(rest, ['e_other_name', 'e_other_type']) };
+    if (recForm.ch_model === 'CUSTOM') return { ...own, ...pick(rest, ['cc_maker', 'cc_model']) };
+    return own;
+  }
   return rest;
 };
 
@@ -835,7 +857,7 @@ export function applyTabFormToBeam(j, machineId, beamId, form, kind = 'photon') 
     res.chamber = 'same';
   } else if (!isBlank(chForm.ch_model)) {
     const { ch, added } = matchChamber(journal, chForm, kind);
-    if (!added) ch.form = { ...ch.form, ...chamberUpdate(chForm, kind) };
+    if (!added) ch.form = { ...ch.form, ...chamberUpdate(chForm, kind, ch.form) };
     b.chamberId = ch.id;
     res.chamber = added ? 'added' : 'found';
   }
@@ -857,3 +879,138 @@ export const applyPhotonsFormToBeam = (j, machineId, beamId, form) => applyTabFo
 
 /** Средние показания пучка (для таблицы сеанса). */
 export const meanOf = mean;
+
+// ---------------------------------------------------------------- камеры отделения на вкладках дозиметрии
+// Вкладка дозиметрии видит камеры и электрометры журнала: выбор подставляет их поля, а если поля вкладки отличаются от
+// записи журнала (например, N_D,w после новой поверки), это видно, и можно взять значения из журнала или записать в него.
+
+/** Поля камеры вкладки, которые сравниваются с журналом: без модели и номера и без того, что сейчас не используется. */
+function chamberCompareKeys(kind, f, rec = {}) {
+  return kindOf(kind).chamberKeys.filter((k) => {
+    if (/(^|_)ch_(model|serial)$/.test(k)) return false;
+    if (/lab_kpol$/.test(k)) return !f[k.replace('lab_kpol', 'lab_pol_applied')];
+    if (/lab_ks$/.test(k)) return !f[k.replace('lab_ks', 'lab_ks_applied')];
+    if (kind === 'photon') {
+      if (/^ch_cross_/.test(k)) return f.ch_cal_route === 'cross';
+      if (/^ch_(ndw|ndw_unit|klab)$/.test(k)) return f.ch_cal_route !== 'cross';
+      if (/^cc_/.test(k)) return f.ch_model === 'CUSTOM';
+    }
+    if (kind === 'electron') {
+      if (/^e_cross_/.test(k)) return f.e_cal_route === 'cross';
+      if (/^e_(ndw|ndw_unit|klab)$/.test(k)) return f.e_cal_route !== 'cross';
+      if (/^e_other_/.test(k)) {
+        if (f.e_ch_model !== 'OTHER') return false;
+        // своя камера и камера из базы фотонов: название и тип — от записи; радиус своей камеры сравнивается, из базы — нет
+        if (rec.ch_model !== 'OTHER') return k === 'e_other_r' && rec.ch_model === 'CUSTOM';
+        return k !== 'e_other_r' || f.e_other_type === 'cyl';
+      }
+    }
+    // ⁶⁰Co: название и тип своей камеры — её тождество (по ним камера найдена), на расчёт не влияют (k_Q = 1)
+    if (kind === 'cobalt' && /^co_cc_/.test(k)) return false;
+    return true;
+  });
+}
+
+/** Одинаковые значения поля: числа сравниваются как числа (1,000 = 1), флажки — как флажки, текст — без пробелов по краям. */
+function sameValue(a, b) {
+  if (typeof a === 'boolean' || typeof b === 'boolean') return !!a === !!b;
+  const x = parseNumber(a);
+  const y = parseNumber(b);
+  if (Number.isFinite(x) && Number.isFinite(y)) return Math.abs(x - y) <= 1e-12 * Math.max(1, Math.abs(x));
+  return String(a ?? '').trim() === String(b ?? '').trim();
+}
+
+/**
+ * Камера и электрометр вкладки в журнале: найденные записи (по модели и номеру) и поля, которые отличаются.
+ * Возвращает { chamber, chamberDiffs: [{ key, tab, journal }], electrometer, electrometerDiffs }.
+ */
+export function tabEquipment(j, form, kind = 'photon') {
+  const K = kindOf(kind);
+  const f = tabForm(form, kind);
+  const chForm = K.chamberFromTab(f);
+  const elForm = K.electrometerFromTab(f);
+  const chamber = isBlank(chForm.ch_model) ? null : j.chambers.find((c) => sameChamber(c.form, chForm, kind)) ?? null;
+  const elBlank = isBlank(elForm.el_model) && isBlank(elForm.el_serial);
+  const electrometer = elBlank ? null : j.electrometers.find((e) => sameElectrometer(e.form, elForm)) ?? null;
+  // запись журнала на вкладке: поля, которых в записи нет, — по умолчанию (а не как на вкладке)
+  const diffs = (rec, recToTab, keys, own) => {
+    if (!rec) return [];
+    const jf = K.normalize({ ...K.defaults, ...f, ...Object.fromEntries(own.map((k) => [k, K.defaults[k]])), ...recToTab(rec.form) });
+    return keys.filter((k) => !sameValue(f[k], jf[k])).map((k) => ({ key: k, tab: f[k], journal: jf[k] }));
+  };
+  return {
+    chamber,
+    chamberDiffs: diffs(chamber, K.chamberForm, chamberCompareKeys(kind, f, chamber?.form), K.chamberKeys),
+    electrometer,
+    electrometerDiffs: diffs(electrometer, K.electrometerForm, K.electrometerKeys.filter((k) => !/_(model|serial)$/.test(k)), K.electrometerKeys),
+    hasChamber: !isBlank(chForm.ch_model),
+    hasElectrometer: !elBlank,
+  };
+}
+
+/** Поля вкладки из записи камеры (электрометра) журнала — для «взять из журнала». */
+// поля, которых в записи нет, — по умолчанию (как их видит сверка tabEquipment), а не прежние значения вкладки
+export const chamberTabFields = (rec, kind = 'photon') => {
+  const K = kindOf(kind);
+  return { ...pick(K.defaults, K.chamberKeys), ...K.chamberForm(rec?.form || {}) };
+};
+export const electrometerTabFields = (rec, kind = 'photon') => {
+  const K = kindOf(kind);
+  return { ...pick(K.defaults, K.electrometerKeys), ...K.electrometerForm(rec?.form || {}) };
+};
+
+/**
+ * Записать камеру и (или) электрометр вкладки в журнал: та же запись (модель и номер совпали) обновляется полями вкладки
+ * (у электронов и ⁶⁰Co модель записи не меняется), иначе добавляется новая. Возвращает
+ * { journal, chamber: 'updated' | 'added' | 'none', electrometer: …, chamberId, electrometerId }.
+ */
+export function applyTabEquipment(j, form, kind = 'photon', { chamber = true, electrometer = true } = {}) {
+  const K = kindOf(kind);
+  const f = tabForm(form, kind);
+  const journal = copyJournal(j);
+  const res = { journal, chamber: 'none', electrometer: 'none', chamberId: '', electrometerId: '' };
+  if (chamber) {
+    const chForm = K.chamberFromTab(f);
+    if (!isBlank(chForm.ch_model)) {
+      const { ch, added } = matchChamber(journal, chForm, kind);
+      if (!added) ch.form = { ...ch.form, ...chamberUpdate(chForm, kind, ch.form) };
+      res.chamber = added ? 'added' : 'updated';
+      res.chamberId = ch.id;
+    }
+  }
+  if (electrometer) {
+    const elForm = K.electrometerFromTab(f);
+    if (!isBlank(elForm.el_model) || !isBlank(elForm.el_serial)) {
+      const { el, added } = matchElectrometer(journal, elForm);
+      if (!added) el.form = { ...el.form, ...elForm };
+      res.electrometer = added ? 'added' : 'updated';
+      res.electrometerId = el.id;
+    }
+  }
+  return res;
+}
+
+/**
+ * «Мои камеры» браузера (свои камеры вкладок, без номера и N_D,w) → записи журнала: цилиндрическая — своя камера
+ * (поля cc_*), плоскопараллельная — «другая». Камеры с той же моделью, что уже есть в журнале, пропускаются.
+ * Возвращает { journal, added: [названия] }.
+ */
+export function myChambersToJournal(j, mine) {
+  const journal = copyJournal(j);
+  const added = [];
+  // та же камера могла попасть в журнал своей (с «МВ фотонов») или «другой» (с «Электронов» или «⁶⁰Co»)
+  const has = (name) =>
+    journal.chambers.some((c) => (c.form.ch_model === 'OTHER' && norm(c.form.e_other_name) === norm(name)) || (c.form.ch_model === 'CUSTOM' && norm([c.form.cc_maker, c.form.cc_model].filter((x) => !isBlank(x)).join(' ')) === norm(name)));
+  for (const m of Array.isArray(mine) ? mine : []) {
+    const name = [m.cc_maker, m.cc_model].filter((x) => !isBlank(x)).join(' ');
+    if (isBlank(name)) continue;
+    const pp = m.cc_type === 'pp';
+    if (has(name)) continue;
+    const form = pp
+      ? { ch_model: 'OTHER', e_other_name: name, e_other_type: 'pp', ch_serial: '', ch_ndw: '', ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', ch_T0: '20', ch_P0: '101,325' }
+      : { ch_model: 'CUSTOM', ...Object.fromEntries(PH_CHAMBER_KEYS.filter((k) => k.startsWith('cc_') && k in m).map((k) => [k, m[k]])), ch_serial: '', ch_ndw: '', ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', ch_T0: '20', ch_P0: '101,325' };
+    journal.chambers.push({ ...CHAMBER_DEFAULTS, id: uid('ch'), form, notes: '' });
+    added.push(name);
+  }
+  return { journal, added };
+}

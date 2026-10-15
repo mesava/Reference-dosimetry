@@ -12,8 +12,9 @@ import * as TRS from '../core/trs398.js';
 import {
   uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, beamFromTabForm, applyTabFormToBeam, equipmentDue,
   chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable, electronChamberForm, beamKind, lastCalibration,
-  cobaltCapable, cobaltChamberForm,
+  cobaltCapable, cobaltChamberForm, myChambersToJournal,
 } from '../core/journal.js';
+import { getMyChambers } from './store.js';
 import { $, esc, fmt, makeStatus, armButton, notifyUpdate, today, richText, currentProtocol, plainSymbols } from './common.js';
 import { localizeDecimals } from './i18n.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
@@ -494,6 +495,35 @@ function machineCard(j, m) {
   </div>`;
 }
 
+// ------------------------------------------------------------ «Мои камеры» → журнал
+// Свои камеры, сохранённые на вкладках «МВ фотоны» и «⁶⁰Co» («Сохранить в «Мои камеры»»), живут только в этом браузере.
+// Кнопка переносит в журнал те, которых там ещё нет (по названию): журнал — файл, его видят все в отделении.
+/** Кнопка «Перенести «Мои камеры» в журнал» — только если есть что переносить. */
+export function renderMyChambersTool() {
+  const box = $('#eq-mine');
+  if (!box) return;
+  const n = myChambersToJournal(getJournal(), getMyChambers()).added.length;
+  box.innerHTML = n
+    ? `<button type="button" class="link-btn" id="eq-import-mine">${esc(L(`Перенести «Мои камеры» в журнал (${n})`, `Copy “My chambers” to the journal (${n})`))}</button>`
+    : '';
+}
+function importMine() {
+  let added = [];
+  updateJournal((j) => {
+    const res = myChambersToJournal(j, getMyChambers());
+    added = res.added;
+    return res.journal;
+  }, 'equipment');
+  setStatus(
+    added.length
+      ? L(
+          `В журнал перенесены камеры из «Моих камер»: ${added.join(', ')}. Укажите у них номер, калибровочный коэффициент и даты калибровки и сохраните журнал в файл.`,
+          `Chambers copied from “My chambers” to the journal: ${added.join(', ')}. Enter their serial numbers, calibration coefficients and calibration dates and save the journal to the file.`,
+        )
+      : L('Все «Мои камеры» уже есть в журнале.', 'All “My chambers” are already in the journal.'),
+  );
+}
+
 // ------------------------------------------------------------ отрисовка
 const openBeams = new Set();
 function render() {
@@ -506,6 +536,7 @@ function render() {
     if (btn.disabled) continue;
     armButton(btn, btn.textContent, () => L('Нажмите ещё раз, чтобы удалить', 'Click again to delete'), () => remove(btn.dataset.del));
   }
+  renderMyChambersTool();
   localizeDecimals(ROOT());
   renderReadout();
   notifyUpdate(ROOT());
@@ -751,6 +782,8 @@ function onClick(e) {
       j.chambers.push({ ...CHAMBER_DEFAULTS, id: uid('ch'), form: { ch_model: '', ch_serial: '', ch_ndw: '', ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', ch_T0: '20', ch_P0: '101,325' } });
       return j;
     }, 'equipment');
+  } else if (t.id === 'eq-import-mine') {
+    importMine();
   } else if (t.id === 'eq-add-electrometer') {
     updateJournal((j) => {
       j.electrometers.push({ ...ELECTROMETER_DEFAULTS, id: uid('el'), form: { el_model: '', el_serial: '', el_kelec: '1,000' } });

@@ -556,3 +556,94 @@ test('⁶⁰Co: скрытые поля своей камеры на вклад�
   // настоящее изменение N_D,w — сообщается, что камера общая
   assert.deepEqual(applyTabFormToBeam(j, 'mc', 'bco', { ...SAMPLE_COBALT, co_ndw: '0,04600' }, 'cobalt').sharedChamber, ['Linac — 6 MV']);
 });
+
+test('единая база камер: камера вкладки в журнале, отличия полей, запись в журнал, «Мои камеры»', async () => {
+  const { tabEquipment, applyTabEquipment, chamberTabFields, myChambersToJournal } = await import('../src/core/journal.js');
+  const j = journal();
+  // вкладка «МВ фотоны» с той же камерой и электрометром, N_D,w как в журнале — отличий нет
+  const tab = { ...FORM_DEFAULTS, ch_model: 'PTW30013', ch_serial: '1', ch_ndw: '0,05389', ch_klab: '1', ch_T0: '20', ch_P0: '101,325', el_model: 'UNIDOS', el_serial: '3', el_kelec: '1,000' };
+  let t = tabEquipment(j, tab, 'photon');
+  assert.equal(t.chamber.id, 'c30013');
+  assert.equal(t.electrometer.id, 'e1');
+  assert.deepEqual(t.chamberDiffs, []);
+  assert.deepEqual(t.electrometerDiffs, []);
+  // после новой поверки N_D,w и k_лаб на вкладке другие
+  t = tabEquipment(j, { ...tab, ch_ndw: '0,05400', ch_klab: '1,002', el_kelec: '0,999' }, 'photon');
+  assert.deepEqual(t.chamberDiffs.map((d) => d.key).sort(), ['ch_klab', 'ch_ndw']);
+  assert.deepEqual(t.electrometerDiffs.map((d) => d.key), ['el_kelec']);
+  // поправка лаборатории сравнивается, только если лаборатория её не внесла
+  assert.deepEqual(tabEquipment(j, { ...tab, lab_kpol: '1,003' }, 'photon').chamberDiffs, []);
+  assert.deepEqual(tabEquipment(j, { ...tab, lab_pol_applied: false, lab_kpol: '1,003' }, 'photon').chamberDiffs.map((d) => d.key), ['lab_pol_applied', 'lab_kpol']);
+  // записать в журнал: та же запись обновляется, исходный журнал не меняется
+  const r = applyTabEquipment(j, { ...tab, ch_ndw: '0,05400' }, 'photon');
+  assert.deepEqual([r.chamber, r.chamberId, r.electrometer], ['updated', 'c30013', 'updated']);
+  assert.equal(r.journal.chambers.find((c) => c.id === 'c30013').form.ch_ndw, '0,05400');
+  assert.equal(j.chambers.find((c) => c.id === 'c30013').form.ch_ndw, c(0.05389));
+  // камеры нет в журнале — добавляется
+  const r2 = applyTabEquipment(j, { ...tab, ch_serial: '999' }, 'photon', { electrometer: false });
+  assert.equal(r2.chamber, 'added');
+  assert.equal(r2.journal.chambers.length, j.chambers.length + 1);
+  assert.equal(tabEquipment(j, { ...tab, ch_serial: '999' }, 'photon').chamber, null);
+  // взять из журнала: поля вкладки электронов из общей записи (ROOS — та же модель, N_D,w из журнала)
+  const je = normalizeJournal({ ...j, chambers: [...j.chambers, { id: 'croos', form: { ch_model: 'ROOS', ch_serial: '7', ch_ndw: '0,08287', ch_klab: '1,001' } }] });
+  const ef = chamberTabFields(je.chambers.at(-1), 'electron');
+  assert.deepEqual([ef.e_ch_model, ef.e_ch_serial, ef.e_ndw, ef.e_klab], ['ROOS', '7', '0,08287', '1,001']);
+  const te = tabEquipment(je, { ...E_DEFAULTS, ...ef }, 'electron');
+  assert.equal(te.chamber.id, 'croos');
+  assert.deepEqual(te.chamberDiffs, []);
+  // ⁶⁰Co: та же камера, своё k_лаб на вкладке
+  const tc = tabEquipment(je, { ...chamberTabFields(je.chambers[0], 'cobalt'), co_klab: '1,005' }, 'cobalt');
+  assert.equal(tc.chamber.id, 'c30013');
+  assert.deepEqual(tc.chamberDiffs.map((d) => d.key), ['co_klab']);
+  // «Мои камеры» → журнал: цилиндрическая — своя, плоскопараллельная — «другая»; повторно не добавляются
+  const mine = [{ id: 'MY:1', cc_maker: 'A', cc_model: 'X-1', cc_volume: '0,6', cc_type: 'cyl' }, { id: 'MY:2', cc_maker: '', cc_model: 'PP-2', cc_type: 'pp' }, { id: 'MY:3', cc_model: '' }];
+  const m1 = myChambersToJournal(j, mine);
+  assert.deepEqual(m1.added, ['A X-1', 'PP-2']);
+  assert.deepEqual([m1.journal.chambers.at(-2).form.ch_model, m1.journal.chambers.at(-2).form.cc_volume, m1.journal.chambers.at(-1).form.ch_model], ['CUSTOM', '0,6', 'OTHER']);
+  assert.deepEqual(myChambersToJournal(m1.journal, mine).added, []);
+});
+
+test('единая база камер: «взять из журнала» и «записать в журнал» сходятся для всех видов камер', async () => {
+  const { tabEquipment, applyTabEquipment, chamberTabFields, electrometerTabFields, myChambersToJournal } = await import('../src/core/journal.js');
+  const base = normalizeJournal({ ...journal(), chambers: [{ id: 'c1', form: { ch_model: 'PTW30013', ch_serial: '1', ch_ndw: '0,05389' } }], electrometers: [{ id: 'e1', form: { el_model: 'UNIDOS', el_serial: '3' } }] });
+  // запись без части полей: «взять» ставит недостающие по умолчанию — отличий нет, в том числе единицы N_D,w
+  const kinds = { photon: FORM_DEFAULTS, electron: E_DEFAULTS, cobalt: CO_DEFAULTS };
+  const odd = { photon: { ch_ndw_unit: 'cGy/nC', lab_pol_applied: false, lab_kpol: '1,01', ch_klab: '1,02' }, electron: { e_ndw_unit: 'cGy/nC', e_klab: '1,02' }, cobalt: { co_ndw_unit: 'cGy/nC', co_klab: '1,02', co_kelec: '1,003' } };
+  for (const [kind, D] of Object.entries(kinds)) {
+    if (kind === 'electron') continue; // PTW30013 на электронах — «другая» камера, проверено ниже
+    const tab = { ...D, ...odd[kind] };
+    const f = { ...tab, ...chamberTabFields(base.chambers[0], kind), ...electrometerTabFields(base.electrometers[0], kind) };
+    const t = tabEquipment(base, f, kind);
+    assert.equal(t.chamber?.id, 'c1', kind);
+    assert.deepEqual(t.chamberDiffs, [], kind);
+    assert.deepEqual(t.electrometerDiffs, [], kind);
+  }
+  // ⁶⁰Co: своя плоскопараллельная камера с производителем — после «Добавить в журнал» как в журнале
+  const co = { ...CO_DEFAULTS, co_ch_model: 'CUSTOM', co_cc_maker: 'Sun Nuclear', co_cc_model: 'PPC05', co_cc_type: 'pp', co_ch_serial: '42', co_ndw: '0,0830' };
+  const a = applyTabEquipment(base, co, 'cobalt', { electrometer: false });
+  assert.equal(a.chamber, 'added');
+  assert.deepEqual(tabEquipment(a.journal, co, 'cobalt').chamberDiffs, []);
+  const a2 = applyTabEquipment(a.journal, { ...co, co_ndw: '0,0831' }, 'cobalt', { electrometer: false });
+  assert.equal(a2.chamber, 'updated');
+  assert.equal(a2.journal.chambers.at(-1).form.e_other_name, 'Sun Nuclear PPC05');
+  // своя цилиндрическая камера: радиус, записанный с «Электронов», — параметр своей камеры, его видят «МВ фотоны»
+  const jc = normalizeJournal({ ...base, chambers: [{ id: 'cc', form: { ch_model: 'CUSTOM', cc_maker: 'A', cc_model: 'X', cc_radius: '3', ch_serial: '5', ch_ndw: '0,05' } }] });
+  const ef = { ...E_DEFAULTS, ...chamberTabFields(jc.chambers[0], 'electron') };
+  assert.deepEqual([ef.e_ch_model, ef.e_other_r], ['OTHER', '3']);
+  const w = applyTabEquipment(jc, { ...ef, e_other_r: '3,5' }, 'electron', { electrometer: false });
+  assert.deepEqual([w.chamber, w.journal.chambers[0].form.cc_radius, w.journal.chambers[0].form.ch_model, 'e_other_r' in w.journal.chambers[0].form], ['updated', '3,5', 'CUSTOM', false]);
+  assert.deepEqual(tabEquipment(w.journal, { ...ef, e_other_r: '3,5' }, 'electron').chamberDiffs, []);
+  const ph = { ...FORM_DEFAULTS, ...chamberTabFields(w.journal.chambers[0], 'photon') };
+  const w2 = applyTabEquipment(w.journal, { ...ph, cc_radius: '4' }, 'photon', { electrometer: false });
+  assert.equal(chamberTabFields(w2.journal.chambers[0], 'electron').e_other_r, '4');
+  // камера из базы фотонов на «Электронах»: радиус — из базы; скрытые поля своей камеры вкладки в журнал не попадают
+  const st = applyTabEquipment(base, { ...FORM_DEFAULTS, ch_model: 'PR06C', ch_serial: '9', ch_ndw: '0,05', cc_radius: '7', cc_maker: 'old' }, 'photon', { electrometer: false });
+  const pr = st.journal.chambers.at(-1);
+  assert.equal(pr.form.cc_radius, FORM_DEFAULTS.cc_radius);
+  const pe = chamberTabFields(pr, 'electron');
+  assert.deepEqual([pe.e_ch_model, pe.e_other_type, pe.e_other_r], ['OTHER', 'cyl', '3,2']);
+  assert.deepEqual(tabEquipment(st.journal, { ...E_DEFAULTS, ...pe }, 'electron').chamberDiffs, []);
+  // «Мои камеры»: та же камера, уже записанная «другой» с вкладки «Электроны», повторно не добавляется
+  const jo = normalizeJournal({ ...base, chambers: [{ id: 'o', form: { ch_model: 'OTHER', e_other_name: 'Bar Cyl', e_other_type: 'cyl' } }] });
+  assert.deepEqual(myChambersToJournal(jo, [{ id: 'MY:1', cc_maker: 'Bar', cc_model: 'Cyl', cc_type: 'cyl' }]).added, []);
+});

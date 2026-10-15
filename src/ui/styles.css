@@ -984,6 +984,21 @@ textarea.curve-data { min-height: 200px; height: 220px; font: 12.5px/1.45 var(--
 .jf-clean { color: var(--ok); }
 .journal-bar { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: var(--radius); padding: 10px 14px; display: grid; gap: 8px; }
 .journal-bar p { margin: 0; font-size: 13.5px; }
+/* «Журнал отделения» в разделе «Камера и электрометр» вкладок дозиметрии */
+.jlink { border: 1px solid var(--rule); background: var(--calc); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 12px; display: grid; gap: 6px; }
+.jlink-sts { display: grid; gap: 4px; }
+.jlink-sts:empty { display: none; }
+.jlink-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.jlink-h { font-size: 12.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.jlink-row select { flex: 1 1 220px; min-width: 0; max-width: 100%; }
+.jlink-st { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.jlink-st::before { content: "●"; margin-right: 6px; font-size: 10px; vertical-align: 1px; }
+.jlink-st.ok::before { color: var(--ok); }
+.jlink-st.warn::before { color: var(--warn); }
+.jlink-st.none::before { color: var(--muted); }
+.jlink-st.warn { color: var(--ink); }
+.jlink-st .link-btn { white-space: nowrap; }
+.jlink-st .link-btn + .link-btn { margin-left: 12px; }
 .jsb.off .jsb-body { opacity: 0.45; }
 .jsb-info { margin: -4px 0 0; font-size: 12.5px; color: var(--muted); }
 .jsb-body { display: grid; gap: 12px; }
