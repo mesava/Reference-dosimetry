@@ -79,14 +79,27 @@ test('k_s: ур. (13) и ур. (14) согласуются в пределах 0
   for (const n of [2, 2.5, 3, 3.5, 4, 5]) {
     for (const r of [1.001, 1.005, 1.01, 1.02]) {
       const eq13 = ks({ m1: r, m2: 1, v1: 300, v2: 300 / n }).value;
-      const eq14 = 1 + (r - 1) / (n - 1);
+      const eq14 = (n - 1) / (n - r);
       if (eq14 < 1.03) near(eq13, eq14, 0.001, `n=${n}, M1/M2=${r}`);
     }
   }
   const off = ks({ m1: 1.004, m2: 1, v1: 300, v2: 130 });
   assert.match(off.equation, /ур\. \(14\)/);
-  near(off.value, 1 + 0.004 / (300 / 130 - 1), 1e-12);
+  const n = 300 / 130;
+  near(off.value, (n - 1) / (n - 1.004), 1e-12);
   assert.ok(ks({ m1: 1.004, m2: 1, v1: 300, v2: 130, beam: 'scanned' }).error);
+  assert.ok(ks({ m1: 3, m2: 1, v1: 300, v2: 130 }).error, 'M1/M2 ≥ n — ур. (14) неприменимо');
+});
+
+test('k_s по ур. (14) Rev.1: (n − 1)/(n − M1/M2), а не приближение первого издания', () => {
+  // 400/150 В, M1/M2 = 1,03268: k_s = 1,02 по Rev.1; формула первого издания дала бы на 0,04 % меньше
+  const n = 400 / 150;
+  const r = n - (n - 1) / 1.02;
+  const k = ks({ m1: r, m2: 1, v1: 400, v2: 150 }).value;
+  near(k, 1.02, 1e-12);
+  const old = 1 + (r - 1) / (n - 1);
+  near(k - old, (r - 1) ** 2 / ((n - r) * (n - 1)), 1e-12);
+  assert.ok(k / old - 1 > 3.5e-4 && k / old - 1 < 4.5e-4);
 });
 
 test('TG-51 P_ion и TRS-398 k_s близки для одних и тех же показаний', () => {

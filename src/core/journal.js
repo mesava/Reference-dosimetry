@@ -599,6 +599,9 @@ function cobaltSummary(r) {
     kQName: 'k_Q',
     quality: NaN,
     tauMin: timed && Number.isFinite(r.timer.tau) ? r.timer.tau * toMin : NaN,
+    // калибровочные коэффициенты: их смена начинает новый отсчёт контрольной карты
+    ndw: Number(r.inputs?.ndw),
+    kelec: Number(r.inputs?.kelec),
     errors,
     warns,
   };
@@ -642,6 +645,9 @@ export function beamSummary(r, kind = 'photon') {
     // при перекрёстной калибровке это не k_Q,Q₀: TRS-398 — k_Q,Qcross (ур. 30, 44), Report 385 — k′_Q (ур. 6)
     kQName: r.inputs?.cross ? (tg && kind === 'electron' ? 'k′_Q' : 'k_Q,Qcross') : 'k_Q',
     quality: kind === 'electron' ? r.quality?.r50 : tg ? x.pdd10x : x.tpr, // R50 (электроны), %dd(10)x или TPR20,10
+    // калибровочные коэффициенты: их смена начинает новый отсчёт контрольной карты
+    ndw: Number(r.inputs?.ndwEff),
+    kelec: Number(r.inputs?.kelec),
     errors,
     warns,
   };
@@ -681,7 +687,10 @@ export function finalizeSession(j, session, opts = {}) {
 
 /** Добавить или заменить сеанс в журнале (новый объект журнала). */
 export function upsertSession(j, s) {
-  const sessions = j.sessions.filter((x) => x.id !== s.id).concat([s]).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  // отметку «новый отсчёт контрольной карты» ставят в «Журнале и трендах»; повторная запись сеанса её не снимает
+  const old = j.sessions.find((x) => x.id === s.id);
+  const rec = old?.spcRestart && s.spcRestart === undefined ? { ...s, spcRestart: true } : s;
+  const sessions = j.sessions.filter((x) => x.id !== s.id).concat([rec]).sort((a, b) => String(a.date).localeCompare(String(b.date)));
   return { ...j, sessions };
 }
 
@@ -712,6 +721,38 @@ export function trendSeries(j, machineId) {
     }
     return { beam, kind: beamKind(beam), points: points.filter((p) => Number.isFinite(p.day)).sort((a, b) => a.day - b.day) };
   });
+}
+
+/**
+ * Точки контрольной карты пучка (core/spc.js controlChart) по сеансам аппарата.
+ * Сеанс с подстройкой ускорителя даёт две точки: «до подстройки» (последняя в прежнем отсчёте) и «после» — с неё
+ * начинается новый отсчёт. Новый отсчёт начинается и при смене камеры, электрометра, N_D,w или k_elec (сравниваются
+ * только известные значения: в сеансах до версии 0.16.0 коэффициенты не записывались) и по отметке «новый отсчёт»
+ * у сеанса (session.spcRestart).
+ */
+export function controlPoints(j, machineId, beamId) {
+  const out = [];
+  let prev = null;
+  const differs = (a, b) => !isBlank(a) && !isBlank(b) && a !== b;
+  const differsNum = (a, b) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a / b - 1) > 1e-9;
+  for (const s of j.sessions) {
+    if (s.machineId !== machineId) continue;
+    const b = s.beams.find((x) => x.beamId === beamId && x.summary);
+    const day = dayNumber(s.date);
+    if (!b || !Number.isFinite(day) || !Number.isFinite(b.summary.deviation)) continue;
+    const sum = b.summary;
+    const sig = { chamberId: b.chamberId || '', electrometerId: b.electrometerId || '', ndw: Number(sum.ndw), kelec: Number(sum.kelec) };
+    const equipment = prev && (differs(sig.chamberId, prev.chamberId) || differs(sig.electrometerId, prev.electrometerId) || differsNum(sig.ndw, prev.ndw) || differsNum(sig.kelec, prev.kelec));
+    const base = { day, date: s.date, sessionId: s.id, mode: s.mode, tol: sum.tol };
+    let restart = equipment ? 'equipment' : s.spcRestart ? 'manual' : '';
+    if (sum.source === 'recal' && Number.isFinite(sum.preDeviation)) {
+      out.push({ ...base, value: sum.preDeviation, stage: 'found', restart: !!restart, reason: restart || undefined });
+      restart = 'adjust';
+    }
+    out.push({ ...base, value: sum.deviation, stage: restart === 'adjust' ? 'left' : 'single', restart: !!restart && out.length > 0, reason: restart || undefined });
+    prev = sig;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- перенос из вкладок дозиметрии

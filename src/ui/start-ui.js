@@ -31,7 +31,9 @@ function journalLine() {
     last ? L(`последний сеанс ${fmtDate(last.date)}`, `last session ${fmtDate(last.date)}`) : L('сеансов пока нет', 'no sessions yet'),
   ];
   let text = `${parts.join('; ')}.`;
-  if (f.dirty) text += L(' Есть изменения, не сохранённые в файл.', ' There are changes not saved to the file.');
+  if (f.conflict) text += L(' Файл журнала изменили в другом месте — выберите версию в панели «Файл журнала».', ' The journal file was changed elsewhere: choose a version in the Journal file panel.');
+  else if (f.pending) text += L(` Чтобы изменения снова сохранялись в файл, нажмите «Продолжить с файлом «${f.pending}»» в панели «Файл журнала».`, ` To have changes saved to the file again, click “Continue with “${f.pending}”” in the Journal file panel.`);
+  else if (f.dirty) text += L(' Есть изменения, не сохранённые в файл.', ' There are changes not saved to the file.');
   if (overdue) text += L(` Срок калибровки прошёл: ${overdue}.`, ` Calibration overdue: ${overdue}.`);
   else if (due.length) text += L(` Срок калибровки подходит: ${due.length}.`, ` Calibration due soon: ${due.length}.`);
   return text;

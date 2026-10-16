@@ -18,6 +18,7 @@ const bundle = await build({
   minify: true,
   write: false,
   legalComments: 'none',
+  banner: { js: '/* Reference-dosimetry. Copyright (c) 2026 Мелентьев Александр Валериевич (Aleksandr Valerievich Melentev). AGPL-3.0-or-later: https://www.gnu.org/licenses/agpl-3.0.html */' },
   charset: 'utf8',
 });
 const js = bundle.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');

@@ -43,7 +43,7 @@ function tableKey(n) {
 /**
  * k_s методом двух напряжений (разд. 4.4.3.4).
  * Если n = V1/V2 есть в табл. 10 — ур. (13): k_s = a0 + a1·(M1/M2) + a2·(M1/M2)².
- * Иначе для импульсного пучка — ур. (14): k_s − 1 = (M1/M2 − 1)/(n − 1), точность 0,1 % при k_s < 1,03.
+ * Иначе для импульсного пучка — ур. (14): k_s = (n − 1)/(n − M1/M2), точность 0,1 % при k_s < 1,03.
  * Возвращает { value, equation, n, error, notes }.
  */
 export function ks({ m1, m2, v1, v2, beam = 'pulsed' }) {
@@ -72,7 +72,17 @@ export function ks({ m1, m2, v1, v2, beam = 'pulsed' }) {
       notes,
     };
   }
-  const value = 1 + (r - 1) / (n - 1);
+  // ур. (14) TRS-398 Rev.1 (стр. 73 рус. изд.): k_s = (n − 1)/(n − M1/M2) — линейная зависимость 1/M от 1/V.
+  // В первом издании — приближение k_s − 1 = (M1/M2 − 1)/(n − 1); разница (M1/M2 − 1)²/((n − M1/M2)(n − 1)).
+  if (!(n > 1) || !(r < n)) {
+    return {
+      value: NaN,
+      n,
+      error: L('ур. (14) неприменимо: нужно V1 > V2 и M1/M2 < V1/V2', 'Eq. (14) does not apply: V1 > V2 and M1/M2 < V1/V2 are required'),
+      notes,
+    };
+  }
+  const value = (n - 1) / (n - r);
   if (value >= 1.03) {
     notes.push(
       L(
@@ -81,7 +91,7 @@ export function ks({ m1, m2, v1, v2, beam = 'pulsed' }) {
       ),
     );
   }
-  return { value, equation: L('ур. (14): 1 + (M1/M2 − 1)/(n − 1)', 'Eq. (14): 1 + (M1/M2 − 1)/(n − 1)'), n, notes };
+  return { value, equation: L('ур. (14): (n − 1)/(n − M1/M2)', 'Eq. (14): (n − 1)/(n − M1/M2)'), n, notes };
 }
 
 /** Ур. (34) = (97): k_Q по TPR20,10 с параметрами камеры a, b (табл. 45). */

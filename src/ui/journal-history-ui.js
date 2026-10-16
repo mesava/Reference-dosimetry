@@ -1,17 +1,21 @@
-// «Журнал» → «Журнал и тренды»: сеансы аппарата, тренд отклонения выхода от номинала по пучкам, k_pol и k_s по
-// калибровкам, сроки калибровки камер и электрометров.
+// «Журнал» → «Журнал и тренды»: сеансы аппарата, тренд отклонения выхода от номинала по пучкам, контрольная карта
+// пучка и общая часть сеансов (journal-spc-ui.js), k_pol и k_s по калибровкам, сроки калибровки, выгрузка в CSV.
 import { L } from '../core/i18n.js';
 import { trendSeries, machineOf, equipmentDue, dayNumber } from '../core/journal.js';
-import { $, esc, fmt, fmtSigned, today, makeStatus, armButton, notifyUpdate, richText } from './common.js';
+import { $, esc, fmt, fmtSigned, today, makeStatus, armButton, notifyUpdate, richText, downloadText } from './common.js';
 import { scatterChart, legendSwatch } from './chart.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
-import { setupFilePanel, machineOptions, fmtDate, countWord } from './journal-common.js';
+import { renderSpc, renderCommon, spcMessages } from './journal-spc-ui.js';
+import { journalCsv, csvFileName } from '../core/journal-csv.js';
+import { setupFilePanel, machineOptions, fmtDate, countWord, dayToIso, monthLabel, monthTicks } from './journal-common.js';
 
 const ROOT = () => $('#module-history');
 let setStatus = () => {};
 let machineId = '';
 let kindFilter = 'photon'; // какие пучки показывать, если у аппарата их несколько видов (фотоны, электроны, ⁶⁰Co)
 let kindChosen = false; // вид выбран переключателем (до смены аппарата)
+let spcBeamId = ''; // пучок контрольной карты
+let commonRes = null; // общая часть сеансов показанного вида
 /** Ряды трендов выбранного аппарата и вида пучков; переключатель вида — только если у аппарата их несколько. */
 function seriesOf(j) {
   const all = trendSeries(j, machineId);
@@ -34,33 +38,6 @@ function seriesOf(j) {
 let bridge = { openSession: () => {}, unsaved: () => false };
 /** Открыть сеанс в подразделе «Сеанс»; unsaved — есть ли там незаписанные показания. */
 export const setHistoryBridge = (b) => (bridge = { ...bridge, ...b });
-
-const dayToIso = (d) => new Date(d * 86400000).toISOString().slice(0, 10);
-const monthName = (m) =>
-  [L('янв', 'Jan'), L('фев', 'Feb'), L('мар', 'Mar'), L('апр', 'Apr'), L('май', 'May'), L('июн', 'Jun'), L('июл', 'Jul'), L('авг', 'Aug'), L('сен', 'Sep'), L('окт', 'Oct'), L('ноя', 'Nov'), L('дек', 'Dec')][m - 1];
-/** Подпись деления оси дат (деления — начала месяцев): «мар 2026» / «Mar 2026». */
-const monthLabel = (d) => {
-  const iso = dayToIso(d);
-  const [y, m, dd] = iso.split('-');
-  return dd === '01' ? `${monthName(Number(m))} ${y}` : fmtDate(iso);
-};
-/** Деления оси дат: начала месяцев (или кварталов, если месяцев много). */
-function monthTicks(x0, x1, count) {
-  const a = new Date(x0 * 86400000);
-  const ticks = [];
-  for (let y = a.getUTCFullYear(), m = a.getUTCMonth() + 1; ; m++) {
-    if (m > 11) {
-      m = 0;
-      y++;
-    }
-    const d = Date.UTC(y, m, 1) / 86400000;
-    if (d > x1) break;
-    ticks.push(d);
-  }
-  if (ticks.length <= count) return ticks.length >= 2 ? ticks : [x0, x1].map(Math.round);
-  const step = Math.ceil(ticks.length / count);
-  return ticks.filter((_, i) => i % step === 0);
-}
 
 function renderChart(series) {
   const box = $('#hs-chart');
@@ -162,7 +139,8 @@ function renderTables(j, series) {
           const m = machineOf(j, machineId);
           const out = bs.filter((b) => b.summary.status === 'out').map((b) => m?.beams.find((x) => x.id === b.beamId)?.name).filter(Boolean);
           return `<li><div><b>${esc(fmtDate(s.date))}</b> · ${esc(s.mode === 'cal' ? L('калибровка', 'calibration') : L('проверка выхода', 'output check'))} · ${esc(L(`пучков: ${bs.length}`, `beams: ${bs.length}`))}${out.length ? ` · <span class="st-out">${esc(L(`вне допуска: ${out.join(', ')}`, `out of tolerance: ${out.join(', ')}`))}</span>` : ''}${s.staff?.some((x) => x.trim()) ? `<br><small>${esc(s.staff.filter((x) => x.trim()).join(', '))}</small>` : ''}</div>
-            <div class="row-tools"><button type="button" class="link-btn" data-open="${esc(s.id)}">${esc(L('Открыть', 'Open'))}</button><button type="button" class="link-btn danger" data-del-session="${esc(s.id)}">${esc(L('Удалить', 'Delete'))}</button></div></li>`;
+            ${s.spcRestart ? `<small class="chip">${esc(L('с этого сеанса — новый отсчёт контрольной карты', 'a new control-chart count starts here'))}</small>` : ''}
+            <div class="row-tools"><button type="button" class="link-btn" data-open="${esc(s.id)}">${esc(L('Открыть', 'Open'))}</button><button type="button" class="link-btn" data-spc-restart="${esc(s.id)}" title="${esc(L('Например, после ремонта или замены узла ускорителя без записанной подстройки: до и после — разные процессы.', 'For example, after a repair or replacement of a linac part without a recorded adjustment: before and after are different processes.'))}">${esc(s.spcRestart ? L('Убрать новый отсчёт карты', 'Remove the new chart count') : L('Новый отсчёт карты', 'New chart count'))}</button><button type="button" class="link-btn danger" data-del-session="${esc(s.id)}">${esc(L('Удалить', 'Delete'))}</button></div></li>`;
         })
         .join('')}</ul>`
     : `<p class="sub-hint">${esc(L('Сеансов пока нет: проведите сеанс в подразделе «Сеанс» и запишите его в журнал.', 'No sessions yet: run a session in the Session section and record it in the journal.'))}</p>`;
@@ -184,9 +162,17 @@ function renderReadout(j, series) {
     <div class="dose-big">${sessions.length}<small>${esc(countWord(sessions.length, [L('сеанс', 'session'), L('сеанса', 'sessions'), L('сеансов', 'sessions')], ['session', 'sessions']))}</small></div>
     <div class="secondary">${esc(L(`последний: ${last ? fmtDate(last.date) : '—'}; последняя калибровка: ${lastCal ? fmtDate(lastCal.date) : '—'}`, `last: ${last ? fmtDate(last.date) : '—'}; last calibration: ${lastCal ? fmtDate(lastCal.date) : '—'}`))}</div></div>`;
   const msgs = equipmentDue(j, today()).map((d) => `<li class="${d.status === 'overdue' ? 'warn' : 'info'}"><span class="lvl">${esc(d.status === 'overdue' ? L('Срок калибровки прошёл', 'Calibration overdue') : L('Срок калибровки подходит', 'Calibration due soon'))}</span><span>${esc(`${d.text}: ${fmtDate(d.dueDate)}`)}</span></li>`);
+  for (const x of spcMessages(j, machineId, series.map((s) => s.beam), commonRes)) msgs.push(`<li class="${x.level}"><span class="lvl">${esc(x.head)}</span><span>${esc(x.text)}</span></li>`);
   if (lastCal && dayNumber(today()) - dayNumber(lastCal.date) > 365) msgs.push(`<li class="info"><span class="lvl">${esc(L('Калибровка', 'Calibration'))}</span><span>${esc(L(`Последняя калибровка аппарата — больше года назад (${fmtDate(lastCal.date)}).`, `The machine's last calibration was more than a year ago (${fmtDate(lastCal.date)}).`))}</span></li>`);
   $('#hs-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Сроки калибровки камер и электрометров в порядке.', 'Chamber and electrometer calibrations are within their dates.'))}</span></li>`;
   $('#hs-mobile-value').textContent = `${m?.name || '—'}: ${sessions.length}`;
+}
+
+/** Контрольная карта выбранного пучка и общая часть сеансов (пучки показанного вида). */
+function renderControl(j, series) {
+  const beams = series.map((s) => s.beam);
+  spcBeamId = renderSpc(j, machineId, beams, spcBeamId, { cobalt: kindFilter === 'cobalt' });
+  commonRes = renderCommon(j, machineId, beams);
 }
 
 function render() {
@@ -195,6 +181,7 @@ function render() {
   $('#hs_machine').innerHTML = machineOptions(j, machineId);
   const series = seriesOf(j);
   renderChart(series);
+  renderControl(j, series);
   renderTables(j, series);
   renderReadout(j, series);
   notifyUpdate(ROOT());
@@ -208,6 +195,19 @@ export function initHistory() {
   setStatus = makeStatus($('#hs-status'));
   setupFilePanel($('#hs-file'), (t) => setStatus(t));
   render();
+  $('#hs_beam').addEventListener('change', (e) => {
+    spcBeamId = e.target.value;
+    renderSpc(getJournal(), machineId, seriesOf(getJournal()).map((s) => s.beam), spcBeamId, { cobalt: kindFilter === 'cobalt' });
+  });
+  $('#hs-csv').addEventListener('click', () => {
+    const j = getJournal();
+    if (!j.sessions.length) {
+      setStatus(L('В журнале нет сеансов — выгружать нечего.', 'The journal has no sessions: nothing to export.'));
+      return;
+    }
+    downloadText(journalCsv(j), csvFileName(j), 'text/csv;charset=utf-8');
+    setStatus(L('Журнал выгружен в CSV: файл открывается в Excel двойным щелчком.', 'The journal has been exported to CSV: the file opens in Excel with a double click.'));
+  });
   $('#hs_machine').addEventListener('change', (e) => {
     machineId = e.target.value;
     kindChosen = false;
@@ -221,6 +221,14 @@ export function initHistory() {
     });
   }
   $('#hs-sessions').addEventListener('click', (e) => {
+    const r = e.target.closest('[data-spc-restart]');
+    if (r) {
+      const id = r.dataset.spcRestart;
+      const on = !getJournal().sessions.find((x) => x.id === id)?.spcRestart;
+      updateJournal((jj) => ({ ...jj, sessions: jj.sessions.map((x) => (x.id === id ? { ...x, spcRestart: on } : x)) }), 'history');
+      setStatus(on ? L('С этого сеанса контрольная карта начинает новый отсчёт.', 'The control chart starts a new count from this session.') : L('Отметка нового отсчёта снята.', 'The new count mark has been removed.'));
+      return;
+    }
     const b = e.target.closest('[data-open]');
     if (!b) return;
     const s = getJournal().sessions.find((x) => x.id === b.dataset.open);
@@ -252,6 +260,8 @@ export function initHistory() {
     const box = $('#hs-chart');
     if (!box || box.clientWidth === w || !box.clientWidth) return;
     w = box.clientWidth;
-    renderChart(seriesOf(getJournal()));
+    const series = seriesOf(getJournal());
+    renderChart(series);
+    renderControl(getJournal(), series);
   }).observe($('#hs-chart'));
 }

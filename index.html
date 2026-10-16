@@ -2799,7 +2799,7 @@
     <ul class="purpose">
       <li><b>Когда:</b> чтобы увидеть дрейф выхода, сравнить калибровки и найти записанный сеанс.</li>
       <li><b>Что делать:</b> выберите аппарат. Сеанс открывается кнопкой «Открыть» — для просмотра, протокола или правки.</li>
-      <li><b>Результат:</b> график и таблица отклонений, история k<sub>pol</sub> и k<sub>s</sub>; изменение k<sub>pol</sub> или k<sub>s</sub> от калибровки к калибровке — ранний признак неполадки камеры, кабеля или электрометра.</li>
+      <li><b>Результат:</b> график и таблица отклонений, контрольная карта каждого пучка и общая часть сеансов, история k<sub>pol</sub> и k<sub>s</sub>; изменение k<sub>pol</sub> или k<sub>s</sub> от калибровки к калибровке — ранний признак неполадки камеры, кабеля или электрометра.</li>
     </ul>
 
     <section class="step" aria-labelledby="hs-s1">
@@ -2826,13 +2826,32 @@
     </section>
 
     <section class="step" aria-labelledby="hs-s3">
-      <header><span class="step-no">3</span><h2 id="hs-s3">k<sub>pol</sub>, k<sub>s</sub> и τ (⁶⁰Co) по калибровкам</h2></header>
-      <div class="table-wrap" id="hs-ktable" data-i18n-skip></div>
+      <header><span class="step-no">3</span><h2 id="hs-s3">Контрольная карта</h2>
+        <p class="hint">Выход одного пучка относительно его обычного уровня: центральная линия и границы ±2σ и ±3σ, где σ — обычный разброс от сеанса к сеансу. Карта замечает сдвиг или дрейф раньше, чем выход уйдёт за допуск. Отсчёт начинается заново после подстройки ускорителя и после смены камеры, электрометра или их калибровочных коэффициентов.</p></header>
+      <div class="field hs-beam-field"><label for="hs_beam">Пучок</label><select id="hs_beam"></select></div>
+      <div class="chart-box" id="hs-spc-chart" data-i18n-skip></div>
+      <div class="chart-legend" id="hs-spc-legend" data-i18n-skip></div>
+      <div class="hs-spc-summary" id="hs-spc-summary" data-i18n-skip></div>
     </section>
 
     <section class="step" aria-labelledby="hs-s4">
-      <header><span class="step-no">4</span><h2 id="hs-s4">Сеансы</h2></header>
+      <header><span class="step-no">4</span><h2 id="hs-s4">Общая часть сеансов</h2>
+        <p class="hint">В сеансе все пучки меряют в один день одной камерой при одних температуре и давлении. Отклонение каждого пучка от его обычного уровня делится на общую для сеанса часть (медиана по пучкам) и собственную часть пучка. Сдвинулись все пучки вместе — причина скорее общая: дозиметр, термометр, барометр, N<sub>D,w</sub> или мониторная камера ускорителя. Ушёл один пучок — причина в нём.</p></header>
+      <div class="chart-box" id="hs-common-chart" data-i18n-skip></div>
+      <div class="chart-legend" id="hs-common-legend" data-i18n-skip></div>
+      <div class="hs-spc-summary" id="hs-common-summary" data-i18n-skip></div>
+    </section>
+
+    <section class="step" aria-labelledby="hs-s5">
+      <header><span class="step-no">5</span><h2 id="hs-s5">k<sub>pol</sub>, k<sub>s</sub> и τ (⁶⁰Co) по калибровкам</h2></header>
+      <div class="table-wrap" id="hs-ktable" data-i18n-skip></div>
+    </section>
+
+    <section class="step" aria-labelledby="hs-s6">
+      <header><span class="step-no">6</span><h2 id="hs-s6">Сеансы</h2></header>
       <div id="hs-sessions" data-i18n-skip></div>
+      <div class="actions"><button type="button" id="hs-csv">Выгрузить журнал в CSV</button></div>
+      <p class="sub-hint">Таблица всех сеансов всех аппаратов для Excel: по строке на пучок в сеансе — дата, режим, доза, отклонение, поправки, камера и сигналы контрольной карты.</p>
     </section>
   </form>
 
@@ -2886,6 +2905,7 @@
 
 <footer class="page-foot">
   <p>Инструмент помогает считать, но не заменяет независимую проверку медицинским физиком. Реализация TG-51 приведена для сравнения. Источники: Andreo et al., IAEA TRS-398 Rev.1 (2024); AAPM TG-51 (Almond et al., Med. Phys. 26, 1999), аддендум для фотонов (McEwen et al., Med. Phys. 41, 2014), WGTG51 Report 374 (Muir et al., 2022), аддендум для электронов WGTG51 Report 385 (Muir et al., 2024). Полный список литературы — на странице <a href="#refs" data-goto="refs">«Литература»</a>.</p>
+  <p class="page-foot-legal">© 2026 Мелентьев Александр Валериевич · лицензия GNU AGPL версии 3 или более поздней</p>
 </footer>
 
 

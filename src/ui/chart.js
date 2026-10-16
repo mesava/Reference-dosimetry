@@ -30,6 +30,10 @@ const svgText = (s) => esc(s).replace(/_([0-9A-Za-zА-Яа-яЁё]+)/g, '<tspan 
 const marker = (shape, x, y, r, cls, hollow) => {
   const c = `mk ${cls}${hollow ? ' hollow' : ''}`;
   if (shape === 'square') return `<rect class="${c}" x="${(x - r).toFixed(1)}" y="${(y - r).toFixed(1)}" width="${(2 * r).toFixed(1)}" height="${(2 * r).toFixed(1)}" rx="1"/>`;
+  if (shape === 'diamond') {
+    const d = r * 1.3;
+    return `<path class="${c}" d="M${x.toFixed(1)} ${(y - d).toFixed(1)}L${(x + d).toFixed(1)} ${y.toFixed(1)}L${x.toFixed(1)} ${(y + d).toFixed(1)}L${(x - d).toFixed(1)} ${y.toFixed(1)}Z"/>`;
+  }
   return `<circle class="${c}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}"/>`;
 };
 

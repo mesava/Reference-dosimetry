@@ -12,7 +12,7 @@ import { initUncTool, importUncTool, uncToolStatus, setUncSources } from './unce
 import { initJaffe, importJaffe, jaffeStatus } from './jaffe-ui.js';
 import { initEdepth, importEdepth, edepthStatus, setEdepthTransfer } from './edepth-ui.js';
 import { initSectionNavs, refreshSectionNav } from './section-nav.js';
-import { initJournalStore, importJournalObject, getJournal, onJournal } from './journal-store.js';
+import { initJournalStore, importJournalObject, getJournal, onJournal, onFileState } from './journal-store.js';
 import { initStart, renderStart } from './start-ui.js';
 import { initSecLinks, revealSection } from './sec-links.js';
 import { initTabEquipment } from './tab-equipment-ui.js';
@@ -394,6 +394,9 @@ function init() {
   });
   onJournal(() => {
     if (getActiveModule() === 'start') renderStart();
+  });
+  onFileState((source) => {
+    if (source !== 'autosave' && getActiveModule() === 'start') renderStart();
   });
 }
 

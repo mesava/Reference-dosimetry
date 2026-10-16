@@ -429,6 +429,7 @@ table.factors tr.group td { padding-top: 12px; color: var(--accent); font: 600 1
 
 footer.page-foot { max-width: var(--page-max); margin: 0 auto; padding: 0 16px 40px; color: var(--muted); font-size: 13px; }
 footer.page-foot p { max-width: 90ch; }
+footer.page-foot .page-foot-legal { margin-top: 4px; font-size: 12px; }
 .refs { margin-top: 20px; max-width: 110ch; }
 .refs h2 { font-size: 15px; margin: 0 0 8px; color: var(--ink); }
 .refs-list { list-style: none; margin: 0; padding: 0; }
@@ -964,6 +965,18 @@ svg .ln.t7 { stroke: var(--trend-7); } svg .mk.t7 { fill: var(--trend-7); } .cha
 svg .ln.t8 { stroke: var(--trend-8); } svg .mk.t8 { fill: var(--trend-8); } .chart-tip .sw.t8 { background: var(--trend-8); }
 svg .mk.hollow.t1 { fill: var(--sheet); stroke: var(--trend-1); } svg .mk.hollow.t2 { fill: var(--sheet); stroke: var(--trend-2); } svg .mk.hollow.t3 { fill: var(--sheet); stroke: var(--trend-3); } svg .mk.hollow.t4 { fill: var(--sheet); stroke: var(--trend-4); } svg .mk.hollow.t5 { fill: var(--sheet); stroke: var(--trend-5); } svg .mk.hollow.t6 { fill: var(--sheet); stroke: var(--trend-6); } svg .mk.hollow.t7 { fill: var(--sheet); stroke: var(--trend-7); } svg .mk.hollow.t8 { fill: var(--sheet); stroke: var(--trend-8); }
 svg.chart .pt:hover .mk { stroke: var(--ink); }
+/* контрольная карта журнала: центральная линия, ±2σ, ±3σ, сигналы */
+svg .ln.cl { stroke: var(--ink); stroke-width: 1.25; }
+svg .ln.lim2 { stroke: var(--warn); stroke-width: 1; stroke-dasharray: 2 3; }
+svg .ln.lim3 { stroke: var(--err); stroke-width: 1.25; stroke-dasharray: 6 4; }
+svg .mk.sig { fill: var(--err); }
+svg .mk.hollow.sig { fill: var(--sheet); stroke: var(--err); }
+.hs-beam-field { max-width: 22rem; margin-bottom: 8px; }
+.hs-spc-summary { margin-top: 8px; font-size: 13.5px; }
+.hs-spc-summary p { margin: 0 0 6px; }
+.hs-spc-summary .spc-signals { margin: 0 0 6px; padding-left: 1.2em; }
+.hs-spc-summary .spc-signals li { margin: 2px 0; }
+.hs-spc-summary .spc-warn { color: var(--warn); font-weight: 600; }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
 .chart-legend .item { display: inline-flex; align-items: center; gap: 6px; }
 .chart-swatch { flex: none; }
@@ -1030,6 +1043,14 @@ textarea.curve-data { min-height: 200px; height: 220px; font: 12.5px/1.45 var(--
 .jfile-line { margin: 0 0 8px; font-size: 13px; overflow-wrap: anywhere; }
 .jf-dirty { color: var(--warn); font-weight: 600; }
 .jf-clean { color: var(--ok); }
+.jfile-box { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: var(--radius); padding: 8px 12px; margin: 0 0 10px; display: grid; gap: 6px; justify-items: start; }
+.jfile-box.warn { border-color: var(--err); background: var(--err-soft); }
+.jfile-box p { margin: 0; font-size: 13px; }
+.jfile-box .actions { margin: 0; }
+.jf-error { margin: 0 0 8px; font-size: 13px; color: var(--err); }
+.jf-auto { display: flex; align-items: center; gap: 6px; margin: 4px 0 6px; font-size: 13px; }
+.jf-backup { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--rule); }
+.jfile-backup { margin: 0 0 6px; font-size: 13px; overflow-wrap: anywhere; }
 .journal-bar { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: var(--radius); padding: 10px 14px; display: grid; gap: 8px; }
 .journal-bar p { margin: 0; font-size: 13.5px; }
 /* «Журнал отделения» в разделе «Камера и электрометр» вкладок дозиметрии */
