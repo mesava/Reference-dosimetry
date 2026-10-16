@@ -19,8 +19,7 @@ export const estToggleHtml = (key) => `<button type="button" class="link-btn est
 export function estHtml(key, label, { sensHint = NaN } = {}) {
   const id = (f) => `unc_est_${key.replace(/[^\w]/g, '_')}_${f}`;
   const a = (f, what) => `id="${id(f)}" data-est="${f}" data-est-key="${esc(key)}" aria-label="${esc(`${what}: ${label}`)}"`;
-  const sh = Number.isFinite(sensHint) ? fmt(sensHint, 2) : '';
-  return `<div class="unc-est" data-est-box="${esc(key)}" hidden>
+  return `<div class="unc-est" data-est-box="${esc(key)}"${Number.isFinite(sensHint) ? ` data-sens-hint="${sensHint}"` : ''} hidden>
     <div class="est-row">
       <select ${a('src', L('Источник', 'Source'))}>${opts(EST_SOURCES(), L('источник…', 'source…'))}</select>
       <input type="text" ${a('doc', L('Документ', 'Document'))} placeholder="${esc(L('№ документа, дата', 'document No., date'))}">
@@ -30,7 +29,7 @@ export function estHtml(key, label, { sensHint = NaN } = {}) {
       <span class="est-f" data-for="Uk rect tri"><span class="est-l" data-v-label></span><input type="text" class="num" inputmode="decimal" ${a('v', L('Значение', 'Value'))} placeholder=" "></span>
       <span class="est-f" data-for="Uk"><span class="est-l">k</span><input type="text" class="num" inputmode="decimal" ${a('k', 'k')} placeholder="2"></span>
       <span class="est-f" data-for="sens"><span class="est-l">d</span><input type="text" class="num" inputmode="decimal" ${a('d', L('Погрешность', 'Error'))} placeholder=" "><select ${a('unit', L('Единица', 'Unit'))}>${opts(EST_UNITS())}</select><select ${a('dist', L('Вид погрешности', 'Kind of error'))}>${opts(EST_DIST())}</select></span>
-      <span class="est-f" data-for="sens"><span class="est-l">×</span><input type="text" class="num" inputmode="decimal" ${a('s', L('Чувствительность', 'Sensitivity'))} placeholder="${esc(sh || ' ')}"><span class="est-l" data-s-unit></span></span>
+      <span class="est-f" data-for="sens"><span class="est-l">×</span><input type="text" class="num" inputmode="decimal" ${a('s', L('Чувствительность', 'Sensitivity'))} placeholder=" "><span class="est-l" data-s-unit></span></span>
       <output class="est-out" data-est-out></output>
     </div>
     <div class="est-row">
@@ -46,12 +45,23 @@ export function setupEst(root, hidden) {
     const el = e.target.closest?.('[data-est]');
     if (!el) return;
     const key = el.dataset.estKey;
+    // блок, в котором вводят, остаётся открытым, даже если поля опустели
+    open.add(key);
     const map = parseOverrides(hidden.value);
     const est = { ...(map[key] || {}) };
     const v = el.value.trim();
     if (v) est[el.dataset.est] = v;
     else delete est[el.dataset.est];
     if (est.m === 'u') delete est.m;
+    // «погрешность × чувствительность»: чувствительность по подсказке строки подставляется сразу (её видно и можно
+    // изменить); при смене единицы подсказка в мм к ней не относится — поле очищается
+    const box = el.closest('[data-est-box]');
+    const hint = parseFloat(box?.dataset.sensHint);
+    if (el.dataset.est === 'm' && v === 'sens' && !est.s && Number.isFinite(hint)) {
+      est.s = fmt(hint, 2);
+      est.unit = 'mm';
+    }
+
     if (Object.keys(est).length) map[key] = est;
     else delete map[key];
     hidden.value = Object.keys(map).length ? JSON.stringify(map) : '';
@@ -81,7 +91,8 @@ export function updateEst(root, key, est, { keep = false } = {}) {
   const e = est && typeof est === 'object' ? est : {};
   const filled = Object.keys(e).length > 0;
   box.dataset.keep = keep || filled ? '1' : '';
-  box.hidden = !(keep || filled || open.has(key));
+  // не закрывать блок, в котором сейчас вводят
+  box.hidden = !(keep || filled || open.has(key) || box.contains(document.activeElement));
   const tg = root.querySelector(`[data-est-toggle="${CSS.escape(key)}"]`);
   if (tg) {
     tg.setAttribute('aria-expanded', String(!box.hidden));

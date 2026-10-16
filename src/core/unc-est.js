@@ -49,13 +49,18 @@ export const unitText = (u) => EST_UNITS()[u] ?? String(u ?? '');
 /** Оценка задана способом (не просто числом в поле «Своё»). */
 export const hasMethod = (e) => !!e && typeof e === 'object' && !isBlank(e.m) && e.m !== 'u';
 /** У оценки указан источник. */
-export const hasSource = (e) => !!e && typeof e === 'object' && !isBlank(e.src);
+export const hasSource = (e) => !!e && typeof e === 'object' && (!isBlank(e.src) || !isBlank(e.doc));
 
 /**
  * u по способу. Возвращает { u, formula } или { error } (не хватает данных или неверное значение), или null, если
  * способ не задан.
  */
 export function estimateU(e) {
+  const r = estimateRaw(e);
+  if (r && !r.error && !Number.isFinite(r.u)) return { error: L('значение слишком велико', 'the value is too large') };
+  return r;
+}
+function estimateRaw(e) {
   if (!hasMethod(e)) return null;
   const n = (x) => (isBlank(x) ? NaN : parseNumber(x));
   const bad = (what) => ({ error: L(`не прочитано: ${what}`, `could not read: ${what}`) });

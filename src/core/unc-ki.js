@@ -264,6 +264,7 @@ export function kiBreakdown(beam, specIn, { res, notes = {} } = {}) {
     });
   }
   const pct = Math.sqrt(factors.reduce((s, f) => s + f.value * f.value, 0));
+  if (typical.length && pct < 0.3) messages.push({ level: 'warn', text: L(`Итог раскрытия k_i (${ru(pct, 2)} %) меньше табличных 0,3 %, а часть поправок взята по примеру (i) — лучшему случаю. Без своих оценок раскрытие занижает бюджет.`, `The k_i breakdown total (${ru(pct, 2)}%) is below the tabulated 0.3%, and some corrections use example (i), the best case. Without your own estimates the breakdown understates the budget.`) });
   return { factors, pct, messages, measured: meas, noSource };
 }
 
@@ -296,11 +297,16 @@ export function setupFactors(beam) {
             'Чувствительность — градиент дозы на z_ref по вашей кривой (на z_ref в электронах он мал, в пучках низкой энергии круче). Погрешность — установка по поверхности воды и эффективной точке камеры (Report 385, разд. 8.2.1: 0,15 мм — 0,04 %).',
             'Sensitivity: the dose gradient at z_ref from your curve (small at z_ref in electrons, steeper in low-energy beams). Error: setting to the water surface and the effective point of the chamber (Report 385, Sec. 8.2.1: 0.15 mm gives 0.04%).',
           )
-        : L(
-            'Чувствительность — градиент PDD (при РИП) или TPR (при РИО) на z_ref: (D(z − 1 мм) − D(z + 1 мм))/(2·D(z)) — около 0,4–0,5 %/мм для 6–10 МВ на 10 см. Погрешность — установка поверхности воды и центра камеры (аддендум TG-51, разд. 5.A.2: 0,33 мм).',
-            'Sensitivity: the PDD (SSD setup) or TPR (SAD setup) gradient at z_ref: (D(z − 1 mm) − D(z + 1 mm))/(2·D(z)), about 0.4–0.5%/mm for 6–10 MV at 10 cm. Error: setting the water surface and the chamber centre (TG-51 addendum, Sec. 5.A.2: 0.33 mm).',
-          ),
-      sens: e ? 0.3 : 0.45,
+        : beam === 'co60'
+          ? L(
+              'Чувствительность — градиент PDD (при РИП) или TPR (при РИО) на z_ref по вашим данным: (D(z − 1 мм) − D(z + 1 мм))/(2·D(z)) — для ⁶⁰Co на 5 г/см² около 0,5–0,6 %/мм. Погрешность — установка поверхности воды и центра камеры.',
+              'Sensitivity: the PDD (SSD setup) or TPR (SAD setup) gradient at z_ref from your data: (D(z − 1 mm) − D(z + 1 mm))/(2·D(z)), for ⁶⁰Co at 5 g/cm² about 0.5–0.6%/mm. Error: setting the water surface and the chamber centre.',
+            )
+          : L(
+              'Чувствительность — градиент PDD (при РИП) или TPR (при РИО) на z_ref: (D(z − 1 мм) − D(z + 1 мм))/(2·D(z)) — около 0,4–0,5 %/мм для 6–10 МВ на 10 см. Погрешность — установка поверхности воды и центра камеры (аддендум TG-51, разд. 5.A.2: 0,33 мм).',
+              'Sensitivity: the PDD (SSD setup) or TPR (SAD setup) gradient at z_ref: (D(z − 1 mm) − D(z + 1 mm))/(2·D(z)), about 0.4–0.5%/mm for 6–10 MV at 10 cm. Error: setting the water surface and the chamber centre (TG-51 addendum, Sec. 5.A.2: 0.33 mm).',
+            ),
+      sens: e ? 0.3 : beam === 'co60' ? 0.55 : 0.45,
     },
     {
       key: 'field',
@@ -332,7 +338,7 @@ export function setupBreakdown(beam, specIn, { notes = {} } = {}) {
   const factors = setupFactors(beam).map((f) => {
     const est = notes[`setup.${f.key}`];
     const { o, invalid, byMethod } = ownOf(own[f.key], est, f.label, `unc_setup_own_${f.key}`, messages);
-    if (Number.isFinite(o) && !hasSource(est)) noSource.push(f.label);
+    if (Number.isFinite(o) && !hasSource(est)) noSource.push(L(`установка: ${f.label}`, `reference conditions: ${f.label}`));
     const value = Number.isFinite(o) ? o : f.typ;
     if (!Number.isFinite(o) && f.typ > 0) typical.push(f.label);
     return { ...f, own: o, invalid, value, basis: Number.isFinite(o) ? 'own' : 'typ', est: est && typeof est === 'object' ? est : null, byMethod: byMethod ?? null };
@@ -344,5 +350,6 @@ export function setupBreakdown(beam, specIn, { notes = {} } = {}) {
     });
   }
   const pct = Math.sqrt(factors.reduce((s, f) => s + f.value * f.value, 0));
+  if (typical.length && pct < 0.3) messages.push({ level: 'warn', text: L(`Итог раскрытия установки (${ru(pct, 2)} %) меньше табличных 0,3 %, а часть составляющих взята по примеру (i) — лучшему случаю. Без своих оценок раскрытие занижает бюджет.`, `The breakdown total of the reference conditions (${ru(pct, 2)}%) is below the tabulated 0.3%, and some components use example (i), the best case. Without your own estimates the breakdown understates the budget.`) });
   return { factors, pct, messages, noSource };
 }

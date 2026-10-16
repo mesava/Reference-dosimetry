@@ -516,8 +516,8 @@ export function uncertaintyBudget(o) {
   // «обязательно помечать, откуда что берётся»: у каждого своего значения должен быть указан источник
   if (noSource.length) {
     add('warn', L(
-      `Не указан источник своих значений: ${noSource.join('; ')}. Откройте «как получено» у строки и укажите документ (свидетельство камеры, электрометра, термометра, протокол QA, измерения…) и способ расчёта.`,
-      `No source given for your values: ${noSource.join('; ')}. Open “how obtained” on the row and give the document (chamber, electrometer or thermometer certificate, QA record, measurements…) and how the value was calculated.`,
+      `Не указан источник своих значений: ${noSource.join('; ')}. Укажите в «как получено» у строки документ (свидетельство камеры, электрометра, термометра, протокол QA, измерения…) и способ расчёта.`,
+      `No source given for your values: ${noSource.join('; ')}. In “how obtained” on the row, give the document (chamber, electrometer or thermometer certificate, QA record, measurements…) and how the value was calculated.`,
     ));
   }
   const ucPct = quad(rows.map((r) => r.value));

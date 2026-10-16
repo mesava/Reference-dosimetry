@@ -186,13 +186,13 @@ export function renderSetup(box, r, hidden, notes = {}) {
       </table></div>`;
   }
   if (!on || !b) return;
-  const basisText = { typ: L('типовое', 'typical'), own: L('своя оценка', 'your estimate') };
+  const basisText = { typ: L('типовое', 'typical'), own: L('своя оценка', 'your estimate'), none: L('не оценено', 'not estimated') };
   for (const f of b.factors) {
     const tr = box.querySelector(`tr[data-ki-row="${f.key}"]`);
     if (!tr) continue;
     tr.querySelector('[data-typ]').textContent = f.typ > 0 ? num(f.typ) : '—';
     tr.querySelector('[data-used]').textContent = num(f.value);
-    tr.querySelector('.unc-type').textContent = basisText[f.basis];
+    tr.querySelector('.unc-type').textContent = basisText[f.basis === 'typ' && !(f.typ > 0) ? 'none' : f.basis];
     tr.classList.toggle('own', f.basis === 'own');
     ownField(tr, `[data-ki="own.${f.key}"]`, f, o.own?.[f.key]);
     updateEst(tr, `setup.${f.key}`, notes[`setup.${f.key}`], { keep: Number.isFinite(f.own) });
@@ -207,7 +207,8 @@ export function setupReportLines(b) {
   if (!b) return [];
   const out = [L('  Раскрытие установки стандартных условий (относительные стандартные неопределённости, %):', '  Breakdown of the reference conditions (relative standard uncertainties, %):')];
   for (const f of b.factors) {
-    out.push(`    ${f.label}: ${num(f.value)} (${f.basis === 'own' ? L('своя оценка', 'your estimate') : L(`типовое: ${refText(f.ref)}`, `typical: ${refText(f.ref)}`)})`);
+    const how = f.basis === 'own' ? L('своя оценка', 'your estimate') : f.typ > 0 ? L(`типовое: ${refText(f.ref)}`, `typical: ${refText(f.ref)}`) : L('не оценено', 'not estimated');
+    out.push(`    ${f.label}: ${num(f.value)} (${how})`);
     if (f.basis === 'own') out.push(`      ${estimateText(f.est, f.own) || L('источник не указан', 'source not given')}`);
   }
   out.push(L(`    Итог: ${num(b.pct)}`, `    Total: ${num(b.pct)}`));
@@ -221,8 +222,8 @@ export function kiReportLines(b) {
   const out = [L('  Раскрытие строки k_i (относительные стандартные неопределённости, %):', '  Breakdown of the k_i row (relative standard uncertainties, %):')];
   for (const f of b.factors) {
     // составляющие — только когда принятое значение сложено из двух частей
-    const parts = f.basis === 'both' ? L(`по измерениям ${num(f.meas, 3)}${f.measHow ? ` (${f.measHow})` : ''}, своя ${num(f.own)}`, `measured ${num(f.meas, 3)}${f.measHow ? ` (${f.measHow})` : ''}, yours ${num(f.own)}`) : f.basis === 'meas' ? L(`${f.measHow}; типовое ${num(f.typ)}`, `${f.measHow}; typical ${num(f.typ)}`) : f.basis === 'typ' ? refText(f.ref) : '';
-    out.push(`    ${f.label}: ${num(f.value)} (${basis[f.basis]}${parts ? `; ${parts}` : ''})`);
+    const parts = f.basis === 'both' ? L(`по измерениям ${num(f.meas, 3)}${f.measHow ? ` (${f.measHow})` : ''}, своя ${num(f.own)}`, `measured ${num(f.meas, 3)}${f.measHow ? ` (${f.measHow})` : ''}, yours ${num(f.own)}`) : f.basis === 'meas' ? L(`${f.measHow}; типовое ${num(f.typ)}`, `${f.measHow}; typical ${num(f.typ)}`) : f.basis === 'typ' ? L(`: ${refText(f.ref)}`, `: ${refText(f.ref)}`) : '';
+    out.push(`    ${f.label}: ${num(f.value)} (${basis[f.basis]}${parts ? (parts.startsWith(':') ? parts : `; ${parts}`) : ''})`);
     if (Number.isFinite(f.own)) out.push(`      ${estimateText(f.est, f.own) || L('источник не указан', 'source not given')}`);
   }
   out.push(L(`    Итог k_i: ${num(b.pct)}`, `    k_i total: ${num(b.pct)}`));
