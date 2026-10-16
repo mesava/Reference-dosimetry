@@ -546,6 +546,7 @@ export function electronsUncSource() {
     M: p === x.recal ? data.e_recal_M : p === x.ctrl ? data.e_ctrl_M : data.e_M1,
     value: none ? NaN : atMaxOf(p, result) ? p.DmaxPerMU : p.DperMU,
     unit: 'Gy100MU',
+    ki: data.e_fixed ? null : { Mp: data.e_M1, Mm: data.e_Mopp, M2: data.e_M2, ks: { kind: 'trs', v1: Math.abs(result.inputs.V1), v2: Math.abs(result.inputs.V2), beam: data.e_beam_mode }, T: result.inputs.T, P: result.inputs.P },
     meta: { institution: data.e_institution, machine: data.e_machine, beam: data.e_beam, date: data.e_date, staff: data.e_staff },
   };
 }

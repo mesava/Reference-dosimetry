@@ -6,6 +6,8 @@ import { L, getLang, refText } from '../core/i18n.js';
 import { localizeDecimals } from './i18n.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import { setupBudget, renderBudget, budgetDoseText, budgetReportLines, fmt2sig } from './uncertainty-ui.js';
+import { setupKi, renderKi } from './unc-ki-ui.js';
+import { parseKi } from '../core/unc-ki.js';
 import {
   $, $$, localizeDemo, fmt, esc, today, makeStatus, copyText, downloadText, currentProtocol, renderOutputs, renderFlags, applyShowRules,
   armButton, renderSignBlock, printToPdf, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, notifyUpdate, flashFields, richText, plainSymbols } from './common.js';
@@ -109,8 +111,14 @@ function applyVisibility(data, r) {
   }
   const t = r.typeA;
   $('#unc-typea-sub').textContent = t
-    ? L(`по ${t.n} показаниям; s/√n относительно среднего`, `from ${t.n} readings; s/√n relative to the mean`)
+    ? [
+        t.m !== t.n ? L(`s по ${t.n} показаниям, /√${t.m}`, `s from ${t.n} readings, /√${t.m}`) : L(`по ${t.n} показаниям; s/√n относительно среднего`, `from ${t.n} readings; s/√n relative to the mean`),
+        t.fromRes ? L('ограничена разрешением δ/√12', 'limited by the resolution δ/√12') : '',
+      ].filter(Boolean).join('; ')
     : L('нужно не меньше двух показаний', 'at least two readings are needed');
+  $('#unc-res-sub').textContent = Number.isFinite(r.resAuto)
+    ? L(`пусто — по записи показаний (${fmt(r.resAuto, Math.max(0, -Math.round(Math.log10(r.resAuto))))} нКл); нижняя граница δ/√12`, `blank: from how the readings are written (${fmt(r.resAuto, Math.max(0, -Math.round(Math.log10(r.resAuto))))} nC); lower bound δ/√12`)
+    : L('пусто — по записи показаний; нижняя граница δ/√12', 'blank: from how the readings are written; lower bound δ/√12');
 }
 
 // ------------------------------------------------------------ вывод
@@ -173,7 +181,10 @@ function reportText(data, r) {
   if (r.beam === 'electrons' && Number.isFinite(r.r50)) line('R50', L(`${fmt(r.r50, 2)} г/см²`, `${fmt(r.r50, 2)} g/cm²`));
   line(L('Свидетельство о калибровке', 'Calibration certificate'), b.cert ? L(`U = ${fmt(b.cert.U, 2)} % при k = ${fmt(b.cert.k, b.cert.k % 1 ? 2 : 0)}`, `U = ${fmt(b.cert.U, 2)}% at k = ${fmt(b.cert.k, b.cert.k % 1 ? 2 : 0)}`) : L('не введено — лабораторная часть типового бюджета', 'not entered — laboratory part from the example'));
   const cells = r.series.values?.length ? r.series.values.map((x) => fmt(x, 4)).join('; ') : '—';
-  line(L('Показания, нКл', 'Readings, nC'), r.typeA ? L(`${cells} → повторяемость (тип А) ${fmt(r.typeA.pct, 3)} %`, `${cells} → repeatability (type A) ${fmt(r.typeA.pct, 3)}%`) : cells);
+  const how = r.typeA
+    ? [r.typeA.m !== r.typeA.n ? L(`s по ${r.typeA.n}, /√${r.typeA.m}`, `s from ${r.typeA.n}, /√${r.typeA.m}`) : '', r.typeA.fromRes ? L('по разрешению δ/√12', 'from the resolution δ/√12') : ''].filter(Boolean).join('; ')
+    : '';
+  line(L('Показания, нКл', 'Readings, nC'), r.typeA ? L(`${cells} → повторяемость (тип А) ${fmt(r.typeA.pct, 3)} %${how ? ` (${how})` : ''}`, `${cells} → repeatability (type A) ${fmt(r.typeA.pct, 3)}%${how ? ` (${how})` : ''}`) : cells);
   if (Number.isFinite(r.value)) line(L('Результат дозиметрии', 'Dosimetry result'), `${fmt(r.value, r.value >= 10 ? 2 : 4)} ${unit}`);
   out.push('');
   out.push(...budgetReportLines(b, r.value, unit));
@@ -244,6 +255,16 @@ function pull(target) {
     patch.unc_ch_type = s.chamberType;
     patch.unc_r50 = Number.isFinite(s.r50) ? fmt(s.r50, 2) : '';
   }
+  // серии для раскрытия k_i: заменяются данными вкладки; свои оценки, u(T) и u(P) остаются
+  const ki = parseKi(cur.unc_ki);
+  if (s.ki) {
+    ki.series = s.ki;
+    ki.source = s.beam;
+  } else {
+    delete ki.series;
+    delete ki.source;
+  }
+  patch.unc_ki = Object.keys(ki).length ? JSON.stringify(ki) : '';
   const m = s.meta || {};
   if (m.institution) patch.unc_institution = m.institution;
   if (m.machine) patch.unc_machine = m.machine;
@@ -273,7 +294,8 @@ function update() {
   const r = computeUncertaintyTool(data);
   current = { data: r.form, result: r };
   applyVisibility(r.form, r);
-  renderBudget($('#unc-budget'), r.budget, { hidden: $('#unc_over'), doseText: budgetDoseText(r.budget, r.value, esc(unitText(r.unit)), '') });
+  renderKi($('#unc-ki'), r, $('#unc_ki'));
+  renderBudget($('#unc-budget'), r.budget, { hidden: $('#unc_over'), notesHidden: $('#unc_row_notes'), doseText: budgetDoseText(r.budget, r.value, esc(unitText(r.unit)), '') });
   renderOutputs(ROOT(), r);
   renderFlags(ROOT(), r.flags, (key) => (key === 'unc_M' ? seriesBox() : null));
   renderReadout(r);
@@ -302,7 +324,8 @@ export function initUncTool() {
   fillUnits();
   setupCells(seriesBox(), update);
   $$('#unc-sheet > section .combo').forEach((c) => makeCombo(c));
-  setupBudget($('#unc-budget'), $('#unc_over'));
+  setupBudget($('#unc-budget'), $('#unc_over'), $('#unc_row_notes'));
+  setupKi($('#unc-ki'), $('#unc_ki'));
 
   const draft = loadDraft();
   writeForm(draft ? draft : sampleData());

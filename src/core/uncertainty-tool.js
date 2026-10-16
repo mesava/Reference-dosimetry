@@ -5,7 +5,8 @@
 
 import { parseNumber, parseCells, isBlank, ru } from './units.js';
 import { L } from './i18n.js';
-import { uncertaintyBudget, typeAOf } from './uncertainty.js';
+import { uncertaintyBudget } from './uncertainty.js';
+import { kiBreakdown, seriesUncertainty, resolutionOf, parseKi } from './unc-ki.js';
 
 export const UT_DEFAULTS = {
   protocol: 'trs',
@@ -29,10 +30,14 @@ export const UT_DEFAULTS = {
   unc_cert_k: '2',
 
   unc_M: ['', '', ''], // серия показаний, по которой посчитан итог, — для повторяемости (тип А)
+  unc_m: '', // сколько показаний усреднено в результате (s — по всей серии, u = s/√m); пусто — все
+  unc_res: '', // разрешение прибора, нКл: нижняя граница δ/√12; пусто — по записи показаний
   unc_value: '', // итог — для U в единицах дозы (по желанию)
   unc_unit: 'Gy100MU',
 
   unc_over: '', // свои значения строк бюджета: JSON { ключ: значение }
+  unc_row_notes: '', // статус и комментарий своих значений: JSON { ключ: { st, text } }
+  unc_ki: '', // раскрытие k_i (TRS-398): JSON { on, uT, uP, res, series, source, own: { поправка: значение } }
 };
 
 /** Единицы итога: подписи на обоих языках. */
@@ -65,7 +70,7 @@ export function normalizeUncTool(input) {
   if (!UT_UNITS[f.unc_unit]) f.unc_unit = f.unc_beam_type === 'co60' ? 'cGymin' : 'Gy100MU';
   if (!Array.isArray(f.unc_M)) f.unc_M = isBlank(f.unc_M) ? ['', '', ''] : String(f.unc_M).trim().split(/[\s;]+/);
   if (!Array.isArray(f.unc_staff) || f.unc_staff.length === 0) f.unc_staff = [''];
-  if (f.unc_over && typeof f.unc_over === 'object') f.unc_over = JSON.stringify(f.unc_over);
+  for (const k of ['unc_over', 'unc_row_notes', 'unc_ki']) if (f[k] && typeof f[k] === 'object') f[k] = JSON.stringify(f[k]);
   return f;
 }
 
@@ -124,7 +129,29 @@ export function computeUncertaintyTool(form) {
   const series = parseCells(f.unc_M);
   if (series.error) add('warn', L(`Показания: ${series.error}.`, `Readings: ${series.error}.`), null, 'unc_M');
   else if (series.n === 1) add('info', L('Для повторяемости (тип А) нужно не меньше двух показаний.', 'At least two readings are needed for the repeatability (type A).'), null, 'unc_M');
-  const typeA = series.error ? null : typeAOf(series);
+  let m = NaN;
+  if (!isBlank(f.unc_m)) {
+    m = parseNumber(f.unc_m);
+    if (!Number.isInteger(m) || m < 1) {
+      add('warn', L('Число показаний в среднем результата должно быть целым и не меньше 1 — принято число введённых показаний.', 'The number of readings averaged in the result must be a whole number of at least 1; the number of entered readings is used.'), null, 'unc_m');
+      m = NaN;
+    }
+  }
+  let res = NaN;
+  if (!isBlank(f.unc_res)) {
+    res = parseNumber(f.unc_res);
+    if (!Number.isFinite(res) || res <= 0) {
+      add('warn', L('Не удалось прочитать разрешение прибора — взято по записи показаний.', 'Could not read the instrument resolution; it is taken from how the readings are written.'), null, 'unc_res');
+      res = NaN;
+    }
+  }
+  // разрешение по записи показаний — самый мелкий шаг по всем сериям (своей и взятым для раскрытия k_i)
+  const kiSpec = parseKi(f.unc_ki);
+  const ks = kiSpec.series || {};
+  const resAuto = resolutionOf(f.unc_M, ks.Mp, ks.Mm, ks.M2);
+  const resUsed = Number.isFinite(res) ? res : resAuto;
+  const su = series.error ? null : seriesUncertainty(f.unc_M, { m, res: resUsed });
+  const typeA = su ? { n: su.n, m: su.m, s: su.s, res: su.res, fromRes: su.fromRes, pct: su.rel * 100 } : null;
   if (typeA && series.mean !== 0) {
     const d = Math.max(...series.values.map((v) => Math.abs(v - series.mean) / Math.abs(series.mean)));
     if (d > 0.05) add('warn', L(`Показания расходятся на ${ru(d * 100, 1)} % от среднего: вероятно, ошибка ввода.`, `Readings deviate by ${ru(d * 100, 1)}% from the mean: probably an input error.`), null, 'unc_M');
@@ -153,6 +180,8 @@ export function computeUncertaintyTool(form) {
     certU: f.unc_cert_U,
     certK: f.unc_cert_k,
     over: f.unc_over,
+    rowNotes: f.unc_row_notes,
+    ki: kiBreakdown(beam, kiSpec, { res: resUsed }),
     typeA,
     prefix: '',
   });
@@ -170,6 +199,7 @@ export function computeUncertaintyTool(form) {
     r50,
     series,
     typeA,
+    resAuto,
     value,
     unit: f.unc_unit,
     abs,

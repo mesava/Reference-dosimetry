@@ -44,8 +44,13 @@ test('Versa HD 6 МВ: со своими значениями строк бюд�
 test('Versa HD 6 МВ: типовой бюджет табл. 17 с U из свидетельства — 0,99 % / 1,97 %', () => {
   const r = computeUncertaintyTool(BASE);
   near(r.ucPct, Math.sqrt(0.55 ** 2 + 0.2 ** 2 + 0.3 ** 2 + 0.3 ** 2 + 0.3 ** 2 + 0.6 ** 2), 1e-12, 'u_c');
-  // повторяемость шести показаний (s/√6 ≈ 0,009 %) меньше типовых 0,3 % — в расчёт идёт 0,3 %
-  near(r.typeA.pct, (0.004082482904639267 / Math.sqrt(6) / 18.388333333333332) * 100, 1e-12, 'тип А по шести повторам');
+  // повторяемость шести показаний: s/√6 = 0,0017 нКл меньше разрешения 0,01/√12 = 0,0029 нКл — берётся разрешение;
+  // 0,016 % меньше типовых 0,3 % — в расчёт идёт 0,3 %
+  near(r.typeA.pct, (0.01 / Math.sqrt(12) / 18.388333333333332) * 100, 1e-12, 'тип А по шести повторам, граница по разрешению');
+  assert.equal(r.typeA.fromRes, true);
+  // как в листе: s по шести повторам, доза — среднее трёх, без границы по разрешению (δ задано малым)
+  const xl = computeUncertaintyTool({ ...BASE, unc_m: '3', unc_res: '0,0001' });
+  near(xl.typeA.pct, XL.read, 1e-12, 'тип А: s/√3, как в листе');
   assert.equal(r.budget.rows.find((row) => row.key === 't17.st_read').value, 0.3);
 });
 
@@ -64,4 +69,45 @@ test('Versa HD 6 МВ: доза листа (k_Q 0,9876, k_pol и k_s по сер
   // k_Q по табл. 16 TRS-398 Rev.1 при TPR 0,6823 — 0,9872, а не 0,9876 из листа
   const kq = computePhotons({ ...f, kqtrs_mode: 'table' }).trs.kQ;
   near(kq, 0.98719, 5e-5, 'k_Q по табл. 16');
+});
+
+test('Versa HD 6 МВ: раскрытие k_i воспроизводит k_TP, k_pol, k_s листа и итог 0,302 %', async () => {
+  const { kiBreakdown, seriesUncertainty, resolutionOf } = await import('../src/core/unc-ki.js');
+  const series = {
+    Mp: ['18,38', '18,39', '18,39'], Mm: ['-18,40', '-18,40', '-18,40'], M2: ['18,34', '18,34', '18,34'],
+    ks: { kind: 'trs', v1: 400, v2: 200, beam: 'pulsed' }, T: 21.7, P: 100.0335,
+  };
+  const own = { kelec: c(XL.kelec), kTP: '0', kpol: '0', ks: '0', kh: '0', kleak: '0', pre: '0', kvol: '0' };
+  // как в листе: u(T) = 0,130 °C, u(P) = 0,739 гПа; одинаковые показания — s = 0 (разрешение не учитывается)
+  const spec = { on: true, uT: c(0.13012814197295386), uP: c(0.07385345850624393), series, own };
+  const b = kiBreakdown('photons', spec, { res: 1e-9 });
+  const f = Object.fromEntries(b.factors.map((x) => [x.key, x]));
+  near(f.kTP.meas, XL.kTP, 1e-12, 'k_TP по u(T), u(P)');
+  near(f.kpol.meas, XL.kpol, 1e-12, 'k_pol по сериям M₊, M₋');
+  near(f.ks.meas, XL.ks, 1e-9, 'k_s по сериям при 400 и 200 В');
+  near(b.pct, 0.30187029448211217, 1e-9, 'итог k_i');
+  // в бюджете строка k_i заменяется раскрытием; со своим M_Q — итог листа
+  const r = computeUncertaintyTool({ ...BASE, unc_res: '0,000000001', unc_ki: JSON.stringify(spec), unc_over: JSON.stringify({ 't17.st_read': c(XL.read), 't17.st_ki': '5' }) });
+  const ki = r.budget.rows.find((x) => x.key === 't17.st_ki');
+  assert.equal(ki.fromKi, true);
+  assert.equal(ki.over, undefined, 'своё значение строки k_i при раскрытии не действует');
+  near(r.ucPct, XL.uc, 1e-9, 'u_c');
+  // с разрешением 0,01 нКл (запись показаний) одинаковые показания дают не ноль: k_pol и k_s растут
+  const br = kiBreakdown('photons', spec, { res: resolutionOf(series.Mp, series.Mm, series.M2) });
+  assert.equal(resolutionOf(['18,4'], ['18,39']), 0.01, 'шаг — самый мелкий по сериям');
+  assert.ok(br.factors.find((x) => x.key === 'kpol').meas > XL.kpol);
+  near(seriesUncertainty(['18,40', '18,40', '18,40'], { res: 0.01 }).u, 0.01 / Math.sqrt(12), 1e-15, 'δ/√12');
+  // без своих оценок — большее из «по измерениям» и типового (аддендум TG-51, пример (i)): итог ≈ 0,21 %
+  const typ = kiBreakdown('photons', { on: true, series }, { res: 0.01 });
+  near(typ.pct, Math.sqrt(0.1 ** 2 + 0.05 ** 2 + 0.07 ** 2 + 0.05 ** 2 + 0.1 ** 2 + 0.05 ** 2 + 0.1 ** 2 + 0.05 ** 2), 1e-12, 'типовые значения');
+  assert.ok(typ.messages.some((m) => m.level === 'info'));
+  // TG-51: поправки уже разложены в бюджете — раскрытие не применяется
+  const tg = computeUncertaintyTool({ ...BASE, protocol: 'tg51', unc_ki: JSON.stringify(spec) });
+  assert.equal(tg.budget.ki, null);
+});
+
+test('Свои значения строк: статус и комментарий попадают в бюджет', () => {
+  const r = computeUncertaintyTool({ ...BASE, unc_over: JSON.stringify({ 't17.st_read': '0,1' }), unc_row_notes: JSON.stringify({ 't17.st_read': { st: 'temp', text: 'монитор' }, 't17.st_kq': { st: 'fact', text: 'не своё' } }) });
+  assert.deepEqual(r.budget.rows.find((x) => x.key === 't17.st_read').note, { st: 'temp', text: 'монитор' });
+  assert.equal(r.budget.rows.find((x) => x.key === 't17.st_kq').note, undefined, 'у строки без своего значения комментарий не выводится');
 });

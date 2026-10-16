@@ -28,6 +28,7 @@ const REF_RULES = [
   [/ур\./g, 'Eq.'],
   [/прил\./g, 'App.'],
   [/прим\./g, 'note'],
+  [/пример /g, 'example '],
   [/сноска/g, 'footnote'],
   [/сноски/g, 'footnotes'],
   [/рис\./g, 'Fig.'],

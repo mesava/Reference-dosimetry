@@ -783,6 +783,18 @@ table.unc-table tr.sub td { font-style: italic; color: var(--muted); }
 table.unc-table tr.total td { border-bottom: 1px solid var(--rule); }
 table.unc-table tr.total + tr.total td { border-bottom: 0; }
 .unc-dose { font-size: 13.5px; font-weight: 500; }
+/* статус и комментарий своего значения строки */
+.unc-note-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.unc-note-row[hidden] { display: none; }
+.unc-note-row select { flex: 0 0 auto; max-width: 100%; height: 30px; padding: 2px 6px; font-size: 12.5px; }
+.unc-note-row input { flex: 1 1 12em; min-width: 0; height: 30px; padding: 2px 8px; font-size: 12.5px; }
+/* раскрытие k_i */
+.unc-ki-h { margin: 18px 0 6px; font-size: 15px; }
+.unc-ki { display: grid; gap: 8px; min-width: 0; }
+.unc-ki .sub-hint, .unc-ki p { margin: 0; }
+.unc-ki .ki-inputs { margin: 2px 0; }
+table.unc-table tr[data-ki-row] > td { padding-top: 11px; }
+table.unc-table tr[data-ki-row] > td.unc-own { padding-top: 5px; }
 .unc-actions { display: flex; justify-content: flex-end; }
 .unc-reset { border: 0; background: none; padding: 2px 0; color: var(--accent); font: 500 13px var(--font-body); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 /* телефон: каждая составляющая — карточка: название и пояснение во всю ширину, под ними «Образец», поле «Своё» и «Принято» */
@@ -798,12 +810,17 @@ table.unc-table tr.total + tr.total td { border-bottom: 0; }
   table.unc-table td.v::before { content: attr(data-cap); font: 400 11px var(--font-body); color: var(--muted); margin-right: 4px; }
   table.unc-table td.v, table.unc-table th.unc-own, table.unc-table td.unc-own { width: auto; }
   table.unc-table tr[data-key] > td, table.unc-table tr[data-key] > td.unc-own { padding: 0; }
+  table.ki-table tr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  table.ki-table td[data-meas] { text-align: right; }
+  table.unc-table tr[data-ki-row] > td, table.unc-table tr[data-ki-row] > td.unc-own { padding: 0; }
   table.unc-table tr.group { border-bottom: 0; padding-bottom: 0; }
   table.unc-table tr.total + tr.total { border-bottom: 0; }
   .unc-how { font-size: 12px; }
 }
 @media print {
   .unc-how, .unc-actions { display: none !important; }
+  .unc-note-row select, .unc-note-row input { border: 0; height: auto; padding: 0; font-size: 10px; }
+  .unc-note-row select:has(option[value='']:checked) { display: none; }
   .unc-note { background: none; color: #000; padding: 0; }
   input.unc-in { height: auto; padding: 0 4px; text-align: right; }
   input.unc-in:placeholder-shown { visibility: hidden; }

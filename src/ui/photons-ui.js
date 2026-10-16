@@ -691,6 +691,8 @@ export function photonsUncSource() {
     M: p === x.recal ? data.recal_M : p === x.ctrl ? data.ctrl_M : data.rd_M1,
     value: none ? NaN : atMaxOf(p, result) ? p.DmaxPerMU : p.DperMU,
     unit: 'Gy100MU',
+    // серии для раскрытия k_i (k_pol, k_s по измерениям); в режиме проверки выхода k_pol и k_s взяты из калибровки
+    ki: data.rd_fixed ? null : { Mp: data.rd_M1, Mm: data.rd_Mopp, M2: data.rd_M2, ks: { kind: 'trs', v1: Math.abs(result.inputs.V1), v2: Math.abs(result.inputs.V2), beam: data.rd_beam }, T: result.inputs.T, P: result.inputs.P },
     meta: { institution: data.meta_institution, machine: data.meta_machine, beam: data.meta_beam, date: data.meta_date, staff: data.meta_staff },
   };
 }

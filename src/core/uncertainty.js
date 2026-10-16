@@ -71,8 +71,8 @@ function trsRows(ctx) {
     ),
   }[beam];
   const kiHow = L(
-    `k_TP (поверенные термометр 0,1 °C и барометр 0,1 кПа, вода и камера в тепловом равновесии), k_pol, k_s, k_elec, k_leak${beam === 'photons' ? '; в пучке БВФ — и k_vol' : ''}. При тщательной процедуре каждая — 0,05–0,1 % (аддендум TG-51, разд. 5.A.5, 5.C).`,
-    `k_TP (calibrated thermometer 0.1 °C and barometer 0.1 kPa, water and chamber in thermal equilibrium), k_pol, k_s, k_elec, k_leak${beam === 'photons' ? '; in an FFF beam also k_vol' : ''}. With a careful procedure each is 0.05–0.1% (TG-51 addendum, Sec. 5.A.5, 5.C).`,
+    `k_TP (поверенные термометр 0,1 °C и барометр 0,1 кПа, вода и камера в тепловом равновесии), k_pol, k_s, k_elec (по TRS-398, разд. 4.4.3.2, калибровка электрометра входит сюда), k_leak${beam === 'photons' ? '; в пучке БВФ — и k_vol' : ''}. При тщательной процедуре каждая — 0,05–0,1 % (аддендум TG-51, разд. 5.A.5, 5.C). Строку можно раскрыть по поправкам ниже, в «Раскрытии k_i».`,
+    `k_TP (calibrated thermometer 0.1 °C and barometer 0.1 kPa, water and chamber in thermal equilibrium), k_pol, k_s, k_elec (per TRS-398, Sec. 4.4.3.2, the electrometer calibration belongs here), k_leak${beam === 'photons' ? '; in an FFF beam also k_vol' : ''}. With a careful procedure each is 0.05–0.1% (TG-51 addendum, Sec. 5.A.5, 5.C). The row can be broken down by correction below, in the k_i breakdown.`,
   );
   return {
     lab_psdl: {
@@ -95,7 +95,10 @@ function trsRows(ctx) {
     st_setup: { label: L('Установка стандартных условий (расстояние, глубина, поле)', 'Establishment of reference conditions (distance, depth, field)'), how: setupHow },
     st_read: {
       label: beam === 'co60' ? L('Показания дозиметра M_Q относительно таймера или монитора пучка', 'Dosimeter reading M_Q relative to the timer or beam monitor') : L('Показания дозиметра M_Q относительно монитора пучка', 'Dosimeter reading M_Q relative to the beam monitor'),
-      how: L('Электрометр (калибровка шкалы, линейность) и воспроизводимость монитора.', 'Electrometer (scale calibration, linearity) and reproducibility of the monitor.'),
+      how: L(
+        'Воспроизводимость показаний относительно монитора пучка: повторяемость серии (тип А), стабильность монитора и его зависимость от мощности дозы, разрешение и линейность электрометра в рабочем диапазоне. Калибровку электрометра (k_elec) сюда не включайте: по TRS-398 она входит в поправки k_i (разд. 4.4.3.2).',
+        'Reproducibility of the readings relative to the beam monitor: repeatability of the series (type A), stability of the monitor and its dose-rate dependence, resolution and linearity of the electrometer in the range used. Do not include the electrometer calibration (k_elec) here: TRS-398 counts it among the k_i corrections (Sec. 4.4.3.2).',
+      ),
       typeA: true,
     },
     st_ki: { label: L('Поправки на влияющие величины k_i', 'Correction for influence quantities k_i'), how: kiHow },
@@ -390,6 +393,8 @@ export function uncertaintyBudget(o) {
   }
 
   const over = parseOverrides(o.over);
+  const notes = parseOverrides(o.rowNotes);
+  if (o.ki && tpl.stages) for (const m of o.ki.messages) add(m.level, m.text, m.field ?? null);
   const typeA = o.typeA && Number.isFinite(o.typeA.pct) ? o.typeA : null;
   const rows = [];
   const groups = [];
@@ -420,6 +425,14 @@ export function uncertaintyBudget(o) {
             `From the certificate: U = ${pct(cert.U)}% at k = ${ru(cert.k, cert.k % 1 ? 2 : 0)}, converted to k = 1. The example uses ${pct(spec.def)}% (AAPM laboratories).`,
           );
         }
+        if (spec.key === 'st_ki' && o.ki && tpl.stages) {
+          row.value = o.ki.pct;
+          row.fromKi = true;
+          row.how = L(
+            `Раскрыта по поправкам ниже («Раскрытие k_i»): ${o.ki.factors.map((x) => `${x.label} ${pct(x.value)}`).join('; ')}.`,
+            `Broken down by correction below (k_i breakdown): ${o.ki.factors.map((x) => `${x.label} ${pct(x.value)}`).join('; ')}.`,
+          );
+        }
         if (spec.typeA) {
           row.typeA = typeA;
           if (typeA && typeA.pct > row.value) {
@@ -429,7 +442,7 @@ export function uncertaintyBudget(o) {
           }
           row.how = [row.how, typeAText(typeA, spec.def)].filter(Boolean).join(' ');
         }
-        const raw = over[key];
+        const raw = row.fromKi ? '' : over[key];
         if (!isBlank(raw)) {
           const x = parseNumber(raw);
           row.raw = String(raw);
@@ -445,6 +458,8 @@ export function uncertaintyBudget(o) {
           }
         }
       }
+      const note = notes[key];
+      if (row.over && note && typeof note === 'object') row.note = { st: String(note.st ?? ''), text: String(note.text ?? '') };
       out.push(row);
       rows.push(row);
     }
@@ -485,6 +500,7 @@ export function uncertaintyBudget(o) {
     k: COVERAGE_K,
     UPct: COVERAGE_K * ucPct,
     custom,
+    ki: o.ki && tpl.stages ? o.ki : null,
     messages,
   };
 }
@@ -492,6 +508,15 @@ export function uncertaintyBudget(o) {
 function typeAText(typeA, def) {
   if (!typeA) return L('Повторяемость ваших показаний (тип А) появится, когда введено не меньше двух значений.', 'The repeatability of your readings (type A) appears once at least two values are entered.');
   const v = pct(typeA.pct, 3);
+  const how = [
+    typeA.m && typeA.m !== typeA.n ? L(`s по ${typeA.n} показаниям, результат — среднее ${typeA.m}`, `s from ${typeA.n} readings, the result is the mean of ${typeA.m}`) : '',
+    typeA.fromRes ? L('ограничена разрешением прибора δ/√12', 'limited by the instrument resolution δ/√12') : '',
+  ].filter(Boolean).join('; ');
+  if (how) {
+    return typeA.pct > def
+      ? L(`Повторяемость ваших показаний (тип А): ${v} % (${how}) — больше типового значения, в расчёт идёт она.`, `Repeatability of your readings (type A): ${v}% (${how}) — larger than the typical value, so it is used.`)
+      : L(`Повторяемость ваших показаний (тип А): ${v} % (${how}) — не больше типового значения, в расчёт идёт оно.`, `Repeatability of your readings (type A): ${v}% (${how}) — not larger than the typical value, so the latter is used.`);
+  }
   return typeA.pct > def
     ? L(`Повторяемость ваших показаний (тип А): ${v} % по ${typeA.n} значениям — больше типового значения, в расчёт идёт она.`, `Repeatability of your readings (type A): ${v}% from ${typeA.n} values — larger than the typical value, so it is used.`)
     : L(`Повторяемость ваших показаний (тип А): ${v} % по ${typeA.n} значениям — не больше типового значения, в расчёт идёт оно.`, `Repeatability of your readings (type A): ${v}% from ${typeA.n} values — not larger than the typical value, so the latter is used.`);
