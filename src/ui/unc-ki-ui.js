@@ -49,7 +49,13 @@ function seriesLine(o, b) {
   const n = (a) => (Array.isArray(a) ? a.filter((x) => String(x ?? '').trim()).length : 0);
   const src = SRC[o.source]?.() ?? '';
   const parts = [L(`M₊: ${n(sr.Mp)}`, `M₊: ${n(sr.Mp)}`), L(`M₋: ${n(sr.Mm)}`, `M₋: ${n(sr.Mm)}`), L(`при V₂: ${n(sr.M2)}`, `at V₂: ${n(sr.M2)}`)];
-  const missing = !b.measured.kpol && !b.measured.ks ? L(' Для расчёта нужно не меньше двух показаний в каждой серии.', ' At least two readings in each series are needed.') : '';
+  const missing = !b.measured.kpol && !b.measured.ks
+    ? L(' k_pol и k_s по измерениям не посчитаны: нужно не меньше двух показаний в каждой серии, M₊ и M₋ разного знака.', ' k_pol and k_s are not calculated from measurements: at least two readings in each series are needed, M₊ and M₋ of opposite sign.')
+    : !b.measured.ks
+      ? L(' k_s по измерениям не посчитан: проверьте на вкладке V₁, V₂ (отношение из табл. 10 TRS-398) и показания при V₂ (M₁ ≥ M₂).', ' k_s is not calculated from measurements: check V₁, V₂ on the tab (a ratio from TRS-398 Table 10) and the readings at V₂ (M₁ ≥ M₂).')
+      : !b.measured.kpol
+        ? L(' k_pol по измерениям не посчитан: нужны серии M₊ и M₋ разного знака.', ' k_pol is not calculated from measurements: M₊ and M₋ series of opposite sign are needed.')
+        : '';
   return L(`Серии с вкладки «${src}»: ${parts.join(', ')}.${missing}`, `Series from the ${src} tab: ${parts.join(', ')}.${missing}`);
 }
 
@@ -63,6 +69,7 @@ export function renderKi(box, r, hidden) {
   const trs = r.budget.template.stages;
   const b = r.budget.ki;
   const on = !!o.on && trs;
+  box.dataset.on = on ? '1' : '';
   const sig = [getLang(), r.beam, trs ? 'trs' : 'tg', on ? 'on' : 'off'].join('|');
   if (box.dataset.sig !== sig) {
     box.dataset.sig = sig;
@@ -72,8 +79,8 @@ export function renderKi(box, r, hidden) {
     }
     const head = `<label class="check"><input type="checkbox" data-ki="on"${on ? ' checked' : ''}> <span>${richText(L('Раскрыть строку «Поправки на влияющие величины k_i» по поправкам', 'Break down the “Correction for influence quantities k_i” row by correction'))}</span></label>
       <p class="sub-hint">${richText(L(
-        'У каждой поправки — часть по измерениям (тип А: серии показаний, приборы) и своя оценка (тип B: процедура, применимость метода, свидетельство). Без своей оценки берётся большее из «по измерениям» и типового значения: типовое покрывает обе части, а разброс одной серии его не уменьшает. Итог — сумма в квадратуре; он заменяет 0,3 % строки k_i.',
-        'Each correction has a measured part (type A: series of readings, instruments) and your own estimate (type B: procedure, applicability of the method, certificate). Without your estimate, the larger of the measured part and the typical value is used: the typical value covers both parts, and the scatter of one series does not reduce it. The total is the sum in quadrature; it replaces the 0.3% of the k_i row.',
+        'У каждой поправки — часть по измерениям и приборам (серии показаний — тип А; u(T), u(P) приборов) и своя оценка (тип B: процедура, применимость метода, свидетельство). Без своей оценки берётся большее из «по измерениям» и типового значения: типовое покрывает обе части, а разброс одной серии его не уменьшает. Итог — сумма в квадратуре; он заменяет 0,3 % строки k_i.',
+        'Each correction has a part from measurements and instruments (series of readings: type A; u(T), u(P) of the instruments) and your own estimate (type B: procedure, applicability of the method, certificate). Without your estimate, the larger of the measured part and the typical value is used: the typical value covers both parts, and the scatter of one series does not reduce it. The total is the sum in quadrature; it replaces the 0.3% of the k_i row.',
       ))}</p>`;
     if (!on) {
       box.innerHTML = head;
@@ -92,13 +99,13 @@ export function renderKi(box, r, hidden) {
       .join('');
     box.innerHTML = `${head}
       <div class="grid ki-inputs">
-        <div class="field"><label for="unc_ki_uT">u(T), °C</label><input type="text" id="unc_ki_uT" class="num" data-ki="uT" inputmode="decimal"><span class="sub">${esc(L('термометр: поверка (U/k), разрешение, расхождение приборов', 'thermometer: calibration (U/k), resolution, disagreement between instruments'))}</span></div>
-        <div class="field"><label for="unc_ki_uP">${esc(L('u(P), кПа', 'u(P), kPa'))}</label><input type="text" id="unc_ki_uP" class="num" data-ki="uP" inputmode="decimal"><span class="sub">${esc(L('барометр: так же; 1 гПа = 0,1 кПа', 'barometer: likewise; 1 hPa = 0.1 kPa'))}</span></div>
+        <div class="field"><label for="unc_ki_uT">u(T), °C</label><input type="text" id="unc_ki_uT" class="num" data-ki="uT" inputmode="decimal" placeholder=" "><span class="sub">${esc(L('термометр: поверка (U/k), разрешение, расхождение приборов', 'thermometer: calibration (U/k), resolution, disagreement between instruments'))}</span></div>
+        <div class="field"><label for="unc_ki_uP">${esc(L('u(P), кПа', 'u(P), kPa'))}</label><input type="text" id="unc_ki_uP" class="num" data-ki="uP" inputmode="decimal" placeholder=" "><span class="sub">${esc(L('барометр: так же; 1 гПа = 0,1 кПа', 'barometer: likewise; 1 hPa = 0.1 kPa'))}</span></div>
       </div>
       <p class="sub-hint" data-ki-series></p>
       <div class="table-wrap"><table class="factors unc-table ki-table" aria-label="${esc(L('Раскрытие k_i', 'k_i breakdown'))}">
         <thead><tr><th>${esc(L('Поправка', 'Correction'))}</th><th class="v">${esc(L('Типовое', 'Typical'))}</th><th class="v">${esc(L('По измерениям', 'Measured'))}</th><th class="unc-own">${esc(L('Своя оценка', 'Your estimate'))}</th><th class="v">${esc(L('Принято', 'Used'))}</th></tr></thead>
-        <tbody>${rows}<tr class="total" data-ki-total><td>${richText(L('Итог строки k_i (в квадратуре)', 'Total of the k_i row (in quadrature)'))}</td><td class="v" data-typ></td><td></td><td></td><td class="v" data-used></td></tr></tbody>
+        <tbody>${rows}<tr class="total" data-ki-total><td>${richText(L('Итог строки k_i (в квадратуре)', 'Total of the k_i row (in quadrature)'))}</td><td class="v" data-typ data-cap="${esc(L('Типовое', 'Typical'))}"></td><td></td><td></td><td class="v" data-used data-cap="${esc(L('Принято', 'Used'))}"></td></tr></tbody>
       </table></div>`;
   }
   if (!on || !b) return;
@@ -132,7 +139,8 @@ export function kiReportLines(b) {
   const basis = { typ: L('типовое', 'typical'), meas: L('по измерениям', 'measured'), own: L('своя оценка', 'your estimate'), both: L('по измерениям и своя оценка', 'measured and your estimate') };
   const out = [L('  Раскрытие строки k_i (относительные стандартные неопределённости, %):', '  Breakdown of the k_i row (relative standard uncertainties, %):')];
   for (const f of b.factors) {
-    const parts = [Number.isFinite(f.meas) ? L(`по измерениям ${num(f.meas, 3)}`, `measured ${num(f.meas, 3)}`) : '', Number.isFinite(f.own) ? L(`своя ${num(f.own)}`, `yours ${num(f.own)}`) : ''].filter(Boolean).join(', ');
+    // составляющие — только когда принятое значение сложено из двух частей
+    const parts = f.basis === 'both' ? L(`по измерениям ${num(f.meas, 3)}, своя ${num(f.own)}`, `measured ${num(f.meas, 3)}, yours ${num(f.own)}`) : f.basis === 'meas' ? L(`типовое ${num(f.typ)}`, `typical ${num(f.typ)}`) : '';
     out.push(`    ${f.label}: ${num(f.value)} (${basis[f.basis]}${parts ? `; ${parts}` : ''})`);
   }
   out.push(L(`    Итог k_i: ${num(b.pct)}`, `    k_i total: ${num(b.pct)}`));

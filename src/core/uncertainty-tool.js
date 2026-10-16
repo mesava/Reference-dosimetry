@@ -145,11 +145,24 @@ export function computeUncertaintyTool(form) {
       res = NaN;
     }
   }
-  // разрешение по записи показаний — самый мелкий шаг по всем сериям (своей и взятым для раскрытия k_i)
+  // разрешение по записи показаний — самый мелкий шаг по всем сериям (своей и взятым для раскрытия k_i). Оно идёт в
+  // расчёт, только если запись достаточно подробная (шаг не больше 0,1 % показания): «18,4» вместо «18,40» или целые
+  // числа говорят о способе записи, а не о приборе — тогда нижняя граница не применяется, пока разрешение не введено
   const kiSpec = parseKi(f.unc_ki);
   const ks = kiSpec.series || {};
   const resAuto = resolutionOf(f.unc_M, ks.Mp, ks.Mm, ks.M2);
-  const resUsed = Number.isFinite(res) ? res : resAuto;
+  const level = [f.unc_M, ks.Mp, ks.Mm, ks.M2].map((x) => Math.abs(parseCells(x).mean)).find((x) => Number.isFinite(x) && x > 0);
+  const autoOk = Number.isFinite(resAuto) && Number.isFinite(level) && resAuto / level <= 1e-3;
+  if (Number.isFinite(resAuto) && !autoOk && !Number.isFinite(res)) {
+    add('info', L(
+      `По записи показаний шаг ${ru(resAuto, Math.max(0, -Math.floor(Math.log10(resAuto))))} нКл — это больше 0,1 % показания и похоже на опущенные нули, а не на разрешение прибора. Нижняя граница по разрешению не применяется; если нужна — введите разрешение прибора в разделе 3.`,
+      `The readings are written with a step of ${ru(resAuto, Math.max(0, -Math.floor(Math.log10(resAuto))))} nC: more than 0.1% of the reading, which looks like dropped zeros rather than the instrument resolution. The resolution lower bound is not applied; if needed, enter the instrument resolution in section 3.`,
+    ), null, 'unc_res');
+  }
+  const resUsed = Number.isFinite(res) ? res : autoOk ? resAuto : NaN;
+  if (Number.isFinite(m) && !series.error && series.n >= 2 && m > series.n) {
+    add('warn', L(`Показаний в среднем результата (${m}) больше, чем введено (${series.n}): s оценивают по более длинной серии, чем усредняют в результате, — проверьте значение.`, `More readings averaged in the result (${m}) than entered (${series.n}): s is estimated from a longer series than the one averaged in the result; check the value.`), null, 'unc_m');
+  }
   const su = series.error ? null : seriesUncertainty(f.unc_M, { m, res: resUsed });
   const typeA = su ? { n: su.n, m: su.m, s: su.s, res: su.res, fromRes: su.fromRes, pct: su.rel * 100 } : null;
   if (typeA && series.mean !== 0) {
@@ -200,6 +213,7 @@ export function computeUncertaintyTool(form) {
     series,
     typeA,
     resAuto,
+    resUsed,
     value,
     unit: f.unc_unit,
     abs,

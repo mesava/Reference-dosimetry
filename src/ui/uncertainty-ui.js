@@ -45,7 +45,15 @@ export function setupBudget(box, hidden, notesHidden) {
     const map = parseOverrides(hidden.value);
     const v = inp.value.trim();
     if (v) map[inp.dataset.uncKey] = v;
-    else delete map[inp.dataset.uncKey];
+    else {
+      delete map[inp.dataset.uncKey];
+      // без своего значения статус и комментарий не нужны: не храним их невидимыми
+      if (notesHidden) {
+        const notes = parseOverrides(notesHidden.value);
+        delete notes[inp.dataset.uncKey];
+        notesHidden.value = Object.keys(notes).length ? JSON.stringify(notes) : '';
+      }
+    }
     hidden.value = Object.keys(map).length ? JSON.stringify(map) : '';
   });
   box.addEventListener('click', (e) => {

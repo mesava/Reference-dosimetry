@@ -6,8 +6,8 @@
 // предварительное облучение, P_rp. Их значения из примера (i) — «типовые» для каждой поправки.
 //
 // У каждой поправки две части:
-//   - по измерениям (тип А): k_pol и k_s — по сериям показаний (стандартное отклонение среднего, распространение через
-//     формулу поправки), k_TP — по u(T) и u(P) приборов;
+//   - по измерениям и приборам: k_pol и k_s — по сериям показаний (тип А: стандартное отклонение среднего,
+//     распространение через формулу поправки), k_TP — по u(T) и u(P) приборов (тип B из свидетельств и разрешения);
 //   - своя оценка (тип B): методическая часть — применимость метода, процедура, свидетельство электрометра и т. п.
 // Принятое значение: если своя оценка введена — √(измерения² + своя²); иначе — большее из «по измерениям» и типового
 // (типовое значение покрывает обе части; статистика одной серии его не уменьшает). Итог строки — сумма в квадратуре.
@@ -124,11 +124,12 @@ function stepOf(cells) {
  * показаний, усреднённых в результате (по умолчанию n); снизу ограничена разрешением прибора δ/√12 (GUM, F.2.2.1:
  * одинаковые показания не значат нулевой неопределённости). Возвращает null, если показаний меньше двух.
  */
-export function seriesUncertainty(cells, { m = NaN, res = NaN } = {}) {
+export function seriesUncertainty(cells, { m = NaN, res } = {}) {
   const s = parseCells(cells);
   if (s.error || !(s.n >= 2) || !Number.isFinite(s.mean) || s.mean === 0) return null;
   const mm = Number.isFinite(m) && m >= 1 ? m : s.n;
-  const delta = Number.isFinite(res) && res > 0 ? res : resolutionOf(cells);
+  // res не задано — по записи этой серии; задано, но не число (NaN) — без границы по разрешению
+  const delta = res === undefined ? resolutionOf(cells) : Number.isFinite(res) && res > 0 ? res : NaN;
   const uStat = s.sd / Math.sqrt(mm);
   const uRes = Number.isFinite(delta) ? delta / Math.sqrt(12) : 0;
   const u = Math.max(uStat, uRes);
@@ -147,12 +148,13 @@ function ksAt(eq, r) {
  * Части «по измерениям» для k_pol, k_s, k_TP. series: { Mp, Mm, M1, M2, ks: { kind: 'trs', v1, v2, beam } | { kind: 'eq16', n } }
  * (Mp — обычная полярность при V₁, Mm — обратная, M2 — при V₂; M1 — при V₁, по умолчанию Mp).
  */
-export function kiMeasured(spec, { res = NaN } = {}) {
+export function kiMeasured(spec, { res } = {}) {
   const out = {};
   const sr = spec.series || {};
   const a = seriesUncertainty(sr.Mp, { res });
   const b = seriesUncertainty(sr.Mm, { res });
-  if (a && b) {
+  // обычная и обратная полярность — показания разного знака; при одном знаке это не пара для k_pol
+  if (a && b && Math.sign(a.mean) !== Math.sign(b.mean)) {
     const A = Math.abs(a.mean);
     const B = Math.abs(b.mean);
     const k = (A + B) / (2 * A);
@@ -164,7 +166,8 @@ export function kiMeasured(spec, { res = NaN } = {}) {
   }
   const c1 = seriesUncertainty(sr.M1 ?? sr.Mp, { res });
   const c2 = seriesUncertainty(sr.M2, { res });
-  if (c1 && c2 && sr.ks) {
+  // показания при V₁ и V₂ одного знака, M₁ ≥ M₂ — иначе вкладка дозиметрии сама выдаёт ошибку
+  if (c1 && c2 && sr.ks && Math.sign(c1.mean) === Math.sign(c2.mean) && Math.abs(c1.mean) >= Math.abs(c2.mean)) {
     const r = Math.abs(c1.mean) / Math.abs(c2.mean);
     const ur = r * Math.hypot(c1.rel, c2.rel);
     const k = ksAt(sr.ks, r);
@@ -177,15 +180,16 @@ export function kiMeasured(spec, { res = NaN } = {}) {
       };
     }
   }
+  const ok = (x) => Number.isFinite(x) && x >= 0;
   const uT = parseNumber(spec.uT);
   const uP = parseNumber(spec.uP);
-  if (Number.isFinite(uT) || Number.isFinite(uP)) {
+  if (ok(uT) || ok(uP)) {
     const T = Number.isFinite(sr.T) ? sr.T : 20;
     const P = Number.isFinite(sr.P) && sr.P > 0 ? sr.P : 101.325;
-    const pct = Math.hypot(Number.isFinite(uT) ? uT / (273.15 + T) : 0, Number.isFinite(uP) ? uP / P : 0) * 100;
+    const pct = Math.hypot(ok(uT) ? uT / (273.15 + T) : 0, ok(uP) ? uP / P : 0) * 100;
     out.kTP = {
       pct,
-      how: L(`по u(T) = ${Number.isFinite(uT) ? ru(uT, 2) : '—'} °C и u(P) = ${Number.isFinite(uP) ? ru(uP, 3) : '—'} кПа при T = ${ru(T, 1)} °C, P = ${ru(P, 2)} кПа`, `from u(T) = ${Number.isFinite(uT) ? ru(uT, 2) : '—'} °C and u(P) = ${Number.isFinite(uP) ? ru(uP, 3) : '—'} kPa at T = ${ru(T, 1)} °C, P = ${ru(P, 2)} kPa`),
+      how: L(`по u(T) = ${ok(uT) ? ru(uT, 2) : '—'} °C и u(P) = ${ok(uP) ? ru(uP, 3) : '—'} кПа при T = ${ru(T, 1)} °C, P = ${ru(P, 2)} кПа`, `from u(T) = ${ok(uT) ? ru(uT, 2) : '—'} °C and u(P) = ${ok(uP) ? ru(uP, 3) : '—'} kPa at T = ${ru(T, 1)} °C, P = ${ru(P, 2)} kPa`),
     };
   }
   return out;
@@ -195,12 +199,17 @@ export function kiMeasured(spec, { res = NaN } = {}) {
  * Раскрытие k_i. spec — данные раскрытия: { on, uT, uP, series, own: { ключ: строка } }; res — разрешение прибора, нКл.
  * Возвращает { factors, pct, messages } или null, если раскрытие выключено.
  */
-export function kiBreakdown(beam, specIn, { res = NaN } = {}) {
+export function kiBreakdown(beam, specIn, { res } = {}) {
   const spec = parseKi(specIn);
   if (!spec.on) return null;
   const meas = kiMeasured(spec, { res });
   const own = spec.own && typeof spec.own === 'object' ? spec.own : {};
   const messages = [];
+  for (const [k, name] of [['uT', 'u(T)'], ['uP', 'u(P)']]) {
+    if (isBlank(spec[k])) continue;
+    const x = parseNumber(spec[k]);
+    if (!Number.isFinite(x) || x < 0) messages.push({ level: 'warn', text: L(`Раскрытие k_i: ${name} «${spec[k]}» не прочитано — нужно неотрицательное число.`, `k_i breakdown: ${name} "${spec[k]}" could not be read; a non-negative number is needed.`), field: `unc_ki_${k}` });
+  }
   const typical = [];
   const factors = kiFactors(beam).map((f) => {
     const m = meas[f.key];

@@ -455,6 +455,10 @@ export function uncertaintyBudget(o) {
             row.over = true;
             row.type = 'B';
             row.fromTypeA = false;
+            if (spec.typeA && typeA) {
+              row.how = [spec.how || '', L(`Своё значение заменяет и типовое, и повторяемость серии (тип А ${pct(typeA.pct, 3)} %).`, `Your value replaces both the typical value and the repeatability of the series (type A ${pct(typeA.pct, 3)}%).`)].filter(Boolean).join(' ');
+              if (x < typeA.pct) add('warn', L(`«${row.label}»: своё значение ${pct(x)} % меньше повторяемости ваших показаний (${pct(typeA.pct, 3)} %) — оно должно её включать.`, `"${row.label}": your value ${pct(x)}% is smaller than the repeatability of your readings (${pct(typeA.pct, 3)}%); it should include it.`), row.id);
+            }
           }
         }
       }

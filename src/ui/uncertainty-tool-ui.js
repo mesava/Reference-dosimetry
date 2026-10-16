@@ -116,9 +116,12 @@ function applyVisibility(data, r) {
         t.fromRes ? L('ограничена разрешением δ/√12', 'limited by the resolution δ/√12') : '',
       ].filter(Boolean).join('; ')
     : L('нужно не меньше двух показаний', 'at least two readings are needed');
-  $('#unc-res-sub').textContent = Number.isFinite(r.resAuto)
-    ? L(`пусто — по записи показаний (${fmt(r.resAuto, Math.max(0, -Math.round(Math.log10(r.resAuto))))} нКл); нижняя граница δ/√12`, `blank: from how the readings are written (${fmt(r.resAuto, Math.max(0, -Math.round(Math.log10(r.resAuto))))} nC); lower bound δ/√12`)
-    : L('пусто — по записи показаний; нижняя граница δ/√12', 'blank: from how the readings are written; lower bound δ/√12');
+  const step = Number.isFinite(r.resAuto) ? fmt(r.resAuto, Math.max(0, -Math.round(Math.log10(r.resAuto)))) : '';
+  $('#unc-res-sub').textContent = !step
+    ? L('пусто — по записи показаний; нижняя граница δ/√12', 'blank: from how the readings are written; lower bound δ/√12')
+    : Number.isFinite(r.resUsed)
+      ? L(`пусто — по записи показаний (${step} нКл); нижняя граница δ/√12`, `blank: from how the readings are written (${step} nC); lower bound δ/√12`)
+      : L(`по записи — ${step} нКл: больше 0,1 % показания, граница не применяется; введите разрешение прибора`, `from the readings: ${step} nC, more than 0.1% of the reading, so no bound is applied; enter the instrument resolution`);
 }
 
 // ------------------------------------------------------------ вывод

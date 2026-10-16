@@ -111,3 +111,22 @@ test('Свои значения строк: статус и комментари
   assert.deepEqual(r.budget.rows.find((x) => x.key === 't17.st_read').note, { st: 'temp', text: 'монитор' });
   assert.equal(r.budget.rows.find((x) => x.key === 't17.st_kq').note, undefined, 'у строки без своего значения комментарий не выводится');
 });
+
+test('Тип А и раскрытие k_i: проверки ввода', () => {
+  // «18,4» вместо «18,40»: шаг записи 0,1 нКл (0,5 % показания) — это не разрешение прибора, граница не применяется
+  const coarse = computeUncertaintyTool({ ...BASE, unc_M: ['18,4', '18,4', '18,4'] });
+  assert.equal(coarse.typeA.pct, 0);
+  assert.ok(coarse.messages.some((m) => m.level === 'info' && /опущенные нули/.test(m.text)));
+  // введённое разрешение применяется всегда
+  const set = computeUncertaintyTool({ ...BASE, unc_M: ['18,4', '18,4', '18,4'], unc_res: '0,01' });
+  near(set.typeA.pct, (0.01 / Math.sqrt(12) / 18.4) * 100, 1e-12, 'δ = 0,01 нКл');
+  // m больше числа показаний — предупреждение
+  assert.ok(computeUncertaintyTool({ ...BASE, unc_m: '10' }).messages.some((m) => m.level === 'warn' && /больше, чем введено/.test(m.text)));
+  // своё значение строки показаний меньше повторяемости — предупреждение
+  const big = computeUncertaintyTool({ ...BASE, unc_M: ['18,0', '18,4', '18,8'], unc_over: JSON.stringify({ 't17.st_read': '0,1' }) });
+  assert.ok(big.messages.some((m) => m.level === 'warn' && /меньше повторяемости/.test(m.text)));
+  // u(T) не прочитано — предупреждение; отрицательное значение не принимается
+  const bad = computeUncertaintyTool({ ...BASE, unc_ki: JSON.stringify({ on: true, uT: 'abc', uP: '-0,1' }) });
+  assert.equal(bad.messages.filter((m) => /Раскрытие k_i: u\((T|P)\)/.test(m.text)).length, 2);
+  assert.equal(bad.budget.ki.factors.find((x) => x.key === 'kTP').basis, 'typ');
+});
