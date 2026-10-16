@@ -130,3 +130,35 @@ test('Тип А и раскрытие k_i: проверки ввода', () => {
   assert.equal(bad.messages.filter((m) => /Раскрытие k_i: u\((T|P)\)/.test(m.text)).length, 2);
   assert.equal(bad.budget.ki.factors.find((x) => x.key === 'kTP').basis, 'typ');
 });
+
+test('«Как получено»: способы расчёта u, источник, раскрытие установки', async () => {
+  const { estimateU, estimateText } = await import('../src/core/unc-est.js');
+  const { setupBreakdown } = await import('../src/core/unc-ki.js');
+  near(estimateU({ m: 'Uk', v: '1,1', k: '2' }).u, 0.55, 1e-15, 'U/k');
+  near(estimateU({ m: 'Uk', v: '1,1' }).u, 0.55, 1e-15, 'k по умолчанию 2');
+  near(estimateU({ m: 'rect', v: '0,5' }).u, 0.5 / Math.sqrt(3), 1e-15, 'a/√3');
+  near(estimateU({ m: 'tri', v: '0,5' }).u, 0.5 / Math.sqrt(6), 1e-15, 'a/√6');
+  near(estimateU({ m: 'sens', d: '1', dist: 'rect', s: '0,4', unit: 'mm' }).u, 0.4 / Math.sqrt(3), 1e-15, 'd/√3 × s');
+  near(estimateU({ m: 'sens', d: '1', dist: 'U2', s: '0,2' }).u, 0.1, 1e-15, 'd/2 × s');
+  assert.ok(estimateU({ m: 'rect', v: 'abc' }).error);
+  assert.equal(estimateU({ m: 'u', v: '0,3' }), null, 'u напрямую — число в поле «Своё»');
+  assert.match(estimateText({ src: 'certEl', doc: '232330201', m: 'rect', v: '0,5', st: 'cons' }, NaN), /0,500\/√3 = 0,289 %.*свидетельство электрометра: 232330201.*консервативно/);
+  // строка бюджета: способ задаёт значение, без источника — предупреждение
+  const noSrc = computeUncertaintyTool({ ...BASE, unc_over: JSON.stringify({ 't17.st_stab': '0,2' }) });
+  assert.ok(noSrc.messages.some((m) => m.level === 'warn' && /Не указан источник/.test(m.text)));
+  const withSrc = computeUncertaintyTool({ ...BASE, unc_row_notes: JSON.stringify({ 't17.st_stab': { src: 'meas', m: 'rect', v: '0,4' } }) });
+  const st = withSrc.budget.rows.find((x) => x.key === 't17.st_stab');
+  near(st.value, 0.4 / Math.sqrt(3), 1e-12, 'значение по способу, без числа в поле «Своё»');
+  assert.equal(st.over, true);
+  assert.ok(!withSrc.messages.some((m) => /Не указан источник/.test(m.text)));
+  // раскрытие установки: своя оценка способом, остальное — типовое; строка заменяется итогом
+  const setup = setupBreakdown('photons', { on: true }, { notes: { 'setup.depth': { src: 'qa', m: 'sens', d: '0,5', s: '0,45' } } });
+  const depth = setup.factors.find((x) => x.key === 'depth');
+  near(depth.value, (0.5 / Math.sqrt(3)) * 0.45, 1e-12, 'глубина');
+  near(setup.pct, Math.hypot(0.1, depth.value, 0.1, 0), 1e-12, 'итог установки');
+  const r = computeUncertaintyTool({ ...BASE, unc_setup: JSON.stringify({ on: true, own: { field: '0,2' } }) });
+  const row = r.budget.rows.find((x) => x.key === 't17.st_setup');
+  assert.equal(row.fromSetup, true);
+  near(row.value, Math.hypot(0.1, 0.17, 0.2, 0), 1e-12, 'строка установки = итог раскрытия');
+  assert.ok(r.messages.some((m) => /Не указан источник.*Размер поля/.test(m.text)), 'своя оценка составляющей без источника');
+});

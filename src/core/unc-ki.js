@@ -15,6 +15,7 @@
 import { parseNumber, parseCells, isBlank, ru } from './units.js';
 import { L } from './i18n.js';
 import * as TRS from './trs398.js';
+import { estimateU, hasMethod, hasSource } from './unc-est.js';
 
 const ADD = 'аддендум TG-51 (2014), табл. II, пример (i)';
 const R385 = 'Report 385, табл. 8, пример (i)';
@@ -199,12 +200,32 @@ export function kiMeasured(spec, { res } = {}) {
  * Раскрытие k_i. spec — данные раскрытия: { on, uT, uP, series, own: { ключ: строка } }; res — разрешение прибора, нКл.
  * Возвращает { factors, pct, messages } или null, если раскрытие выключено.
  */
-export function kiBreakdown(beam, specIn, { res } = {}) {
+/**
+ * Своя оценка составляющей: способом из «как получено» (est) или числом. Возвращает { o, invalid };
+ * замечания добавляет в messages.
+ */
+function ownOf(raw, est, label, field, messages) {
+  if (hasMethod(est)) {
+    const r = estimateU(est);
+    if (r && !r.error) return { o: r.u, invalid: false, byMethod: r };
+    messages.push({ level: 'warn', text: L(`«${label}», как получено: ${r?.error ?? ''} — взято число из поля или типовое значение.`, `"${label}", how obtained: ${r?.error ?? ''}; the number in the field or the typical value is used.`), field });
+  }
+  if (isBlank(raw)) return { o: NaN, invalid: false };
+  const o = parseNumber(raw);
+  if (!Number.isFinite(o) || o < 0) {
+    messages.push({ level: 'warn', text: L(`«${label}»: своя оценка «${raw}» не прочитана — взято типовое значение.`, `"${label}": your estimate "${raw}" could not be read; the typical value is used.`), field });
+    return { o: NaN, invalid: true };
+  }
+  return { o, invalid: false };
+}
+
+export function kiBreakdown(beam, specIn, { res, notes = {} } = {}) {
   const spec = parseKi(specIn);
   if (!spec.on) return null;
   const meas = kiMeasured(spec, { res });
   const own = spec.own && typeof spec.own === 'object' ? spec.own : {};
   const messages = [];
+  const noSource = [];
   for (const [k, name] of [['uT', 'u(T)'], ['uP', 'u(P)']]) {
     if (isBlank(spec[k])) continue;
     const x = parseNumber(spec[k]);
@@ -214,16 +235,9 @@ export function kiBreakdown(beam, specIn, { res } = {}) {
   const factors = kiFactors(beam).map((f) => {
     const m = meas[f.key];
     const raw = own[f.key];
-    let o = NaN;
-    let invalid = false;
-    if (!isBlank(raw)) {
-      o = parseNumber(raw);
-      if (!Number.isFinite(o) || o < 0) {
-        invalid = true;
-        o = NaN;
-        messages.push({ level: 'warn', text: L(`k_i, «${f.label}»: своя оценка «${raw}» не прочитана — взято типовое значение.`, `k_i, "${f.label}": your estimate "${raw}" could not be read; the typical value is used.`), field: `unc_ki_own_${f.key}` });
-      }
-    }
+    const est = notes[`ki.${f.key}`];
+    const { o, invalid, byMethod } = ownOf(raw, est, `k_i, ${f.label}`, `unc_ki_own_${f.key}`, messages);
+    if (Number.isFinite(o) && !hasSource(est)) noSource.push(`k_i: ${f.label}`);
     const mp = m ? m.pct : NaN;
     let value;
     let basis;
@@ -238,7 +252,7 @@ export function kiBreakdown(beam, specIn, { res } = {}) {
       basis = 'typ';
       typical.push(f.label);
     }
-    return { ...f, meas: Number.isFinite(mp) ? mp : NaN, measHow: m?.how ?? '', own: o, ownRaw: isBlank(raw) ? '' : String(raw), invalid, value, basis };
+    return { ...f, meas: Number.isFinite(mp) ? mp : NaN, measHow: m?.how ?? '', own: o, ownRaw: isBlank(raw) ? '' : String(raw), invalid, value, basis, est: est && typeof est === 'object' ? est : null, byMethod: byMethod ?? null };
   });
   if (typical.length) {
     messages.push({
@@ -250,5 +264,85 @@ export function kiBreakdown(beam, specIn, { res } = {}) {
     });
   }
   const pct = Math.sqrt(factors.reduce((s, f) => s + f.value * f.value, 0));
-  return { factors, pct, messages, measured: meas };
+  return { factors, pct, messages, measured: meas, noSource };
+}
+
+// ------------------------------------------------------------------ установка стандартных условий
+// Строка «установка стандартных условий» (0,3 % в табл. 13, 17, 24 TRS-398) — сумма составляющих: расстояние, глубина,
+// размер поля и прочее. Каждая — погрешность установки × чувствительность дозы к ней (аддендум TG-51, разд. 5.A.1–5.A.3;
+// Report 385, разд. 8.2). Типовые — пример (i) аддендума (фотоны) или Report 385 (электроны).
+
+/** Составляющие установки и их типовые значения (%, k = 1). */
+export function setupFactors(beam) {
+  const e = beam === 'electrons';
+  const ref = e ? 'Report 385, табл. 8, пример (i)' : 'аддендум TG-51 (2014), табл. II, пример (i)';
+  return [
+    {
+      key: 'dist',
+      label: L('Расстояние (РИП / РИО)', 'Distance (SSD / SAD)'),
+      typ: 0.1,
+      how: L(
+        'Закон обратных квадратов: чувствительность 200/(f + z) % на 1 см, где f + z — расстояние от источника до камеры: 0,2 %/мм при 100 см, 0,25 %/мм при 80 см. Погрешность — по механическому указателю (около 0,5 мм; световой дальномер — 1,5–3 мм, аддендум TG-51, разд. 5.A.1). При установке по РИО (камера в изоцентре) ошибка указателя РИП меняет глубину, а не расстояние — учитывайте её в строке «Глубина».',
+        'Inverse square law: sensitivity 200/(f + z) % per 1 cm, where f + z is the source-to-chamber distance: 0.2%/mm at 100 cm, 0.25%/mm at 80 cm. The error comes from the mechanical front pointer (about 0.5 mm; the optical distance indicator gives 1.5–3 mm, TG-51 addendum, Sec. 5.A.1). With an SAD setup (chamber at the isocentre), an SSD indicator error changes the depth, not the distance: count it under “Depth”.',
+      ),
+      sens: 0.2,
+    },
+    {
+      key: 'depth',
+      label: L('Глубина камеры', 'Chamber depth'),
+      typ: e ? 0.04 : 0.17,
+      how: e
+        ? L(
+            'Чувствительность — градиент дозы на z_ref по вашей кривой (на z_ref в электронах он мал, в пучках низкой энергии круче). Погрешность — установка по поверхности воды и эффективной точке камеры (Report 385, разд. 8.2.1: 0,15 мм — 0,04 %).',
+            'Sensitivity: the dose gradient at z_ref from your curve (small at z_ref in electrons, steeper in low-energy beams). Error: setting to the water surface and the effective point of the chamber (Report 385, Sec. 8.2.1: 0.15 mm gives 0.04%).',
+          )
+        : L(
+            'Чувствительность — градиент PDD (при РИП) или TPR (при РИО) на z_ref: (D(z − 1 мм) − D(z + 1 мм))/(2·D(z)) — около 0,4–0,5 %/мм для 6–10 МВ на 10 см. Погрешность — установка поверхности воды и центра камеры (аддендум TG-51, разд. 5.A.2: 0,33 мм).',
+            'Sensitivity: the PDD (SSD setup) or TPR (SAD setup) gradient at z_ref: (D(z − 1 mm) − D(z + 1 mm))/(2·D(z)), about 0.4–0.5%/mm for 6–10 MV at 10 cm. Error: setting the water surface and the chamber centre (TG-51 addendum, Sec. 5.A.2: 0.33 mm).',
+          ),
+      sens: e ? 0.3 : 0.45,
+    },
+    {
+      key: 'field',
+      label: L('Размер поля', 'Field size'),
+      typ: 0.1,
+      how: e
+        ? L('Поле задают тубус и вкладыш; погрешность — по проверке тубуса, чувствительность — как в фотонах (Report 385, разд. 8.2.2).', 'The field is defined by the applicator and insert; the error comes from the applicator check, the sensitivity as for photons (Report 385, Sec. 8.2.2).')
+        : L('Около 1 % на 1 см стороны поля (0,1 %/мм). Погрешность — по протоколу контроля качества: совпадение светового и радиационного полей, шкала коллиматора (аддендум TG-51, разд. 5.A.3).', 'About 1% per 1 cm of the field side (0.1%/mm). Error: from the QA record, light–radiation field coincidence and collimator scale (TG-51 addendum, Sec. 5.A.3).'),
+      sens: 0.1,
+    },
+    {
+      key: 'other',
+      label: L('Прочее (центрирование, наклон фантома)', 'Other (centring, phantom tilt)'),
+      typ: 0,
+      how: L('Боковое смещение камеры от оси пучка, наклон фантома и т. п. — по профилю пучка и протоколу QA. Типового значения нет.', 'Lateral offset of the chamber from the beam axis, phantom tilt, etc.: from the beam profile and the QA record. There is no typical value.'),
+      sens: NaN,
+    },
+  ].map((x) => ({ ...x, ref }));
+}
+
+/** Раскрытие установки стандартных условий. spec — { on, own: { ключ: строка } }; notes — «как получено» (ключи setup.*). */
+export function setupBreakdown(beam, specIn, { notes = {} } = {}) {
+  const spec = parseKi(specIn);
+  if (!spec.on) return null;
+  const own = spec.own && typeof spec.own === 'object' ? spec.own : {};
+  const messages = [];
+  const noSource = [];
+  const typical = [];
+  const factors = setupFactors(beam).map((f) => {
+    const est = notes[`setup.${f.key}`];
+    const { o, invalid, byMethod } = ownOf(own[f.key], est, f.label, `unc_setup_own_${f.key}`, messages);
+    if (Number.isFinite(o) && !hasSource(est)) noSource.push(f.label);
+    const value = Number.isFinite(o) ? o : f.typ;
+    if (!Number.isFinite(o) && f.typ > 0) typical.push(f.label);
+    return { ...f, own: o, invalid, value, basis: Number.isFinite(o) ? 'own' : 'typ', est: est && typeof est === 'object' ? est : null, byMethod: byMethod ?? null };
+  });
+  if (typical.length) {
+    messages.push({
+      level: 'info',
+      text: L(`Раскрытие установки стандартных условий: без своей оценки взяты типовые значения примера (i) — ${typical.join(', ')}.`, `Breakdown of the reference conditions: where there is no estimate of your own, the typical values of example (i) are used: ${typical.join(', ')}.`),
+    });
+  }
+  const pct = Math.sqrt(factors.reduce((s, f) => s + f.value * f.value, 0));
+  return { factors, pct, messages, noSource };
 }

@@ -5,7 +5,9 @@
 import { L, getLang, refText } from '../core/i18n.js';
 import { parseOverrides } from '../core/uncertainty.js';
 import { fmt, esc, richText } from './common.js';
-import { kiReportLines } from './unc-ki-ui.js';
+import { kiReportLines, setupReportLines } from './unc-ki-ui.js';
+import { estHtml, estToggleHtml, updateEst } from './unc-est-ui.js';
+import { estimateText } from '../core/unc-est.js';
 
 const num = (v, d = 2) => (Number.isFinite(v) ? fmt(v, d) : '—');
 
@@ -24,21 +26,6 @@ const rich = richText;
  * (форма по нему пересчитывает модуль). Кнопка «Очистить свои значения строк» возвращает типовые.
  */
 export function setupBudget(box, hidden, notesHidden) {
-  // статус и комментарий своего значения строки
-  const onNote = (e) => {
-    const el = e.target.closest?.('[data-unc-note]');
-    if (!el || !notesHidden) return;
-    const map = parseOverrides(notesHidden.value);
-    const key = el.dataset.uncNote;
-    const tr = el.closest('tr');
-    const st = tr.querySelector('[data-note-st]')?.value ?? '';
-    const text = tr.querySelector('[data-note-text]')?.value.trim() ?? '';
-    if (st || text) map[key] = { st, text };
-    else delete map[key];
-    notesHidden.value = Object.keys(map).length ? JSON.stringify(map) : '';
-  };
-  box.addEventListener('input', onNote);
-  box.addEventListener('change', onNote);
   box.addEventListener('input', (e) => {
     const inp = e.target.closest?.('input[data-unc-key]');
     if (!inp) return;
@@ -47,10 +34,11 @@ export function setupBudget(box, hidden, notesHidden) {
     if (v) map[inp.dataset.uncKey] = v;
     else {
       delete map[inp.dataset.uncKey];
-      // без своего значения статус и комментарий не нужны: не храним их невидимыми
+      // без своего значения статус и комментарий не нужны; источник и способ (если заданы) остаются
       if (notesHidden) {
         const notes = parseOverrides(notesHidden.value);
-        delete notes[inp.dataset.uncKey];
+        const n = notes[inp.dataset.uncKey];
+        if (n && !n.src && !n.m && !n.doc) delete notes[inp.dataset.uncKey];
         notesHidden.value = Object.keys(notes).length ? JSON.stringify(notes) : '';
       }
     }
@@ -59,9 +47,13 @@ export function setupBudget(box, hidden, notesHidden) {
   box.addEventListener('click', (e) => {
     if (!e.target.closest?.('[data-unc-reset]')) return;
     hidden.value = '';
-    if (notesHidden) notesHidden.value = '';
-    for (const inp of box.querySelectorAll('input[data-unc-key], [data-note-text]')) inp.value = '';
-    for (const sel of box.querySelectorAll('[data-note-st]')) sel.value = '';
+    // «как получено» строк бюджета — тоже; у раскрытий k_i и установки — свои данные, они остаются
+    if (notesHidden) {
+      const notes = parseOverrides(notesHidden.value);
+      for (const k of Object.keys(notes)) if (!/^(ki|setup)\./.test(k)) delete notes[k];
+      notesHidden.value = Object.keys(notes).length ? JSON.stringify(notes) : '';
+    }
+    for (const inp of box.querySelectorAll('input[data-unc-key]')) inp.value = '';
     hidden.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
@@ -70,16 +62,8 @@ export function setupBudget(box, hidden, notesHidden) {
 const capDef = () => `data-cap="${esc(L('Типовое', 'Typical'))}"`;
 const capUsed = () => `data-cap="${esc(L('Принято', 'Used'))}"`;
 
-/** Статусы своего значения строки. */
-export const NOTE_STATUS = () => ({
-  fact: L('фактические данные', 'actual data'),
-  temp: L('временно', 'provisional'),
-  cons: L('консервативно', 'conservative'),
-  acc: L('принято', 'adopted'),
-});
-
 function typeTag(r) {
-  if (r.fromKi) return L('раскрыта ниже', 'broken down below');
+  if (r.fromKi || r.fromSetup) return L('раскрыта ниже', 'broken down below');
   if (r.certRow) return L('тип B', 'type B');
   if (r.over) return L('своё', 'yours');
   return r.type === 'A' ? L('тип A', 'type A') : L('тип B', 'type B');
@@ -90,10 +74,8 @@ function rowHtml(r) {
   const input = r.id && !r.replaced
     ? `<input type="text" class="num unc-in" id="${esc(r.id)}" data-unc-key="${esc(r.key)}" inputmode="decimal" autocomplete="off" placeholder=" " aria-label="${esc(L(`Своё значение, %: ${r.label}`, `Your value, %: ${r.label}`))}">`
     : '';
-  // статус и комментарий — только у строки со своим значением
-  const note = r.id && !r.replaced
-    ? `<span class="unc-note-row" hidden><select data-note-st data-unc-note="${esc(r.key)}" aria-label="${esc(L(`Статус своего значения: ${r.label}`, `Status of your value: ${r.label}`))}"><option value="">${esc(L('статус…', 'status…'))}</option>${Object.entries(NOTE_STATUS()).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select><input type="text" data-note-text data-unc-note="${esc(r.key)}" placeholder="${esc(L('откуда значение', 'where the value comes from'))}" aria-label="${esc(L(`Комментарий к своему значению: ${r.label}`, `Comment on your value: ${r.label}`))}"></span>`
-    : '';
+  // «как получено»: источник, способ расчёта u, статус и комментарий — у строк, где можно ввести своё значение
+  const note = r.id && !r.replaced ? `${estToggleHtml(r.key)}${estHtml(r.key, r.label)}` : '';
   return `<tr data-key="${esc(r.key)}" class="${r.replaced ? 'replaced' : ''}">
     <td class="unc-name"><span class="unc-label">${rich(r.label)}</span> <span class="unc-type"></span>
       <span class="unc-how"></span><span class="unc-ref">${esc(refText(r.ref || ''))}</span>${note}</td>
@@ -154,17 +136,21 @@ export function renderBudget(box, b, { hidden, notesHidden, doseText = '' }) {
     tr.classList.toggle('from-a', !!r.fromTypeA);
     const inp = tr.querySelector('input[data-unc-key]');
     if (inp) {
-      inp.hidden = !!r.fromKi;
-      if (document.activeElement !== inp) inp.value = r.fromKi ? '' : (over[r.key] ?? '');
+      inp.hidden = !!(r.fromKi || r.fromSetup);
+      if (document.activeElement !== inp) inp.value = r.fromKi || r.fromSetup ? '' : (over[r.key] ?? '');
     }
-    const nr = tr.querySelector('.unc-note-row');
-    if (nr) {
-      nr.hidden = !r.over;
-      const n = notes[r.key] || {};
-      const st = nr.querySelector('[data-note-st]');
-      const tx = nr.querySelector('[data-note-text]');
-      if (document.activeElement !== st) st.value = n.st ?? '';
-      if (document.activeElement !== tx) tx.value = n.text ?? '';
+    // строка раскрыта ниже — своего значения и «как получено» у неё нет
+    const broken = r.fromKi || r.fromSetup;
+    const tg = tr.querySelector('[data-est-toggle]');
+    const eb = tr.querySelector('[data-est-box]');
+    if (broken) {
+      if (tg) tg.hidden = true;
+      if (eb) eb.hidden = true;
+    } else updateEst(tr, r.key, notes[r.key], { keep: !!r.over });
+    if (inp) {
+      inp.readOnly = !!r.byMethod;
+      inp.classList.toggle('by-method', !!r.byMethod);
+      if (r.byMethod && document.activeElement !== inp) inp.value = fmt(r.byMethod.u, 3);
     }
   });
   b.groups.forEach((g, i) => {
@@ -203,11 +189,11 @@ export function budgetReportLines(b, value, unit) {
     out.push(`  ${g.title}`);
     for (const r of g.rows) {
       if (r.replaced) continue;
-      const st = r.note?.st ? NOTE_STATUS()[r.note.st] : '';
-      const ownTag = [L('своё', 'yours'), st, r.note?.text].filter(Boolean).join(', ');
-      const tag = r.fromKi ? L(' (раскрыта по поправкам)', ' (broken down by correction)') : r.over ? ` (${ownTag})` : r.fromTypeA ? L(' (тип А по серии показаний)', ' (type A from the readings)') : r.fromCert ? L(' (из свидетельства)', ' (from the certificate)') : '';
+      const tag = r.fromKi ? L(' (раскрыта по поправкам)', ' (broken down by correction)') : r.fromSetup ? L(' (раскрыта по составляющим)', ' (broken down by component)') : r.over ? L(' (своё)', ' (yours)') : r.fromTypeA ? L(' (тип А по серии показаний)', ' (type A from the readings)') : r.fromCert ? L(' (из свидетельства)', ' (from the certificate)') : r.ref ? L(` (типовое: ${refText(r.ref)})`, ` (typical: ${refText(r.ref)})`) : '';
       out.push(`    ${r.label}: ${num(r.value)}${tag}`);
+      if (r.over) out.push(`      ${estimateText(r.note, r.value) || L('источник не указан', 'source not given')}`);
       if (r.fromKi && b.ki) out.push(...kiReportLines(b.ki).map((x) => `  ${x}`));
+      if (r.fromSetup && b.setup) out.push(...setupReportLines(b.setup).map((x) => `  ${x}`));
     }
     if (g.subtotal) out.push(L(`    Суммарная: ${num(g.subtotal.value)}`, `    Combined: ${num(g.subtotal.value)}`));
   }

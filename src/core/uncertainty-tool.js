@@ -6,7 +6,8 @@
 import { parseNumber, parseCells, isBlank, ru } from './units.js';
 import { L } from './i18n.js';
 import { uncertaintyBudget } from './uncertainty.js';
-import { kiBreakdown, seriesUncertainty, resolutionOf, parseKi } from './unc-ki.js';
+import { kiBreakdown, setupBreakdown, seriesUncertainty, resolutionOf, parseKi } from './unc-ki.js';
+import { parseOverrides } from './uncertainty.js';
 
 export const UT_DEFAULTS = {
   protocol: 'trs',
@@ -37,7 +38,8 @@ export const UT_DEFAULTS = {
 
   unc_over: '', // свои значения строк бюджета: JSON { ключ: значение }
   unc_row_notes: '', // статус и комментарий своих значений: JSON { ключ: { st, text } }
-  unc_ki: '', // раскрытие k_i (TRS-398): JSON { on, uT, uP, res, series, source, own: { поправка: значение } }
+  unc_ki: '', // раскрытие k_i (TRS-398): JSON { on, uT, uP, series, source, own: { поправка: значение } }
+  unc_setup: '', // раскрытие установки стандартных условий (TRS-398): JSON { on, own: { составляющая: значение } }
 };
 
 /** Единицы итога: подписи на обоих языках. */
@@ -70,7 +72,7 @@ export function normalizeUncTool(input) {
   if (!UT_UNITS[f.unc_unit]) f.unc_unit = f.unc_beam_type === 'co60' ? 'cGymin' : 'Gy100MU';
   if (!Array.isArray(f.unc_M)) f.unc_M = isBlank(f.unc_M) ? ['', '', ''] : String(f.unc_M).trim().split(/[\s;]+/);
   if (!Array.isArray(f.unc_staff) || f.unc_staff.length === 0) f.unc_staff = [''];
-  for (const k of ['unc_over', 'unc_row_notes', 'unc_ki']) if (f[k] && typeof f[k] === 'object') f[k] = JSON.stringify(f[k]);
+  for (const k of ['unc_over', 'unc_row_notes', 'unc_ki', 'unc_setup']) if (f[k] && typeof f[k] === 'object') f[k] = JSON.stringify(f[k]);
   return f;
 }
 
@@ -194,7 +196,8 @@ export function computeUncertaintyTool(form) {
     certK: f.unc_cert_k,
     over: f.unc_over,
     rowNotes: f.unc_row_notes,
-    ki: kiBreakdown(beam, kiSpec, { res: resUsed }),
+    ki: kiBreakdown(beam, kiSpec, { res: resUsed, notes: parseOverrides(f.unc_row_notes) }),
+    setup: setupBreakdown(beam, f.unc_setup, { notes: parseOverrides(f.unc_row_notes) }),
     typeA,
     prefix: '',
   });

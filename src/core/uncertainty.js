@@ -18,6 +18,7 @@
 
 import { parseNumber, isBlank, ru } from './units.js';
 import { L } from './i18n.js';
+import { estimateU, hasMethod, hasSource } from './unc-est.js';
 
 export const COVERAGE_K = 2;
 
@@ -394,7 +395,15 @@ export function uncertaintyBudget(o) {
 
   const over = parseOverrides(o.over);
   const notes = parseOverrides(o.rowNotes);
-  if (o.ki && tpl.stages) for (const m of o.ki.messages) add(m.level, m.text, m.field ?? null);
+  const noSource = [];
+  if (o.ki && tpl.stages) {
+    for (const m of o.ki.messages) add(m.level, m.text, m.field ?? null);
+    noSource.push(...o.ki.noSource);
+  }
+  if (o.setup && tpl.stages) {
+    for (const m of o.setup.messages) add(m.level, m.text, m.field ?? null);
+    noSource.push(...o.setup.noSource);
+  }
   const typeA = o.typeA && Number.isFinite(o.typeA.pct) ? o.typeA : null;
   const rows = [];
   const groups = [];
@@ -425,6 +434,14 @@ export function uncertaintyBudget(o) {
             `From the certificate: U = ${pct(cert.U)}% at k = ${ru(cert.k, cert.k % 1 ? 2 : 0)}, converted to k = 1. The example uses ${pct(spec.def)}% (AAPM laboratories).`,
           );
         }
+        if (spec.key === 'st_setup' && o.setup && tpl.stages) {
+          row.value = o.setup.pct;
+          row.fromSetup = true;
+          row.how = L(
+            `Раскрыта по составляющим ниже («Раскрытие установки стандартных условий»): ${o.setup.factors.map((x) => `${x.label} ${pct(x.value)}`).join('; ')}.`,
+            `Broken down by component below (breakdown of the reference conditions): ${o.setup.factors.map((x) => `${x.label} ${pct(x.value)}`).join('; ')}.`,
+          );
+        }
         if (spec.key === 'st_ki' && o.ki && tpl.stages) {
           row.value = o.ki.pct;
           row.fromKi = true;
@@ -442,7 +459,12 @@ export function uncertaintyBudget(o) {
           }
           row.how = [row.how, typeAText(typeA, spec.def)].filter(Boolean).join(' ');
         }
-        const raw = row.fromKi ? '' : over[key];
+        // своё значение: способом из «как получено» (U/k, предел/√3 и т. п.) или числом в поле «Своё»
+        const est = notes[key];
+        const byMethod = !row.fromKi && !row.fromSetup && hasMethod(est) ? estimateU(est) : null;
+        if (byMethod?.error) add('warn', L(`«${row.label}», как получено: ${byMethod.error} — взято число из поля «Своё» или типовое значение.`, `"${row.label}", how obtained: ${byMethod.error}; the number in the “Yours” field or the typical value is used.`), row.id);
+        const raw = row.fromKi || row.fromSetup ? '' : byMethod && !byMethod.error ? String(byMethod.u) : over[key];
+        if (byMethod && !byMethod.error) row.byMethod = byMethod;
         if (!isBlank(raw)) {
           const x = parseNumber(raw);
           row.raw = String(raw);
@@ -463,7 +485,8 @@ export function uncertaintyBudget(o) {
         }
       }
       const note = notes[key];
-      if (row.over && note && typeof note === 'object') row.note = { st: String(note.st ?? ''), text: String(note.text ?? '') };
+      if (row.over && note && typeof note === 'object') row.note = { ...note, st: String(note.st ?? ''), text: String(note.text ?? '') };
+      if (row.over && !hasSource(note)) noSource.push(row.label);
       out.push(row);
       rows.push(row);
     }
@@ -490,6 +513,13 @@ export function uncertaintyBudget(o) {
     groups.push(sub);
   }
 
+  // «обязательно помечать, откуда что берётся»: у каждого своего значения должен быть указан источник
+  if (noSource.length) {
+    add('warn', L(
+      `Не указан источник своих значений: ${noSource.join('; ')}. Откройте «как получено» у строки и укажите документ (свидетельство камеры, электрометра, термометра, протокол QA, измерения…) и способ расчёта.`,
+      `No source given for your values: ${noSource.join('; ')}. Open “how obtained” on the row and give the document (chamber, electrometer or thermometer certificate, QA record, measurements…) and how the value was calculated.`,
+    ));
+  }
   const ucPct = quad(rows.map((r) => r.value));
   const ucDefPct = quad(rows.filter((r) => !r.certRow).map((r) => r.def));
   const custom = !!cert || rows.some((r) => r.over);
@@ -505,6 +535,7 @@ export function uncertaintyBudget(o) {
     UPct: COVERAGE_K * ucPct,
     custom,
     ki: o.ki && tpl.stages ? o.ki : null,
+    setup: o.setup && tpl.stages ? o.setup : null,
     messages,
   };
 }

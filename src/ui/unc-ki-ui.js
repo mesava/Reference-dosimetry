@@ -1,8 +1,10 @@
 // «Раскрытие k_i» на вкладке «Неопределённость» (TRS-398): таблица поправок с частью «по измерениям» и своей оценкой.
 // Расчёт — core/unc-ki.js; данные хранятся в скрытом поле unc_ki (JSON), чтобы сохраняться в черновике и файле.
 import { L, getLang, refText } from '../core/i18n.js';
-import { parseKi, kiFactors } from '../core/unc-ki.js';
+import { parseKi, kiFactors, setupFactors } from '../core/unc-ki.js';
+import { estimateText } from '../core/unc-est.js';
 import { fmt, esc, richText } from './common.js';
+import { estHtml, estToggleHtml, updateEst } from './unc-est-ui.js';
 
 const num = (v, d = 2) => (Number.isFinite(v) ? fmt(v, d) : '—');
 const SRC = { photons: () => L('МВ фотоны', 'MV photons'), electrons: () => L('Электроны', 'Electrons'), co60: () => '⁶⁰Co' };
@@ -63,7 +65,7 @@ function seriesLine(o, b) {
  * Отрисовка. r — результат computeUncertaintyTool. Таблица пересоздаётся при смене состава (язык, пучок, включено ли
  * раскрытие); иначе обновляются значения, и поле, в котором сейчас вводят, не теряет фокус.
  */
-export function renderKi(box, r, hidden) {
+export function renderKi(box, r, hidden, notes = {}) {
   if (!box) return;
   const o = parseKi(hidden.value);
   const trs = r.budget.template.stages;
@@ -89,7 +91,7 @@ export function renderKi(box, r, hidden) {
     const rows = kiFactors(r.beam)
       .map(
         (f) => `<tr data-ki-row="${f.key}">
-      <td class="unc-name"><span class="unc-label">${richText(f.label)}</span> <span class="unc-type"></span><span class="unc-how">${richText(f.how)}</span><span class="unc-ref">${esc(refText(f.ref))}</span><span class="unc-how" data-meas-how></span></td>
+      <td class="unc-name"><span class="unc-label">${richText(f.label)}</span> <span class="unc-type"></span><span class="unc-how">${richText(f.how)}</span><span class="unc-ref">${esc(refText(f.ref))}</span><span class="unc-how" data-meas-how></span>${estToggleHtml(`ki.${f.key}`)}${estHtml(`ki.${f.key}`, f.label)}</td>
       <td class="v" data-typ data-cap="${esc(L('Типовое', 'Typical'))}"></td>
       <td class="v" data-meas data-cap="${esc(L('По измерениям', 'Measured'))}"></td>
       <td class="unc-own"><input type="text" class="num unc-in" id="unc_ki_own_${f.key}" data-ki="own.${f.key}" inputmode="decimal" autocomplete="off" placeholder=" " aria-label="${esc(L(`Своя оценка (тип B), %: ${f.label}`, `Your estimate (type B), %: ${f.label}`))}"></td>
@@ -126,11 +128,90 @@ export function renderKi(box, r, hidden) {
     tr.querySelector('.unc-type').textContent = basisText[f.basis];
     tr.querySelector('[data-meas-how]').innerHTML = f.measHow ? richText(L(`По измерениям: ${f.measHow}.`, `Measured: ${f.measHow}.`)) : '';
     tr.classList.toggle('own', f.basis === 'own' || f.basis === 'both');
-    set(`[data-ki="own.${f.key}"]`, o.own?.[f.key]);
+    ownField(tr, `[data-ki="own.${f.key}"]`, f, o.own?.[f.key]);
+    updateEst(tr, `ki.${f.key}`, notes[`ki.${f.key}`], { keep: Number.isFinite(f.own) });
   }
   const tot = box.querySelector('[data-ki-total]');
   tot.querySelector('[data-typ]').textContent = num(Math.sqrt(b.factors.reduce((s, f) => s + f.typ * f.typ, 0)));
   tot.querySelector('[data-used]').textContent = num(b.pct);
+}
+
+/** Поле своей оценки: при способе из «как получено» — только чтение, в нём рассчитанное u. */
+function ownField(tr, sel, f, raw) {
+  const el = tr.querySelector(sel);
+  if (!el) return;
+  el.readOnly = !!f.byMethod;
+  el.classList.toggle('by-method', !!f.byMethod);
+  if (document.activeElement !== el) el.value = f.byMethod ? fmt(f.byMethod.u, 3) : (raw ?? '');
+}
+
+/** Раскрытие установки стандартных условий: расстояние, глубина, поле, прочее. */
+export function renderSetup(box, r, hidden, notes = {}) {
+  if (!box) return;
+  const o = parseKi(hidden.value);
+  const trs = r.budget.template.stages;
+  const b = r.budget.setup;
+  const on = !!o.on && trs;
+  box.dataset.on = on ? '1' : '';
+  const sig = [getLang(), r.beam, trs ? 'trs' : 'tg', on ? 'on' : 'off'].join('|');
+  if (box.dataset.sig !== sig) {
+    box.dataset.sig = sig;
+    if (!trs) {
+      box.innerHTML = `<p class="sub-hint">${esc(L('В TG-51 установка уже разложена в бюджете отдельными строками (РИП, глубина, поле); раскрытие — для TRS-398.', 'In TG-51 the setup is already split into separate rows of the budget (SSD, depth, field); the breakdown is for TRS-398.'))}</p>`;
+      return;
+    }
+    const head = `<label class="check"><input type="checkbox" data-ki="on"${on ? ' checked' : ''}> <span>${esc(L('Раскрыть строку «Установка стандартных условий» по составляющим', 'Break down the “Establishment of reference conditions” row by component'))}</span></label>
+      <p class="sub-hint">${richText(L(
+        'Каждая составляющая — погрешность установки × чувствительность дозы к ней: в «как получено» выберите «погрешность × чувствительность» и укажите, откуда погрешность (протокол QA аппарата, точность указателя, проверка поля) и чувствительность (закон обратных квадратов, градиент PDD/TPR). Без своей оценки — типовое значение. Итог — сумма в квадратуре; он заменяет 0,3 % строки.',
+        'Each component is a setup error × the sensitivity of the dose to it: in “how obtained” choose “error × sensitivity” and give where the error comes from (machine QA record, pointer accuracy, field check) and the sensitivity (inverse square law, PDD/TPR gradient). Without your estimate, the typical value is used. The total is the sum in quadrature; it replaces the 0.3% of the row.',
+      ))}</p>`;
+    if (!on) {
+      box.innerHTML = head;
+      return;
+    }
+    const rows = setupFactors(r.beam)
+      .map(
+        (f) => `<tr data-ki-row="${f.key}">
+      <td class="unc-name"><span class="unc-label">${richText(f.label)}</span> <span class="unc-type"></span><span class="unc-how">${richText(f.how)}</span><span class="unc-ref">${esc(refText(f.ref))}</span>${estToggleHtml(`setup.${f.key}`)}${estHtml(`setup.${f.key}`, f.label, { sensHint: f.sens })}</td>
+      <td class="v" data-typ data-cap="${esc(L('Типовое', 'Typical'))}"></td>
+      <td class="unc-own"><input type="text" class="num unc-in" id="unc_setup_own_${f.key}" data-ki="own.${f.key}" inputmode="decimal" autocomplete="off" placeholder=" " aria-label="${esc(L(`Своя оценка, %: ${f.label}`, `Your estimate, %: ${f.label}`))}"></td>
+      <td class="v" data-used data-cap="${esc(L('Принято', 'Used'))}"></td>
+    </tr>`,
+      )
+      .join('');
+    box.innerHTML = `${head}
+      <div class="table-wrap"><table class="factors unc-table setup-table" aria-label="${esc(L('Раскрытие установки стандартных условий', 'Breakdown of the reference conditions'))}">
+        <thead><tr><th>${esc(L('Составляющая', 'Component'))}</th><th class="v">${esc(L('Типовое', 'Typical'))}</th><th class="unc-own">${esc(L('Своя оценка', 'Your estimate'))}</th><th class="v">${esc(L('Принято', 'Used'))}</th></tr></thead>
+        <tbody>${rows}<tr class="total" data-ki-total><td>${esc(L('Итог строки (в квадратуре)', 'Total of the row (in quadrature)'))}</td><td class="v" data-typ data-cap="${esc(L('Типовое', 'Typical'))}"></td><td></td><td class="v" data-used data-cap="${esc(L('Принято', 'Used'))}"></td></tr></tbody>
+      </table></div>`;
+  }
+  if (!on || !b) return;
+  const basisText = { typ: L('типовое', 'typical'), own: L('своя оценка', 'your estimate') };
+  for (const f of b.factors) {
+    const tr = box.querySelector(`tr[data-ki-row="${f.key}"]`);
+    if (!tr) continue;
+    tr.querySelector('[data-typ]').textContent = f.typ > 0 ? num(f.typ) : '—';
+    tr.querySelector('[data-used]').textContent = num(f.value);
+    tr.querySelector('.unc-type').textContent = basisText[f.basis];
+    tr.classList.toggle('own', f.basis === 'own');
+    ownField(tr, `[data-ki="own.${f.key}"]`, f, o.own?.[f.key]);
+    updateEst(tr, `setup.${f.key}`, notes[`setup.${f.key}`], { keep: Number.isFinite(f.own) });
+  }
+  const tot = box.querySelector('[data-ki-total]');
+  tot.querySelector('[data-typ]').textContent = num(Math.sqrt(b.factors.reduce((s, f) => s + f.typ * f.typ, 0)));
+  tot.querySelector('[data-used]').textContent = num(b.pct);
+}
+
+/** Протокол текстом: раскрытие установки стандартных условий. */
+export function setupReportLines(b) {
+  if (!b) return [];
+  const out = [L('  Раскрытие установки стандартных условий (относительные стандартные неопределённости, %):', '  Breakdown of the reference conditions (relative standard uncertainties, %):')];
+  for (const f of b.factors) {
+    out.push(`    ${f.label}: ${num(f.value)} (${f.basis === 'own' ? L('своя оценка', 'your estimate') : L(`типовое: ${refText(f.ref)}`, `typical: ${refText(f.ref)}`)})`);
+    if (f.basis === 'own') out.push(`      ${estimateText(f.est, f.own) || L('источник не указан', 'source not given')}`);
+  }
+  out.push(L(`    Итог: ${num(b.pct)}`, `    Total: ${num(b.pct)}`));
+  return out;
 }
 
 /** Протокол текстом: раскрытие k_i построчно. */
@@ -140,8 +221,9 @@ export function kiReportLines(b) {
   const out = [L('  Раскрытие строки k_i (относительные стандартные неопределённости, %):', '  Breakdown of the k_i row (relative standard uncertainties, %):')];
   for (const f of b.factors) {
     // составляющие — только когда принятое значение сложено из двух частей
-    const parts = f.basis === 'both' ? L(`по измерениям ${num(f.meas, 3)}, своя ${num(f.own)}`, `measured ${num(f.meas, 3)}, yours ${num(f.own)}`) : f.basis === 'meas' ? L(`типовое ${num(f.typ)}`, `typical ${num(f.typ)}`) : '';
+    const parts = f.basis === 'both' ? L(`по измерениям ${num(f.meas, 3)}${f.measHow ? ` (${f.measHow})` : ''}, своя ${num(f.own)}`, `measured ${num(f.meas, 3)}${f.measHow ? ` (${f.measHow})` : ''}, yours ${num(f.own)}`) : f.basis === 'meas' ? L(`${f.measHow}; типовое ${num(f.typ)}`, `${f.measHow}; typical ${num(f.typ)}`) : f.basis === 'typ' ? refText(f.ref) : '';
     out.push(`    ${f.label}: ${num(f.value)} (${basis[f.basis]}${parts ? `; ${parts}` : ''})`);
+    if (Number.isFinite(f.own)) out.push(`      ${estimateText(f.est, f.own) || L('источник не указан', 'source not given')}`);
   }
   out.push(L(`    Итог k_i: ${num(b.pct)}`, `    k_i total: ${num(b.pct)}`));
   return out;

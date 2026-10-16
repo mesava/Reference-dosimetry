@@ -6,7 +6,9 @@ import { L, getLang, refText } from '../core/i18n.js';
 import { localizeDecimals } from './i18n.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import { setupBudget, renderBudget, budgetDoseText, budgetReportLines, fmt2sig } from './uncertainty-ui.js';
-import { setupKi, renderKi } from './unc-ki-ui.js';
+import { setupKi, renderKi, renderSetup } from './unc-ki-ui.js';
+import { setupEst } from './unc-est-ui.js';
+import { parseOverrides } from '../core/uncertainty.js';
 import { parseKi } from '../core/unc-ki.js';
 import {
   $, $$, localizeDemo, fmt, esc, today, makeStatus, copyText, downloadText, currentProtocol, renderOutputs, renderFlags, applyShowRules,
@@ -297,7 +299,9 @@ function update() {
   const r = computeUncertaintyTool(data);
   current = { data: r.form, result: r };
   applyVisibility(r.form, r);
-  renderKi($('#unc-ki'), r, $('#unc_ki'));
+  const notes = parseOverrides($('#unc_row_notes').value);
+  renderSetup($('#unc-setup'), r, $('#unc_setup'), notes);
+  renderKi($('#unc-ki'), r, $('#unc_ki'), notes);
   renderBudget($('#unc-budget'), r.budget, { hidden: $('#unc_over'), notesHidden: $('#unc_row_notes'), doseText: budgetDoseText(r.budget, r.value, esc(unitText(r.unit)), '') });
   renderOutputs(ROOT(), r);
   renderFlags(ROOT(), r.flags, (key) => (key === 'unc_M' ? seriesBox() : null));
@@ -329,6 +333,8 @@ export function initUncTool() {
   $$('#unc-sheet > section .combo').forEach((c) => makeCombo(c));
   setupBudget($('#unc-budget'), $('#unc_over'), $('#unc_row_notes'));
   setupKi($('#unc-ki'), $('#unc_ki'));
+  setupKi($('#unc-setup'), $('#unc_setup'));
+  setupEst($('#unc-sheet'), $('#unc_row_notes'));
 
   const draft = loadDraft();
   writeForm(draft ? draft : sampleData());
