@@ -153,6 +153,7 @@ a { color: var(--accent); }
 .theme-toggle[data-state="auto"] .ic-auto, .theme-toggle[data-state="light"] .ic-light, .theme-toggle[data-state="dark"] .ic-dark { display: block; }
 .lang-switch .segmented span { padding: 6px 10px; font-size: 13px; }
 .protocol-switch { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.protocol-switch[hidden] { display: none; }
 .protocol-switch > span { font: 500 12px var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .segmented {
   display: inline-flex;

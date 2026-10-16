@@ -26,22 +26,22 @@ const subKey = (group) => `reference-dosimetry.sub.${group}`;
 // tab — вкладка в шапке, к которой относится модуль. Адреса модулей (#photons, #tools, #session…) прежние: так открываются
 // старые ссылки и закладки. Подразделы перечислены в порядке работы.
 const MODULES = {
-  start: { title: () => L('Референсная дозиметрия', 'Reference dosimetry'), file: '-', importData: () => {}, status: (t) => { $('#start-status').textContent = t; }, tab: 'start' },
+  start: { title: () => L('Референсная дозиметрия', 'Reference dosimetry'), file: '-', importData: () => {}, status: (t) => { $('#start-status').textContent = t; }, tab: 'start', proto: false },
   equipment: { title: () => L('Журнал — оборудование', 'Journal — equipment'), file: '-', importData: () => {}, status: (t) => equipmentStatus(t), tab: 'journal' },
   session: { title: () => L('Журнал — сеанс на весь аппарат', 'Journal — whole-machine session'), file: 'journal', importData: (obj) => importJournalObject(obj), status: (t) => sessionStatus(t), tab: 'journal' },
-  history: { title: () => L('Журнал — сеансы и тренды', 'Journal — sessions and trends'), file: '-', importData: () => {}, status: (t) => historyStatus(t), tab: 'journal' },
+  history: { title: () => L('Журнал — сеансы и тренды', 'Journal — sessions and trends'), file: '-', importData: () => {}, status: (t) => historyStatus(t), tab: 'journal', proto: false },
   co60: { title: () => L('⁶⁰Co — референсная дозиметрия', '⁶⁰Co — reference dosimetry'), file: 'cobalt', importData: importCobalt, status: cobaltStatus, tab: 'dosimetry' },
   photons: { title: () => L('МВ фотоны — референсная дозиметрия', 'MV photons — reference dosimetry'), file: 'photons', importData: importPhotons, status: photonsStatus, tab: 'dosimetry' },
   electrons: { title: () => L('Электроны — референсная дозиметрия', 'Electrons — reference dosimetry'), file: 'electrons', importData: importElectrons, status: electronsStatus, tab: 'dosimetry' },
   // в разработке: страница с планом, без расчёта; transient — не запоминается местом работы (последним подразделом)
-  kv: { title: () => L('kV-рентген — в разработке', 'kV x-rays — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', transient: true },
-  brachy: { title: () => L('Брахитерапия — в разработке', 'Brachytherapy — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', transient: true },
+  kv: { title: () => L('kV-рентген — в разработке', 'kV x-rays — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', transient: true, proto: false },
+  brachy: { title: () => L('Брахитерапия — в разработке', 'Brachytherapy — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', transient: true, proto: false },
   jaffe: { title: () => L('Камера и пучок — график Яффе', 'Chamber and beam — Jaffé plot'), file: 'jaffe', importData: importJaffe, status: jaffeStatus, tab: 'prep' },
   tools: { title: () => L('Камера и пучок — перекрёстная калибровка', 'Chamber and beam — cross-calibration'), file: 'crosscal', importData: importCrossCal, status: crossCalStatus, tab: 'prep' },
   edepth: { title: () => L('Камера и пучок — кривая дозы электронов', 'Chamber and beam — electron depth dose'), file: 'edepth', importData: importEdepth, status: edepthStatus, tab: 'prep' },
   uncertainty: { title: () => L('Неопределённость поглощённой дозы', 'Absorbed dose uncertainty'), file: 'uncertainty', importData: importUncTool, status: uncToolStatus, tab: 'uncertainty' },
   // «Литература»: открывается из подвала и с «Начала»; вкладки в шапке у неё нет, местом работы не запоминается
-  refs: { title: () => L('Литература', 'References'), file: '-', importData: () => {}, status: () => {}, tab: 'refs', transient: true },
+  refs: { title: () => L('Литература', 'References'), file: '-', importData: () => {}, status: () => {}, tab: 'refs', transient: true, proto: false },
 };
 const tabOf = (name) => MODULES[name]?.tab ?? name;
 /** Подраздел по умолчанию для вкладки в шапке (если с ней ещё не работали). */
@@ -116,6 +116,10 @@ function showModule(name) {
     else a.removeAttribute('aria-current');
   }
   setActiveModule(name);
+  // переключатель протокола — только там, где он влияет на расчёт (proto: false — «Начало», «Литература», заглушки,
+  // «Журнал и тренды»: записанные сеансы хранят свой протокол); выбранный протокол при этом не меняется
+  const sw = $('.protocol-switch');
+  if (sw) sw.hidden = MODULES[name].proto === false;
   document.title = MODULES[name].title();
   if (!MODULES[name].transient) {
     store.set(TAB_KEY, name);
