@@ -747,4 +747,9 @@ export const STATIC_EN = {
   "измерение в фантоме PTW 9193;": "measurement in the PTW 9193 phantom;",
   "сравнение с паспортом источника и допуск;": "comparison with the source certificate and tolerance;",
   "Источники формул, коэффициентов и данных калькулятора. TRS-398 Rev.1 использована в русском переводе.": "Sources of the calculator's formulas, coefficients and data. TRS-398 Rev.1 was used in its Russian translation.",
+  "Проверка на независимых данных": "Validation on independent data",
+  "Кроме таблиц и примеров самих протоколов, расчёт сверен с реальными калибровками, посчитанными независимо в рабочих таблицах отделений: каждый поправочный коэффициент и итоговая доза. Каждый набор данных — автотест, который проверяется при каждом изменении калькулятора.": "Besides the tables and examples of the protocols themselves, the calculation has been checked against real calibrations calculated independently in departments' own spreadsheets: every correction factor and the final dose. Each data set is an automated test run on every change to the calculator.",
+  "Elekta Versa HD — фотоны 6 и 10 МВ, 10 МВ БВФ; электроны 6, 8, 10, 12 и 15 МэВ (TRS-398, Report 385);": "Elekta Versa HD: photons 6 and 10 MV, 10 MV FFF; electrons 6, 8, 10, 12 and 15 MeV (TRS-398, Report 385);",
+  "Varian TrueBeam — фотоны 6 и 10 МВ, 6 и 10 МВ БВФ (TRS-398).": "Varian TrueBeam: photons 6 and 10 MV, 6 and 10 MV FFF (TRS-398).",
+  "Всего 2 ускорителя, 12 пучков, 4 модели камер. При тех же k<sub>Q</sub> и k<sub>vol</sub>, что в независимом расчёте, доза совпадает до 0,001 %. ⁶⁰Co, перекрёстная калибровка и TG-51 на независимых данных пока не проверены.": "In total: 2 linacs, 12 beams, 4 chamber models. With the same k<sub>Q</sub> and k<sub>vol</sub> as in the independent calculation, the dose agrees within 0.001%. ⁶⁰Co, cross-calibration and TG-51 have not yet been validated on independent data.",
 };
