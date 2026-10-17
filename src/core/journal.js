@@ -672,6 +672,76 @@ export function computeSessionBeam(j, session, beamInput, opts = {}) {
   return { ...built, prev, beam: found.beam, machine, result, summary };
 }
 
+// ---------------------------------------------------------------- проверка дозиметра второй камерой (core/journal-check.js)
+/** Доза на МЕ (мощность дозы у ⁶⁰Co) на z_ref по основной серии — без контрольных измерений и подстройки. */
+export function mainValue(r, kind = 'photon') {
+  const x = r?.protocol === 'tg51' ? r.tg51 : r?.trs;
+  if (!x || x.blocked) return NaN;
+  return kind === 'cobalt' ? x.rate : x.DperMU;
+}
+
+/**
+ * Настройки для расчёта второй камеры: пучок — как у рабочей камеры в этом сеансе (workForm — форма, по которой она
+ * посчитана, с качеством пучка этого сеанса), камера и электрометр — свои: из журнала (chamberId, electrometerId; без
+ * электрометра — тот же, что у рабочей камеры) или записанные при проверке (recorded — её форма).
+ * От камеры зависят k_Q и (в пучке БВФ) k_vol: они берутся по модели второй камеры и длине её полости; k_Q и k_vol,
+ * введённые для рабочей камеры, к ней не относятся — их можно ввести для второй (kQ, kvol). Поправка на рекомбинацию по
+ * глубине для показателя качества — по k_s рабочей камеры (ks10): качество измерено ею. ⁶⁰Co: ошибка таймера — та же,
+ * что у рабочей камеры (tau, в единицах времени пучка): она относится к аппарату, а не к камере.
+ */
+export function checkBase(j, workForm, kind, { chamberId = '', electrometerId = '', recorded = null, kQ = '', kvol = '', ks10 = NaN, tau = NaN, en = false } = {}) {
+  const K = kindOf(kind);
+  const six = (v) => (en ? v.toFixed(6) : v.toFixed(6).replace('.', ','));
+  const exact = (v) => {
+    const t = v.toFixed(12).replace(/0+$/, '').replace(/\.$/, '');
+    return en ? t : t.replace('.', ',');
+  };
+  const ch = recorded ? null : chamberOf(j, chamberId);
+  const el = recorded || !electrometerId ? null : electrometerOf(j, electrometerId);
+  const b = {
+    ...pick(workForm, K.beamKeys),
+    ...(recorded ? pick(recorded, K.chamberKeys) : K.chamberForm(ch?.form || {})),
+    ...(recorded ? pick(recorded, K.electrometerKeys) : el ? K.electrometerForm(el.form) : pick(workForm, K.electrometerKeys)),
+  };
+  const own = (v) => !isBlank(v);
+  if (kind === 'photon') {
+    if (own(kQ)) Object.assign(b, { kqtrs_mode: 'manual', kqtrs_manual: kQ, kq51_manual_on: true, kq51_manual: kQ });
+    else {
+      if (b.kqtrs_mode === 'manual') b.kqtrs_mode = 'formula';
+      b.kq51_manual_on = false;
+    }
+    b.prof_length = '';
+    if (own(kvol)) Object.assign(b, { prof_mode: 'manual', prof_value: kvol });
+    else if (b.prof_mode === 'manual') b.prof_mode = 'formula22';
+    if (b.q_rec_on && isBlank(b.q_rec_ks) && Number.isFinite(ks10)) b.q_rec_ks = six(ks10);
+  } else if (kind === 'electron') {
+    if (own(kQ)) Object.assign(b, { e_kqtrs_mode: 'manual', e_kqtrs_manual: kQ, e_kq51_mode: 'manual', e_kq51_manual: kQ });
+    else {
+      if (b.e_kqtrs_mode === 'manual') b.e_kqtrs_mode = 'table';
+      if (b.e_kq51_mode === 'manual') b.e_kq51_mode = 'fit';
+    }
+  } else if (kind === 'cobalt' && b.co_timer_mode !== 'window' && b.co_timer_mode !== 'none') {
+    b.co_timer_mode = 'manual';
+    b.co_tau = Number.isFinite(tau) ? exact(tau) : '';
+  }
+  return b;
+}
+
+/**
+ * Расчёт второй камеры проверки дозиметра по настройкам input.base (checkBase) и её показаниям. session.mode: 'cal' —
+ * k_pol и k_s второй камеры измерены в этом сеансе, 'check' — заданы (input[fixedKpol], input[fixedKs]). Сравнения
+ * с прошлой калибровкой пучка нет: та калибровка — рабочей камеры.
+ */
+export function computeCheckBeam(j, session, input, opts = {}) {
+  const found = beamOf(j, input.beamId);
+  if (!found) return null;
+  const machine = machineOf(j, session.machineId) || found.machine;
+  const kind = beamKind(found.beam);
+  const built = beamForm(j, session, machine, found.beam, input, opts);
+  const result = kindOf(kind).compute(built.form);
+  return { ...built, beam: found.beam, machine, result, summary: beamSummary(result, kind) };
+}
+
 /** Сеанс для записи в журнал: у каждого пучка — показания, итог и форма, по которой он посчитан. */
 export function finalizeSession(j, session, opts = {}) {
   const s = { ...session, id: session.id || uid('s'), saved: new Date().toISOString() };

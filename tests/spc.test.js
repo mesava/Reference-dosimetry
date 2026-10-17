@@ -179,3 +179,19 @@ test('Повторная запись сеанса не снимает отме�
   assert.equal(upsertSession(j, { id: 's1', date: '2026-01-02' }).sessions[0].spcRestart, true);
   assert.equal(upsertSession(j, { id: 's1', date: '2026-01-02', spcRestart: false }).sessions[0].spcRestart, false);
 });
+
+test('Выброс в базе границ: точка за 3σ не входит в CL и σ, обычные точки не становятся «сдвигом»', () => {
+  const v = Array.from({ length: 9 }, (_, i) => noise(i) * 0.3);
+  const r = controlChart(pts([...v, 1.0]));
+  const seg = r.current;
+  assert.equal(seg.excluded, 1);
+  assert.ok(Math.abs(seg.cl) < 0.02, `CL = ${seg.cl}`);
+  assert.ok(seg.sigma < 0.1, `σ = ${seg.sigma}`);
+  assert.ok(r.points[9].signals.includes('3s'));
+  assert.ok(r.points.slice(0, 9).every((p) => !p.signals.includes('run8')), 'до выброса — без сигналов «8 подряд»');
+  // без выбросов — как раньше
+  const b = baseline([0, 1, 0, 1]);
+  assert.deepEqual(b.excluded, []);
+  // мало точек — ничего не исключается
+  assert.deepEqual(baseline([0, 0.1, 0, 5]).excluded, []);
+});

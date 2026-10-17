@@ -131,6 +131,10 @@ test('Report 385: ручной k_Q для камеры без данных Repor
 test('Версия калькулятора совпадает с package.json', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(APP_VERSION, pkg.version);
+  // метаданные для цитирования (GitHub «Cite this repository», Zenodo)
+  const cff = readFileSync(new URL('../CITATION.cff', import.meta.url), 'utf8');
+  assert.match(cff, new RegExp(`^version: ${APP_VERSION.replace(/\./g, '\\.')}$`, 'm'), 'версия в CITATION.cff');
+  assert.match(cff, new RegExp(`^license: ${pkg.license}$`, 'm'), 'лицензия в CITATION.cff');
 });
 
 test('⁶⁰Co: k_s лаборатории чуть больше измеренного — отношение < 1, расчёт не блокируется', () => {

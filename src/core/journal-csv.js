@@ -5,6 +5,7 @@ import { L, getLang } from './i18n.js';
 import { machineOf, beamKind, chamberText, electrometerText } from './journal.js';
 import { beamChart, sessionCommon } from './journal-spc.js';
 import { signalText } from './spc-text.js';
+import { checkPairs, checkChart } from './journal-check.js';
 
 const BOM = '﻿';
 
@@ -134,9 +135,81 @@ export function journalCsv(j) {
   return BOM + lines.join('\r\n') + '\r\n';
 }
 
-/** Имя файла: «журнал_ЛОР_2026-10-16.csv». */
-export function csvFileName(j, date = new Date()) {
+/** Текст CSV проверок дозиметра второй камерой (все аппараты): по строке на проверку. */
+export function checksCsv(j) {
+  const ru = getLang() !== 'en';
+  const sep = ru ? ';' : ',';
+  const dec = ru ? ',' : '.';
+  const head = [
+    L('Аппарат', 'Machine'),
+    L('Дата', 'Date'),
+    L('Режим сеанса', 'Session mode'),
+    L('Протокол', 'Protocol'),
+    L('Пучок', 'Beam'),
+    L('Рабочая камера', 'Working chamber'),
+    L('N_D,w рабочей', 'N_D,w working'),
+    L('Электрометр рабочей', 'Working electrometer'),
+    L('Вторая камера', 'Second chamber'),
+    L('N_D,w второй', 'N_D,w second'),
+    L('Электрометр второй', 'Second electrometer'),
+    L('Доза по рабочей на z_ref', 'Dose from the working chamber at z_ref'),
+    L('Доза по второй на z_ref', 'Dose from the second chamber at z_ref'),
+    L('Единица', 'Unit'),
+    L('Отношение', 'Ratio'),
+    L('Отношение − 1, %', 'Ratio − 1, %'),
+    L('k_pol второй', 'k_pol second'),
+    L('k_s второй', 'k_s second'),
+    L('k_pol и k_s второй', 'k_pol and k_s second'),
+    L('Сигналы карты', 'Chart signals'),
+  ];
+  const srcText = (sum) => (sum.measured ? L('измерены', 'measured') : [sum.kpolSrc, sum.ksSrc].map((x) => ({ manual: L('введён', 'entered'), previous: L('из прошлой проверки', 'from the previous check'), assumed: L('принят 1', 'taken as 1') })[x] ?? '').join(' / '));
+  const signals = new Map(); // `${sessionId}|${checkId}` → текст
+  for (const m of j.machines) {
+    for (const pair of checkPairs(j, m.id)) {
+      for (const p of checkChart(j, pair).chart.points) if (p.signals.length) signals.set(`${p.sessionId}|${p.check.id}`, p.signals.map(signalText).join(', '));
+    }
+  }
+  const chamberById = new Map(j.chambers.map((c) => [c.id, c]));
+  const elById = new Map(j.electrometers.map((e) => [e.id, e]));
+  const lines = [head.map((h) => cell(h, sep)).join(sep)];
+  for (const s of j.sessions) {
+    const m = machineOf(j, s.machineId);
+    for (const c of s.checks ?? []) {
+      const x = c.summary;
+      if (!x) continue;
+      const beam = m?.beams.find((b) => b.id === c.beamId);
+      const co = (beam ? beamKind(beam) : x.kind) === 'cobalt';
+      const row = [
+        m?.name ?? '',
+        s.date,
+        s.mode === 'cal' ? L('калибровка', 'calibration') : L('проверка выхода', 'output check'),
+        s.protocol === 'tg51' ? 'TG-51' : 'TRS-398',
+        beam?.name ?? '',
+        chamberText(chamberById.get(x.workChamberId)),
+        num(x.workNdw, 6, dec),
+        electrometerText(elById.get(x.workElectrometerId)),
+        chamberText(chamberById.get(c.chamberId)),
+        num(x.ndw, 6, dec),
+        electrometerText(elById.get(x.electrometerId)),
+        num(x.workValue, co ? 3 : 5, dec),
+        num(x.value, co ? 3 : 5, dec),
+        co ? L('сГр/мин', 'cGy/min') : L('Гр/100 МЕ', 'Gy/100 MU'),
+        num(x.ratio, 5, dec),
+        num(x.diff, 3, dec),
+        num(x.kpol, 5, dec),
+        num(x.ks, 5, dec),
+        srcText(x),
+        signals.get(`${s.id}|${c.id}`) ?? '',
+      ];
+      lines.push(row.map((v) => cell(v, sep)).join(sep));
+    }
+  }
+  return BOM + lines.join('\r\n') + '\r\n';
+}
+
+/** Имя файла: «журнал_ЛОР_2026-10-16.csv» (part — «проверки_дозиметра» и т. п.). */
+export function csvFileName(j, date = new Date(), part = '') {
   const inst = String(j.institution || '').trim().replace(/[^\p{L}\p{N}_.-]+/gu, '-');
   const p = (n) => String(n).padStart(2, '0');
-  return `${L('журнал', 'journal')}${inst ? `_${inst}` : ''}_${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}.csv`;
+  return `${L('журнал', 'journal')}${inst ? `_${inst}` : ''}${part ? `_${part}` : ''}_${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}.csv`;
 }

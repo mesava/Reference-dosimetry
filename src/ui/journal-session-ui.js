@@ -12,7 +12,9 @@ import { $, $$, esc, fmt, fmtSigned, today, makeStatus, copyText, currentProtoco
 import { localizeDecimals } from './i18n.js';
 import { renderCells, readCells, setupCells, renderStaff, readStaff, makeCombo, renderPairs, readPairs, setupPairs } from './widgets.js';
 import { getJournal, setJournal, onJournal } from './journal-store.js';
-import { setupFilePanel, machineOptions, fmtDate } from './journal-common.js';
+import { setupFilePanel, machineOptions, fmtDate, cellsHtml } from './journal-common.js';
+import { finalizeChecks } from '../core/journal-check.js';
+import { addCheck, secondChambers, checksHtml, setupCheckCells, readChecks, resetsRecorded, computeChecks, renderCheckResults, checksReadoutHtml, checkPanelMessages, checkReportLines } from './journal-check-ui.js';
 
 const DRAFT_KEY = 'reference-dosimetry.session.v1';
 const ROOT = () => $('#module-session');
@@ -26,8 +28,9 @@ export const setSessionBridge = (b) => (bridge = { ...bridge, ...b });
  * У пучка открытого из журнала сеанса есть base — настройки пучка, камеры и электрометра, записанные в сеансе:
  * сеанс считается по ним, пока не нажата «Пересчитать по текущему «Оборудованию»». dirty — есть правки после записи.
  */
-let draft = { id: '', machineId: '', date: '', mode: 'cal', staff: [''], notes: '', env: { T: '', P: '', P_unit: 'kPa', H: '' }, beams: {}, dirty: false };
+let draft = { id: '', machineId: '', date: '', mode: 'cal', staff: [''], notes: '', env: { T: '', P: '', P_unit: 'kPa', H: '' }, beams: {}, checks: [], dirty: false };
 let computed = []; // [{ beam, calc }] по пучкам формы
+let checkComp = { items: [], verdicts: [] }; // проверки дозиметра второй камерой (journal-check-ui.js)
 /** Число из профиля или общего поля — с десятичным разделителем текущего языка (для подсказок в полях). */
 const locNum = (v) => (getLang() === 'en' ? String(v ?? '').replace(/(\d),(\d)/g, '$1.$2') : String(v ?? '').replace(/(\d)\.(\d)/g, '$1,$2'));
 
@@ -41,7 +44,7 @@ function saveDraft() {
 function loadDraft() {
   try {
     const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
-    if (d && typeof d === 'object') draft = { ...draft, ...d, env: { ...draft.env, ...(d.env || {}) }, beams: d.beams || {} };
+    if (d && typeof d === 'object') draft = { ...draft, ...d, env: { ...draft.env, ...(d.env || {}) }, beams: d.beams || {}, checks: Array.isArray(d.checks) ? d.checks : [] };
   } catch {
     /* повреждённый черновик */
   }
@@ -70,20 +73,6 @@ const blank3 = () => ['', '', ''];
 const hasValues = (cells) => (cells || []).some((v) => !isBlank(v));
 
 // ------------------------------------------------------------ разметка пучка
-function cellsHtml(key, label, values) {
-  return `<div class="cells" data-series="${esc(key)}" data-label="${esc(label)}">
-    <span class="label">${esc(label)}, ${esc(L('нКл', 'nC'))}</span>
-    <div class="cells-row">
-      <div class="cells-list"></div>
-      <div class="cells-tools">
-        <button type="button" class="icon-btn cell-add" aria-label="${esc(L('Добавить ячейку', 'Add a cell'))}" title="${esc(L('Добавить измерение', 'Add a reading'))}">+</button>
-        <button type="button" class="icon-btn cell-remove" aria-label="${esc(L('Убрать последнюю ячейку', 'Remove the last cell'))}" title="${esc(L('Убрать последнюю ячейку', 'Remove the last cell'))}">−</button>
-      </div>
-      <div class="cell-mean"><span>${esc(L('Среднее', 'Mean'))}</span><output data-mean="${esc(key)}"></output></div>
-    </div>
-  </div>`;
-}
-
 function beamCard(j, m, b, mode) {
   const d = draft.beams[b.id] || {};
   const id = b.id;
@@ -221,6 +210,21 @@ function renderBeams() {
     }
   }
   localizeDecimals(box);
+  renderChecks();
+}
+
+/** Карточки проверок дозиметра второй камерой (раздел 3, по желанию). */
+function renderChecks() {
+  const j = getJournal();
+  const m = machineOf(j, draft.machineId);
+  const box = $('#js-checks');
+  const beams = activeBeams(m);
+  // проверки пучков другого аппарата к этому сеансу не относятся
+  draft.checks = (draft.checks || []).filter((c) => beams.some((b) => b.id === c.beamId));
+  box.innerHTML = checksHtml(j, beams, draft.beams, draft.checks, { tg: tg51() });
+  setupCheckCells(box, draft.checks, onEdit);
+  localizeDecimals(box);
+  $('#js-btn-add-check').disabled = !beams.length;
 }
 
 function writeHead() {
@@ -260,6 +264,7 @@ function readDraft() {
     if (pairs) [d[PAIRS[0]], d[PAIRS[1]]] = Object.values(readPairs(pairs));
     draft.beams[id] = d;
   }
+  draft.checks = readChecks($('#js-checks'), draft.checks || []);
 }
 
 /** Сеанс для расчёта и записи из черновика (только пучки текущего аппарата). */
@@ -326,6 +331,7 @@ function compute() {
     const kind = calc?.kind ?? 'photon';
     return { input: b, calc, kind, started: hasValues(b[beamKeys(kind).M1]) };
   });
+  checkComp = computeChecks(j, s, draft.checks || [], new Map(computed.map((c) => [c.input.beamId, c])));
   return s;
 }
 
@@ -432,6 +438,7 @@ function renderResults() {
     lines.push(`<div class="row-tools"><button type="button" class="link-btn" data-open-tab="${esc(input.beamId)}">${esc(L(`Открыть во вкладке ${tabName(kind)}: все поправки и PDF по пучку`, `Open in the ${tabName(kind)} tab: all corrections and a PDF for the beam`))}</button>${errs && !calc.recorded ? `<button type="button" class="link-btn" data-goto-eq="${esc(input.beamId)}">${esc(L('Открыть пучок в «Оборудовании»', 'Open the beam in Equipment'))}</button>` : ''}</div>`);
     put(lines.join(''));
   }
+  renderCheckResults($('#js-checks'), checkComp.items);
   renderReadout(s);
 }
 
@@ -468,7 +475,7 @@ function renderReadout(s) {
         : okN && okN === startedN
           ? `<span class="chip good">${esc(L(`измеренные в допуске: ${okN}`, `measured within tolerance: ${okN}`))}</span>`
           : '';
-  $('#js-result').innerHTML = `<div class="dose-row"><div class="proto"><span>${head}</span>${chip}</div>${table || `<div class="secondary">${esc(L('Введите показания пучков.', 'Enter the beam readings.'))}</div>`}</div>`;
+  $('#js-result').innerHTML = `<div class="dose-row"><div class="proto"><span>${head}</span>${chip}</div>${table || `<div class="secondary">${esc(L('Введите показания пучков.', 'Enter the beam readings.'))}</div>`}${checksReadoutHtml(j, checkComp.items)}</div>`;
   $('#js-mobile-value').textContent = rows.length ? L(`в допуске ${okN}, вне ${outN}, ошибок ${errN}`, `ok ${okN}, out ${outN}, errors ${errN}`) : '—';
   // замечания сеанса
   const msgs = [];
@@ -477,6 +484,7 @@ function renderReadout(s) {
   }
   if (draft.id) msgs.push(['info', L('Редактируется сеанс, уже записанный в журнал: «Записать сеанс в журнал» заменит его.', 'A session already in the journal is being edited: "Record the session in the journal" will replace it.')]);
   if (errN) msgs.push(['warn', L('Пучки с ошибками в журнал не записываются — исправьте их или снимите отметку у пучка.', 'Beams with errors are not recorded in the journal: fix them or clear the beam checkbox.')]);
+  msgs.push(...checkPanelMessages(j, checkComp));
   $('#js-messages').innerHTML = msgs.length
     ? msgs.map(([lvl, t]) => `<li class="${lvl}"><span class="lvl">${esc(lvlName()[lvl])}</span><span>${richText(t)}</span></li>`).join('')
     : `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Сроки калибровки камер и электрометров в порядке.', 'Chamber and electrometer calibrations are within their dates.'))}</span></li>`;
@@ -492,7 +500,7 @@ function onEdit() {
 }
 
 /** В сеансе есть показания, не записанные в журнал (для подтверждения перед открытием другого сеанса). */
-export const sessionUnsaved = () => !!draft.dirty && Object.values(draft.beams).some((b) => hasValues(b?.rd_M1) || hasValues(b?.e_M1) || hasValues(b?.co_M1));
+export const sessionUnsaved = () => !!draft.dirty && (Object.values(draft.beams).some((b) => hasValues(b?.rd_M1) || hasValues(b?.e_M1) || hasValues(b?.co_M1)) || (draft.checks || []).some((c) => hasValues(c.M)));
 
 // ------------------------------------------------------------ действия
 function record() {
@@ -518,23 +526,34 @@ function record() {
     return;
   }
   const fin = finalizeSession(j, s);
+  // проверки дозиметра — по рабочей камере своего пучка, только у записанных пучков
+  const works = new Map(computed.filter((c) => okIds.has(c.input.beamId)).map((c) => [c.input.beamId, c.calc]));
+  const chk = finalizeChecks(j, fin, draft.checks || [], works);
+  if (chk.checks.length) fin.checks = chk.checks;
+  else delete fin.checks;
   setJournal(upsertSession(j, fin), 'session');
   draft.id = fin.id;
   draft.dirty = false;
+  // записанные проверки считаются дальше по своей форме (как пучки открытого сеанса)
+  draft.checks = (draft.checks || []).map((c) => chk.checks.find((x) => x.id === c.id) ?? c);
   saveDraft();
+  renderChecks();
   renderResults();
   const skipped = live.filter((c) => c.started && !okIds.has(c.input.beamId)).map((c) => c.calc.beam.name);
+  const chkText = chk.checks.length || chk.skipped
+    ? L(`; проверок дозиметра: ${chk.checks.length}${chk.skipped ? `, не записаны из-за ошибок: ${chk.skipped}` : ''}`, `; dosimeter checks: ${chk.checks.length}${chk.skipped ? `, not recorded because of errors: ${chk.skipped}` : ''}`)
+    : '';
   setStatus(
     L(
-      `Сеанс записан в журнал (пучков: ${fin.beams.length})${skipped.length ? `; не записаны из-за ошибок: ${skipped.join(', ')}` : ''}. Сохраните журнал в файл — кнопка «Сохранить журнал» ниже.`,
-      `The session has been recorded in the journal (${fin.beams.length} beams)${skipped.length ? `; not recorded because of errors: ${skipped.join(', ')}` : ''}. Save the journal to the file with the "Save journal" button below.`,
+      `Сеанс записан в журнал (пучков: ${fin.beams.length})${skipped.length ? `; не записаны из-за ошибок: ${skipped.join(', ')}` : ''}${chkText}. Сохраните журнал в файл — кнопка «Сохранить журнал» ниже.`,
+      `The session has been recorded in the journal (${fin.beams.length} beams)${skipped.length ? `; not recorded because of errors: ${skipped.join(', ')}` : ''}${chkText}. Save the journal to the file with the "Save journal" button below.`,
     ),
   );
 }
 
 function newSession() {
   const keep = { machineId: draft.machineId, mode: draft.mode, staff: draft.staff, env: { ...draft.env, T: '', P: '', H: '' } };
-  draft = { id: '', date: today(), notes: '', beams: {}, dirty: false, ...keep };
+  draft = { id: '', date: today(), notes: '', beams: {}, checks: [], dirty: false, ...keep };
   saveDraft();
   writeHead();
   renderBeams();
@@ -557,6 +576,8 @@ export function loadSession(s) {
         return [b.beamId, { ...input, include: true, ...(form ? { base: recordedBase(form, b.kind) } : {}) }];
       }),
     ),
+    // проверки дозиметра — с записанной формой второй камеры
+    checks: (s.checks || []).map((c) => ({ ...c, M: [...(c.M || [])], Mopp: [...(c.Mopp || [])], M2: [...(c.M2 || [])] })),
     dirty: false,
   };
   // протокол — тот, по которому сеанс записан
@@ -583,9 +604,16 @@ function dropRecorded(d) {
 }
 
 /** Считать сеанс по текущему «Оборудованию» вместо записанных в нём настроек. */
+/** Проверке дозиметра — то же: вторая камера и электрометр снова из «Оборудования». */
+function dropRecordedCheck(c) {
+  delete c.form;
+  delete c.summary;
+}
+
 function useCurrentEquipment() {
   readDraft();
   for (const d of Object.values(draft.beams)) dropRecorded(d);
+  for (const c of draft.checks || []) dropRecordedCheck(c);
   draft.dirty = true;
   saveDraft();
   renderBeams();
@@ -623,6 +651,7 @@ function reportText() {
     } else out.push(`  ${L('Нет результата: есть ошибки', 'No result: there are errors')}`);
     for (const msg of calc.result.messages.filter((x) => x.level !== 'info')) out.push(`  - ${msg.text}`);
   }
+  out.push(...checkReportLines(j, checkComp, { tg }));
   if (s.notes) out.push('', `${L('Примечания', 'Notes')}: ${s.notes}`);
   out.push('', `${L('Калькулятор референсной дозиметрии', 'Reference dosimetry calculator')}, ${versionText()}`);
   return out.join('\n');
@@ -658,8 +687,13 @@ export function initSession() {
       if (wasRecorded) {
         draft.id = '';
         // показания записанного сеанса не переносятся в новый, иначе его легко записать второй раз
-        if (clean) draft.beams = {};
-        else for (const d of Object.values(draft.beams)) dropRecorded(d);
+        if (clean) {
+          draft.beams = {};
+          draft.checks = [];
+        } else {
+          for (const d of Object.values(draft.beams)) dropRecorded(d);
+          for (const c of draft.checks || []) dropRecordedCheck(c);
+        }
         setStatus(
           clean
             ? L('Начат новый сеанс: записанный остаётся в журнале без изменений, показания очищены.', 'A new session has been started: the recorded one stays in the journal unchanged; readings cleared.')
@@ -668,6 +702,28 @@ export function initSession() {
       }
       saveDraft();
       renderBeams();
+      renderResults();
+      return;
+    }
+    // другой пучок, камера или электрометр проверки: записанная форма второй камеры к ней уже не относится, а состав
+    // полей карточки (k_vol у БВФ, список камер) мог измениться
+    const ck = e.target.closest('.jsc [data-ck]');
+    if (ck && resetsRecorded(ck.dataset.ck)) {
+      readDraft();
+      const c = draft.checks.find((x) => x.id === e.target.closest('.jsc').dataset.check);
+      if (c) {
+        dropRecordedCheck(c);
+        if (ck.dataset.ck === 'beamId') {
+          const j = getJournal();
+          const b = machineOf(j, draft.machineId)?.beams.find((x) => x.id === c.beamId);
+          // вторая камера должна годиться для нового пучка и не быть его рабочей
+          const list = b ? secondChambers(j, b, draft.beams[b.id]) : [];
+          if (!list.some((x) => x.id === c.chamberId)) c.chamberId = list[0]?.id ?? '';
+        }
+      }
+      draft.dirty = true;
+      saveDraft();
+      renderChecks();
       renderResults();
       return;
     }
@@ -684,6 +740,16 @@ export function initSession() {
     }
     if (e.target.closest('#js-btn-current')) {
       useCurrentEquipment();
+      return;
+    }
+    const rm = e.target.closest('[data-ck-remove]');
+    if (rm) {
+      readDraft();
+      draft.checks = draft.checks.filter((c) => c.id !== rm.dataset.ckRemove);
+      draft.dirty = true;
+      saveDraft();
+      renderChecks();
+      renderResults();
       return;
     }
     const g = e.target.closest('[data-goto-eq]');
@@ -703,6 +769,17 @@ export function initSession() {
     onEdit();
   });
   $('#js-btn-record').addEventListener('click', record);
+  $('#js-btn-add-check').addEventListener('click', () => {
+    readDraft();
+    const j = getJournal();
+    const c = addCheck(j, activeBeams(machineOf(j, draft.machineId)), draft.beams);
+    if (!c) return;
+    draft.checks = [...(draft.checks || []), c];
+    saveDraft();
+    renderChecks();
+    renderResults();
+    document.getElementById(`jsc-${c.id}-chamberId`)?.focus();
+  });
   armButton($('#js-btn-new'), () => L('Новый сеанс', 'New session'), () => L('Нажмите ещё раз: показания очистятся', 'Click again: readings will be cleared'), () => {
     newSession();
     setStatus(L('Начат новый сеанс: аппарат, режим и сотрудники сохранены, показания очищены.', 'A new session started: machine, mode and staff kept, readings cleared.'));

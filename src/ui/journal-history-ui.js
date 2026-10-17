@@ -5,8 +5,8 @@ import { trendSeries, machineOf, equipmentDue, dayNumber } from '../core/journal
 import { $, esc, fmt, fmtSigned, today, makeStatus, armButton, notifyUpdate, richText, downloadText } from './common.js';
 import { scatterChart, legendSwatch } from './chart.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
-import { renderSpc, renderCommon, spcMessages } from './journal-spc-ui.js';
-import { journalCsv, csvFileName } from '../core/journal-csv.js';
+import { renderSpc, renderCommon, spcMessages, renderChecks, checkSignalMessages } from './journal-spc-ui.js';
+import { journalCsv, checksCsv, csvFileName } from '../core/journal-csv.js';
 import { setupFilePanel, machineOptions, fmtDate, countWord, dayToIso, monthLabel, monthTicks } from './journal-common.js';
 
 const ROOT = () => $('#module-history');
@@ -16,6 +16,8 @@ let kindFilter = 'photon'; // какие пучки показывать, есл
 let kindChosen = false; // вид выбран переключателем (до смены аппарата)
 let spcBeamId = ''; // пучок контрольной карты
 let commonRes = null; // общая часть сеансов показанного вида
+let checkKey = ''; // пара камер «Контроля дозиметра»
+let checkRes = null; // её карта и оценка стабильности
 /** Ряды трендов выбранного аппарата и вида пучков; переключатель вида — только если у аппарата их несколько. */
 function seriesOf(j) {
   const all = trendSeries(j, machineId);
@@ -35,8 +37,8 @@ function seriesOf(j) {
   }
   return all.filter((s) => s.kind === kindFilter);
 }
-let bridge = { openSession: () => {}, unsaved: () => false };
-/** Открыть сеанс в подразделе «Сеанс»; unsaved — есть ли там незаписанные показания. */
+let bridge = { openSession: () => {}, unsaved: () => false, toBudget: () => {} };
+/** Открыть сеанс в подразделе «Сеанс»; unsaved — есть ли там незаписанные показания; toBudget(u, text) — в бюджет неопределённости. */
 export const setHistoryBridge = (b) => (bridge = { ...bridge, ...b });
 
 function renderChart(series) {
@@ -162,7 +164,7 @@ function renderReadout(j, series) {
     <div class="dose-big">${sessions.length}<small>${esc(countWord(sessions.length, [L('сеанс', 'session'), L('сеанса', 'sessions'), L('сеансов', 'sessions')], ['session', 'sessions']))}</small></div>
     <div class="secondary">${esc(L(`последний: ${last ? fmtDate(last.date) : '—'}; последняя калибровка: ${lastCal ? fmtDate(lastCal.date) : '—'}`, `last: ${last ? fmtDate(last.date) : '—'}; last calibration: ${lastCal ? fmtDate(lastCal.date) : '—'}`))}</div></div>`;
   const msgs = equipmentDue(j, today()).map((d) => `<li class="${d.status === 'overdue' ? 'warn' : 'info'}"><span class="lvl">${esc(d.status === 'overdue' ? L('Срок калибровки прошёл', 'Calibration overdue') : L('Срок калибровки подходит', 'Calibration due soon'))}</span><span>${esc(`${d.text}: ${fmtDate(d.dueDate)}`)}</span></li>`);
-  for (const x of spcMessages(j, machineId, series.map((s) => s.beam), commonRes)) msgs.push(`<li class="${x.level}"><span class="lvl">${esc(x.head)}</span><span>${esc(x.text)}</span></li>`);
+  for (const x of [...spcMessages(j, machineId, series.map((s) => s.beam), commonRes), ...checkSignalMessages(j, machineId)]) msgs.push(`<li class="${x.level}"><span class="lvl">${esc(x.head)}</span><span>${esc(x.text)}</span></li>`);
   if (lastCal && dayNumber(today()) - dayNumber(lastCal.date) > 365) msgs.push(`<li class="info"><span class="lvl">${esc(L('Калибровка', 'Calibration'))}</span><span>${esc(L(`Последняя калибровка аппарата — больше года назад (${fmtDate(lastCal.date)}).`, `The machine's last calibration was more than a year ago (${fmtDate(lastCal.date)}).`))}</span></li>`);
   $('#hs-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Сроки калибровки камер и электрометров в порядке.', 'Chamber and electrometer calibrations are within their dates.'))}</span></li>`;
   $('#hs-mobile-value').textContent = `${m?.name || '—'}: ${sessions.length}`;
@@ -173,6 +175,8 @@ function renderControl(j, series) {
   const beams = series.map((s) => s.beam);
   spcBeamId = renderSpc(j, machineId, beams, spcBeamId, { cobalt: kindFilter === 'cobalt' });
   commonRes = renderCommon(j, machineId, beams);
+  checkRes = renderChecks(j, machineId, checkKey);
+  if (checkRes) checkKey = checkRes.pair.key;
 }
 
 function render() {
@@ -198,6 +202,19 @@ export function initHistory() {
   $('#hs_beam').addEventListener('change', (e) => {
     spcBeamId = e.target.value;
     renderSpc(getJournal(), machineId, seriesOf(getJournal()).map((s) => s.beam), spcBeamId, { cobalt: kindFilter === 'cobalt' });
+  });
+  $('#hs_check').addEventListener('change', (e) => {
+    checkKey = e.target.value;
+    checkRes = renderChecks(getJournal(), machineId, checkKey);
+  });
+  $('#hs-check-unc').addEventListener('click', () => {
+    if (!checkRes || !Number.isFinite(checkRes.cc.u)) return;
+    bridge.toBudget(checkRes.cc.u, checkRes.note);
+  });
+  $('#hs-check-csv').addEventListener('click', () => {
+    const j = getJournal();
+    downloadText(checksCsv(j), csvFileName(j, new Date(), L('проверки_дозиметра', 'dosimeter_checks')), 'text/csv;charset=utf-8');
+    setStatus(L('Проверки дозиметра выгружены в CSV.', 'The dosimeter checks have been exported to CSV.'));
   });
   $('#hs-csv').addEventListener('click', () => {
     const j = getJournal();

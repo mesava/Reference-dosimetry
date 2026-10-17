@@ -291,6 +291,40 @@ function pull(target) {
   );
 }
 
+/**
+ * Оценка долговременной стабильности дозиметра из журнала («Журнал и тренды» → «Контроль дозиметра»): своё значение
+ * строк «Долговременная стабильность дозиметра пользователя» (TRS-398) и «Стабильность опорной камеры» (TG-51,
+ * Report 385) с источником «собственные измерения», статусом «консервативно» и комментарием. Остальное не меняется.
+ */
+export function applyStability(u, text) {
+  update();
+  // ключи строк — с семейством бюджета (t13.st_stab, add2.refstab, r385t8.refstab): строка показанного бюджета
+  const rows = current.result?.budget?.rows ?? [];
+  const keys = rows.map((r) => r.key).filter((k) => /^[^.]+\.(st_stab|refstab)$/.test(String(k)));
+  if (!keys.length) {
+    setStatus(L('В показанном бюджете нет строки долговременной стабильности дозиметра: значение не перенесено.', 'The budget shown has no row for the long-term stability of the dosimeter: the value has not been transferred.'));
+    return;
+  }
+  const cur = readForm();
+  const over = parseOverrides(cur.unc_over);
+  const notes = parseOverrides(cur.unc_row_notes);
+  for (const key of keys) {
+    over[key] = fmt(u, 2);
+    notes[key] = { src: 'meas', doc: L('журнал калибровок', 'calibration journal'), m: 'u', st: 'cons', text };
+  }
+  writeForm({ ...cur, unc_over: JSON.stringify(over), unc_row_notes: JSON.stringify(notes) });
+  openedFile = null;
+  update();
+  const label = rows.find((r) => r.key === keys[0])?.label ?? '';
+  setStatus(
+    L(
+      `Из журнала взята долговременная стабильность дозиметра: ${fmt(u, 2)} % — строка «${label}»; как получено — в комментарии строки.`,
+      `The long-term stability of the dosimeter has been taken from the journal: ${fmt(u, 2)}%, the row "${label}"; how it was obtained is in the row comment.`,
+    ),
+  );
+  flashFields(keys.map((k) => rows.find((r) => r.key === k)?.id).filter(Boolean));
+}
+
 // ------------------------------------------------------------ цикл
 let current = { data: null, result: null };
 let openedFile = null;

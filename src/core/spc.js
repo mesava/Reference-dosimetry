@@ -9,7 +9,7 @@
 // Отсчёт карты начинается заново после подстройки ускорителя, смены камеры, электрометра или их калибровочных
 // коэффициентов и по отметке пользователя: до и после такого события — разные процессы, и общие границы сливали бы их.
 // Центральная линия и σ считаются по первым BASELINE_POINTS точкам отсчёта и дальше не меняются: так новые точки
-// сравниваются с исходным уровнем, а не подтягивают границы за собой.
+// сравниваются с исходным уровнем, а не подтягивают границы за собой. Точки за 3σ в границы не входят (выбросы фазы I).
 
 /** d₂ для подвижного размаха по двум точкам. */
 export const D2 = 1.128;
@@ -31,15 +31,41 @@ export function t975(df) {
   return df <= 60 ? 2.0 : df <= 120 ? 1.98 : 1.96;
 }
 
-/** Центральная линия, подвижный размах и σ по значениям. */
+/** CL — среднее оставленных точек, MR̄ — по парам соседних точек, если обе оставлены. */
+function estimate(values, keep) {
+  const kept = values.filter((_, i) => keep[i]);
+  const cl = kept.reduce((a, v) => a + v, 0) / kept.length;
+  let mr = 0;
+  let m = 0;
+  for (let i = 1; i < values.length; i++) {
+    if (!keep[i] || !keep[i - 1]) continue;
+    mr += Math.abs(values[i] - values[i - 1]);
+    m++;
+  }
+  const mrBar = m ? mr / m : NaN;
+  return { cl, mrBar, sigma: mrBar / D2 };
+}
+
+/**
+ * Центральная линия, подвижный размах и σ по значениям. Точки за 3σ в расчёт границ не входят (Montgomery: пересчёт
+ * границ после исключения выпадающих точек фазы I), иначе один выброс завышает σ и сдвигает CL — и обычные точки по
+ * другую сторону выглядят сдвигом. Исключение повторяется, пока появляются новые точки за 3σ; меньше MIN_POINTS
+ * оставленных точек — не исключается ничего. excluded — индексы исключённых точек.
+ */
 export function baseline(values) {
   const n = values.length;
-  if (n < 2) return { n, cl: n ? values[0] : NaN, mrBar: NaN, sigma: NaN };
-  const cl = values.reduce((a, v) => a + v, 0) / n;
-  let mr = 0;
-  for (let i = 1; i < n; i++) mr += Math.abs(values[i] - values[i - 1]);
-  const mrBar = mr / (n - 1);
-  return { n, cl, mrBar, sigma: mrBar / D2 };
+  if (n < 2) return { n, cl: n ? values[0] : NaN, mrBar: NaN, sigma: NaN, excluded: [] };
+  let keep = values.map(() => true);
+  let est = estimate(values, keep);
+  for (let iter = 0; iter < n && est.sigma > 0; iter++) {
+    const next = keep.map((k, i) => k && Math.abs(values[i] - est.cl) <= 3 * est.sigma);
+    if (next.every((k, i) => k === keep[i]) || next.filter(Boolean).length < MIN_POINTS) break;
+    const e2 = estimate(values, next);
+    if (!(e2.sigma > 0)) break;
+    keep = next;
+    est = e2;
+  }
+  return { n, ...est, excluded: keep.flatMap((k, i) => (k ? [] : [i])) };
 }
 
 /**
@@ -74,7 +100,8 @@ export function linearTrend(xs, ys) {
  * Возвращает { points, segments, current, trend, forecast }:
  *   points[i] — исходная точка + segment, z = (x − CL)/σ, cusumUp, cusumDown, signals: ['3s', '2of3', 'run8', 'trend6',
  *     'cusumUp', 'cusumDown'];
- *   segments — отсчёты: { from, to (индексы), startDay, reason, n, baselineN, cl, sigma, mrBar, limits, provisional };
+ *   segments — отсчёты: { from, to (индексы), startDay, reason, n, baselineN, excluded (точек за 3σ не в границах), cl,
+ *     sigma, mrBar, limits, provisional };
  *   trend — тренд последнего отсчёта (linearTrend), forecast — { side: +1|−1, day } | { side, already: true } |
  *     { side, beyond: true } (дальше трёх лет) или null.
  */
@@ -91,6 +118,7 @@ export function controlChart(input, { tol = NaN } = {}) {
     seg.n = pts.length;
     const base = baseline(pts.slice(0, BASELINE_POINTS).map((p) => p.value));
     seg.baselineN = base.n;
+    seg.excluded = base.excluded.length;
     seg.cl = base.cl;
     seg.mrBar = base.mrBar;
     seg.sigma = base.sigma;

@@ -8,6 +8,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#0d6670">
 <link rel="stylesheet" href="src/ui/styles.css">
 </head>
 <body>
@@ -2696,7 +2700,14 @@
     </section>
 
     <section class="step" aria-labelledby="js-s3" data-optional>
-      <header><span class="step-no">3</span><h2 id="js-s3">Примечания</h2></header>
+      <header><span class="step-no">3</span><h2 id="js-s3">Проверка дозиметра второй камерой</h2>
+        <p class="hint">По желанию. Долговременную стабильность дозиметра проверяют контрольным источником или сравнением с другими камерами (TRS-398 Rev.1, разд. 4.4.2). Тем же пучком, в тех же условиях, сразу после основной серии рабочей камерой и без подстройки ускорителя снимите показания второй камерой: отношение доз по двум камерам сравнивается с прежними проверками этой пары, его разброс и карта — в «Журнале и трендах». С двумя вторыми камерами видно, какая из систем изменилась.</p></header>
+      <div id="js-checks" data-i18n-skip></div>
+      <button type="button" class="link-btn" id="js-btn-add-check"><span aria-hidden="true">+</span> Добавить проверку второй камерой</button>
+    </section>
+
+    <section class="step" aria-labelledby="js-s4" data-optional>
+      <header><span class="step-no">4</span><h2 id="js-s4">Примечания</h2></header>
       <div class="field"><label for="js_notes" class="muted">Порядок измерений, подстройка ускорителя, принятые решения</label><textarea id="js_notes"></textarea></div>
     </section>
   </form>
@@ -2852,6 +2863,16 @@
       <div id="hs-sessions" data-i18n-skip></div>
       <div class="actions"><button type="button" id="hs-csv">Выгрузить журнал в CSV</button></div>
       <p class="sub-hint">Таблица всех сеансов всех аппаратов для Excel: по строке на пучок в сеансе — дата, режим, доза, отклонение, поправки, камера и сигналы контрольной карты.</p>
+    </section>
+
+    <section class="step" aria-labelledby="hs-s7" id="hs-check-sec" hidden>
+      <header><span class="step-no">7</span><h2 id="hs-s7">Контроль дозиметра</h2>
+        <p class="hint">Проверки второй камерой в сеансах (по желанию, раздел 3 «Сеанса»): отношение доз рабочей и второй камеры, (r − 1) в процентах, с центральной линией и границами ±2σ и ±3σ. Сдвиг отношения — изменилась одна из двух систем. Отсчёт начинается заново после смены электрометра или калибровочного коэффициента любой из камер. Разброс отношения — оценка сверху долговременной стабильности рабочего дозиметра; её можно перенести в бюджет неопределённости.</p></header>
+      <div class="field hs-beam-field"><label for="hs_check">Пучок и камеры</label><select id="hs_check"></select></div>
+      <div class="chart-box" id="hs-check-chart" data-i18n-skip></div>
+      <div class="chart-legend" id="hs-check-legend" data-i18n-skip></div>
+      <div class="hs-spc-summary" id="hs-check-summary" data-i18n-skip></div>
+      <div class="actions"><button type="button" id="hs-check-unc">Перенести в бюджет неопределённости</button><button type="button" id="hs-check-csv">Выгрузить проверки в CSV</button></div>
     </section>
   </form>
 

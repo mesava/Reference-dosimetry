@@ -8,12 +8,13 @@ import { initCobalt, importCobalt, cobaltStatus, applyCobaltPatch, cobaltUncSour
 import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch, photonsUncSource, photonsCurrentForm, showInPhotons, setPhotonsJournalSave } from './photons-ui.js';
 import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch, electronsUncSource, electronsCurrentForm, showInElectrons, setElectronsJournalSave } from './electrons-ui.js';
 import { initCrossCal, importCrossCal, crossCalStatus, setCrossCalTransfer } from './crosscal-ui.js';
-import { initUncTool, importUncTool, uncToolStatus, setUncSources } from './uncertainty-tool-ui.js';
+import { initUncTool, importUncTool, uncToolStatus, setUncSources, applyStability } from './uncertainty-tool-ui.js';
 import { initJaffe, importJaffe, jaffeStatus } from './jaffe-ui.js';
 import { initEdepth, importEdepth, edepthStatus, setEdepthTransfer } from './edepth-ui.js';
 import { initSectionNavs, refreshSectionNav } from './section-nav.js';
 import { initJournalStore, importJournalObject, getJournal, onJournal, onFileState } from './journal-store.js';
 import { initStart, renderStart } from './start-ui.js';
+import { initPwa } from './pwa.js';
 import { initSecLinks, revealSection } from './sec-links.js';
 import { initTabEquipment } from './tab-equipment-ui.js';
 import { initSession, sessionStatus, setSessionBridge, loadSession, sessionUnsaved } from './journal-session-ui.js';
@@ -219,6 +220,12 @@ function initJournalBridges() {
   });
   setHistoryBridge({
     unsaved: () => sessionUnsaved(),
+    // оценка стабильности дозиметра по проверкам второй камерой — в бюджет неопределённости
+    toBudget: (u, text) => {
+      switchTo('uncertainty');
+      applyStability(u, text);
+      requestAnimationFrame(() => document.getElementById('unc-budget')?.scrollIntoView({ block: 'start' }));
+    },
     openSession: (s) => {
       switchTo('session');
       loadSession(s);
@@ -353,6 +360,7 @@ function init() {
   initEquipment();
   initHistory();
   initJournalBridges();
+  initPwa();
   initStart();
   // камеры и электрометры журнала на вкладках дозиметрии (раздел 2 «Камера и электрометр»)
   initTabEquipment([

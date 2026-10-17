@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Значок: пучок излучения сверху и цилиндрическая ионизационная камера в нём. Всё важное — в центральном круге
+       радиусом 40 % (безопасная зона значка maskable). -->
+  <rect width="512" height="512" fill="#0d6670"/>
+  <path d="M256 104 L370 348 H142 Z" fill="#ffbf5a" opacity="0.85"/>
+  <rect x="118" y="308" width="214" height="80" rx="40" fill="#ffffff"/>
+  <rect x="318" y="328" width="96" height="40" rx="8" fill="#cfdcd8"/>
+  <line x1="162" y1="348" x2="318" y2="348" stroke="#0d6670" stroke-width="12" stroke-linecap="round"/>
+</svg>

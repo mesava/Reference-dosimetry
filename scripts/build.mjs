@@ -27,7 +27,19 @@ const cssTag = '<link rel="stylesheet" href="src/ui/styles.css">';
 const jsTag = '<script type="module" src="src/ui/app.js"></script>';
 if (!html.includes(cssTag) || !html.includes(jsTag)) throw new Error('index.html: не найдены теги стилей или скрипта');
 
-const full = html.replace(cssTag, () => `<style>\n${css}</style>`).replace(jsTag, () => `<script>${js}</script>`);
+// установка как приложение (манифест, сервис-воркер) — только у страницы на сервере: у файла рядом нет ни манифеста,
+// ни значков; значок вкладки встраивается в файл
+const pwaTags = ['<link rel="manifest" href="manifest.webmanifest">\n', '<link rel="apple-touch-icon" href="icons/icon-192.png">\n'];
+const iconTag = '<link rel="icon" href="icons/icon.svg" type="image/svg+xml">';
+for (const t of [...pwaTags, iconTag]) if (!html.includes(t)) throw new Error(`index.html: не найден тег ${t.trim()}`);
+const icon = (await read('icons/icon.svg')).replace(/<!--[\s\S]*?-->/g, '').replace(/\s+/g, ' ').trim();
+const iconData = `data:image/svg+xml,${encodeURIComponent(icon)}`;
+
+const full = pwaTags
+  .reduce((h, t) => h.replace(t, ''), html)
+  .replace(iconTag, () => `<link rel="icon" href="${iconData}" type="image/svg+xml">`)
+  .replace(cssTag, () => `<style>\n${css}</style>`)
+  .replace(jsTag, () => `<script>${js}</script>`);
 
 await mkdir(new URL('dist/', root), { recursive: true });
 await writeFile(new URL('dist/index.html', root), full);

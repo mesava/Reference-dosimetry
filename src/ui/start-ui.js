@@ -5,6 +5,7 @@ import { equipmentDue } from '../core/journal.js';
 import { $, esc, today, versionText } from './common.js';
 import { getJournal, journalFile } from './journal-store.js';
 import { fmtDate, countWord } from './journal-common.js';
+import { canInstall, onInstallChange, promptInstall } from './pwa.js';
 
 /** Кнопка-ссылка на подраздел: обрабатывается общим переходом (app.js) по data-goto. */
 const go = (module, text, { primary = false, sub = '' } = {}) =>
@@ -100,6 +101,12 @@ export function renderStart() {
         <p class="start-note">${esc(L('Данные дозиметрии берутся кнопкой «Взять данные с вкладки».', 'Dosimetry data are taken with the Take data from the tab button.'))}</p>
       </section>
     </div>
+    ${canInstall()
+      ? `<div class="start-install"><button type="button" class="primary" id="start-install">${esc(L('Установить как приложение', 'Install as an app'))}</button><p>${esc(L(
+          'Калькулятор откроется в своём окне, как обычная программа, со значком на рабочем столе, и будет работать без интернета. Данные, черновики и связь с файлом журнала — те же, что здесь, в браузере.',
+          'The calculator will open in its own window like a regular program, with a desktop icon, and will work offline. Data, drafts and the link to the journal file are the same as here in the browser.',
+        ))}</p></div>`
+      : ''}
     <p class="start-foot">${esc(L(
       'Все расчёты — в браузере, данные никуда не отправляются. Измерения сохраняются в файлы JSON, журнал отделения — тоже файл: его удобно держать на общем диске.',
       'All calculations run in the browser; no data are sent anywhere. Measurements are saved to JSON files; the department journal is a file too, best kept on a shared drive.',
@@ -109,4 +116,15 @@ export function renderStart() {
 export function initStart() {
   renderStart();
   document.addEventListener('langchange', renderStart);
+  onInstallChange(renderStart);
+  $('#start-root').addEventListener('click', async (e) => {
+    if (!e.target.closest('#start-install')) return;
+    const outcome = await promptInstall();
+    $('#start-status').textContent =
+      outcome === 'accepted'
+        ? L('Калькулятор установлен: он открывается в своём окне со значка на рабочем столе или из списка программ.', 'The calculator has been installed: it opens in its own window from the desktop icon or the list of programs.')
+        : outcome === 'dismissed'
+          ? L('Установка отменена. Кнопка снова появится, когда браузер опять её предложит (обычно после перезагрузки страницы).', 'Installation cancelled. The button reappears when the browser offers it again (usually after reloading the page).')
+          : '';
+  });
 }

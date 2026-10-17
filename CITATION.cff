@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: >-
+  Если вы используете калькулятор в работе, отчёте или публикации, сошлитесь на него так.
+  If you use this software in your work, report or publication, please cite it as below.
+type: software
+title: >-
+  Reference-dosimetry: a calculator for reference dosimetry of radiotherapy beams
+  (60Co, MV photons, electrons) according to IAEA TRS-398 Rev.1 and AAPM TG-51
+authors:
+  - family-names: Melentev
+    given-names: Aleksandr Valerievich
+    alias: mesava
+version: 0.17.0
+date-released: "2026-10-17"
+license: AGPL-3.0-or-later
+repository-code: "https://github.com/mesava/Reference-dosimetry"
+url: "https://mesava.github.io/Reference-dosimetry/"
+abstract: >-
+  A Russian- and English-language web calculator for the absorbed dose to water in reference conditions
+  for 60Co, MV photon and electron beams according to IAEA TRS-398 Rev.1 and AAPM TG-51 (with the 2014 photon
+  addendum and WGTG51 Reports 374 and 385), with cross-calibration, Jaffé plot, electron depth-dose tools,
+  an uncertainty budget with a traceable origin of every value, and a department journal with output trends,
+  control charts and dosimeter checks. Every correction and message references the protocol section, equation
+  or table; results are verified against independent calculations of real linac calibrations.
+keywords:
+  - radiotherapy
+  - medical physics
+  - reference dosimetry
+  - absorbed dose to water
+  - TRS-398
+  - TG-51
+  - ionization chamber
+  - uncertainty budget
+  - statistical process control

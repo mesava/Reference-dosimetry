@@ -7,6 +7,21 @@ import {
   reconnectJournalFile, resolveConflict, setAutosave, chooseBackupDir, forgetBackupDir,
 } from './journal-store.js';
 
+/** Ячейки серии показаний (нКл) со средним: разметка; заполняются widgets.renderCells. */
+export function cellsHtml(key, label, values) {
+  return `<div class="cells" data-series="${esc(key)}" data-label="${esc(label)}">
+    <span class="label">${esc(label)}, ${esc(L('нКл', 'nC'))}</span>
+    <div class="cells-row">
+      <div class="cells-list"></div>
+      <div class="cells-tools">
+        <button type="button" class="icon-btn cell-add" aria-label="${esc(L('Добавить ячейку', 'Add a cell'))}" title="${esc(L('Добавить измерение', 'Add a reading'))}">+</button>
+        <button type="button" class="icon-btn cell-remove" aria-label="${esc(L('Убрать последнюю ячейку', 'Remove the last cell'))}" title="${esc(L('Убрать последнюю ячейку', 'Remove the last cell'))}">−</button>
+      </div>
+      <div class="cell-mean"><span>${esc(L('Среднее', 'Mean'))}</span><output data-mean="${esc(key)}"></output></div>
+    </div>
+  </div>`;
+}
+
 export const fmtDate = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(String(iso ?? '')) ? dateText(iso) : '—');
 
 // ось дат графиков журнала (сутки от 1970-01-01)
