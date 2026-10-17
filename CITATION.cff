@@ -13,6 +13,14 @@ authors:
 version: 0.17.0
 date-released: "2026-10-17"
 license: AGPL-3.0-or-later
+doi: 10.5281/zenodo.23430818
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23430818
+    description: Все версии (concept DOI), ведёт на последнюю / All versions (concept DOI), resolves to the latest
+  - type: doi
+    value: 10.5281/zenodo.23430819
+    description: Версия 0.17.0 / Version 0.17.0
 repository-code: "https://github.com/mesava/Reference-dosimetry"
 url: "https://mesava.github.io/Reference-dosimetry/"
 abstract: >-
