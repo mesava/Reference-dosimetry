@@ -5,7 +5,7 @@ import { SAMPLE_UNC, SAMPLE_UNC_EN } from '../core/sample-uncertainty.js';
 import { L, getLang, refText } from '../core/i18n.js';
 import { localizeDecimals } from './i18n.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
-import { setupBudget, renderBudget, budgetDoseText, budgetReportLines, fmt2sig } from './uncertainty-ui.js';
+import { setupBudget, renderBudget, budgetReportLines, fmt2sig } from './uncertainty-ui.js';
 import { setupKi, renderKi, renderSetup } from './unc-ki-ui.js';
 import { setupEst } from './unc-est-ui.js';
 import { parseOverrides } from '../core/uncertainty.js';
@@ -133,8 +133,9 @@ function renderReadout(r) {
   const own = b.rows.filter((x) => x.over).length;
   const src = own ? L(`своих строк: ${own}`, `own rows: ${own}`) : b.cert ? L('с U из свидетельства', 'with certificate U') : L('типовой бюджет', 'typical budget');
   const lines = [
-    L(`u<sub>c</sub> = ${fmt(b.ucPct, 2)} % (k = 1)`, `u<sub>c</sub> = ${fmt(b.ucPct, 2)}% (k = 1)`),
-    Number.isFinite(r.abs) ? L(`Для результата ${fmt(r.value, r.value >= 10 ? 2 : 4)} ${esc(unit)}: ±${fmt2sig(r.abs)} ${esc(unit)}`, `For the result ${fmt(r.value, r.value >= 10 ? 2 : 4)} ${esc(unit)}: ±${fmt2sig(r.abs)} ${esc(unit)}`) : L('Введите результат дозиметрии в разделе 3, чтобы получить U в единицах дозы', 'Enter the dosimetry result in section 3 to get U in dose units'),
+    L(`u<sub>c</sub> = ${fmt(b.ucPct, 2)} % (k = 1) — для дозы на z<sub>ref</sub>`, `u<sub>c</sub> = ${fmt(b.ucPct, 2)}% (k = 1), for the dose at z<sub>ref</sub>`),
+    ...(r.valueAt === 'max' && r.absComplete ? [L(`для дозы на d<sub>max</sub> с пересчётом (u = ${fmt(r.transferU, 2)} %): U = ±${fmt(r.UAtPct, 1)} %`, `for the dose at d<sub>max</sub> with the transfer (u = ${fmt(r.transferU, 2)}%): U = ±${fmt(r.UAtPct, 1)}%`)] : []),
+    Number.isFinite(r.abs) ? doseLine(r, esc(unit)) : L('Введите результат дозиметрии в разделе 3, чтобы получить U в единицах дозы', 'Enter the dosimetry result in section 3 to get U in dose units'),
     esc(b.template.title),
   ];
   $('#unc-result').innerHTML = `<div class="dose-row">
@@ -158,14 +159,28 @@ function renderReadout(r) {
   ];
   for (const g of b.groups) if (g.subtotal) rows.push([L(`Суммарная: ${g.title.replace(/\.\s.*$/, '').toLowerCase()}, %`, `Combined: ${g.title.replace(/\.\s.*$/, '').toLowerCase()}, %`), v(g.subtotal.value)]);
   rows.push([L('Суммарная стандартная неопределённость u<sub>c</sub> (k = 1), %', 'Combined standard uncertainty u<sub>c</sub> (k = 1), %'), v(b.ucPct)]);
-  const total = [[L('Расширенная неопределённость U (k = 2), %', 'Expanded uncertainty U (k = 2), %'), v(b.UPct, 1)]];
-  if (Number.isFinite(r.abs)) total.push([L(`U (k = 2), ${esc(unit)}`, `U (k = 2), ${esc(unit)}`), `±${fmt2sig(r.abs)}`]);
+  const total = [[L('Расширенная неопределённость U (k = 2) для дозы на z<sub>ref</sub>, %', 'Expanded uncertainty U (k = 2) for the dose at z<sub>ref</sub>, %'), v(b.UPct, 1)]];
+  if (r.valueAt === 'max' && r.absComplete) total.push([L(`U (k = 2) для дозы на d<sub>max</sub>: + пересчёт u = ${fmt(r.transferU, 2)} %, %`, `U (k = 2) for the dose at d<sub>max</sub>: + transfer u = ${fmt(r.transferU, 2)}%, %`), v(r.UAtPct, 1)]);
+  if (Number.isFinite(r.abs)) total.push([L(`U (k = 2), ${esc(unit)} — ${atText(r)}`, `U (k = 2), ${esc(unit)}, ${atText(r)}`), `±${fmt2sig(r.abs)}`]);
   $('#unc-factors').innerHTML =
     `<thead><tr><th>${L('Величина', 'Quantity')}</th><th>${L('Значение', 'Value')}</th></tr></thead><tbody>` +
     rows.map(([k, x]) => `<tr><td>${k}</td><td class="v">${x}</td></tr>`).join('') +
     total.map(([k, x]) => `<tr class="total"><td>${k}</td><td class="v">${x}</td></tr>`).join('') +
     '</tbody>';
 }
+
+/** К какой дозе относится U в единицах дозы (html — с нижними индексами, иначе z_ref, d_max для протокола текстом). */
+const atText = (r, html = true) => {
+  const [z, d] = html ? ['z<sub>ref</sub>', 'd<sub>max</sub>'] : ['z_ref', 'd_max'];
+  if (r.valueAt !== 'max') return L(`доза на ${z}`, `dose at ${z}`);
+  return r.absComplete ? L(`доза на ${d}, с пересчётом`, `dose at ${d}, with the transfer`) : L(`доза на ${d}, без u пересчёта — неполная`, `dose at ${d}, without the transfer u: incomplete`);
+};
+/** Строка «для результата … ± …» с глубиной. */
+const doseLine = (r, unit) =>
+  L(
+    `Для результата ${fmt(r.value, r.value >= 10 ? 2 : 4)} ${unit} (${atText(r)}): ±${fmt2sig(r.abs)} ${unit}`,
+    `For the result ${fmt(r.value, r.value >= 10 ? 2 : 4)} ${unit} (${atText(r)}): ±${fmt2sig(r.abs)} ${unit}`,
+  );
 
 // ------------------------------------------------------------ протокол текстом
 function reportText(data, r) {
@@ -190,9 +205,17 @@ function reportText(data, r) {
     ? [r.typeA.m !== r.typeA.n ? L(`s по ${r.typeA.n}, /√${r.typeA.m}`, `s from ${r.typeA.n}, /√${r.typeA.m}`) : '', r.typeA.fromRes ? L('по разрешению δ/√12', 'from the resolution δ/√12') : ''].filter(Boolean).join('; ')
     : '';
   line(L('Показания, нКл', 'Readings, nC'), r.typeA ? L(`${cells} → повторяемость (тип А) ${fmt(r.typeA.pct, 3)} %${how ? ` (${how})` : ''}`, `${cells} → repeatability (type A) ${fmt(r.typeA.pct, 3)}%${how ? ` (${how})` : ''}`) : cells);
-  if (Number.isFinite(r.value)) line(L('Результат дозиметрии', 'Dosimetry result'), `${fmt(r.value, r.value >= 10 ? 2 : 4)} ${unit}`);
+  if (Number.isFinite(r.value)) line(L('Результат дозиметрии', 'Dosimetry result'), `${fmt(r.value, r.value >= 10 ? 2 : 4)} ${unit} — ${atText(r, false)}`);
   out.push('');
-  out.push(...budgetReportLines(b, r.value, unit));
+  // бюджет протокола — для дозы на z_ref; для дозы на d_max — отдельной строкой ниже
+  out.push(...budgetReportLines(b, r.valueAt === 'zref' ? r.value : NaN, unit));
+  if (r.valueAt === 'max' && Number.isFinite(r.value)) {
+    out.push(
+      r.absComplete
+        ? L(`  Доза на d_max: пересчёт по PDD или TMR, u = ${fmt(r.transferU, 2)} %; u_c = ${fmt(r.ucAtPct, 2)} %; U (k = 2) = ${fmt(r.UAtPct, 1)} % = ±${fmt2sig(r.abs)} ${unit}`, `  Dose at d_max: transfer with PDD or TMR, u = ${fmt(r.transferU, 2)}%; u_c = ${fmt(r.ucAtPct, 2)}%; U (k = 2) = ${fmt(r.UAtPct, 1)}% = ±${fmt2sig(r.abs)} ${unit}`)
+        : L(`  Доза на d_max: U (k = 2) = ±${fmt2sig(r.abs)} ${unit} — без неопределённости пересчёта по PDD или TMR, неполная`, `  Dose at d_max: U (k = 2) = ±${fmt2sig(r.abs)} ${unit}, without the PDD or TMR transfer uncertainty: incomplete`),
+    );
+  }
   const msgs = r.messages.filter((m) => m.level !== 'info');
   if (msgs.length) {
     out.push('', L('Замечания:', 'Messages:'));
@@ -255,6 +278,8 @@ function pull(target) {
     unc_M: Array.isArray(s.M) ? s.M.map((x) => String(x ?? '')) : ['', '', ''],
     unc_value: Number.isFinite(s.value) ? fmt(s.value, s.value >= 10 ? 2 : 4) : '',
     unc_unit: s.unit,
+    // с вкладки берётся доза на опорной глубине — для неё составлен бюджет протокола
+    unc_value_at: 'zref',
   };
   if (s.beam === 'electrons') {
     patch.unc_ch_type = s.chamberType;
@@ -336,7 +361,7 @@ function update() {
   const notes = parseOverrides($('#unc_row_notes').value);
   renderSetup($('#unc-setup'), r, $('#unc_setup'), notes);
   renderKi($('#unc-ki'), r, $('#unc_ki'), notes);
-  renderBudget($('#unc-budget'), r.budget, { hidden: $('#unc_over'), notesHidden: $('#unc_row_notes'), doseText: budgetDoseText(r.budget, r.value, esc(unitText(r.unit)), '') });
+  renderBudget($('#unc-budget'), r.budget, { hidden: $('#unc_over'), notesHidden: $('#unc_row_notes'), doseText: Number.isFinite(r.abs) ? `${doseLine(r, esc(unitText(r.unit)))}.` : '' });
   renderOutputs(ROOT(), r);
   renderFlags(ROOT(), r.flags, (key) => (key === 'unc_M' ? seriesBox() : null));
   renderReadout(r);

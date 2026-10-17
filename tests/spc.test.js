@@ -39,16 +39,17 @@ test('2 из 3 за 2σ по одну сторону; 8 подряд по одн
   // 2 из 3: две точки за +2,5σ через одну
   const a = [...v, cl + 2.5 * sigma, cl, cl + 2.5 * sigma];
   const ra = controlChart(pts(a));
-  assert.ok(ra.points.at(-1).signals.includes('2of3'));
+  assert.ok(ra.points.at(-1).watch.includes('2of3'));
+  assert.ok(!ra.points.at(-1).signals.includes('2of3'), '2 из 3 — наблюдение, не сигнал');
   // 8 подряд выше CL (небольшое смещение, не за 2σ)
   const b = [...v, cl - 0.5 * sigma, ...Array(8).fill(cl + 0.5 * sigma)];
   const rb = controlChart(pts(b));
-  assert.ok(rb.points.at(-1).signals.includes('run8'));
-  assert.ok(!rb.points.at(-2).signals.includes('run8'), 'на седьмой точке ещё нет');
+  assert.ok(rb.points.at(-1).watch.includes('run8'));
+  assert.ok(!rb.points.at(-2).watch.includes('run8'), 'на седьмой точке ещё нет');
   // 6 подряд растут
   const c = [...v, ...[0, 1, 2, 3, 4, 5].map((k) => cl - sigma + 0.3 * k * sigma)];
   const rc = controlChart(pts(c));
-  assert.ok(rc.points.at(-1).signals.includes('trend6'));
+  assert.ok(rc.points.at(-1).watch.includes('trend6'));
 });
 
 test('Границы — по первым 20 точкам и дальше не меняются; CUSUM замечает сдвиг на 1σ', () => {
@@ -80,7 +81,7 @@ test('Новый отсчёт: свои CL и σ после подстройки
   near(r.segments[0].cl, v.reduce((a, x) => a + x, 0) / v.length, 1e-12, 'CL до');
   near(r.segments[1].cl, w.reduce((a, x) => a + x, 0) / w.length, 1e-12, 'CL после');
   assert.ok(r.segments[1].provisional, '6 точек — границы предварительные');
-  assert.ok(r.points.every((p) => !p.signals.includes('run8')), 'подстройка не даёт ложного «8 подряд»');
+  assert.ok(r.points.every((p) => !p.watch.includes('run8')), 'подстройка не даёт ложного «8 подряд»');
 });
 
 test('Тренд: значимость по t-критерию и прогноз выхода за допуск', () => {
@@ -188,10 +189,37 @@ test('Выброс в базе границ: точка за 3σ не входи
   assert.ok(Math.abs(seg.cl) < 0.02, `CL = ${seg.cl}`);
   assert.ok(seg.sigma < 0.1, `σ = ${seg.sigma}`);
   assert.ok(r.points[9].signals.includes('3s'));
-  assert.ok(r.points.slice(0, 9).every((p) => !p.signals.includes('run8')), 'до выброса — без сигналов «8 подряд»');
+  assert.ok(r.points.slice(0, 9).every((p) => !p.watch.includes('run8')), 'до выброса — без «8 подряд»');
   // без выбросов — как раньше
   const b = baseline([0, 1, 0, 1]);
   assert.deepEqual(b.excluded, []);
   // мало точек — ничего не исключается
   assert.deepEqual(baseline([0, 0.1, 0, 5]).excluded, []);
+});
+
+test('Частота ложных сигналов (моделирование): сигналы — только 3σ и CUSUM, остальные правила — наблюдения', () => {
+  // стабильный процесс: границы по 20 точкам, затем 12 «сеансов»; детерминированный генератор
+  let seed = 777;
+  const rnd = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed / 2147483648;
+  };
+  const gauss = () => Math.sqrt(-2 * Math.log(rnd() || 1e-12)) * Math.cos(2 * Math.PI * rnd());
+  const N = 2000;
+  const rate = (shift, after, pick) => {
+    let hits = 0;
+    for (let t = 0; t < N; t++) {
+      const r = controlChart(Array.from({ length: 20 + after }, (_, i) => ({ day: i * 30, value: gauss() + (i >= 20 ? shift : 0) })));
+      if (r.points.slice(20).some(pick)) hits++;
+    }
+    return hits / N;
+  };
+  const sig = (p) => p.signals.length > 0;
+  const any = (p) => p.signals.length > 0 || p.watch.length > 0;
+  const falseSig = rate(0, 12, sig);
+  const falseAny = rate(0, 12, any);
+  assert.ok(falseSig > 0.1 && falseSig < 0.22, `ложный сигнал за 12 сеансов: ${falseSig}`);
+  assert.ok(falseAny > falseSig + 0.04, `со всеми правилами чаще: ${falseAny} против ${falseSig}`);
+  const detect = rate(1, 12, sig);
+  assert.ok(detect > 0.6, `сдвиг 1σ за 12 сеансов замечен: ${detect}`);
 });

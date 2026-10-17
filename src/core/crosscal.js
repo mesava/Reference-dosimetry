@@ -20,7 +20,7 @@
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
 import { L } from './i18n.js';
-import { temperaturePressure, polarity, environmentChecks } from './common.js';
+import { temperaturePressure, polarity, environmentChecks, manualSource } from './common.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
 import { findEChamber, interpE, kQprime385, trsFit, R385_RANGE } from './electron-chambers.js';
@@ -80,8 +80,10 @@ export const CC_DEFAULTS = {
   cc_ref_kelec: '1,000',
   cc_ref_kqtrs_mode: 'table', // 'table' (табл. 20 / 16) | 'formula' (прил. II / ур. 34) | 'manual'
   cc_ref_kqtrs_manual: '',
+  cc_ref_kqtrs_src: '', // источник ручного k_Q (свидетельство лаборатории, №, дата)
   cc_ref_kq51_mode: 'fit', // 'fit' (Report 385: k′_Q·k_Qecal) | 'manual'
   cc_ref_kq51_manual: '',
+  cc_ref_kq51_src: '',
 
   // рабочая (калибруемая) камера
   cc_fld_model: '',
@@ -95,6 +97,7 @@ export const CC_DEFAULTS = {
   cc_fld_kelec: '1,000',
   cc_fld_kq51_mode: 'fit', // 'fit' (Report 385, k′_Q) | 'manual'
   cc_fld_kq51_manual: '',
+  cc_fld_kq51_src: '',
 
   // температура и давление; для рабочей камеры — свои, если изменились
   cc_T: '',
@@ -597,7 +600,7 @@ export function computeCrossCal(form) {
       if (mode === 'manual') {
         trs.kQ = read('cc_ref_kqtrs_manual', 'k_Qcross (TRS-398)', 'trs');
         if (Number.isFinite(trs.kQ) && (trs.kQ < 0.9 || trs.kQ > 1.02)) add('warn', 'trs', L('k_Q для МВ фотонов обычно 0,94–1,00: проверьте ввод.', 'k_Q for MV photons is usually 0.94–1.00: check the input.'), null, 'cc_ref_kqtrs_manual');
-        trs.kQSource = L('введён вручную', 'entered manually');
+        trs.kQSource = manualSource(add, { base: L('введён вручную', 'entered manually'), src: f.cc_ref_kqtrs_src, scope: 'trs', field: 'cc_ref_kqtrs_src' });
       } else if (!ref) trs.kQ = NaN;
       else if (ref.other || !ref.trs) {
         add('error', 'trs', L(`Для ${ref.other ? 'этой камеры' : chamberLabel(ref)} в TRS-398 Rev.1 нет k_Q: введите k_Qcross вручную или выберите другую опорную камеру.`, `TRS-398 Rev.1 gives no k_Q for ${ref.other ? 'this chamber' : chamberLabel(ref)}: enter k_Qcross manually or select another reference chamber.`), `${REF.trs}, табл. 16, 45`, ['cc_ref_model', 'cc_ref_kqtrs_mode']);
@@ -626,7 +629,7 @@ export function computeCrossCal(form) {
       if (mode === 'manual') {
         trs.kQ = read('cc_ref_kqtrs_manual', 'k_Qcross,Q₀ (TRS-398)', 'trs');
         if (Number.isFinite(trs.kQ) && (trs.kQ < 0.8 || trs.kQ > 1.2)) add('warn', 'trs', L('Введённый k_Q необычен: проверьте значение.', 'The entered k_Q is unusual: check the value.'), null, 'cc_ref_kqtrs_manual');
-        trs.kQSource = L('введён вручную', 'entered manually');
+        trs.kQSource = manualSource(add, { base: L('введён вручную', 'entered manually'), src: f.cc_ref_kqtrs_src, scope: 'trs', field: 'cc_ref_kqtrs_src' });
       } else if (!ref) {
         trs.kQ = NaN;
       } else if (ref.other || !ref.trsT20) {
@@ -662,15 +665,17 @@ export function computeCrossCal(form) {
       x.Pion = recombination(who, 'tg51');
       x.M = corrected(who, x.PTP, x.Pion);
     }
+    // область Report 385 (разд. 1): 1,70 ≤ R50 ≤ 8,70 см — при любом способе k_Q; с расчётным k′_Q вне неё — ошибка,
+    // только с введёнными вручную — предупреждение (коэффициент считается, но это не калибровка по Report 385)
+    const r385out = r50ok && (r50 < R385_RANGE[0] - 1e-9 || r50 > R385_RANGE[1] + 1e-9);
+    let fitUsed = false;
     const rangeCheck = () => {
-      if (r50ok && (r50 < R385_RANGE[0] - 1e-9 || r50 > R385_RANGE[1] + 1e-9)) {
-        add('error', 'tg51', L(`R50 = ${ru(r50, 2)} см вне диапазона Report 385 (1,70–8,70 см): аппроксимации k′_Q там не проверены.`, `R50 = ${ru(r50, 2)} cm is outside the Report 385 range (1.70–8.70 cm): the k′_Q fits have not been verified there.`), `${REF.r385}, ур. (7)–(8)`, ['cc_r50', 'cc_i50']);
-      }
+      fitUsed = true;
     };
     if (f.cc_ref_kq51_mode === 'manual') {
       tg.kQref = read('cc_ref_kq51_manual', L('k_Q опорной камеры (TG-51)', 'k_Q of the reference chamber (TG-51)'), 'tg51');
       if (Number.isFinite(tg.kQref) && (tg.kQref < 0.8 || tg.kQref > 1.2)) add('warn', 'tg51', L('Введённый k_Q необычен: проверьте значение.', 'The entered k_Q is unusual: check the value.'), null, 'cc_ref_kq51_manual');
-      tg.kQrefSource = L('введён вручную', 'entered manually');
+      tg.kQrefSource = manualSource(add, { base: L('введён вручную', 'entered manually'), src: f.cc_ref_kq51_src, scope: 'tg51', field: 'cc_ref_kq51_src' });
     } else if (ref && (ref.other || !ref.r385)) {
       add('error', 'tg51', L(
         `Для ${ref.other ? 'этой камеры' : chamberLabel(ref)} в Report 385 нет данных: выберите другую опорную камеру или введите k_Q вручную.`,
@@ -690,7 +695,7 @@ export function computeCrossCal(form) {
     if (f.cc_fld_kq51_mode === 'manual') {
       tg.kQprimeFld = read('cc_fld_kq51_manual', L('k′_Q рабочей камеры (TG-51)', 'k′_Q of the field chamber (TG-51)'), 'tg51');
       if (Number.isFinite(tg.kQprimeFld) && (tg.kQprimeFld < 0.8 || tg.kQprimeFld > 1.2)) add('warn', 'tg51', L('Введённый k′_Q необычен: проверьте значение.', 'The entered k′_Q is unusual: check the value.'), null, 'cc_fld_kq51_manual');
-      tg.kQprimeFldSource = L('введён вручную', 'entered manually');
+      tg.kQprimeFldSource = manualSource(add, { base: L('введён вручную', 'entered manually'), src: f.cc_fld_kq51_src, scope: 'tg51', field: 'cc_fld_kq51_src', what: 'k′_Q' });
     } else if (fld && (fld.other || !fld.r385)) {
       add('error', 'tg51', L(
         `Для ${fld.other ? 'этой камеры' : chamberLabel(fld)} в Report 385 нет данных: такие камеры не рекомендуется использовать для электронов; при необходимости введите k′_Q вручную.`,
@@ -705,6 +710,14 @@ export function computeCrossCal(form) {
         `Report 385: k′_Q = ${ru(fld.r385.a, 3)} + ${ru(fld.r385.b, 3)}·exp(−R50/${ru(fld.r385.c, 3)}) (Eq. 8, Table 7)`,
       );
     } else tg.kQprimeFld = NaN;
+    if (r385out && fitUsed) {
+      add('error', 'tg51', L(`R50 = ${ru(r50, 2)} см вне диапазона Report 385 (1,70–8,70 см): аппроксимации k′_Q там не проверены.`, `R50 = ${ru(r50, 2)} cm is outside the Report 385 range (1.70–8.70 cm): the k′_Q fits have not been verified there.`), `${REF.r385}, ур. (7)–(8)`, ['cc_r50', 'cc_i50']);
+    } else if (r385out && (f.cc_ref_kq51_mode === 'manual' || f.cc_fld_kq51_mode === 'manual')) {
+      add('warn', 'tg51', L(
+        `R50 = ${ru(r50, 2)} см вне области Report 385 (1,70–8,70 см): с введёнными вручную k_Q коэффициент считается, но это не перекрёстная калибровка по Report 385.`,
+        `R50 = ${ru(r50, 2)} cm is outside the scope of Report 385 (1.70–8.70 cm): with manually entered k_Q values the coefficient is calculated, but this is not a Report 385 cross-calibration.`,
+      ), `${REF.r385}, разд. 1`, ['cc_r50', 'cc_i50', 'cc_ref_kq51_manual', 'cc_fld_kq51_manual']);
+    }
     tg.ratio = tg.ref.M / tg.fld.M;
     tg.KN = (tg.ref.M * tg.kQref * ndw) / (tg.fld.M * tg.kQprimeFld);
     tg.Dcross = tg.ref.M * tg.kQref * ndw;

@@ -209,3 +209,21 @@ test('вкладки дозиметрии бюджета не содержат; 
   assert.equal(computeCobalt(SAMPLE_COBALT).unc, undefined);
   for (const x of crossCalTargets(computeCrossCal(SAMPLE_CROSSCAL_CO60))) assert.ok(!Object.keys(x.patch).some((k) => /unc/.test(k)));
 });
+
+test('U для дозы на z_ref и на d_max: пересчёт по PDD/TMR добавляет свою u, без неё — предупреждение', async () => {
+  const { computeUncertaintyTool } = await import('../src/core/uncertainty-tool.js');
+  const { SAMPLE_UNC } = await import('../src/core/sample-uncertainty.js');
+  const z = computeUncertaintyTool({ ...SAMPLE_UNC, unc_value: '1,0000', unc_value_at: 'zref' });
+  assert.equal(z.valueAt, 'zref');
+  assert.ok(Math.abs(z.abs - z.UPct / 100) < 1e-12, 'на z_ref — U бюджета');
+  assert.ok(!z.messages.some((m) => /d_max/.test(m.text)));
+  const bare = computeUncertaintyTool({ ...SAMPLE_UNC, unc_value: '1,0000', unc_value_at: 'max' });
+  assert.equal(bare.absComplete, false);
+  assert.ok(bare.messages.some((m) => m.level === 'warn' && /без неопределённости пересчёта/.test(m.text)));
+  const tr = computeUncertaintyTool({ ...SAMPLE_UNC, unc_value: '1,0000', unc_value_at: 'max', unc_transfer_u: '0,5' });
+  assert.equal(tr.absComplete, true);
+  assert.ok(Math.abs(tr.UAtPct - 2 * Math.hypot(tr.ucPct, 0.5)) < 1e-12);
+  assert.ok(Math.abs(tr.abs - tr.UAtPct / 100) < 1e-12);
+  assert.ok(tr.UAtPct > tr.UPct, 'с пересчётом U больше');
+  assert.ok(computeUncertaintyTool({ ...SAMPLE_UNC, unc_value_at: 'max', unc_transfer_u: '-1' }).messages.some((m) => /не прочитана/.test(m.text)));
+});

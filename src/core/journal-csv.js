@@ -72,9 +72,10 @@ export function journalCsv(j) {
     for (const b of m.beams) {
       const ch = beamChart(j, m.id, b.id);
       for (const p of ch.points) {
-        if (!p.signals.length) continue;
+        if (!p.signals.length && !p.watch?.length) continue;
         const key = `${p.sessionId}|${b.id}`;
-        const txt = `${p.stage === 'found' ? L('до подстройки: ', 'before adjustment: ') : ''}${p.signals.map(signalText).join(', ')}`;
+        const rules = [p.signals.map(signalText).join(', '), p.watch?.length ? `${L('наблюдение', 'observation')}: ${p.watch.map(signalText).join(', ')}` : ''].filter(Boolean).join('; ');
+        const txt = `${p.stage === 'found' ? L('до подстройки: ', 'before adjustment: ') : ''}${rules}`;
         signals.set(key, signals.has(key) ? `${signals.get(key)}; ${txt}` : txt);
       }
     }
@@ -166,7 +167,10 @@ export function checksCsv(j) {
   const signals = new Map(); // `${sessionId}|${checkId}` → текст
   for (const m of j.machines) {
     for (const pair of checkPairs(j, m.id)) {
-      for (const p of checkChart(j, pair).chart.points) if (p.signals.length) signals.set(`${p.sessionId}|${p.check.id}`, p.signals.map(signalText).join(', '));
+      for (const p of checkChart(j, pair).chart.points) {
+        const rules = [p.signals.map(signalText).join(', '), p.watch?.length ? `${L('наблюдение', 'observation')}: ${p.watch.map(signalText).join(', ')}` : ''].filter(Boolean).join('; ');
+        if (rules) signals.set(`${p.sessionId}|${p.check.id}`, rules);
+      }
     }
   }
   const chamberById = new Map(j.chambers.map((c) => [c.id, c]));

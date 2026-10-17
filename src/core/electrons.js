@@ -6,7 +6,7 @@
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
 import { L } from './i18n.js';
-import { temperaturePressure, polarity, environmentChecks, outputPlausibility, readTolerance, complianceOf } from './common.js';
+import { temperaturePressure, polarity, environmentChecks, outputPlausibility, readTolerance, complianceOf, manualSource } from './common.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
 import { findEChamber, eChamberLabel, interpE, kQprime385, trsFit, R385_RANGE } from './electron-chambers.js';
@@ -81,8 +81,10 @@ export const E_DEFAULTS = {
 
   e_kqtrs_mode: 'table', // 'table' (табл. 20 или 21) | 'formula' (прил. II, табл. 47 или 48) | 'manual'
   e_kqtrs_manual: '',
+  e_kqtrs_src: '', // источник ручного k_Q (свидетельство лаборатории, №, дата)
   e_kq51_mode: 'fit', // 'fit' (Report 385) | 'manual'
   e_kq51_manual: '',
+  e_kq51_src: '',
 
   e_dd_on: true,
   e_zmax: '',
@@ -503,7 +505,7 @@ export function computeElectrons(form) {
     if (f.e_kqtrs_mode === 'manual') {
       trs.kQ = read('e_kqtrs_manual', cross ? 'k_Q,Qcross (TRS-398)' : 'k_Q,Q₀ (TRS-398)', 'trs');
       if (Number.isFinite(trs.kQ) && (trs.kQ < 0.8 || trs.kQ > 1.2)) add('warn', 'trs', L('Введённый k_Q необычен: проверьте значение.', 'The entered k_Q is unusual: check the value.'), null, 'e_kqtrs_manual');
-      trs.kQSource = L('введён вручную (например, измерен в лаборатории)', 'entered manually (e.g. measured by a calibration laboratory)');
+      trs.kQSource = manualSource(add, { base: L('введён вручную (например, измерен в лаборатории)', 'entered manually (e.g. measured by a calibration laboratory)'), src: f.e_kqtrs_src, scope: 'trs', field: 'e_kqtrs_src' });
     } else if (!chamber || chamber.other) {
       if (chamber?.other) add('error', 'trs', L('Для камеры не из таблиц TRS-398 введите k_Q вручную.', 'For a chamber not in the TRS-398 tables, enter k_Q manually.'), `${REF.trs}, табл. 20–21`, 'e_kqtrs_mode');
       trs.kQ = NaN;
@@ -567,10 +569,19 @@ export function computeElectrons(form) {
       tg.PionFixed = true;
     } else tg.Pion = NaN;
 
+    // область Report 385 (разд. 1): 4–22 МэВ, 1,70 ≤ R50 ≤ 8,70 см — при любом способе k_Q. С расчётным k′_Q вне неё —
+    // ошибка (аппроксимации там не проверены), с введённым вручную — число считается, но условия нестандартные
+    const r385out = r50ok && (r50 < R385_RANGE[0] - 1e-9 || r50 > R385_RANGE[1] + 1e-9);
+    if (r385out && f.e_kq51_mode === 'manual') {
+      add('warn', 'tg51', L(
+        `R50 = ${ru(r50, 2)} см вне области Report 385 (1,70–8,70 см): с введённым вручную k_Q доза считается, но это не расчёт по Report 385.`,
+        `R50 = ${ru(r50, 2)} cm is outside the scope of Report 385 (1.70–8.70 cm): with a manually entered k_Q the dose is calculated, but this is not a Report 385 calculation.`,
+      ), `${REF.r385}, разд. 1`, ['e_kq51_manual', 'e_i50', 'e_r50'], L(`R50 = ${ru(r50, 2)} см вне области Report 385 (1,70–8,70 см)`, `R50 = ${ru(r50, 2)} cm outside the scope of Report 385 (1.70–8.70 cm)`));
+    }
     if (f.e_kq51_mode === 'manual') {
       tg.kQ = read('e_kq51_manual', 'k_Q (TG-51)', 'tg51');
       if (Number.isFinite(tg.kQ) && (tg.kQ < 0.8 || tg.kQ > 1.2)) add('warn', 'tg51', L('Введённый k_Q необычен: проверьте значение.', 'The entered k_Q is unusual: check the value.'), null, 'e_kq51_manual');
-      tg.kQSource = cross ? L('k′_Q введён вручную', 'k′_Q entered manually') : L('введён вручную', 'entered manually');
+      tg.kQSource = manualSource(add, { base: cross ? L('k′_Q введён вручную', 'k′_Q entered manually') : L('введён вручную', 'entered manually'), src: f.e_kq51_src, scope: 'tg51', field: 'e_kq51_src', what: cross ? 'k′_Q' : 'k_Q' });
       if (cross) tg.kQprime = tg.kQ;
       // камера из списка, но без данных Report 385: ручной k_Q не делает расчёт расчётом по Report 385 (разд. 6.6)
       if (chamber && !chamber.other && !chamber.r385) {
@@ -586,7 +597,7 @@ export function computeElectrons(form) {
       ), `${REF.r385}, разд. 6.6`, ['e_ch_model', 'kQ51']);
       tg.kQ = NaN;
     } else if (r50ok) {
-      if (r50 < R385_RANGE[0] - 1e-9 || r50 > R385_RANGE[1] + 1e-9) {
+      if (r385out) {
         add('error', 'tg51', L(`R50 = ${ru(r50, 2)} см вне диапазона Report 385 (1,70–8,70 см): аппроксимации k′_Q там не проверены.`, `R50 = ${ru(r50, 2)} cm is outside the Report 385 range (1.70–8.70 cm): the k′_Q fits have not been verified there.`), `${REF.r385}, ур. (7)–(8)`, ['kQ51', 'e_i50', 'e_r50']);
       }
       tg.kQprime = kQprime385(chamber, r50);
@@ -715,7 +726,7 @@ export function computeElectrons(form) {
   recal.needed = recal.preDeviation.some((d) => Math.abs(d) > tol);
   recal.on = recal.needed && recal.answer === 'yes';
   if (recal.needed && !recal.answer) {
-    add('info', 'recal', L(`Доза отличается от номинального выхода больше чем на ±${tolTxt} %: ответьте в разделе 9, требуется ли калибровка.`, `The dose differs from the nominal output by more than ±${tolTxt}%: answer in section 9 whether calibration is required.`), null, 'e_recal_needed');
+    add('info', 'recal', L(`Доза отличается от номинального выхода больше чем на ±${tolTxt} %: сначала проверьте измерение; если ускоритель подстраивали, отметьте это в разделе 9 и введите показания после подстройки.`, `The dose differs from the nominal output by more than ±${tolTxt}%: check the measurement first; if the linac was adjusted, mark it in section 9 and enter the readings after the adjustment.`), null, 'e_recal_needed');
   }
   if (recal.on) {
     const recalSeries = (key, label, ref) => {
@@ -725,19 +736,19 @@ export function computeElectrons(form) {
       else if (s.mean === 0) add('error', 'recal', L(`«${label.ru}»: среднее показание равно нулю.`, `"${label.en}": the mean reading is zero.`), null, key);
       const d = maxRelDeviation(s);
       const pct = ru(d * 100, 2);
-      if (d > 0.05) add('error', 'recal', L(`Показания после калибровки расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, `Readings after calibration differ from the mean by up to ${pct} %: probably an input error.`), null, key);
-      else if (d > 0.005) add('warn', 'recal', L(`Разброс показаний после калибровки до ${pct} % от среднего: повторите облучения.`, `Readings after calibration scatter by up to ${pct} % from the mean: repeat the irradiations.`), `${REF.r374}, разд. 4.4.2`, key);
+      if (d > 0.05) add('error', 'recal', L(`Показания после подстройки расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, `Readings after adjustment differ from the mean by up to ${pct} %: probably an input error.`), null, key);
+      else if (d > 0.005) add('warn', 'recal', L(`Разброс показаний после подстройки до ${pct} % от среднего: повторите облучения.`, `Readings after adjustment scatter by up to ${pct} % from the mean: repeat the irradiations.`), `${REF.r374}, разд. 4.4.2`, key);
       if (!s.error && s.mean !== 0 && seriesOk(ref) && Math.sign(s.mean) !== Math.sign(ref.mean)) {
-        add('error', 'recal', L('Показания после калибровки снимают при той же (обычной) полярности, что и M при V₁.', 'Readings after calibration are taken at the same (normal) polarity as M at V₁.'), null, key);
+        add('error', 'recal', L('Показания после подстройки снимают при той же (обычной) полярности, что и M при V₁.', 'Readings after adjustment are taken at the same (normal) polarity as M at V₁.'), null, key);
       }
       return s;
     };
-    const rMain = recalSeries('e_recal_M', { ru: 'Показания после калибровки', en: 'Readings after calibration' }, M1);
+    const rMain = recalSeries('e_recal_M', { ru: 'Показания после подстройки', en: 'Readings after adjustment' }, M1);
     if (!rMain) {
-      add('info', 'recal', L('Введите показания после калибровки ускорителя (раздел 9): до этого итог — по прежним показаниям.', 'Enter the readings after the linac calibration (section 9); until then the result is based on the previous readings.'), null, 'e_recal_M');
+      add('info', 'recal', L('Введите показания после подстройки ускорителя (раздел 9): до этого итог — по прежним показаниям.', 'Enter the readings after the linac adjustment (section 9); until then the result is based on the previous readings.'), null, 'e_recal_M');
     } else {
       recal.mu = isBlank(f.e_recal_mu) ? (ctrl.on && ctrl.mu > 0 ? ctrl.mu : mu) : parseNumber(f.e_recal_mu);
-      if (!isBlank(f.e_recal_mu) && !(recal.mu > 0)) add('error', 'recal', L('Число МЕ после калибровки должно быть больше нуля.', 'The number of MU after calibration must be greater than zero.'), null, 'e_recal_mu');
+      if (!isBlank(f.e_recal_mu) && !(recal.mu > 0)) add('error', 'recal', L('Число МЕ после подстройки должно быть больше нуля.', 'The number of MU after adjustment must be greater than zero.'), null, 'e_recal_mu');
       const meanOfR = (s) => (s && s.n > 0 && !s.error ? Math.abs(s.mean) : NaN);
       recal.M = rMain;
       recal.mean = meanOfR(rMain);
@@ -769,7 +780,7 @@ export function computeElectrons(form) {
       }
     }
   }
-  // итог: после калибровки, если она проведена и без ошибок
+  // итог: после подстройки, если она проведена и без ошибок
   const actual = (x, scope) => {
     const y = final(x, scope);
     return y === x.ctrl || y === x ? (x.recal && !x.recal.blocked ? x.recal : y) : y;

@@ -159,3 +159,47 @@ test('Большая подстройка выхода: напоминание �
   assert.ok(Math.abs(small.trs.recal.preVsNew) < 2);
   assert.ok(!small.messages.some((m) => /перемерьте k_s/.test(m.text)));
 });
+
+test('Report 385: область 1,70–8,70 см проверяется при любом способе k_Q (электроны и перекрёстная калибровка)', async () => {
+  const { computeCrossCal } = await import('../src/core/crosscal.js');
+  const { SAMPLE_CROSSCAL } = await import('../src/core/sample-crosscal.js');
+  const scopeWarn = (r) => r.messages.some((m) => m.level === 'warn' && /вне области Report 385/.test(m.text) && /разд\. 1/.test(m.ref));
+  const fitError = (r) => r.messages.some((m) => m.level === 'error' && /вне диапазона Report 385/.test(m.text));
+  for (const [r50, inside] of [[1.69, false], [1.70, true], [8.70, true], [8.71, false], [9.20, false]]) {
+    const R = String(r50).replace('.', ',');
+    // электроны: ручной k_Q — доза есть, вне области — «нестандартные условия»; расчётный — вне области ошибка
+    const base = { ...SAMPLE_ELECTRONS, protocol: 'tg51', e_r50_method: 'r50', e_r50: R };
+    const man = computeElectrons({ ...base, e_kq51_mode: 'manual', e_kq51_manual: '0,95' });
+    assert.equal(fitError(man), false, `ручной k_Q, R50 = ${r50}`);
+    assert.equal(scopeWarn(man), !inside, `ручной k_Q, R50 = ${r50}: предупреждение об области`);
+    if (!inside) {
+      assert.equal(man.compliance.status, 'nonstandard', `R50 = ${r50}`);
+      assert.match(reasons(man), /вне области Report 385/);
+      assert.ok(Number.isFinite(man.tg51.kQ), 'число считается');
+    }
+    const fit = computeElectrons({ ...base, e_kq51_mode: 'fit' });
+    assert.equal(fitError(fit), !inside, `расчётный k_Q, R50 = ${r50}`);
+    // перекрёстная калибровка: ручные k_Q обеих камер и расчётные
+    const cc = { ...SAMPLE_CROSSCAL, protocol: 'tg51', cc_r50_method: 'r50', cc_r50: R };
+    const ccMan = computeCrossCal({ ...cc, cc_ref_kq51_mode: 'manual', cc_ref_kq51_manual: '1,03', cc_fld_kq51_mode: 'manual', cc_fld_kq51_manual: '0,99' });
+    assert.equal(fitError(ccMan), false, `перекрёстная, ручные k_Q, R50 = ${r50}`);
+    assert.equal(scopeWarn(ccMan), !inside, `перекрёстная, ручные k_Q, R50 = ${r50}`);
+    assert.ok(Number.isFinite(ccMan.tg51.KN));
+    assert.equal(fitError(computeCrossCal(cc)), !inside, `перекрёстная, расчётные k_Q, R50 = ${r50}`);
+    // одна камера с ручным k_Q, другая — по аппроксимации: вне области — ошибка (аппроксимация там не проверена)
+    assert.equal(fitError(computeCrossCal({ ...cc, cc_fld_kq51_mode: 'manual', cc_fld_kq51_manual: '0,99' })), !inside, `перекрёстная, смешанные k_Q, R50 = ${r50}`);
+  }
+});
+
+test('Ручной k_Q: источник попадает в подпись k_Q (протокол), без источника — справка у поля', () => {
+  const noSrc = computePhotons(VERSA);
+  assert.ok(noSrc.messages.some((m) => m.level === 'info' && /Источник введённого вручную k_Q не указан/.test(m.text)));
+  assert.equal(noSrc.flags?.kqtrs_src ?? 'info', 'info');
+  const withSrc = computePhotons({ ...VERSA, kqtrs_src: 'Свидетельство № 1, 01.01.2026' });
+  assert.ok(!withSrc.messages.some((m) => /Источник введённого вручную/.test(m.text)));
+  assert.match(withSrc.trs.kQSource, /— Свидетельство № 1, 01\.01\.2026$/);
+  const e = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'tg51', e_kq51_mode: 'manual', e_kq51_manual: '0,95', e_kq51_src: 'ВНИИФТРИ, 2026' });
+  assert.match(e.tg51.kQSource, /ВНИИФТРИ, 2026/);
+  // расчётный k_Q — справки об источнике нет
+  assert.ok(!computePhotons({ ...VERSA, kqtrs_mode: 'formula' }).messages.some((m) => /Источник введённого вручную/.test(m.text)));
+});

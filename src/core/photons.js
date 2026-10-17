@@ -4,7 +4,7 @@
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec, parseBeamName } from './units.js';
 import { L } from './i18n.js';
-import { temperaturePressure, polarity, environmentChecks, outputPlausibility, readTolerance, complianceOf } from './common.js';
+import { temperaturePressure, polarity, environmentChecks, outputPlausibility, readTolerance, complianceOf, manualSource } from './common.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
 import { findChamber, chamberLabel, noteText } from './chambers.js';
@@ -101,8 +101,10 @@ export const FORM_DEFAULTS = {
 
   kqtrs_mode: 'formula', // 'formula' | 'table' | 'manual'
   kqtrs_manual: '',
+  kqtrs_src: '', // источник ручного k_Q (свидетельство лаборатории, №, дата)
   kq51_manual_on: false,
   kq51_manual: '',
+  kq51_src: '',
 
   prof_mode: 'formula22', // 'formula22' | 'table11' | 'manual' | 'profile' (только для БВФ)
   prof_value: '',
@@ -748,7 +750,7 @@ export function computePhotons(form) {
     const mode = f.kqtrs_mode;
     if (mode === 'manual') {
       trs.kQ = read('kqtrs_manual', cross ? 'k_Q,Qcross (TRS-398)' : L('k_Q (TRS-398), измеренный в лаборатории', 'k_Q (TRS-398) measured by the laboratory'), 'trs');
-      trs.kQSource = cross ? L('k_Q,Qcross введён вручную', 'k_Q,Qcross entered manually') : L('измерен в лаборатории для этой камеры', 'measured by the laboratory for this chamber');
+      trs.kQSource = manualSource(add, { base: cross ? L('k_Q,Qcross введён вручную', 'k_Q,Qcross entered manually') : L('измерен в лаборатории для этой камеры', 'measured by the laboratory for this chamber'), src: f.kqtrs_src, scope: 'trs', field: 'kqtrs_src', what: cross ? 'k_Q,Qcross' : 'k_Q' });
       if (Number.isFinite(trs.kQ) && (trs.kQ < 0.9 || trs.kQ > 1.02)) {
         add('warn', 'trs', L('k_Q для МВ фотонов обычно 0,94–1,00: проверьте ввод.', 'k_Q for MV photons is usually 0.94–1.00: check the input.'), null, 'kqtrs_manual');
       }
@@ -974,7 +976,7 @@ export function computePhotons(form) {
 
     if (f.kq51_manual_on) {
       tg.kQ = read('kq51_manual', L('k_Q (TG-51) вручную', 'k_Q (TG-51), manual'), 'tg51');
-      tg.kQSource = L('введено вручную', 'entered manually');
+      tg.kQSource = manualSource(add, { base: L('введено вручную', 'entered manually'), src: f.kq51_src, scope: 'tg51', field: 'kq51_src' });
     } else {
       const k = TG51.kQ(chamber, q.value);
       if (!chamber || isBlank(f.ch_model)) {
@@ -1320,25 +1322,25 @@ export function computePhotons(form) {
   recal.needed = recal.preDeviation.some((d) => Math.abs(d) > tol);
   recal.on = recal.needed && recal.answer === 'yes';
   if (recal.needed && !recal.answer) {
-    add('info', 'recal', L(`Доза отличается от номинального выхода больше чем на ±${tolTxt} %: ответьте в разделе 9, требуется ли калибровка.`, `The dose differs from the nominal output by more than ±${tolTxt}%: answer in section 9 whether calibration is required.`), null, 'recal_needed');
+    add('info', 'recal', L(`Доза отличается от номинального выхода больше чем на ±${tolTxt} %: сначала проверьте измерение; если ускоритель подстраивали, отметьте это в разделе 9 и введите показания после подстройки.`, `The dose differs from the nominal output by more than ±${tolTxt}%: check the measurement first; if the linac was adjusted, mark it in section 9 and enter the readings after the adjustment.`), null, 'recal_needed');
   }
   if (recal.on) {
     const s = parseCells(f.recal_M);
     recal.M = s;
     if (s.n === 0 && !s.error) {
-      add('info', 'recal', L('Введите показания после калибровки ускорителя (раздел 9): до этого итог — по прежним показаниям.', 'Enter the readings after the linac calibration (section 9); until then the result is based on the previous readings.'), null, 'recal_M');
+      add('info', 'recal', L('Введите показания после подстройки ускорителя (раздел 9): до этого итог — по прежним показаниям.', 'Enter the readings after the linac adjustment (section 9); until then the result is based on the previous readings.'), null, 'recal_M');
     } else {
-      if (s.error) add('error', 'recal', L(`«Показания после калибровки»: ${s.error}.`, `"Readings after calibration": ${s.error}.`), null, 'recal_M');
-      else if (s.mean === 0) add('error', 'recal', L('«Показания после калибровки»: среднее показание равно нулю.', '"Readings after calibration": the mean reading is zero.'), null, 'recal_M');
+      if (s.error) add('error', 'recal', L(`«Показания после подстройки»: ${s.error}.`, `"Readings after adjustment": ${s.error}.`), null, 'recal_M');
+      else if (s.mean === 0) add('error', 'recal', L('«Показания после подстройки»: среднее показание равно нулю.', '"Readings after adjustment": the mean reading is zero.'), null, 'recal_M');
       const d = maxRelDeviation(s);
       const pct = ru(d * 100, 2);
-      if (d > 0.05) add('error', 'recal', L(`Показания после калибровки расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, `Readings after calibration deviate by ${pct}% from the mean: probably an input error.`), null, 'recal_M');
-      else if (d > 0.005) add('warn', 'recal', L(`Разброс показаний после калибровки до ${pct} % от среднего: повторите облучения.`, `Readings after calibration scatter by up to ${pct}% from the mean: repeat the irradiations.`), `${REF.r374}, разд. 4.4.2`, 'recal_M');
+      if (d > 0.05) add('error', 'recal', L(`Показания после подстройки расходятся на ${pct} % от среднего: вероятно, ошибка ввода.`, `Readings after adjustment deviate by ${pct}% from the mean: probably an input error.`), null, 'recal_M');
+      else if (d > 0.005) add('warn', 'recal', L(`Разброс показаний после подстройки до ${pct} % от среднего: повторите облучения.`, `Readings after adjustment scatter by up to ${pct}% from the mean: repeat the irradiations.`), `${REF.r374}, разд. 4.4.2`, 'recal_M');
       if (readingsOk && !s.error && s.mean !== 0 && Math.sign(s.mean) !== Math.sign(M1.mean)) {
-        add('error', 'recal', L('Показания после калибровки снимают при той же (обычной) полярности, что и M при V₁.', 'Readings after calibration are taken at the same (normal) polarity as M at V₁.'), null, 'recal_M');
+        add('error', 'recal', L('Показания после подстройки снимают при той же (обычной) полярности, что и M при V₁.', 'Readings after adjustment are taken at the same (normal) polarity as M at V₁.'), null, 'recal_M');
       }
       recal.mu = isBlank(f.recal_mu) ? (ctrl.on && ctrl.mu > 0 ? ctrl.mu : mu) : parseNumber(f.recal_mu);
-      if (!isBlank(f.recal_mu) && !(recal.mu > 0)) add('error', 'recal', L('Число МЕ после калибровки должно быть больше нуля.', 'The number of MU after calibration must be greater than zero.'), null, 'recal_mu');
+      if (!isBlank(f.recal_mu) && !(recal.mu > 0)) add('error', 'recal', L('Число МЕ после подстройки должно быть больше нуля.', 'The number of MU after adjustment must be greater than zero.'), null, 'recal_mu');
       recal.mean = s.n > 0 && !s.error ? Math.abs(s.mean) : NaN;
       const recalErr = messages.some((m) => m.level === 'error' && m.scope === 'recal');
       const atNominal = (y) => (depth.nominalAt === 'dmax' ? y.DmaxPerMU : y.DperMU);
@@ -1368,7 +1370,7 @@ export function computePhotons(form) {
       }
     }
   }
-  // итог: после калибровки, если она проведена и без ошибок
+  // итог: после подстройки, если она проведена и без ошибок
   const actual = (x, scope) => {
     const y = final(x, scope);
     return y === x.ctrl || y === x ? (x.recal && !x.recal.blocked ? x.recal : y) : y;

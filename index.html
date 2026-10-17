@@ -828,6 +828,7 @@
             </select>
           </div>
           <div class="field" data-show="kqtrs_mode:manual"><label for="kqtrs_manual">k<sub>Q</sub>, измеренный в лаборатории</label><input type="text" id="kqtrs_manual" class="num" inputmode="decimal"></div>
+          <div class="field" data-show="kqtrs_mode:manual"><label for="kqtrs_src">Источник k<sub>Q</sub></label><input type="text" id="kqtrs_src" placeholder="свидетельство: лаборатория, №, дата"><span class="sub">попадает в протокол</span></div>
           <div class="grid four">
             <div class="field out-cell"><span class="label">по формуле (34)</span><output data-out="trs.kQFormula" data-digits="4"></output></div>
             <div class="field out-cell"><span class="label">по табл. 16</span><output data-out="trs.kQTable" data-digits="4"></output></div>
@@ -863,6 +864,7 @@
           <p class="eq"><span data-out-text="tg51.pdd10xEquation"></span> <span data-out-text="tg51.kQSource"></span></p>
           <label class="check"><input type="checkbox" id="kq51_manual_on"> <span>ввести k<sub>Q</sub> вручную</span></label>
           <div class="field" data-show="kq51_manual_on:true"><label for="kq51_manual">k<sub>Q</sub> (TG-51)</label><input type="text" id="kq51_manual" class="num" inputmode="decimal"></div>
+          <div class="field" data-show="kq51_manual_on:true"><label for="kq51_src">Источник k<sub>Q</sub></label><input type="text" id="kq51_src" placeholder="свидетельство: лаборатория, №, дата"><span class="sub">попадает в протокол</span></div>
         </div>
       </div>
       <div class="rec-depth">
@@ -964,19 +966,19 @@
 
     <!-- 9: появляется, если доза вне допуска -->
     <section class="step" aria-labelledby="s9r" id="recal-section" hidden>
-      <header><span class="step-no">9</span><h2 id="s9r">Требуется калибровка?</h2>
+      <header><span class="step-no">9</span><h2 id="s9r">Выход вне допуска: проверка и подстройка</h2>
         <p class="hint" id="recal-hint"></p></header>
       <div class="grid">
         <div class="field">
-          <label for="recal_needed">Калибровка ускорителя</label>
+          <label for="recal_needed">Ускоритель подстраивали?</label>
           <select id="recal_needed"><option value="">— выберите —</option><option value="yes">Да</option><option value="no">Нет</option></select>
         </div>
-        <div class="field out-cell"><span class="label">Доза до калибровки, Гр на 100 МЕ</span><output id="recal-pre"></output><span class="sub" id="recal-pre-sub"></span></div>
+        <div class="field out-cell"><span class="label">Доза до подстройки, Гр на 100 МЕ</span><output id="recal-pre"></output><span class="sub" id="recal-pre-sub"></span></div>
       </div>
       <div data-show="recal_needed:yes">
-        <p class="hint">После калибровки (подстройки) ускорителя снимите три показания при обычной полярности и рабочем напряжении V₁ в той же геометрии. Поправки берутся из разделов 3–6; итоговой становится доза по этим показаниям, а доза до калибровки остаётся для справки.</p>
+        <p class="hint">После подстройки ускорителя снимите три показания при обычной полярности и рабочем напряжении V₁ в той же геометрии. Поправки берутся из разделов 3–6; итоговой становится доза по этим показаниям, а доза до подстройки остаётся для справки.</p>
         <div class="series">
-          <div class="cells" data-series="recal_M" data-label="Показания после калибровки, M при V₁, обычная полярность">
+          <div class="cells" data-series="recal_M" data-label="Показания после подстройки, M при V₁, обычная полярность">
             <span class="label">M при V₁, обычная полярность, нКл</span>
             <div class="cells-row">
               <div class="cells-list"></div>
@@ -990,8 +992,8 @@
         </div>
         <div class="grid">
           <div class="field"><label for="recal_mu">Облучение, МЕ</label><input type="text" id="recal_mu" class="num" inputmode="decimal"><span class="sub">если пусто — как в разделе 7</span></div>
-          <div class="field out-cell"><span class="label">Доза после калибровки, Гр на 100 МЕ</span><output id="recal-post"></output><span class="sub" id="recal-post-sub"></span></div>
-          <div class="field out-cell"><span class="label">Доза до калибровки относительно новой</span><output id="recal-diff"></output><span class="sub">отклонение прежней дозы от дозы после калибровки</span></div>
+          <div class="field out-cell"><span class="label">Доза после подстройки, Гр на 100 МЕ</span><output id="recal-post"></output><span class="sub" id="recal-post-sub"></span></div>
+          <div class="field out-cell"><span class="label">Доза до подстройки относительно новой</span><output id="recal-diff"></output><span class="sub">отклонение прежней дозы от дозы после подстройки</span></div>
         </div>
       </div>
     </section>
@@ -1343,6 +1345,7 @@
             </select>
           </div>
           <div class="field" data-show="e_kqtrs_mode:manual"><label for="e_kqtrs_manual" id="e-lbl-kqtrs">k<sub>Q,Q₀</sub></label><input type="text" id="e_kqtrs_manual" class="num" inputmode="decimal"></div>
+          <div class="field" data-show="e_kqtrs_mode:manual"><label for="e_kqtrs_src">Источник k<sub>Q</sub></label><input type="text" id="e_kqtrs_src" placeholder="свидетельство: лаборатория, №, дата"><span class="sub">попадает в протокол</span></div>
           <div class="grid three" data-show="e_cal_route:cross">
             <div class="field out-cell"><span class="label">k<sub>Q,Qint</sub></span><output data-out="trs.kQint" data-digits="4"></output></div>
             <div class="field out-cell"><span class="label">k<sub>Qcross,Qint</sub></span><output data-out="trs.kQcrossInt" data-digits="4"></output></div>
@@ -1365,6 +1368,7 @@
             </select>
           </div>
           <div class="field" data-show="e_kq51_mode:manual"><label for="e_kq51_manual" id="e-lbl-kq51">k<sub>Q</sub></label><input type="text" id="e_kq51_manual" class="num" inputmode="decimal"></div>
+          <div class="field" data-show="e_kq51_mode:manual"><label for="e_kq51_src">Источник k<sub>Q</sub></label><input type="text" id="e_kq51_src" placeholder="свидетельство: лаборатория, №, дата"><span class="sub">попадает в протокол</span></div>
           <div class="grid three">
             <div class="field out-cell"><span class="label">k′<sub>Q</sub></span><output data-out="tg51.kQprime" data-digits="4"></output></div>
             <div class="field out-cell" data-show="e_cal_route:co60"><span class="label">k<sub>Qecal</sub></span><output data-out="tg51.kQecal" data-digits="3"></output></div>
@@ -1422,20 +1426,20 @@
 
     <!-- 9: появляется, если доза вне допуска -->
     <section class="step" aria-labelledby="e-s9r" id="e-recal-section" hidden>
-      <header><span class="step-no">9</span><h2 id="e-s9r">Требуется калибровка?</h2>
+      <header><span class="step-no">9</span><h2 id="e-s9r">Выход вне допуска: проверка и подстройка</h2>
         <p class="hint" id="e-recal-hint"></p></header>
       <div class="grid">
         <div class="field">
-          <label for="e_recal_needed">Калибровка ускорителя</label>
+          <label for="e_recal_needed">Ускоритель подстраивали?</label>
           <select id="e_recal_needed"><option value="">— выберите —</option><option value="yes">Да</option><option value="no">Нет</option></select>
         </div>
-        <div class="field out-cell"><span class="label">Доза до калибровки, Гр на 100 МЕ</span><output id="e-recal-pre"></output><span class="sub" id="e-recal-pre-sub"></span></div>
+        <div class="field out-cell"><span class="label">Доза до подстройки, Гр на 100 МЕ</span><output id="e-recal-pre"></output><span class="sub" id="e-recal-pre-sub"></span></div>
       </div>
       <div data-show="e_recal_needed:yes">
-        <p class="hint">После калибровки (подстройки) ускорителя снимите три показания при обычной полярности и рабочем напряжении V₁ в том же положении камеры. Поправки берутся из разделов 4–6; итоговой становится доза по этим показаниям, а доза до калибровки остаётся для справки.</p>
+        <p class="hint">После подстройки ускорителя снимите три показания при обычной полярности и рабочем напряжении V₁ в том же положении камеры. Поправки берутся из разделов 4–6; итоговой становится доза по этим показаниям, а доза до подстройки остаётся для справки.</p>
         <div class="series">
           <div class="series-group">
-          <div class="cells" data-series="e_recal_M" data-label="Показания после калибровки, M при V₁, обычная полярность">
+          <div class="cells" data-series="e_recal_M" data-label="Показания после подстройки, M при V₁, обычная полярность">
             <span class="label">M при V₁, обычная полярность, нКл</span>
             <div class="cells-row">
               <div class="cells-list"></div>
@@ -1450,8 +1454,8 @@
         </div>
         <div class="grid">
           <div class="field"><label for="e_recal_mu">Облучение, МЕ</label><input type="text" id="e_recal_mu" class="num" inputmode="decimal"><span class="sub">если пусто — как в разделе 7</span></div>
-          <div class="field out-cell"><span class="label">Доза после калибровки, Гр на 100 МЕ</span><output id="e-recal-post"></output><span class="sub" id="e-recal-post-sub"></span></div>
-          <div class="field out-cell"><span class="label">Доза до калибровки относительно новой</span><output id="e-recal-diff"></output><span class="sub">отклонение прежней дозы от дозы после калибровки</span></div>
+          <div class="field out-cell"><span class="label">Доза после подстройки, Гр на 100 МЕ</span><output id="e-recal-post"></output><span class="sub" id="e-recal-post-sub"></span></div>
+          <div class="field out-cell"><span class="label">Доза до подстройки относительно новой</span><output id="e-recal-diff"></output><span class="sub">отклонение прежней дозы от дозы после подстройки</span></div>
         </div>
       </div>
     </section>
@@ -1747,6 +1751,7 @@
             </select>
           </div>
           <div class="field" data-show="cc_ref_kqtrs_mode:manual"><label for="cc_ref_kqtrs_manual">k<sub>Qcross,Q₀</sub></label><input type="text" id="cc_ref_kqtrs_manual" class="num" inputmode="decimal"></div>
+          <div class="field" data-show="cc_ref_kqtrs_mode:manual"><label for="cc_ref_kqtrs_src">Источник k<sub>Q</sub></label><input type="text" id="cc_ref_kqtrs_src" placeholder="свидетельство: лаборатория, №, дата"><span class="sub">попадает в протокол</span></div>
           <div class="grid four">
             <div class="field out-cell"><span class="label" id="cc-lbl-kq-table">по таблице</span><output data-out="trs.kQTable" data-digits="4"></output></div>
             <div class="field out-cell"><span class="label" id="cc-lbl-kq-formula">по аппроксимации</span><output data-out="trs.kQFormula" data-digits="4"></output></div>
@@ -1765,6 +1770,7 @@
             </select>
           </div>
           <div class="field" data-show="cc_ref_kq51_mode:manual"><label for="cc_ref_kq51_manual">k<sub>Q</sub> = k′<sub>Q</sub>·k<sub>Qecal</sub></label><input type="text" id="cc_ref_kq51_manual" class="num" inputmode="decimal"></div>
+          <div class="field" data-show="cc_ref_kq51_mode:manual"><label for="cc_ref_kq51_src">Источник k<sub>Q</sub></label><input type="text" id="cc_ref_kq51_src" placeholder="свидетельство: лаборатория, №, дата"><span class="sub">попадает в протокол</span></div>
           <div class="grid three">
             <div class="field out-cell"><span class="label">k′<sub>Q</sub></span><output data-out="tg51.kQprimeRef" data-digits="4"></output></div>
             <div class="field out-cell"><span class="label">k<sub>Qecal</sub></span><output data-out="tg51.kQecal" data-digits="3"></output></div>
@@ -1823,6 +1829,7 @@
           </select>
         </div>
         <div class="field" data-show="cc_fld_kq51_mode:manual"><label for="cc_fld_kq51_manual">k′<sub>Q</sub></label><input type="text" id="cc_fld_kq51_manual" class="num" inputmode="decimal"></div>
+        <div class="field" data-show="cc_fld_kq51_mode:manual"><label for="cc_fld_kq51_src">Источник k′<sub>Q</sub></label><input type="text" id="cc_fld_kq51_src" placeholder="свидетельство: лаборатория, №, дата"><span class="sub">попадает в протокол</span></div>
         <div class="grid three">
           <div class="field out-cell used"><span class="label">k′<sub>Q</sub> в расчёте</span><output data-out="tg51.kQprimeFld" data-digits="4" data-flag="kQfld_51"></output></div>
         </div>
@@ -2175,8 +2182,10 @@
         <div class="field out-cell"><span class="label">Повторяемость (тип А), %</span><output data-out="typeA.pct" data-digits="3"></output><span class="sub" id="unc-typea-sub"></span></div>
         <div class="field"><label for="unc_m">Показаний в среднем результата</label><input type="text" id="unc_m" class="num" inputmode="numeric"><span class="sub">пусто — все введённые. Если s оценено по более длинной серии, а доза — среднее m показаний: u = s/√m</span></div>
         <div class="field"><label for="unc_res">Разрешение прибора, нКл</label><input type="text" id="unc_res" class="num" inputmode="decimal"><span class="sub" id="unc-res-sub"></span></div>
-        <div class="field"><label for="unc_value">Результат дозиметрии</label><input type="text" id="unc_value" class="num" inputmode="decimal"><span class="sub">по желанию. С вкладки берётся итоговая доза — на d<sub>max</sub> (z<sub>max</sub>), если там задан пересчёт; неопределённость PDD для пересчёта в бюджет не входит</span></div>
+        <div class="field"><label for="unc_value">Результат дозиметрии</label><input type="text" id="unc_value" class="num" inputmode="decimal"><span class="sub">по желанию, для U в единицах дозы. С вкладки берётся доза на z<sub>ref</sub>: бюджет протокола составлен для неё</span></div>
         <div class="field"><label for="unc_unit">Единицы</label><select id="unc_unit"></select></div>
+        <div class="field"><label for="unc_value_at">Глубина результата</label><select id="unc_value_at"><option value="zref">опорная глубина</option><option value="max">максимум дозы</option></select></div>
+        <div class="field" data-show="unc_value_at:max"><label for="unc_transfer_u">u пересчёта на d<sub>max</sub>, % (k = 1)</label><input type="text" id="unc_transfer_u" class="num" inputmode="decimal"><span class="sub">своя оценка неопределённости PDD или TMR на опорной глубине; без неё U для дозы на d<sub>max</sub> неполон</span></div>
       </div>
     </section>
 

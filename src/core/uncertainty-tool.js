@@ -35,6 +35,10 @@ export const UT_DEFAULTS = {
   unc_res: '', // разрешение прибора, нКл: нижняя граница δ/√12; пусто — по записи показаний
   unc_value: '', // итог — для U в единицах дозы (по желанию)
   unc_unit: 'Gy100MU',
+  // глубина итога: 'zref' — опорная (бюджет протокола составлен для неё); 'max' — d_max / z_max после пересчёта по PDD или
+  // TMR: тогда к u_c добавляется u пересчёта (своя оценка), иначе U в единицах дозы — без неё, с предупреждением
+  unc_value_at: 'zref',
+  unc_transfer_u: '', // u пересчёта на d_max / z_max, % (k = 1)
 
   unc_over: '', // свои значения строк бюджета: JSON { ключ: значение }
   unc_row_notes: '', // статус и комментарий своих значений: JSON { ключ: { st, text } }
@@ -70,6 +74,7 @@ export function normalizeUncTool(input) {
   if (!ROUTES[f.unc_beam_type].includes(f.unc_route)) f.unc_route = 'lab';
   if (f.unc_sit !== 'ii') f.unc_sit = 'i';
   if (!UT_UNITS[f.unc_unit]) f.unc_unit = f.unc_beam_type === 'co60' ? 'cGymin' : 'Gy100MU';
+  if (f.unc_value_at !== 'max') f.unc_value_at = 'zref';
   if (!Array.isArray(f.unc_M)) f.unc_M = isBlank(f.unc_M) ? ['', '', ''] : String(f.unc_M).trim().split(/[\s;]+/);
   if (!Array.isArray(f.unc_staff) || f.unc_staff.length === 0) f.unc_staff = [''];
   for (const k of ['unc_over', 'unc_row_notes', 'unc_ki', 'unc_setup']) if (f[k] && typeof f[k] === 'object') f[k] = JSON.stringify(f[k]);
@@ -203,9 +208,36 @@ export function computeUncertaintyTool(form) {
   });
   for (const m of budget.messages) add(m.level, m.text, m.ref, m.field);
 
+  // итог на d_max / z_max: бюджет протокола — для дозы на z_ref, пересчёт по PDD или TMR добавляет свою неопределённость
+  const atMax = f.unc_value_at === 'max';
+  let transferU = NaN;
+  if (atMax && !isBlank(f.unc_transfer_u)) {
+    transferU = parseNumber(f.unc_transfer_u);
+    if (!Number.isFinite(transferU) || transferU < 0) {
+      add('warn', L('u пересчёта на d_max не прочитана: U для дозы на d_max не вычислена.', 'The transfer uncertainty to d_max could not be read: U for the dose at d_max is not calculated.'), null, 'unc_transfer_u');
+      transferU = NaN;
+    } else if (transferU > 3) {
+      add('warn', L(`u пересчёта ${ru(transferU, 2)} % — очень много для PDD или TMR: значение вводится в процентах при k = 1.`, `A transfer uncertainty of ${ru(transferU, 2)}% is very large for PDD or TMR: the value is entered in percent at k = 1.`), null, 'unc_transfer_u');
+    }
+  }
+  const k = budget.ucPct > 0 ? budget.UPct / budget.ucPct : 2;
+  const ucAt = atMax && Number.isFinite(transferU) ? Math.hypot(budget.ucPct, transferU) : budget.ucPct;
+  const UAt = k * ucAt;
+  const absComplete = !atMax || Number.isFinite(transferU);
+  if (atMax && Number.isFinite(value) && !absComplete) {
+    add(
+      'warn',
+      L(
+        'Результат — доза на d_max (z_max), а бюджет протокола составлен для дозы на опорной глубине: U в единицах дозы показан без неопределённости пересчёта по PDD или TMR и для дозы на d_max неполон. Введите u пересчёта (свою оценку) или возьмите дозу на z_ref.',
+        'The result is the dose at d_max (z_max), but the protocol budget is for the dose at the reference depth: U in dose units is shown without the PDD or TMR transfer uncertainty and is incomplete for the dose at d_max. Enter the transfer uncertainty (your own estimate) or use the dose at z_ref.',
+      ),
+      null,
+      ['unc_value_at', 'unc_transfer_u'],
+    );
+  }
   const order = { error: 0, warn: 1, info: 2 };
   messages.sort((a, b) => order[a.level] - order[b.level]);
-  const abs = Number.isFinite(value) ? (value * budget.UPct) / 100 : NaN;
+  const abs = Number.isFinite(value) ? (value * UAt) / 100 : NaN;
   return {
     protocol: f.protocol,
     form: f,
@@ -220,6 +252,11 @@ export function computeUncertaintyTool(form) {
     value,
     unit: f.unc_unit,
     abs,
+    valueAt: atMax ? 'max' : 'zref',
+    transferU,
+    ucAtPct: ucAt,
+    UAtPct: UAt,
+    absComplete,
     budget,
     ucPct: budget.ucPct,
     UPct: budget.UPct,

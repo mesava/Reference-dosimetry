@@ -45,6 +45,28 @@ export function complianceOf(messages, scope, hasResult) {
   return { status: reasons.length ? 'nonstandard' : 'standard', reasons };
 }
 
+/**
+ * Источник коэффициента, введённого вручную (k_Q из свидетельства лаборатории и т. п.): подпись «… — источник» для
+ * таблицы поправок и протокола; если источник не указан — справка у поля источника. add — функция замечаний модуля
+ * (level, scope, text, ref, field).
+ */
+export function manualSource(add, { base, src, scope, field, what = 'k_Q' }) {
+  const s = String(src ?? '').trim();
+  if (!s) {
+    add(
+      'info',
+      scope,
+      L(
+        `Источник введённого вручную ${what} не указан: укажите документ (свидетельство лаборатории, №, дату) — он попадёт в протокол. Ручной ${what} не расширяет область применения протокола.`,
+        `The source of the manually entered ${what} is not given: enter the document (laboratory certificate, number, date); it goes into the report. A manual ${what} does not extend the scope of the protocol.`,
+      ),
+      null,
+      field,
+    );
+  }
+  return s ? `${base} — ${s}` : base;
+}
+
 const REF = {
   add: 'аддендум TG-51 (2014)',
   r374: 'WGTG51 Report 374',

@@ -562,7 +562,8 @@ export function cobaltUncSource() {
     route: 'co60',
     chamberType: result.chamber?.type === 'pp' ? 'pp' : 'cyl',
     M: p === x.ctrl ? data.co_Mc : data.co_M1,
-    value: none ? NaN : rateAt(p, result.depth),
+    // мощность дозы на z_ref: бюджет неопределённости протокола составлен для неё
+    value: none ? NaN : p.rate,
     unit: 'cGymin',
     ki: data.co_fixed ? null : { Mp: data.co_M1, Mm: data.co_Mopp, M2: data.co_M2, ks: data.co_rec_trs === 'eq16' ? { kind: 'eq16', n: result.inputs.nV } : { kind: 'trs', v1: Math.abs(result.inputs.V1), v2: Math.abs(result.inputs.V2), beam: 'pulsed' }, T: result.inputs.T, P: result.inputs.P },
     meta: { institution: data.co_institution, machine: data.co_machine, beam: '⁶⁰Co', date: data.co_date, staff: data.co_staff },

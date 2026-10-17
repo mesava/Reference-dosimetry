@@ -287,3 +287,47 @@ test('выгрузка проверок в CSV: строка на проверк
   assert.ok(Math.abs(parseFloat(last[15].replace(',', '.')) - 1.5) < 0.01, last[15]);
   assert.match(lines.at(-1), /за 3σ/);
 });
+
+test('k_pol и k_s «приняты 1» → измерены: новый отсчёт, без ложного сдвига (пучок БВФ)', () => {
+  let j = journal();
+  // калибровка пучка БВФ рабочей камерой
+  const cal = (date) => ({ id: `c${date}`, machineId: 'm1', date, mode: 'cal', protocol: 'trs', env: ENV, beams: [{ beamId: 'b10f', rd_M1: cells(B10F.M1), rd_Mopp: cells(B10F.Mopp), rd_M2: cells(B10F.M2) }] });
+  const chkS = (date, id) => ({ id, machineId: 'm1', date, mode: 'check', protocol: 'trs', env: ENV, beams: [{ beamId: 'b10f', rd_M1: cells(B10F.M1) }] });
+  j = upsertSession(j, finalizeSession(j, cal('2026-01-05')));
+  const f = 0.297 / 0.05389; // та же доза второй камерой (PTW 30013) — показания в f раз больше
+  const second = (Mx) => ({ ...newCheck('b10f', 'w'), M: cells(scale(B10F.M1, f * Mx)) });
+  // четыре проверки без k_pol и k_s второй камеры: k_s принят 1 — отношение смещено, но стабильно
+  ['2026-02-01', '2026-03-01', '2026-04-01', '2026-05-01'].forEach((date, i) => {
+    const fin = finalizeSession(j, chkS(date, `p${i}`));
+    const w = computeSessionBeam(j, fin, { ...fin.beams[0], base: recordedBase(fin.beams[0].form) });
+    const { checks } = finalizeChecks(j, fin, [second(1 + [0, 0.0003, -0.0002, 0.0001][i])], new Map([['b10f', w]]));
+    assert.equal(checks[0].summary.basis, 'assumed');
+    j = upsertSession(j, { ...fin, checks });
+  });
+  // пятая — с измеренными k_pol и k_s (k_s второй камеры ≈ 1,01 в пучке БВФ)
+  const s5 = chkS('2026-06-01', 'p4');
+  const w5 = work(j, s5, 'b10f');
+  const M = scale(B10F.M1, f);
+  const measured = { ...newCheck('b10f', 'w'), M: cells(M), Mopp: cells(M.map((x) => -x)), M2: cells(scale(M, 0.985)) };
+  const r = computeDosimeterCheck(j, s5, measured, w5);
+  assert.equal(r.ok, true);
+  assert.equal(r.sig.basis, 'known');
+  const h = checkHistory(j, s5, r);
+  assert.equal(h.restart, true);
+  assert.equal(h.reason, 'factors');
+  assert.equal(h.n, 0, 'с проверками «принято 1» не сравнивается');
+  assert.ok(checkMessages(r, h).some((m) => /теперь известны/.test(m.text)));
+  // в предварительной проверке пучка БВФ — предупреждение, а не справка
+  const prov = computeDosimeterCheck(j, s5, second(1), w5);
+  assert.ok(checkMessages(prov, checkHistory(j, s5, prov)).some((m) => m.level === 'warn' && /Проверка предварительная/.test(m.text)));
+  // карта пары: два отсчёта, на точке после измерения сигнала нет
+  const { finalizeChecks: fc } = { finalizeChecks };
+  const fin5 = finalizeSession(j, s5);
+  const w5r = computeSessionBeam(j, fin5, { ...fin5.beams[0], base: recordedBase(fin5.beams[0].form) });
+  j = upsertSession(j, { ...fin5, checks: fc(j, fin5, [measured], new Map([['b10f', w5r]])).checks });
+  const cc = checkChart(j, checkPairs(j, 'm1')[0]);
+  assert.equal(cc.chart.segments.length, 2);
+  assert.equal(cc.chart.segments[1].reason, 'factors');
+  assert.deepEqual(cc.chart.points.at(-1).signals, []);
+  assert.ok(cc.chart.points.slice(0, 4).every((p) => p.provisional));
+});

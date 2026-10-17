@@ -54,7 +54,7 @@ N<sup>field</sup><sub>D,w,Qcross</sub> = (M<sub>ref</sub>/M<sub>field</sub>) · 
 (k<sub>Qecal</sub>N<sub>D,w</sub><sup>⁶⁰Co</sup>)<sub>pp</sub> = (M k′<sub>Q</sub> k<sub>Qecal</sub> N<sub>D,w</sub><sup>⁶⁰Co</sup>)<sub>cyl</sub> / (M k′<sub>Q</sub>)<sub>pp</sub>
 
 - Опорная камера — только цилиндрическая эталонного класса с N<sub>D,w</sub> в ⁶⁰Co, рабочая — только плоскопараллельная (разд. 5.3.2: «A calibrated reference-class cylindrical chamber with N<sub>D,w</sub><sup>⁶⁰Co</sup> is used»); иначе — ошибка. Пучок высокой энергии, выше 10 МэВ.
-- Цилиндрическая: k′<sub>Q</sub> = a + b·R<sub>50</sub><sup>−c</sup> (ур. 7, табл. 5), k<sub>Qecal</sub> — табл. 4; плоскопараллельная: k′<sub>Q</sub> = a + b·exp(−R<sub>50</sub>/c) (ур. 8, табл. 7); диапазон 1,70–8,70 см. Оба можно ввести вручную.
+- Цилиндрическая: k′<sub>Q</sub> = a + b·R<sub>50</sub><sup>−c</sup> (ур. 7, табл. 5), k<sub>Qecal</sub> — табл. 4; плоскопараллельная: k′<sub>Q</sub> = a + b·exp(−R<sub>50</sub>/c) (ур. 8, табл. 7); диапазон 1,70–8,70 см — это и область Report 385 (разд. 1). Оба можно ввести вручную (с полем источника для протокола); вне области с расчётным k′<sub>Q</sub> любой из камер — ошибка, только с ручными — предупреждение: коэффициент считается, но это не перекрёстная калибровка по Report 385.
 - Дальше D<sub>w</sub> = (M k′<sub>Q</sub>)<sub>pp</sub>·(k<sub>Qecal</sub>N<sub>D,w</sub>)<sub>pp</sub> (ур. 6). P<sub>elec</sub> для такой камеры TG-51 принимает равным 1 (разд. VII.B); другой k<sub>elec</sub> — с напоминанием.
 
 ### k<sub>лаб</sub> и контроль

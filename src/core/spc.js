@@ -6,6 +6,13 @@
 // h = 5σ; после сигнала сумма обнуляется); Pawlicki T, Whitaker M, Boyer A L, Med Phys 32 (2005) 2777 — контрольные карты в обеспечении качества
 // лучевой терапии.
 //
+// Сигналы делятся на два уровня. «Сигнал» (точка за 3σ, CUSUM) — повод разобраться; «наблюдение» (2 из 3 за 2σ,
+// 8 подряд по одну сторону, 6 подряд растут или убывают) — только справка. Причина — частота ложных сигналов:
+// моделирование стабильного процесса (tests/spc.test.js) при границах по 20 точкам даёт ложный сигнал хотя бы одного
+// правила за 12 следующих сеансов у ~24 % рядов со всеми правилами, ~16 % — только с 3σ и CUSUM (при известной σ
+// одно правило 3σ — 3 %; главная прибавка — от оценки σ по 20 точкам), а сдвиг на 1σ за те же 12 сеансов 3σ и CUSUM
+// замечают в ~68 % рядов против ~77 % со всеми правилами.
+//
 // Отсчёт карты начинается заново после подстройки ускорителя, смены камеры, электрометра или их калибровочных
 // коэффициентов и по отметке пользователя: до и после такого события — разные процессы, и общие границы сливали бы их.
 // Центральная линия и σ считаются по первым BASELINE_POINTS точкам отсчёта и дальше не меняются: так новые точки
@@ -98,15 +105,15 @@ export function linearTrend(xs, ys) {
  * Карта по точкам [{ day, value, restart?, reason?, ... }] (value — отклонение, %); restart — с этой точки начинается
  * новый отсчёт (reason: 'adjust' | 'equipment' | 'manual'). tol — допуск, % (для прогноза по тренду).
  * Возвращает { points, segments, current, trend, forecast }:
- *   points[i] — исходная точка + segment, z = (x − CL)/σ, cusumUp, cusumDown, signals: ['3s', '2of3', 'run8', 'trend6',
- *     'cusumUp', 'cusumDown'];
+ *   points[i] — исходная точка + segment, z = (x − CL)/σ, cusumUp, cusumDown, signals — сигналы ('3s', 'cusumUp',
+ *     'cusumDown'), watch — наблюдения ('2of3', 'run8', 'trend6');
  *   segments — отсчёты: { from, to (индексы), startDay, reason, n, baselineN, excluded (точек за 3σ не в границах), cl,
  *     sigma, mrBar, limits, provisional };
  *   trend — тренд последнего отсчёта (linearTrend), forecast — { side: +1|−1, day } | { side, already: true } |
  *     { side, beyond: true } (дальше трёх лет) или null.
  */
 export function controlChart(input, { tol = NaN } = {}) {
-  const points = input.filter((p) => Number.isFinite(p.day) && Number.isFinite(p.value)).map((p) => ({ ...p, signals: [] }));
+  const points = input.filter((p) => Number.isFinite(p.day) && Number.isFinite(p.value)).map((p) => ({ ...p, signals: [], watch: [] }));
   const segments = [];
   points.forEach((p, i) => {
     if (i === 0 || p.restart) segments.push({ from: i, to: i, startDay: p.day, reason: i === 0 ? 'start' : p.reason || 'manual' });
@@ -133,11 +140,11 @@ export function controlChart(input, { tol = NaN } = {}) {
       p.z = z;
       if (Math.abs(z) > 3) p.signals.push('3s');
       const last3 = pts.slice(Math.max(0, k - 2), k + 1).map((q) => (q.value - cl) / sigma);
-      if (last3.length === 3 && Math.abs(z) > 2 && last3.filter((v) => Math.sign(v) === Math.sign(z) && Math.abs(v) > 2).length >= 2) p.signals.push('2of3');
+      if (last3.length === 3 && Math.abs(z) > 2 && last3.filter((v) => Math.sign(v) === Math.sign(z) && Math.abs(v) > 2).length >= 2) p.watch.push('2of3');
       const last8 = pts.slice(Math.max(0, k - 7), k + 1).map((q) => q.value - cl);
-      if (last8.length === 8 && (last8.every((v) => v > 0) || last8.every((v) => v < 0))) p.signals.push('run8');
+      if (last8.length === 8 && (last8.every((v) => v > 0) || last8.every((v) => v < 0))) p.watch.push('run8');
       const last6 = pts.slice(Math.max(0, k - 5), k + 1).map((q) => q.value);
-      if (last6.length === 6 && (last6.every((v, m) => m === 0 || v > last6[m - 1]) || last6.every((v, m) => m === 0 || v < last6[m - 1]))) p.signals.push('trend6');
+      if (last6.length === 6 && (last6.every((v, m) => m === 0 || v > last6[m - 1]) || last6.every((v, m) => m === 0 || v < last6[m - 1]))) p.watch.push('trend6');
       up = Math.max(0, up + z - CUSUM_K);
       down = Math.max(0, down - z - CUSUM_K);
       p.cusumUp = up;
@@ -171,5 +178,6 @@ export function controlChart(input, { tol = NaN } = {}) {
   return { points, segments, current, trend, forecast };
 }
 
-/** Названия правил для подписей. */
-export const SIGNAL_KEYS = ['3s', '2of3', 'run8', 'trend6', 'cusumUp', 'cusumDown'];
+/** Правила: сигналы и наблюдения. */
+export const SIGNAL_KEYS = ['3s', 'cusumUp', 'cusumDown'];
+export const WATCH_KEYS = ['2of3', 'run8', 'trend6'];

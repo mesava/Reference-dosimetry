@@ -119,6 +119,9 @@ export function computeDosimeterCheck(j, session, check, work, { en = false } = 
     workKelec: Number(workSum.kelec),
     ndw: Number(ssum?.ndw),
     kelec: Number(ssum?.kelec),
+    // k_pol и k_s второй камеры: 'assumed' — хотя бы один принят равным 1 (отношение смещено на неизвестную величину),
+    // 'known' — измерены, введены или взяты из прошлой проверки. Смена основы начинает ряд заново.
+    basis: src.kpol === 'assumed' || src.ks === 'assumed' ? 'assumed' : 'known',
   };
   return { check, kind, work, second, measured, src, prev, workValue, value, ratio, diff: ok ? (ratio - 1) * 100 : NaN, ok, errors, sig };
 }
@@ -171,10 +174,17 @@ export function finalizeChecks(j, session, checks, works, opts = {}) {
 export const pairKey = (beamId, workChamberId, chamberId) => `${beamId}|${workChamberId}|${chamberId}`;
 const SIG_IDS = ['workChamberId', 'workElectrometerId', 'electrometerId'];
 const SIG_NUMS = ['workNdw', 'ndw', 'workKelec', 'kelec'];
-/** Сменилось оборудование: электрометр или калибровочный коэффициент любой из камер (сравниваются известные значения). */
-const sigChanged = (a, b) =>
-  SIG_IDS.some((key) => !isBlank(a[key]) && !isBlank(b[key]) && a[key] !== b[key]) ||
-  SIG_NUMS.some((key) => Number.isFinite(a[key]) && Number.isFinite(b[key]) && Math.abs(a[key] / b[key] - 1) > 1e-9);
+/** Основа k_pol и k_s второй камеры у записанной проверки (у проверок 0.17.0 — по источникам коэффициентов). */
+const basisOf = (sum) => sum.basis ?? (sum.kpolSrc === 'assumed' || sum.ksSrc === 'assumed' ? 'assumed' : 'known');
+/**
+ * Почему с этой точки начинается новый отсчёт: 'equipment' — сменились электрометр или калибровочный коэффициент любой
+ * из камер (сравниваются известные значения), 'factors' — k_pol и k_s второй камеры перестали быть принятыми равными 1
+ * (или наоборот); '' — ряд продолжается.
+ */
+const sigChange = (a, b) => {
+  if (SIG_IDS.some((key) => !isBlank(a[key]) && !isBlank(b[key]) && a[key] !== b[key]) || SIG_NUMS.some((key) => Number.isFinite(a[key]) && Number.isFinite(b[key]) && Math.abs(a[key] / b[key] - 1) > 1e-9)) return 'equipment';
+  return basisOf(a) !== basisOf(b) ? 'factors' : '';
+};
 
 /**
  * Точки ряда пары камер (value — (r − 1)·100, %) по сеансам журнала в порядке дат; restart — с этой точки начинается
@@ -194,8 +204,10 @@ export function checkPoints(j, { beamId, workChamberId, chamberId }, extra = nul
   if (extra) pts.push(extra);
   const out = pts.filter((p) => Number.isFinite(p.day)).sort((a, b) => a.day - b.day);
   out.forEach((p, i) => {
-    p.restart = i > 0 && sigChanged(p.sig, out[i - 1].sig);
-    if (p.restart) p.reason = 'equipment';
+    const why = i > 0 ? sigChange(p.sig, out[i - 1].sig) : '';
+    p.restart = !!why;
+    if (why) p.reason = why;
+    p.provisional = basisOf(p.sig) === 'assumed';
   });
   return out;
 }
@@ -225,7 +237,7 @@ export function checkHistory(j, session, res) {
   const st = stats(hist.map((p) => p.value));
   const sigma = Number.isFinite(st.sd) ? Math.max(st.sd, SIGMA_FLOOR) : NaN;
   const delta = st.n ? res.diff - st.mean : NaN;
-  return { ...st, sigma, delta, z: st.n >= HISTORY_MIN ? delta / sigma : NaN, restart: !!cur.restart, from: hist[0]?.date ?? '', last: hist.at(-1)?.date ?? '' };
+  return { ...st, sigma, delta, z: st.n >= HISTORY_MIN ? delta / sigma : NaN, restart: !!cur.restart, reason: cur.reason || '', from: hist[0]?.date ?? '', last: hist.at(-1)?.date ?? '' };
 }
 
 /**
@@ -268,12 +280,14 @@ export function checkMessages(res, hist) {
   if (!res.ok) return out;
   if (!res.measured) {
     const prevBoth = res.src.kpol === 'previous' && res.src.ks === 'previous';
-    if (res.src.kpol === 'assumed' || res.src.ks === 'assumed') {
+    if (res.sig.basis === 'assumed') {
+      // в пучке БВФ k_s второй камеры легко достигает 1 % — это уже не мелочь
+      const fff = res.kind === 'photon' && !!res.work.form?.meta_fff;
       out.push({
-        level: 'info',
+        level: fff ? 'warn' : 'info',
         text: L(
-          `${kp} и ${kx} второй камеры не измерены и прежних проверок с ними нет — недостающие приняты равными 1. Отношение может отличаться на десятые доли процента, а в пучке с большой дозой за импульс (БВФ) ${kx} — и на 1 % и больше: измерьте их в первой проверке (показания при обратной полярности и при V₂) — дальше они возьмутся из неё.`,
-          `${kp} and ${kx} of the second chamber have not been measured and there are no earlier checks with them; the missing ones are taken as 1. The ratio may be off by a few tenths of a percent, and in a beam with a high dose per pulse (FFF) ${kx} may be off by 1% or more: measure them in the first check (readings at the opposite polarity and at V₂); later checks take them from it.`,
+          `Проверка предварительная: ${kp} и ${kx} второй камеры не измерены и прежних проверок с ними нет — недостающие приняты равными 1. Отношение может отличаться на десятые доли процента${fff ? `, а в этом пучке БВФ (большая доза за импульс) ${kx} — и на 1 % и больше` : ''}. Измерьте их (показания при обратной полярности и при V₂) — дальше они возьмутся из этой проверки, а сравнение с прежними начнётся заново: проверки с принятыми 1 с ними не смешиваются.`,
+          `Provisional check: ${kp} and ${kx} of the second chamber have not been measured and there are no earlier checks with them; the missing ones are taken as 1. The ratio may be off by a few tenths of a percent${fff ? `, and in this FFF beam (high dose per pulse) ${kx} may be off by 1% or more` : ''}. Measure them (readings at the opposite polarity and at V₂): later checks take them from this one, and the comparison with earlier checks starts anew, so checks with factors taken as 1 are not mixed with them.`,
         ),
       });
     } else if (prevBoth) {
@@ -294,7 +308,9 @@ export function checkMessages(res, hist) {
     });
   }
   if (!hist) return out;
-  if (hist.restart && !hist.n) {
+  if (hist.restart && !hist.n && hist.reason === 'factors') {
+    out.push({ level: 'info', text: L(`${kp} и ${kx} второй камеры теперь известны (в прежних проверках были приняты равными 1): сравнение с прежними проверками начинается заново, с этой.`, `${kp} and ${kx} of the second chamber are now known (they were taken as 1 in earlier checks): the comparison with earlier checks starts anew from this one.`) });
+  } else if (hist.restart && !hist.n) {
     out.push({ level: 'info', text: L('Сменился электрометр или калибровочный коэффициент одной из камер: сравнение с прежними проверками начинается заново, с этой.', 'An electrometer or a calibration coefficient of one of the chambers has changed: the comparison with earlier checks starts anew from this one.') });
   } else if (!hist.n) {
     out.push({ level: 'info', text: L('Первая проверка этой пары камер в этом пучке: следующие будут сравниваться с ней.', 'The first check of this pair of chambers in this beam: the following ones will be compared with it.') });

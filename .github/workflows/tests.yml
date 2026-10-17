@@ -1,8 +1,16 @@
 name: tests
 
+# Тесты, проверка переводов и сборки, сквозные проверки в браузере — при каждом изменении; сайт (GitHub Pages)
+# публикуется только из main и только после того, как всё это прошло: неуспешная сборка или тест на сайт не попадают.
+# В настройках репозитория: Settings → Pages → Source: GitHub Actions.
+
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -20,3 +28,38 @@ jobs:
         run: |
           npm run build
           git diff --exit-code -- dist/index.html || (echo "Запустите npm run build и закоммитьте dist/index.html" && exit 1)
+
+  # сквозные проверки в браузере (Chromium): файл журнала, проверка дозиметра, установка как приложение, работа без сети
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+  deploy:
+    needs: [test, e2e]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      # сайт — корень репозитория, как и раньше (index.html, src/, dist/, docs/, значки, манифест, сервис-воркер)
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -16,6 +16,7 @@ const reasonText = (r) =>
     adjust: L('после подстройки ускорителя', 'after the linac adjustment'),
     equipment: L('после смены камеры, электрометра или их калибровочных коэффициентов', 'after a change of the chamber, electrometer or their calibration coefficients'),
     manual: L('по отметке «новый отсчёт»', 'by the “new count” mark'),
+    factors: L('после того как k_pol и k_s второй камеры стали известны', 'after k_pol and k_s of the second chamber became known'),
   })[r] ?? '';
 
 const stageText = (p) => (p.stage === 'found' ? L(' (до подстройки)', ' (before adjustment)') : p.stage === 'left' ? L(' (после подстройки)', ' (after adjustment)') : '');
@@ -41,7 +42,7 @@ function segmentLines(chart, xMax) {
 const segmentMarks = (chart) =>
   chart.segments.slice(1).map((seg, i) => ({
     x: chart.points[seg.from].day,
-    label: seg.reason === 'adjust' ? L('подстройка', 'adjustment') : seg.reason === 'equipment' ? L('оборудование', 'equipment') : L('новый отсчёт', 'new count'),
+    label: seg.reason === 'adjust' ? L('подстройка', 'adjustment') : seg.reason === 'equipment' ? L('оборудование', 'equipment') : seg.reason === 'factors' ? 'k_pol, k_s' : L('новый отсчёт', 'new count'),
     row: i % 2,
   }));
 
@@ -124,18 +125,28 @@ function trendLine(chart, tol) {
   return `<span class="spc-warn">${esc(`${head} — ${L('значим.', 'significant.')}`)}</span>${esc(tail)}`;
 }
 
+/** Сигналы (3σ, CUSUM) и, отдельно, наблюдения (2 из 3, 8 подряд, 6 подряд) — последние сверху. */
 function signalsHtml(chart, name = () => '', none = '') {
+  const item = (p, keys) => `<li><b>${esc(fmtDate(p.date))}</b>${esc(stageText(p))}${name(p) ? `, ${esc(name(p))}` : ''}: ${esc(fmtSigned(p.value, 2))} % — ${esc(keys.map(signalText).join('; '))}</li>`;
   const list = chart.points.filter((p) => p.signals.length).slice(-8).reverse();
-  if (!list.length) return `<p>${esc(none || L('Сигналов нет: выход меняется в пределах обычного разброса.', 'No signals: the output varies within its usual scatter.'))}</p>`;
-  return `<p>${esc(L('Сигналы (последние сверху):', 'Signals (latest first):'))}</p><ul class="spc-signals">${list
-    .map((p) => `<li><b>${esc(fmtDate(p.date))}</b>${esc(stageText(p))}${name(p) ? `, ${esc(name(p))}` : ''}: ${esc(fmtSigned(p.value, 2))} % — ${esc(p.signals.map(signalText).join('; '))}</li>`)
-    .join('')}</ul>`;
+  // наблюдения — только в текущем отсчёте и без точек, где уже есть сигнал
+  const cur = chart.current;
+  const watch = (cur ? chart.points.slice(cur.from, cur.to + 1) : []).filter((p) => p.watch?.length && !p.signals.length).slice(-5).reverse();
+  const head = list.length
+    ? `<p>${esc(L('Сигналы (последние сверху):', 'Signals (latest first):'))}</p><ul class="spc-signals">${list.map((p) => item(p, p.signals)).join('')}</ul>`
+    : `<p>${esc(none || L('Сигналов нет: выход меняется в пределах обычного разброса.', 'No signals: the output varies within its usual scatter.'))}</p>`;
+  const obs = watch.length
+    ? `<p class="sub-hint">${esc(L('Наблюдения в текущем отсчёте — не сигнал, а повод посмотреть следующие сеансы (такие узоры часто бывают и у стабильного процесса):', 'Observations in the current count: not a signal but a reason to watch the next sessions (such patterns also occur in a stable process):'))}</p><ul class="spc-signals spc-watch">${watch.map((p) => item(p, p.watch)).join('')}</ul>`
+    : '';
+  return head + obs;
 }
+/** Сигналы и наблюдения точки для подсказки. */
+const pointRules = (p) => `${p.signals.length ? ` — ${p.signals.map(signalText).join('; ')}` : ''}${p.watch?.length ? ` (${L('наблюдение', 'observation')}: ${p.watch.map(signalText).join('; ')})` : ''}`;
 
 const helpHtml = () => `<details class="jsb-more"><summary>${esc(L('Как читать карту', 'How to read the chart'))}</summary><p class="sub-hint">${esc(
   L(
-    `Сигнал — ещё не выход за допуск, а повод разобраться: выход изменился не случайно. Сначала проверьте само измерение (установку, термометр и барометр, тепловое равновесие, камеру и электрометр) и повторите его; если сигнал подтвердился — ищите причину в ускорителе. Точка за 3σ — резкий скачок; 2 из 3 точек за 2σ по одну сторону и 8 точек подряд по одну сторону — сдвиг уровня; 6 точек подряд растут или убывают — дрейф; накопленная сумма (CUSUM, k = 0,5σ, h = 5σ) — небольшой устойчивый сдвиг около 1σ, который другие правила замечают поздно. σ = MR̄/1,128, где MR̄ — средний размах соседних сеансов. Границы считаются по первым ${BASELINE_POINTS} сеансам отсчёта и дальше не меняются; точки за 3σ в их расчёт не входят, чтобы один выброс не расширял границы; пока сеансов меньше ${PROVISIONAL_BELOW}, границы предварительные. Тренд — наклон прямой по сеансам текущего отсчёта; прогноз показывается, только если наклон значим (критерий Стьюдента, 95 %). Ромб — значение до подстройки ускорителя, квадрат — точка с сигналом, полый значок — проверка выхода. Источники: Western Electric Statistical Quality Control Handbook (1956); Montgomery D C, Introduction to Statistical Quality Control; Pawlicki T и др., Med Phys 32 (2005) 2777.`,
-    `A signal is not yet an out-of-tolerance result but a reason to investigate: the output changed not by chance. First check the measurement itself (setup, thermometer and barometer, thermal equilibrium, chamber and electrometer) and repeat it; if the signal is confirmed, look for the cause in the linac. A point beyond 3σ is a sudden jump; 2 of 3 points beyond 2σ on one side and 8 points in a row on one side are a level shift; 6 points in a row increasing or decreasing are a drift; the cumulative sum (CUSUM, k = 0.5σ, h = 5σ) catches a small sustained shift of about 1σ that the other rules detect late. σ = MR̄/1.128, where MR̄ is the mean range of adjacent sessions. The limits are based on the first ${BASELINE_POINTS} sessions of the count and do not change afterwards; points beyond 3σ are left out of them so that a single outlier does not widen the limits; while there are fewer than ${PROVISIONAL_BELOW} sessions, the limits are provisional. The trend is the slope of a line through the sessions of the current count; a forecast is shown only if the slope is significant (Student's test, 95%). Diamond: the value before the linac adjustment; square: a point with a signal; hollow marker: an output check. Sources: Western Electric Statistical Quality Control Handbook (1956); Montgomery D C, Introduction to Statistical Quality Control; Pawlicki T et al., Med Phys 32 (2005) 2777.`,
+    `Сигнал — ещё не выход за допуск, а повод разобраться: выход, вероятно, изменился не случайно. Сначала проверьте само измерение (установку, термометр и барометр, тепловое равновесие, камеру и электрометр) и повторите его; если сигнал подтвердился — ищите причину в ускорителе. Карта сама по себе не основание подстраивать ускоритель. Сигналы: точка за 3σ — резкий скачок; накопленная сумма (CUSUM, k = 0,5σ, h = 5σ) — небольшой устойчивый сдвиг около 1σ. Наблюдения (справка): 2 из 3 точек за 2σ по одну сторону и 8 точек подряд по одну сторону — возможный сдвиг уровня; 6 точек подряд растут или убывают — возможный дрейф. Наблюдения часто появляются и у стабильного пучка, поэтому сигналом не считаются: по моделированию с границами по 20 сеансам ложный сигнал хотя бы одного правила за год ежемесячных измерений был бы у каждого четвёртого стабильного пучка, только 3σ и CUSUM — примерно у каждого шестого. σ = MR̄/1,128, где MR̄ — средний размах соседних сеансов. Границы считаются по первым ${BASELINE_POINTS} сеансам отсчёта и дальше не меняются; точки за 3σ в их расчёт не входят, чтобы один выброс не расширял границы; пока сеансов меньше ${PROVISIONAL_BELOW}, границы предварительные. Тренд — наклон прямой по сеансам текущего отсчёта; прогноз показывается, только если наклон значим (критерий Стьюдента, 95 %). Ромб — значение до подстройки ускорителя, квадрат — точка с сигналом, полый значок — проверка выхода. Источники: Western Electric Statistical Quality Control Handbook (1956); Montgomery D C, Introduction to Statistical Quality Control; Pawlicki T и др., Med Phys 32 (2005) 2777.`,
+    `A signal is not yet an out-of-tolerance result but a reason to investigate: the output has probably changed not by chance. First check the measurement itself (setup, thermometer and barometer, thermal equilibrium, chamber and electrometer) and repeat it; if the signal is confirmed, look for the cause in the linac. The chart alone is not a reason to adjust the linac. Signals: a point beyond 3σ is a sudden jump; the cumulative sum (CUSUM, k = 0.5σ, h = 5σ) catches a small sustained shift of about 1σ. Observations (for information): 2 of 3 points beyond 2σ on one side and 8 points in a row on one side suggest a level shift; 6 points in a row increasing or decreasing suggest a drift. Observations often appear in a stable beam too, so they are not counted as signals: by simulation with limits from 20 sessions, a false signal of at least one rule within a year of monthly measurements would occur in one stable beam in four with all rules, and in about one in six with 3σ and CUSUM only. σ = MR̄/1.128, where MR̄ is the mean range of adjacent sessions. The limits are based on the first ${BASELINE_POINTS} sessions of the count and do not change afterwards; points beyond 3σ are left out of them so that a single outlier does not widen the limits; while there are fewer than ${PROVISIONAL_BELOW} sessions, the limits are provisional. The trend is the slope of a line through the sessions of the current count; a forecast is shown only if the slope is significant (Student's test, 95%). Diamond: the value before the linac adjustment; square: a point with a signal; hollow marker: an output check. Sources: Western Electric Statistical Quality Control Handbook (1956); Montgomery D C, Introduction to Statistical Quality Control; Pawlicki T et al., Med Phys 32 (2005) 2777.`,
   ),
 )}</p></details>`;
 
@@ -165,7 +176,7 @@ export function renderSpc(j, machineId, beams, beamId, { cobalt = false } = {}) 
     label: L(`Контрольная карта: ${chosen.beam.name}`, `Control chart: ${chosen.beam.name}`),
     yLabel: cobalt ? L('Отклонение от ожидаемой, %', 'Deviation from expected, %') : L('Отклонение от номинала, %', 'Deviation from nominal, %'),
     check: (p) => p.mode === 'check',
-    pointTitle: (p) => `${fmtDate(p.date)}${stageText(p)}: ${fmtSigned(p.value, 2)} %${Number.isFinite(p.z) ? ` (${fmtSigned(p.z, 1)}σ)` : ''}${p.signals.length ? ` — ${p.signals.map(signalText).join('; ')}` : ''}`,
+    pointTitle: (p) => `${fmtDate(p.date)}${stageText(p)}: ${fmtSigned(p.value, 2)} %${Number.isFinite(p.z) ? ` (${fmtSigned(p.z, 1)}σ)` : ''}${pointRules(p)}`,
   });
   legend.innerHTML = legendHtml([
     [{ cls: 't1' }, L('отклонение (полый — проверка выхода)', 'deviation (hollow: output check)')],
@@ -207,7 +218,7 @@ export function renderCommon(j, machineId, beams) {
     label: L('Общая часть отклонений пучков по сеансам', 'Common part of the beam deviations by session'),
     yLabel: L('Общая часть, %', 'Common part, %'),
     check: () => false,
-    pointTitle: (p) => `${fmtDate(p.date)}: ${fmtSigned(p.value, 2)} % (${L('пучков', 'beams')}: ${p.n})${p.signals.length ? ` — ${p.signals.map(signalText).join('; ')}` : ''}`,
+    pointTitle: (p) => `${fmtDate(p.date)}: ${fmtSigned(p.value, 2)} % (${L('пучков', 'beams')}: ${p.n})${pointRules(p)}`,
   });
   legend.innerHTML = legendHtml([
     [{ cls: 't1' }, L('общая часть сеанса', 'common part of the session')],
@@ -296,7 +307,7 @@ export function renderChecks(j, machineId, key) {
     label: L(`Отношение доз ${pair.workText} / ${pair.secondText}, ${pair.beamName}`, `Dose ratio ${pair.workText} / ${pair.secondText}, ${pair.beamName}`),
     yLabel: L('Отношение доз − 1, %', 'Dose ratio − 1, %'),
     check: (p) => !p.measured,
-    pointTitle: (p) => `${fmtDate(p.date)}: r = ${fmt(p.ratio, 4)} (${fmtSigned(p.value, 2)} %)${Number.isFinite(p.z) ? `, ${fmtSigned(p.z, 1)}σ` : ''}${p.signals.length ? ` — ${p.signals.map(signalText).join('; ')}` : ''}`,
+    pointTitle: (p) => `${fmtDate(p.date)}: r = ${fmt(p.ratio, 4)} (${fmtSigned(p.value, 2)} %)${Number.isFinite(p.z) ? `, ${fmtSigned(p.z, 1)}σ` : ''}${p.provisional ? L(', предварительная: k_pol и k_s приняты равными 1', ', provisional: k_pol and k_s taken as 1') : ''}${pointRules(p)}`,
   });
   $('#hs-check-legend').innerHTML = legendHtml([
     [{ cls: 't1' }, L('проверка (полый — k_pol и k_s не измерялись)', 'check (hollow: k_pol and k_s not measured)')],
@@ -311,6 +322,10 @@ export function renderChecks(j, machineId, key) {
     esc(L(`Проверок пары: ${pair.n}; последняя — ${fmtDate(last.date)}: r = ${fmt(last.ratio, 4)} (${fmtSigned(last.value, 2)} %).`, `Checks of the pair: ${pair.n}; last: ${fmtDate(last.date)}, r = ${fmt(last.ratio, 4)} (${fmtSigned(last.value, 2)}%).`)),
     segmentLine(chart),
   ];
+  const curPts = chart.current ? chart.points.slice(chart.current.from, chart.current.to + 1) : [];
+  if (curPts.length && curPts.every((p) => p.provisional)) {
+    lines.push(esc(L('Проверки текущего отсчёта — предварительные: k_pol и k_s второй камеры приняты равными 1. Разброс по ним показателен, но уровень отношения смещён; после измерения k_pol и k_s отсчёт начнётся заново.', 'The checks of the current count are provisional: k_pol and k_s of the second chamber are taken as 1. Their scatter is meaningful, but the level of the ratio is biased; once k_pol and k_s are measured, the count starts anew.')));
+  }
   if (chart.trend) {
     const t = chart.trend;
     const head = L(`Тренд отношения в текущем отсчёте: ${fmtSigned(t.perMonth * 12, 2)} ± ${fmt(t.sePerMonth * 12, 2)} % в год`, `Trend of the ratio in the current count: ${fmtSigned(t.perMonth * 12, 2)} ± ${fmt(t.sePerMonth * 12, 2)}% per year`);

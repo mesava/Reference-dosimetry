@@ -151,6 +151,7 @@ const chipOf = (it) => {
   if (Number.isFinite(z) && Math.abs(z) >= SHIFT_Z) return ['out', L(`сдвиг ${fmtSigned(z, 1)}σ`, `shift ${fmtSigned(z, 1)}σ`)];
   if (Number.isFinite(z) && Math.abs(z) >= WATCH_Z) return ['out', L(`на границе: ${fmtSigned(z, 1)}σ`, `at the edge: ${fmtSigned(z, 1)}σ`)];
   if (Number.isFinite(z)) return ['ok', L('в пределах разброса', 'within the scatter')];
+  if (it.res.sig?.basis === 'assumed') return ['ok', L('предварительно', 'provisional')];
   return ['ok', it.hist && !it.hist.n ? L('первая в отсчёте', 'first in the count') : L('посчитано', 'calculated')];
 };
 
