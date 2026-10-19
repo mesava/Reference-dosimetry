@@ -610,7 +610,7 @@ const journalView = makeJournalView({
 });
 /** Куда записывать настройки пучка из вкладки по «Сохранить в журнал». */
 export const setElectronsJournalSave = (fn) => journalView.setSave(fn);
-/** Текущая форма вкладки (для «Пучок из вкладки «Электроны»»). */
+/** Текущая форма вкладки (для сверки камеры и электрометра с журналом). */
 export const electronsCurrentForm = () => normalizeElectrons(readForm());
 /** Загрузить форму журнала во вкладку (протокол в шапке ставится по форме). */
 export const showInElectrons = (form, opts) => journalView.show(form, opts);

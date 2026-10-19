@@ -542,7 +542,7 @@ const journalView = makeJournalView({
 });
 /** Куда записывать настройки пучка из вкладки по «Сохранить в журнал». */
 export const setCobaltJournalSave = (fn) => journalView.setSave(fn);
-/** Текущая форма вкладки (для «Пучок из вкладки «⁶⁰Co»»). */
+/** Текущая форма вкладки (для сверки камеры и электрометра с журналом). */
 export const cobaltCurrentForm = () => normalizeCobalt(readForm());
 /** Загрузить форму журнала во вкладку (протокол в шапке ставится по форме). */
 export const showInCobalt = (form, opts) => journalView.show(form, opts);

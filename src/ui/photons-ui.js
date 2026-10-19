@@ -743,7 +743,7 @@ const journalView = makeJournalView({
 });
 /** Куда записывать настройки пучка из вкладки по «Сохранить в журнал». */
 export const setPhotonsJournalSave = (fn) => journalView.setSave(fn);
-/** Текущая форма вкладки (для «Пучок из вкладки «МВ фотоны»»). */
+/** Текущая форма вкладки (для сверки камеры и электрометра с журналом). */
 export function photonsCurrentForm() {
   return normalizeForm(readForm());
 }

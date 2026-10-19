@@ -84,7 +84,7 @@ test('оборудование: подразделение, производит
   assert.match(notes, /V₁ = 300 В отличается от напряжения калибровки камеры 400 В/);
   assert.match(notes, /Полярность измерения \(\+\) не та/);
   // сводка оборудования аппарата
-  assert.match(await page.locator('.jmachine-eq').innerText(), /PTW 30013 № 739475 — 6 МВ/);
+  assert.match(await page.locator('.jmachine-eq').innerText(), /PTW 30013 № 739475: 6 МВ/);
 
   // вкладка «МВ фотоны»: камеры отделения в начале списка камер; выбор подставляет запись журнала
   await page.goto(`${server.url}/index.html#photons`);
@@ -105,5 +105,27 @@ test('оборудование: подразделение, производит
   await page.waitForTimeout(500);
   const card = (await page.locator('[data-card^="chamber:"]').innerText()).split('\n').filter((l) => CYR.test(l) && !/739475|ЭМ-1/.test(l));
   assert.deepEqual(card, []);
+  assert.deepEqual(errors, []);
+});
+
+test('оборудование на телефоне: страница не шире экрана (длинные отметки «не заполнено» переносятся)', async () => {
+  const { page, errors } = await openPage(browser, { viewport: { width: 360, height: 800 } });
+  await page.goto(`${server.url}/index.html#equipment`);
+  await page.waitForSelector('#eq_department');
+  await page.click('#eq-add-machine');
+  await page.waitForTimeout(250);
+  await page.locator('[data-add-beam]').click();
+  await page.locator('[data-add-ebeam]').click();
+  await page.click('#eq-add-electrometer');
+  await page.click('#eq-add-chamber');
+  await page.waitForTimeout(400);
+  for (const d of await page.locator('details[data-card^="beam:"]').all()) if (!(await d.getAttribute('open'))) await d.locator('summary').click();
+  await page.waitForTimeout(250);
+  for (const h of ['equipment', 'session', 'history', 'photons', 'electrons', 'co60']) {
+    if (h !== 'equipment') await page.goto(`${server.url}/index.html#${h}`);
+    await page.waitForTimeout(500);
+    const sw = await page.evaluate(() => document.documentElement.scrollWidth);
+    assert.ok(sw <= 360, `${h}: ширина страницы ${sw} px при экране 360 px`);
+  }
   assert.deepEqual(errors, []);
 });

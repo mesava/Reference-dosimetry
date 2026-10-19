@@ -198,7 +198,6 @@ function initJournalBridges() {
     else toTop();
   };
   setEquipmentBridge({
-    current: (kind) => (kind === 'electron' ? electronsCurrentForm() : kind === 'cobalt' ? cobaltCurrentForm() : photonsCurrentForm()),
     edit: (kind, form, { title, target }) => showInTab(kind, form, { mode: 'edit', title, target }),
   });
   // «Сохранить в журнал» на вкладке дозиметрии (работает и после перезагрузки страницы)

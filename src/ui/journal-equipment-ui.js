@@ -11,7 +11,7 @@ import { E_CHAMBERS, eChamberLabel, findEChamber } from '../core/electron-chambe
 import { CO_DEFAULTS, normalizeCobalt, ACTIVITY_UNITS } from '../core/cobalt.js';
 import * as TRS from '../core/trs398.js';
 import {
-  uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, beamFromTabForm, applyTabFormToBeam, equipmentDue,
+  uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, applyTabFormToBeam, equipmentDue,
   chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable, electronChamberForm, beamKind, lastCalibration,
   cobaltCapable, cobaltChamberForm, myChambersToJournal, orgText, withChamberLength, calibrationChecks,
 } from '../core/journal.js';
@@ -22,8 +22,8 @@ import { getJournal, updateJournal, onJournal } from './journal-store.js';
 import { setupFilePanel, dueChip, fmtDate, countWord } from './journal-common.js';
 
 let setStatus = () => {};
-let tabBridge = { current: () => null, edit: () => {} };
-/** Связь с вкладками дозиметрии: current(kind) — форма вкладки, edit(kind, form, { title, target }) — пучок во вкладке. */
+let tabBridge = { edit: () => {} };
+/** Связь с вкладками дозиметрии: edit(kind, form, { title, target }) — пучок журнала во вкладке. */
 export const setEquipmentBridge = (b) => (tabBridge = { ...tabBridge, ...b });
 
 const ROOT = () => $('#module-equipment');
@@ -516,18 +516,18 @@ function beamCardBody(j, m, b) {
   </details>`;
 }
 
-/** Камеры и электрометры аппарата по его пучкам: «PTW 30013 № 739475 — 6 МВ, 10 МВ». */
+/** Камеры и электрометры аппарата по его пучкам: «PTW 30013 № 739475: 6 МВ, 10 МВ». */
 function machineEquipment(j, m) {
   const group = (key, list, text) => {
     const by = new Map();
     for (const b of m.beams) {
       if (b.active === false || !b[key]) continue;
       if (!by.has(b[key])) by.set(b[key], []);
-      by.get(b[key]).push(b.name || '—');
+      by.get(b[key]).push(String(b.name || '').trim() || L('пучок без названия', 'unnamed beam'));
     }
     return [...by].map(([id, beams]) => {
       const rec = list.find((x) => x.id === id);
-      return rec ? `${text(rec)} — ${beams.join(', ')}` : '';
+      return rec ? `${text(rec) || L('без названия', 'unnamed')}: ${beams.join(', ')}` : '';
     }).filter(Boolean);
   };
   const ch = group('chamberId', j.chambers, chamberText);
@@ -551,7 +551,6 @@ function machineCard(j, m) {
     <div class="jbeams">${coBeams.map((b) => beamCard(j, m, b)).join('') || `<p class="sub-hint">${esc(L('Пучков пока нет: обычно один — та установка (РИП или РИК), по которой калибруют аппарат.', 'No beams yet: usually one, the setup (SSD or SCD) used to calibrate the unit.'))}</p>`}</div>
     <div class="row-tools">
       <button type="button" class="link-btn" data-add-cobeam="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить пучок ⁶⁰Co', 'Add a ⁶⁰Co beam'))}</button>
-      <button type="button" class="link-btn" data-import-cobeam="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Пучок из вкладки «⁶⁰Co»', 'Beam from the ⁶⁰Co tab'))}</button>
     </div>`
     : '';
   return `<div class="jcard" data-card="machine:${esc(m.id)}">
@@ -568,13 +567,11 @@ function machineCard(j, m) {
     <div class="jbeams">${m.beams.filter((b) => beamKind(b) === 'photon').map((b) => beamCard(j, m, b)).join('') || `<p class="sub-hint">${esc(L('Пучков фотонов пока нет.', 'No photon beams yet.'))}</p>`}</div>
     <div class="row-tools">
       <button type="button" class="link-btn" data-add-beam="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить пучок фотонов', 'Add a photon beam'))}</button>
-      <button type="button" class="link-btn" data-import-beam="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Пучок из вкладки «МВ фотоны»', 'Beam from the MV photons tab'))}</button>
     </div>
     <h3 class="sub-h">${esc(L('Пучки электронов', 'Electron beams'))}</h3>
     <div class="jbeams">${m.beams.filter((b) => beamKind(b) === 'electron').map((b) => beamCard(j, m, b)).join('') || `<p class="sub-hint">${esc(L('Пучков электронов пока нет.', 'No electron beams yet.'))}</p>`}</div>
     <div class="row-tools">
       <button type="button" class="link-btn" data-add-ebeam="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить пучок электронов', 'Add an electron beam'))}</button>
-      <button type="button" class="link-btn" data-import-ebeam="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Пучок из вкладки «Электроны»', 'Beam from the Electrons tab'))}</button>
     </div>` : ''}
     ${cobalt ? '' : coSection}
     <div class="row-tools">
@@ -856,24 +853,6 @@ function onClick(e) {
       return j;
     }, 'equipment');
     document.getElementById(fieldId('beam', id, 'name'))?.focus();
-  } else if (t.dataset.importBeam || t.dataset.importEbeam || t.dataset.importCobeam) {
-    const kind = t.dataset.importEbeam ? 'electron' : t.dataset.importCobeam ? 'cobalt' : 'photon';
-    const form = tabBridge.current(kind);
-    if (!form) return;
-    let info;
-    updateJournal((j) => {
-      info = beamFromTabForm(j, t.dataset.importBeam || t.dataset.importEbeam || t.dataset.importCobeam, form, kind);
-      return info.journal;
-    }, 'equipment');
-    openBeams.add(info.beam.id);
-    render();
-    const tab = { electron: L('«Электроны»', 'Electrons'), cobalt: L('«⁶⁰Co»', '⁶⁰Co') }[kind] ?? L('«МВ фотоны»', 'MV photons');
-    setStatus(
-      L(
-        `Добавлен пучок «${info.beam.name}» с настройками вкладки ${tab}.${info.addedChamber ? ' Камера добавлена в список камер — проверьте даты её калибровки.' : ' Камера найдена в журнале.'}${info.addedElectrometer ? ' Электрометр добавлен.' : ''}`,
-        `Beam "${info.beam.name}" added with the ${tab} tab settings.${info.addedChamber ? ' The chamber has been added to the chamber list: check its calibration dates.' : ' The chamber was found in the journal.'}${info.addedElectrometer ? ' The electrometer has been added.' : ''}`,
-      ),
-    );
   } else if (t.dataset.editTab) {
     const [mid, bid] = t.dataset.editTab.split(':');
     const j = getJournal();
