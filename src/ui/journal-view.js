@@ -1,5 +1,5 @@
 // Пучок журнала на вкладке дозиметрии («МВ фотоны», «Электроны»): «Все настройки» пучка из «Оборудования» и
-// «Открыть во вкладке» из сеанса. Форма журнала загружается во вкладку, прежние данные вкладки откладываются и
+// «Открыть во вкладке» из «Журнала и трендов». Форма журнала загружается во вкладку, прежние данные вкладки откладываются и
 // возвращаются кнопкой на плашке над рабочим листом (или после «Сохранить в журнал»). Отложенные данные хранятся и
 // в браузере: после перезагрузки страницы плашка и кнопки остаются.
 import { L } from '../core/i18n.js';
@@ -46,7 +46,7 @@ export function makeJournalView({ bar, storageKey, readForm, writeForm, refresh,
     el.innerHTML = `<p>${esc(
       edit
         ? L(`Настройки пучка журнала: ${view.title}. Измените нужное и нажмите «Сохранить в журнал»: в журнал попадут настройки пучка, камеры и электрометра (показания и условия — нет).`, `Journal beam settings: ${view.title}. Change what is needed and click "Save to journal": the beam, chamber and electrometer settings go to the journal (readings and conditions do not).`)
-        : L(`Пучок из сеанса журнала: ${view.title}. Здесь видны все поправки и замечания; изменения во вкладке в журнал не попадают.`, `Beam from a journal session: ${view.title}. All corrections and messages are shown here; changes in this tab do not go to the journal.`),
+        : L(`Пучок из журнала: ${view.title}. Здесь видны все поправки и замечания; изменения во вкладке в журнал не попадают.`, `Beam from the journal: ${view.title}. All corrections and messages are shown here; changes in this tab do not go to the journal.`),
     )}</p><div class="actions">${edit ? `<button type="button" class="primary" data-jv="save">${esc(L('Сохранить в журнал', 'Save to journal'))}</button>` : ''}<button type="button" data-jv="back">${esc(edit ? L('Отмена — вернуть данные вкладки', 'Cancel: restore the tab data') : L('Вернуть прежние данные вкладки', 'Restore the previous tab data'))}</button></div>`;
     el.querySelector('[data-jv="save"]')?.addEventListener('click', () => {
       const f = readForm();

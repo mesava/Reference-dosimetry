@@ -143,7 +143,7 @@ export function revealSection(module, no) {
 
 /**
  * Подключить ссылки: после каждого пересчёта модуля и смены языка. go(module) — открыть модуль (app.js).
- * Ссылки журнала (data-sec-beam) открывает сам «Сеанс» (пучок нужно загрузить во вкладку) и помечает событие обработанным.
+ * Ссылки в карточках пучков журнала (.jsb[data-beam], data-sec-beam) открывал прежний «Сеанс» (до 0.23.0); сейчас таких карточек нет.
  */
 export function initSecLinks({ go }) {
   document.addEventListener('moduleupdate', (e) => linkSections(e.detail?.root?.closest?.('.module') ?? e.detail?.root));

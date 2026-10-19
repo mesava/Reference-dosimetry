@@ -1,8 +1,9 @@
 // «Журнал» → «Журнал и тренды»: сеансы аппарата, тренд отклонения выхода от номинала по пучкам, контрольная карта
 // пучка и общая часть сеансов (journal-spc-ui.js), k_pol и k_s по калибровкам, сроки калибровки, выгрузка в CSV.
 import { L } from '../core/i18n.js';
-import { trendSeries, machineOf, equipmentDue, dayNumber } from '../core/journal.js';
-import { $, esc, fmt, fmtSigned, today, makeStatus, armButton, notifyUpdate, richText, downloadText } from './common.js';
+import { trendSeries, machineOf, equipmentDue, dayNumber, beamKind } from '../core/journal.js';
+import { $, esc, fmt, fmtSigned, today, makeStatus, armButton, notifyUpdate, richText, downloadText, copyText, printToPdf } from './common.js';
+import { sessionReportText } from './journal-report.js';
 import { scatterChart, legendSwatch } from './chart.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
 import { renderSpc, renderCommon, spcMessages, renderChecks, checkSignalMessages } from './journal-spc-ui.js';
@@ -37,8 +38,8 @@ function seriesOf(j) {
   }
   return all.filter((s) => s.kind === kindFilter);
 }
-let bridge = { openSession: () => {}, unsaved: () => false, toBudget: () => {} };
-/** Открыть сеанс в подразделе «Сеанс»; unsaved — есть ли там незаписанные показания; toBudget(u, text) — в бюджет неопределённости. */
+let bridge = { openInTab: () => {}, toBudget: () => {} };
+/** openInTab(kind, form, title) — записанный пучок во вкладке дозиметрии (для просмотра); toBudget(u, text) — в бюджет неопределённости. */
 export const setHistoryBridge = (b) => (bridge = { ...bridge, ...b });
 
 function renderChart(series) {
@@ -118,7 +119,7 @@ function renderTables(j, series) {
         .reverse()
         .map((s) => `<tr><td>${esc(fmtDate(s.date))}</td><td>${esc(s.mode === 'cal' ? L('калибровка', 'calibration') : L('проверка', 'check'))}</td>${beams.map((b) => `<td class="v">${cell(s, b, (x) => (x.ok ? `${fmt(x.value, kindFilter === 'cobalt' ? 2 : 4)}<br><small class="${x.status === 'out' ? 'st-out' : ''}">${Number.isFinite(x.deviation) ? `${fmtSigned(x.deviation, 2)} %` : ''}</small>` : '—'))}</td>`).join('')}</tr>`)
         .join('')}</tbody></table><p class="sub-hint">${esc(kindFilter === 'cobalt' ? L('В ячейке: мощность дозы, сГр/мин (на z_max или z_ref — где задано значение для сравнения), и отклонение от ожидаемой.', 'In each cell: the dose rate, cGy/min (at z_max or z_ref, where the comparison value is given), and the deviation from the expected value.') : L('В ячейке: доза в точке номинала, Гр на 100 МЕ, и отклонение от номинала.', 'In each cell: the dose at the nominal point, Gy per 100 MU, and the deviation from nominal.'))}</p>`
-    : `<p class="sub-hint">${esc(L('Сеансов этого аппарата нет.', 'No sessions for this machine.'))}</p>`;
+    : `<p class="sub-hint">${esc(L('Записей этого аппарата нет.', 'No records for this machine.'))}</p>`;
   // k_pol и k_s по калибровкам
   const cals = shown.filter((s) => s.mode === 'cal');
   const kHead = `<tr><th>${esc(L('Калибровка', 'Calibration'))}</th>${beams.map((b) => `<th class="v">${esc(b.name)}</th>`).join('')}</tr>`;
@@ -140,18 +141,52 @@ function renderTables(j, series) {
           const bs = s.beams.filter((b) => b.summary);
           const m = machineOf(j, machineId);
           const out = bs.filter((b) => b.summary.status === 'out').map((b) => m?.beams.find((x) => x.id === b.beamId)?.name).filter(Boolean);
-          return `<li><div><b>${esc(fmtDate(s.date))}</b> · ${esc(s.mode === 'cal' ? L('калибровка', 'calibration') : L('проверка выхода', 'output check'))} · ${esc(L(`пучков: ${bs.length}`, `beams: ${bs.length}`))}${out.length ? ` · <span class="st-out">${esc(L(`вне допуска: ${out.join(', ')}`, `out of tolerance: ${out.join(', ')}`))}</span>` : ''}${s.staff?.some((x) => x.trim()) ? `<br><small>${esc(s.staff.filter((x) => x.trim()).join(', '))}</small>` : ''}</div>
-            ${s.spcRestart ? `<small class="chip">${esc(L('с этого сеанса — новый отсчёт контрольной карты', 'a new control-chart count starts here'))}</small>` : ''}
-            <div class="row-tools"><button type="button" class="link-btn" data-open="${esc(s.id)}">${esc(L('Открыть', 'Open'))}</button><button type="button" class="link-btn" data-spc-restart="${esc(s.id)}" title="${esc(L('Например, после ремонта или замены узла ускорителя без записанной подстройки: до и после — разные процессы.', 'For example, after a repair or replacement of a linac part without a recorded adjustment: before and after are different processes.'))}">${esc(s.spcRestart ? L('Убрать новый отсчёт карты', 'Remove the new chart count') : L('Новый отсчёт карты', 'New chart count'))}</button><button type="button" class="link-btn danger" data-del-session="${esc(s.id)}">${esc(L('Удалить', 'Delete'))}</button></div></li>`;
+          const beamLines = bs
+            .map((b) => {
+              const name = m?.beams.find((x) => x.id === b.beamId)?.name || '—';
+              const x = b.summary;
+              const co = beamKind(b) === 'cobalt';
+              const val = x.ok ? `${fmt(x.value, co ? 2 : 4)}${Number.isFinite(x.deviation) ? ` (${fmtSigned(x.deviation, 2)} %)` : ''}` : '—';
+              return `<li class="${x.status === 'out' ? 'st-out' : ''}"><span>${esc(name)}: ${esc(val)}</span>${b.form ? `<button type="button" class="link-btn" data-open-beam="${esc(s.id)}|${esc(b.beamId)}">${esc(L('Открыть во вкладке', 'Open in the tab'))}</button>` : ''}</li>`;
+            })
+            .join('');
+          return `<li><div><b>${esc(fmtDate(s.date))}</b> · ${esc(s.mode === 'cal' ? L('калибровка', 'calibration') : L('проверка выхода', 'output check'))} · ${esc(L(`пучков: ${bs.length}`, `beams: ${bs.length}`))}${(s.checks || []).length ? ` · ${esc(L(`проверок второй камерой: ${s.checks.length}`, `second-chamber checks: ${s.checks.length}`))}` : ''}${out.length ? ` · <span class="st-out">${esc(L(`вне допуска: ${out.join(', ')}`, `out of tolerance: ${out.join(', ')}`))}</span>` : ''}${s.staff?.some((x) => x.trim()) ? `<br><small>${esc(s.staff.filter((x) => x.trim()).join(', '))}</small>` : ''}</div>
+            <ul class="jsess-beams">${beamLines}</ul>
+            ${s.spcRestart ? `<small class="chip">${esc(L('с этой записи — новый отсчёт контрольной карты', 'a new control-chart count starts here'))}</small>` : ''}
+            <div class="row-tools"><button type="button" class="link-btn" data-report="${esc(s.id)}">${esc(L('Протокол', 'Report'))}</button><button type="button" class="link-btn" data-spc-restart="${esc(s.id)}" title="${esc(L('Например, после ремонта или замены узла ускорителя без записанной подстройки: до и после — разные процессы.', 'For example, after a repair or replacement of a linac part without a recorded adjustment: before and after are different processes.'))}">${esc(s.spcRestart ? L('Убрать новый отсчёт карты', 'Remove the new chart count') : L('Новый отсчёт карты', 'New chart count'))}</button><button type="button" class="link-btn danger" data-del-session="${esc(s.id)}">${esc(L('Удалить', 'Delete'))}</button></div></li>`;
         })
         .join('')}</ul>`
-    : `<p class="sub-hint">${esc(L('Сеансов пока нет: проведите сеанс в подразделе «Сеанс» и запишите его в журнал.', 'No sessions yet: run a session in the Session section and record it in the journal.'))}</p>`;
+    : `<p class="sub-hint">${esc(L('Записей пока нет: выберите пучок журнала во вкладке «⁶⁰Co», «МВ фотоны» или «Электроны» (раздел 1), измерьте и нажмите «Записать в журнал».', 'No records yet: select a journal beam in the ⁶⁰Co, MV photons or Electrons tab (section 1), measure and click "Record to journal".'))}</p>`;
   for (const btn of $('#hs-sessions').querySelectorAll('[data-del-session]')) {
-    armButton(btn, btn.textContent, () => L('Удалить сеанс?', 'Delete session?'), () => {
+    armButton(btn, btn.textContent, () => L('Удалить запись?', 'Delete the record?'), () => {
       updateJournal((jj) => ({ ...jj, sessions: jj.sessions.filter((x) => x.id !== btn.dataset.delSession) }), 'history');
-      setStatus(L('Сеанс удалён из журнала. Сохраните журнал в файл.', 'The session has been deleted from the journal. Save the journal to the file.'));
+      setStatus(L('Запись удалена из журнала. Сохраните журнал в файл.', 'The record has been deleted from the journal. Save the journal to the file.'));
     });
   }
+}
+
+// ------------------------------------------------------------ протокол записи
+let reportId = '';
+function showReport(id) {
+  reportId = id;
+  renderReport();
+  $('#hs-report')?.scrollIntoView({ block: 'start' });
+}
+function renderReport() {
+  const box = $('#hs-report');
+  if (!box) return;
+  const j = getJournal();
+  const s = j.sessions.find((x) => x.id === reportId);
+  if (!s) {
+    box.hidden = true;
+    box.innerHTML = '';
+    return;
+  }
+  const m = machineOf(j, s.machineId);
+  box.hidden = false;
+  box.innerHTML = `<header><h2>${esc(L(`Протокол: ${m?.name || '—'}, ${fmtDate(s.date)}`, `Report: ${m?.name || '—'}, ${fmtDate(s.date)}`))}</h2></header>
+    <pre class="jreport">${esc(sessionReportText(j, s))}</pre>
+    <div class="actions no-print"><button type="button" data-rep="copy">${esc(L('Копировать протокол', 'Copy the report'))}</button><button type="button" data-rep="pdf">${esc(L('Сохранить в PDF', 'Save as PDF'))}</button><button type="button" data-rep="close">${esc(L('Закрыть', 'Close'))}</button></div>`;
 }
 
 function renderReadout(j, series) {
@@ -188,6 +223,7 @@ function render() {
   renderControl(j, series);
   renderTables(j, series);
   renderReadout(j, series);
+  renderReport();
   notifyUpdate(ROOT());
 }
 
@@ -237,34 +273,51 @@ export function initHistory() {
       render();
     });
   }
+  $('#hs-report').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-rep]');
+    if (!b) return;
+    const j = getJournal();
+    const s = j.sessions.find((x) => x.id === reportId);
+    if (b.dataset.rep === 'close' || !s) {
+      reportId = '';
+      renderReport();
+      return;
+    }
+    if (b.dataset.rep === 'copy') copyText(sessionReportText(j, s), L('Протокол скопирован.', 'The report has been copied.'), setStatus);
+    else {
+      // печатается только протокол (styles.css: body.print-hs-report)
+      document.body.classList.add('print-hs-report');
+      const off = () => {
+        document.body.classList.remove('print-hs-report');
+        window.removeEventListener('afterprint', off);
+      };
+      window.addEventListener('afterprint', off);
+      printToPdf([L('Протокол', 'Report'), machineOf(j, s.machineId)?.name, s.date].filter(Boolean).join('_'), setStatus);
+    }
+  });
   $('#hs-sessions').addEventListener('click', (e) => {
     const r = e.target.closest('[data-spc-restart]');
     if (r) {
       const id = r.dataset.spcRestart;
       const on = !getJournal().sessions.find((x) => x.id === id)?.spcRestart;
       updateJournal((jj) => ({ ...jj, sessions: jj.sessions.map((x) => (x.id === id ? { ...x, spcRestart: on } : x)) }), 'history');
-      setStatus(on ? L('С этого сеанса контрольная карта начинает новый отсчёт.', 'The control chart starts a new count from this session.') : L('Отметка нового отсчёта снята.', 'The new count mark has been removed.'));
+      setStatus(on ? L('С этой записи контрольная карта начинает новый отсчёт.', 'The control chart starts a new count from this record.') : L('Отметка нового отсчёта снята.', 'The new count mark has been removed.'));
       return;
     }
-    const b = e.target.closest('[data-open]');
-    if (!b) return;
-    const s = getJournal().sessions.find((x) => x.id === b.dataset.open);
-    if (!s) return;
-    // в «Сеансе» есть незаписанные показания: открыть другой сеанс — только повторным нажатием
-    if (bridge.unsaved?.() && !b.dataset.armed) {
-      b.dataset.armed = '1';
-      b.classList.add('danger-armed');
-      b.textContent = L('В «Сеансе» есть незаписанные показания — нажмите ещё раз', 'The Session tab has unrecorded readings: click again');
-      setTimeout(() => {
-        if (!b.isConnected || !b.dataset.armed) return;
-        delete b.dataset.armed;
-        b.classList.remove('danger-armed');
-        b.textContent = L('Открыть', 'Open');
-      }, 4000);
+    const ob = e.target.closest('[data-open-beam]');
+    if (ob) {
+      const [sid, bid] = ob.dataset.openBeam.split('|');
+      const jj = getJournal();
+      const s = jj.sessions.find((x) => x.id === sid);
+      const b = s?.beams.find((x) => x.beamId === bid);
+      if (!b?.form) return;
+      const m = machineOf(jj, s.machineId);
+      const name = m?.beams.find((x) => x.id === bid)?.name || '—';
+      bridge.openInTab(beamKind(b), b.form, `${m?.name || '—'} — ${name}, ${fmtDate(s.date)}`);
       return;
     }
-    delete b.dataset.armed;
-    bridge.openSession(s);
+    const rb = e.target.closest('[data-report]');
+    if (rb) showReport(rb.dataset.report);
   });
   onJournal(({ source }) => {
     if (source.endsWith(':input') && source !== 'equipment:input') return;

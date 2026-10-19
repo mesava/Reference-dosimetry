@@ -92,12 +92,48 @@ test('вкладка «МВ фотоны»: пучок журнала, запи�
   await rec.locator('[data-jr=record]').click();
   await pause(500);
 
+  // новая калибровка: k_pol и k_s сравниваются с прошлой калибровкой пучка; k_pol изменился больше 0,2 % — предупреждение
+  await page.locator('#rd_fixed').uncheck();
+  await page.fill('#meta_date', '2026-10-21');
+  await pause(500);
+  assert.match(await rec.innerText(), /прошлая калибровка пучка в журнале \(19\.10\.2026\)/);
+  assert.doesNotMatch(await rec.innerText(), /изменился на/);
+  const opp = page.locator('.cells[data-series="rd_Mopp"] input');
+  for (let i = 0; i < (await opp.count()); i++) {
+    const v = Number((await opp.nth(i).inputValue()).replace(',', '.'));
+    if (Number.isFinite(v) && v) await opp.nth(i).fill(String((v * 1.01).toFixed(4)).replace('.', ','));
+  }
+  await pause(500);
+  assert.match(await rec.innerText(), /kpol изменился на \+0,\d\d %.*Report 374/s);
+
   // в «Журнале и трендах» — две записи аппарата
   await page.goto(`${server.url}/index.html#history`);
   await pause(600);
   const list = await page.locator('#hs-sessions').innerText();
   assert.match(list, /19\.10\.2026/);
   assert.match(list, /20\.10\.2026/);
+  // протокол записи за день и пучок записи во вкладке
+  await page.locator('#hs-sessions [data-report]').last().click();
+  await pause(400);
+  const rep = await page.locator('#hs-report').innerText();
+  assert.match(rep, /ПРОТОКОЛ: АППАРАТ ЗА ДЕНЬ/);
+  assert.match(rep, /19\.10\.2026; режим: калибровка/);
+  assert.match(rep, /6 МВ: PTW 30013 № 47364/);
+  await page.locator('#hs-sessions [data-open-beam]').last().click();
+  await pause(500);
+  assert.equal(await page.evaluate(() => location.hash), '#photons');
+  assert.match(await page.locator('#ph-journal-bar').innerText(), /Пучок из журнала: Versa HD — 6 МВ, 19\.10\.2026/);
+  await page.locator('#ph-journal-bar button').last().click();
+  await pause(300);
+  // камеру и электрометр с записями в журнале удалить нельзя
+  await page.goto(`${server.url}/index.html#equipment`);
+  await pause(400);
+  assert.ok(await page.locator('[data-del^="chamber:"]').isDisabled());
+  assert.ok(await page.locator('[data-del^="electrometer:"]').isDisabled());
+  // прежний адрес «Сеанса» ведёт в «Журнал и тренды»
+  await page.goto(`${server.url}/index.html#session`);
+  await pause(500);
+  assert.ok(await page.locator('#module-history').isVisible());
 
   // по-английски — без кириллицы в блоках журнала (кроме названий)
   await page.goto(`${server.url}/index.html#photons`);

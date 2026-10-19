@@ -1,9 +1,9 @@
-// «Сеанс» → «Проверка дозиметра второй камерой» (по желанию): карточки проверок, их результат, строки для итога сеанса,
-// замечаний и протокола. Расчёт — core/journal-check.js; черновик и порядок обновления — journal-session-ui.js.
+// «Проверка дозиметра второй камерой» (по желанию) во вкладке дозиметрии: карточки проверок и их результат. Расчёт —
+// core/journal-check.js; черновик, запись в журнал и порядок обновления — tab-journal-ui.js.
 import { L, refText } from '../core/i18n.js';
 import { isBlank, parseNumber } from '../core/units.js';
 import { beamKind, beamKeys, chamberText, electrometerText, photonCapable, electronCapable, cobaltCapable, chamberFormFromElectrons, chamberFormFromCobalt } from '../core/journal.js';
-import { computeDosimeterCheck, checkHistory, checkMessages, checkVerdicts, verdictMessage, checkStarted, newCheck, SHIFT_Z, WATCH_Z, HISTORY_MIN, CHECK_REF } from '../core/journal-check.js';
+import { computeDosimeterCheck, checkHistory, checkMessages, checkVerdicts, verdictMessage, checkStarted, SHIFT_Z, WATCH_Z } from '../core/journal-check.js';
 import { esc, fmt, fmtSigned, richText } from './common.js';
 import { renderCells, readCells, setupCells } from './widgets.js';
 import { cellsHtml, fmtDate } from './journal-common.js';
@@ -14,17 +14,10 @@ const hasValues = (cells) => (cells || []).some((v) => !isBlank(v));
 const capable = (kind) => ({ electron: electronCapable, cobalt: cobaltCapable })[kind] ?? photonCapable;
 const lvlName = () => ({ error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') });
 
-/** Рабочая камера пучка в сеансе: выбранная в сеансе (раздел 1) или записанная в открытом сеансе. */
+/** Рабочая камера пучка: камера вкладки, найденная в журнале (d.chamberId), или выбранная у пучка в журналах до 0.21.0. */
 const workChamberId = (b, d) => d?.chamberId || (d?.base ? '' : b.chamberId || '');
 /** Камеры журнала, которые годятся второй камерой для пучка: того же вида и не рабочая. */
 export const secondChambers = (j, b, d) => j.chambers.filter((c) => c.id !== workChamberId(b, d) && capable(beamKind(b))(c.form));
-
-/** Новая проверка: первый пучок с рабочей камерой и первая подходящая вторая камера. */
-export function addCheck(j, beams, draftBeams) {
-  const b = beams.find((x) => draftBeams[x.id]?.include !== false && workChamberId(x, draftBeams[x.id]) && secondChambers(j, x, draftBeams[x.id]).length) ?? beams[0];
-  if (!b) return null;
-  return newCheck(b.id, secondChambers(j, b, draftBeams[b.id])[0]?.id ?? '');
-}
 
 /** Разметка проверок (карточки); beams — пучки сеанса. */
 export function checksHtml(j, beams, draftBeams, checks, { tg }) {
@@ -123,9 +116,6 @@ export function readChecks(box, checks) {
   });
 }
 
-/** Поле карточки, после изменения которого записанная форма второй камеры к проверке уже не относится. */
-export const resetsRecorded = (key) => ['beamId', 'chamberId', 'electrometerId'].includes(key);
-
 /**
  * Расчёт проверок черновика: works — Map beamId → { input, calc } рабочих камер. Возвращает
  * [{ check, res, hist, msgs, started }] и замечания по трём системам.
@@ -212,57 +202,4 @@ export function renderCheckResults(box, items) {
       el.innerHTML = html;
     }
   }
-}
-
-/** Таблица проверок для итога сеанса (справа). */
-export function checksReadoutHtml(j, items) {
-  const rows = items.filter((it) => it.started);
-  if (!rows.length) return '';
-  return `<table class="factors jsum jsum-check"><thead><tr><th>${esc(L('Проверка дозиметра', 'Dosimeter check'))}</th><th class="v">${esc(L('Отношение', 'Ratio'))}</th><th class="v">${esc(L('от прежних, %', 'from earlier, %'))}</th></tr></thead><tbody>${rows
-    .map((it) => {
-      const [cls] = chipOf(it);
-      const name = `${it.res?.work.beam.name ?? '—'} · ${chamberText(j.chambers.find((x) => x.id === it.check.chamberId)) || '—'}`;
-      return `<tr class="st-${cls}"><td>${esc(name)}</td><td class="v">${it.res?.ok ? fmt(it.res.ratio, 4) : '—'}</td><td class="v">${Number.isFinite(it.hist?.delta) ? fmtSigned(it.hist.delta, 2) : '—'}</td></tr>`;
-    })
-    .join('')}</tbody></table>`;
-}
-
-/** Замечания для панели справа: ошибки и сдвиги проверок, вывод по трём системам. */
-export function checkPanelMessages(j, comp) {
-  const out = [];
-  for (const it of comp.items) {
-    if (!it.started) continue;
-    const name = `${it.res?.work.beam.name ?? L('пучок', 'beam')}, ${chamberText(j.chambers.find((x) => x.id === it.check.chamberId)) || L('вторая камера', 'second chamber')}`;
-    if (!it.res?.ok) out.push(['warn', L(`Проверка дозиметра (${name}): есть ошибки — она не будет записана.`, `Dosimeter check (${name}): there are errors; it will not be recorded.`)]);
-    else if (Number.isFinite(it.hist?.z) && Math.abs(it.hist.z) >= SHIFT_Z) out.push(['warn', L(`Проверка дозиметра (${name}): отношение сместилось на ${fmtSigned(it.hist.delta, 2)} % (${fmtSigned(it.hist.z, 1)}σ).`, `Dosimeter check (${name}): the ratio has shifted by ${fmtSigned(it.hist.delta, 2)}% (${fmtSigned(it.hist.z, 1)}σ).`)]);
-  }
-  for (const v of comp.verdicts) out.push([v.level, v.text]);
-  return out;
-}
-
-/** Строки протокола сеанса. */
-export function checkReportLines(j, comp, { tg }) {
-  const rows = comp.items.filter((it) => it.started);
-  if (!rows.length) return [];
-  const [kp, kx] = tg ? ['P_pol', 'P_ion'] : ['k_pol', 'k_s'];
-  const out = ['', L(`ПРОВЕРКА ДОЗИМЕТРА ВТОРОЙ КАМЕРОЙ (${CHECK_REF})`, `DOSIMETER CHECK WITH A SECOND CHAMBER (${refText(CHECK_REF)})`)];
-  for (const it of rows) {
-    const r = it.res;
-    const ch = chamberText(j.chambers.find((x) => x.id === it.check.chamberId)) || '—';
-    if (!r?.ok) {
-      out.push(`${r?.work.beam.name ?? '—'}: ${ch} — ${L('нет результата: есть ошибки', 'no result: there are errors')}`);
-      continue;
-    }
-    const el = j.electrometers.find((e) => e.id === r.sig.electrometerId);
-    out.push(`${r.work.beam.name}: ${L('рабочая', 'working')} ${chamberText(r.work.chamber)}; ${L('вторая', 'second')} ${ch}${el ? `, ${electrometerText(el)}` : ''}`);
-    const co = r.kind === 'cobalt';
-    const v = (x) => (co ? `${fmt(x, 2)} ${L('сГр/мин', 'cGy/min')}` : `${fmt(x, 4)} ${L('Гр на 100 МЕ', 'Gy per 100 MU')}`);
-    out.push(`  ${L('На z_ref', 'At z_ref')}: ${L('рабочая', 'working')} ${v(r.workValue)}, ${L('вторая', 'second')} ${v(r.value)}; ${L('отношение', 'ratio')} ${fmt(r.ratio, 4)} (${fmtSigned(r.diff, 2)} %)`);
-    out.push(`  ${kp} = ${fmt(r.second.summary.kpolRaw, 4)} (${srcText(r.src.kpol, r.prev)}); ${kx} = ${fmt(r.second.summary.ksRaw, 4)} (${srcText(r.src.ks, r.prev)})${co ? '' : `; k_Q = ${fmt(r.second.summary.kQ, 4)}`}`);
-    const h = it.hist;
-    if (h?.n) out.push(`  ${L(`От среднего прежних проверок (${h.n})`, `From the mean of earlier checks (${h.n})`)}: ${fmtSigned(h.delta, 2)} %${Number.isFinite(h.z) ? ` (${fmtSigned(h.z, 1)}σ, σ = ${fmt(h.sigma, 2)} %)` : h.n < HISTORY_MIN ? L(`; разброс — с ${HISTORY_MIN} прежних проверок`, `; scatter from ${HISTORY_MIN} earlier checks`) : ''}`);
-    for (const m of it.msgs.filter((x) => x.level !== 'info')) out.push(`  - ${m.text}`);
-  }
-  for (const v of comp.verdicts) out.push(`- ${v.text}`);
-  return out;
 }

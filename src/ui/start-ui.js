@@ -29,7 +29,7 @@ function journalLine() {
   const parts = [
     f.name ? L(`Журнал «${f.name}»`, `Journal “${f.name}”`) : L('Журнал (ещё не сохранён в файл)', 'Journal (not yet saved to a file)'),
     `${j.machines.length} ${countWord(j.machines.length, [L('аппарат', 'machine'), L('аппарата', 'machines'), L('аппаратов', 'machines')], ['machine', 'machines'])}, ${beams} ${countWord(beams, [L('пучок', 'beam'), L('пучка', 'beams'), L('пучков', 'beams')], ['beam', 'beams'])}`,
-    last ? L(`последний сеанс ${fmtDate(last.date)}`, `last session ${fmtDate(last.date)}`) : L('сеансов пока нет', 'no sessions yet'),
+    last ? L(`последняя запись ${fmtDate(last.date)}`, `last record ${fmtDate(last.date)}`) : L('записей пока нет', 'no records yet'),
   ];
   let text = `${parts.join('; ')}.`;
   if (f.conflict) text += L(' Файл журнала изменили в другом месте — выберите версию в панели «Файл журнала».', ' The journal file was changed elsewhere: choose a version in the Journal file panel.');
@@ -60,7 +60,7 @@ export function renderStart() {
         )}</p>
         <ol class="start-steps">
           <li>${go('equipment', esc(L('Оборудование', 'Equipment')), { sub: esc(L('камеры, электрометры, аппараты и пучки — один раз', 'chambers, electrometers, machines and beams, once')) })}</li>
-          <li>${go('session', esc(L('Сеанс', 'Session')), { sub: esc(L('калибровка или проверка выхода всего аппарата', 'calibration or output check of the whole machine')) })}</li>
+          <li>${go('photons', esc(L('Измерение во вкладке дозиметрии', 'Measurement in a dosimetry tab')), { sub: esc(L('пучок журнала в разделе 1, затем «Записать в журнал»', 'a journal beam in section 1, then “Record to journal”')) })}</li>
           <li>${go('history', esc(L('Журнал и тренды', 'Journal and trends')), { sub: esc(L('отклонение по датам, k_pol и k_s по калибровкам', 'deviation by date, k_pol and k_s by calibration')).replace(/k_(pol|s)/g, 'k<sub>$1</sub>') })}</li>
         </ol>
         <p class="start-state" role="status">${esc(journalLine())}</p>

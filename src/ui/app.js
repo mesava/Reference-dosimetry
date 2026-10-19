@@ -18,20 +18,18 @@ import { initPwa } from './pwa.js';
 import { initSecLinks, revealSection } from './sec-links.js';
 import { initTabEquipment } from './tab-equipment-ui.js';
 import { initTabJournal } from './tab-journal-ui.js';
-import { initSession, sessionStatus, setSessionBridge, loadSession, sessionUnsaved } from './journal-session-ui.js';
 import { initEquipment, equipmentStatus, setEquipmentBridge, saveBeamFromTab, revealBeam, renderMyChambersTool } from './journal-equipment-ui.js';
 import { initHistory, historyStatus, setHistoryBridge } from './journal-history-ui.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
 // последний открытый подраздел вкладки в шапке («Дозиметрия», «Камера и пучок», «Журнал»)
 const subKey = (group) => `reference-dosimetry.sub.${group}`;
-// tab — вкладка в шапке, к которой относится модуль. Адреса модулей (#photons, #tools, #session…) прежние: так открываются
+// tab — вкладка в шапке, к которой относится модуль. Адреса модулей (#photons, #tools…) прежние: так открываются
 // старые ссылки и закладки. Подразделы перечислены в порядке работы.
 const MODULES = {
   start: { title: () => L('Референсная дозиметрия', 'Reference dosimetry'), file: '-', importData: () => {}, status: (t) => { $('#start-status').textContent = t; }, tab: 'start', proto: false },
   equipment: { title: () => L('Журнал — оборудование', 'Journal — equipment'), file: '-', importData: () => {}, status: (t) => equipmentStatus(t), tab: 'journal' },
-  session: { title: () => L('Журнал — сеанс на весь аппарат', 'Journal — whole-machine session'), file: 'journal', importData: (obj) => importJournalObject(obj), status: (t) => sessionStatus(t), tab: 'journal' },
-  history: { title: () => L('Журнал — сеансы и тренды', 'Journal — sessions and trends'), file: '-', importData: () => {}, status: (t) => historyStatus(t), tab: 'journal', proto: false },
+  history: { title: () => L('Журнал — записи и тренды', 'Journal — records and trends'), file: 'journal', importData: (obj) => importJournalObject(obj), status: (t) => historyStatus(t), tab: 'journal', proto: false },
   co60: { title: () => L('⁶⁰Co — референсная дозиметрия', '⁶⁰Co — reference dosimetry'), file: 'cobalt', importData: importCobalt, status: cobaltStatus, tab: 'dosimetry' },
   photons: { title: () => L('МВ фотоны — референсная дозиметрия', 'MV photons — reference dosimetry'), file: 'photons', importData: importPhotons, status: photonsStatus, tab: 'dosimetry' },
   electrons: { title: () => L('Электроны — референсная дозиметрия', 'Electrons — reference dosimetry'), file: 'electrons', importData: importElectrons, status: electronsStatus, tab: 'dosimetry' },
@@ -47,7 +45,7 @@ const MODULES = {
 };
 const tabOf = (name) => MODULES[name]?.tab ?? name;
 /** Подраздел по умолчанию для вкладки в шапке (если с ней ещё не работали). */
-const GROUP_DEFAULT = { start: 'start', journal: 'session', dosimetry: 'photons', prep: 'jaffe', uncertainty: 'uncertainty' };
+const GROUP_DEFAULT = { start: 'start', journal: 'history', dosimetry: 'photons', prep: 'jaffe', uncertainty: 'uncertainty' };
 /** Журнал пуст (нет ни аппаратов, ни камер): работа с ним начинается с «Оборудования». */
 const journalEmpty = () => {
   const j = getJournal();
@@ -145,8 +143,12 @@ function switchTo(name) {
   showModule(name);
 }
 
+// подраздел «Сеанс» (до 0.23.0) убран: измерения записываются в журнал из вкладок дозиметрии
+const OLD_MODULES = { session: 'history' };
+
 function moduleFromHash() {
-  const h = location.hash.replace('#', '');
+  const raw = location.hash.replace('#', '');
+  const h = OLD_MODULES[raw] ?? raw;
   return MODULES[h] ? h : null;
 }
 
@@ -211,25 +213,14 @@ function initJournalBridges() {
   setPhotonsJournalSave((target, form, title) => saveToJournal({ kind: 'photon', ...target }, form, title));
   setElectronsJournalSave((target, form, title) => saveToJournal({ ...target, kind: 'electron' }, form, title));
   setCobaltJournalSave((target, form, title) => saveToJournal({ ...target, kind: 'cobalt' }, form, title));
-  setSessionBridge({
-    openInTab: (kind, form, title, section = '') => showInTab(kind, form, { mode: 'view', title }, section),
-    openEquipment: (beamId) => {
-      switchTo('equipment');
-      revealBeam(beamId);
-    },
-  });
   setHistoryBridge({
-    unsaved: () => sessionUnsaved(),
+    // записанный пучок — во вкладке дозиметрии со всеми поправками (просмотр)
+    openInTab: (kind, form, title) => showInTab(kind, form, { mode: 'view', title }),
     // оценка стабильности дозиметра по проверкам второй камерой — в бюджет неопределённости
     toBudget: (u, text) => {
       switchTo('uncertainty');
       applyStability(u, text);
       requestAnimationFrame(() => document.getElementById('unc-budget')?.scrollIntoView({ block: 'start' }));
-    },
-    openSession: (s) => {
-      switchTo('session');
-      loadSession(s);
-      toTop();
     },
   });
 }
@@ -362,7 +353,6 @@ function init() {
   initJaffe();
   initEdepth();
   initJournalStore();
-  initSession();
   initEquipment();
   initHistory();
   initJournalBridges();
@@ -375,9 +365,9 @@ function init() {
     { kind: 'electron', module: 'electrons', box: '#e-jlink', select: '#e_ch_model', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden },
   ]);
   initTabJournal([
-    { kind: 'cobalt', module: 'co60', bind: '#co-jbind', rec: '#co-jrec', read: cobaltCurrentForm, patch: applyCobaltPatch, status: cobaltStatus, demo: () => !$('#co-demo-flag').hidden },
-    { kind: 'photon', module: 'photons', bind: '#ph-jbind', rec: '#ph-jrec', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden },
-    { kind: 'electron', module: 'electrons', bind: '#e-jbind', rec: '#e-jrec', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden },
+    { kind: 'cobalt', module: 'co60', bind: '#co-jbind', rec: '#co-jrec', check: '#co-jcheck', read: cobaltCurrentForm, patch: applyCobaltPatch, status: cobaltStatus, demo: () => !$('#co-demo-flag').hidden },
+    { kind: 'photon', module: 'photons', bind: '#ph-jbind', rec: '#ph-jrec', check: '#ph-jcheck', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden },
+    { kind: 'electron', module: 'electrons', bind: '#e-jbind', rec: '#e-jrec', check: '#e-jcheck', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden },
   ]);
   setUncSources({ co60: cobaltUncSource, photons: photonsUncSource, electrons: electronsUncSource });
   initTransfer();

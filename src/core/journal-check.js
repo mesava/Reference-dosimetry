@@ -89,7 +89,7 @@ export function computeDosimeterCheck(j, session, check, work, { en = false } = 
     en,
   });
   const electrometerId = check.form ? check.summary?.electrometerId ?? check.electrometerId : check.electrometerId || work.electrometer?.id || '';
-  const input = { beamId: check.beamId, chamberId: check.chamberId, electrometerId, base, env_T: work.form[k.T], env_P: work.form[k.P], [k.M1]: check.M };
+  const input = { beamId: check.beamId, chamberId: check.chamberId, electrometerId, base, env_T: work.form[k.T], env_P: work.form[k.P], env_P_unit: work.form[k.PUnit], [k.M1]: check.M };
   const src = { kpol: 'measured', ks: 'measured' };
   let prev = null;
   if (measured) {
@@ -407,4 +407,15 @@ export function stabilityNote(pair, cc) {
     `Разброс отношения доз ${pair.workText} / ${pair.secondText} в пучке ${pair.beamName}: s = ${ru(cc.u, 2)} % по ${s.n} проверкам с ${fmtD(s.from)} по ${fmtD(s.to)} (журнал, «Контроль дозиметра», ${CHECK_REF}). Весь разброс отнесён к рабочему дозиметру — оценка сверху.`,
     `Scatter of the dose ratio ${pair.workText} / ${pair.secondText} in the ${pair.beamName} beam: s = ${ru(cc.u, 2)}% over ${s.n} checks from ${fmtD(s.from)} to ${fmtD(s.to)} (journal, Dosimeter check, ${CHECK_REF}). The whole scatter is attributed to the working dosimeter: an upper estimate.`,
   );
+}
+
+/**
+ * Проверки второй камерой пучка, измеренного во вкладке, — в запись журнала (сеанс): проверки этого пучка заменяются,
+ * проверки других пучков остаются. work — tabWork(…) по журналу с этой записью. Возвращает { journal, session, checks, skipped }.
+ */
+export function withTabChecks(j, session, beamId, checks, work, opts = {}) {
+  const fin = finalizeChecks(j, session, (checks ?? []).filter((c) => c.beamId === beamId), new Map([[beamId, work]]), opts);
+  const s = { ...session, checks: [...(session.checks ?? []).filter((c) => c.beamId !== beamId), ...fin.checks] };
+  const sessions = j.sessions.map((x) => (x.id === s.id ? s : x));
+  return { journal: { ...j, sessions }, session: s, checks: fin.checks, skipped: fin.skipped };
 }

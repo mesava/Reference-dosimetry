@@ -1,5 +1,5 @@
-// Проверка дозиметра второй камерой в браузере: раздел 3 сеанса (по умолчанию пуст), расчёт и сравнение с прежними
-// проверками, три системы, протокол, запись в журнал; «Контроль дозиметра» в «Журнале и трендах» и перенос оценки
+// Проверка дозиметра второй камерой в браузере: раздел «Проверка дозиметра второй камерой» вкладки «МВ фотоны» у пучка
+// журнала (по умолчанию пуст), расчёт и сравнение с прежними проверками, три системы, запись в журнал вместе с измерением; «Контроль дозиметра» в «Журнале и трендах» и перенос оценки
 // стабильности в бюджет неопределённости (строка с семейством бюджета, статус «консервативно»); английский интерфейс.
 // Журнал с историей проверок строится расчётным ядром (обезличенные данные).
 import { test, before, after } from 'node:test';
@@ -55,35 +55,47 @@ after(async () => {
   await server?.close();
 });
 
-test('проверка дозиметра: сеанс, три системы, запись, карта пары, перенос в бюджет, английский', async () => {
+test('проверка дозиметра: вкладка с пучком журнала, три системы, запись, карта пары, перенос в бюджет, английский', async () => {
   const { page, errors } = await openPage(browser);
-  await page.goto(`${server.url}/index.html#session`);
-  await page.waitForSelector('#js-file h2');
+  await page.goto(`${server.url}/index.html#history`);
+  await page.waitForSelector('#hs-file h2');
   await putOpenFile(page, 'j.json', JSON.stringify(journalWithChecks()));
-  await page.locator('#js-file [data-jf=open]').click();
+  await page.locator('#hs-file [data-jf=open]').click();
   await page.waitForTimeout(800);
-  await page.locator('#js_mode_check').check();
-  await page.fill('#js_date', '2026-10-12');
-  await page.fill('#js_T', '21,8');
-  await page.fill('#js_P', '1014,42');
-  await page.selectOption('#js_P_unit', 'hPa');
-  const cells = page.locator('.cells[data-series="jsb-b6-rd_M1"] input');
-  for (let i = 0; i < (await cells.count()); i++) await cells.nth(i).fill('18,36');
+
+  // вкладка «МВ фотоны»: проверка выхода пучка журнала 6 МВ
+  await page.goto(`${server.url}/index.html#photons`);
+  await page.waitForSelector('#messages li');
+  await page.locator('#rd_fixed').check();
   await page.waitForTimeout(300);
-  assert.equal(await page.locator('#js-checks .jsc').count(), 0, 'по умолчанию проверок нет');
+  await page.locator('#ph-jbind [data-jb=machine]').selectOption({ label: 'Аппарат' });
+  await page.waitForTimeout(300);
+  await page.locator('#ph-jbind [data-jb=beam]').selectOption({ label: '6 МВ' });
+  await page.waitForTimeout(500);
+  assert.equal(await page.inputValue('#ch_serial'), '1', 'рабочая камера — последняя, которой мерили аппарат');
+  await page.fill('#meta_date', '2026-10-12');
+  await page.fill('#env_T', '21,8');
+  await page.fill('#env_P', '1014,42');
+  await page.selectOption('#env_P_unit', 'hPa');
+  const cells = page.locator('.cells[data-series="rd_M1"] input');
+  for (let i = 0; i < (await cells.count()); i++) await cells.nth(i).fill('18,36');
+  await page.waitForTimeout(400);
+  const box = page.locator('#ph-jcheck');
+  assert.ok(await box.isVisible(), 'раздел проверки — у пучка журнала');
+  assert.equal(await box.locator('.jsc').count(), 0, 'по умолчанию проверок нет');
 
   // проверка 1: NE 2571 со своим электрометром, показания — как в истории
-  await page.locator('#js-btn-add-check').click();
+  await box.locator('[data-ck-add]').click();
   await page.waitForTimeout(300);
-  let ck = page.locator('#js-checks .jsc').first();
+  let ck = box.locator('.jsc').first();
   const opts = await ck.locator('[data-ck=chamberId] option').allInnerTexts();
   assert.ok(!opts.some((o) => /№ 1$/.test(o)), `рабочая камера не предлагается: ${opts}`);
   await ck.locator('[data-ck=chamberId]').selectOption({ label: opts.find((o) => /2571/.test(o)) });
   await page.waitForTimeout(300);
-  ck = page.locator('#js-checks .jsc').first();
+  ck = box.locator('.jsc').first();
   await ck.locator('[data-ck=electrometerId]').selectOption({ label: 'Dose1 № 6' });
   await page.waitForTimeout(300);
-  ck = page.locator('#js-checks .jsc').first();
+  ck = box.locator('.jsc').first();
   const v1 = c(((18.36 * 0.05389) / 0.04523).toFixed(3));
   const m = ck.locator('.cells[data-series$="-M"] input');
   for (let i = 0; i < (await m.count()); i++) await m.nth(i).fill(v1);
@@ -94,25 +106,24 @@ test('проверка дозиметра: сеанс, три системы, з
   assert.match(await ck.locator('[data-chip]').innerText(), /в пределах разброса/);
 
   // проверка 2: PTW 30013 № 2 со сдвигом 1 % — сдвиг только относительно неё
-  await page.locator('#js-btn-add-check').click();
+  await box.locator('[data-ck-add]').click();
   await page.waitForTimeout(300);
-  let ck2 = page.locator('#js-checks .jsc').nth(1);
+  let ck2 = box.locator('.jsc').nth(1);
   const opts2 = await ck2.locator('[data-ck=chamberId] option').allInnerTexts();
   await ck2.locator('[data-ck=chamberId]').selectOption({ label: opts2.find((o) => /№ 2$/.test(o)) });
   await page.waitForTimeout(300);
-  ck2 = page.locator('#js-checks .jsc').nth(1);
+  ck2 = box.locator('.jsc').nth(1);
   const v2 = c(((18.36 * 0.05389) / 0.05402 / 1.01).toFixed(3));
   const m2 = ck2.locator('.cells[data-series$="-M"] input');
   for (let i = 0; i < (await m2.count()); i++) await m2.nth(i).fill(v2);
   await page.waitForTimeout(400);
   assert.match(await ck2.locator('[data-chip]').innerText(), /сдвиг/);
-  assert.match(await page.locator('#js-messages').innerText(), /вероятнее, изменилась она/);
-  assert.match((await page.locator('#js-result').innerText()).toLowerCase(), /проверка дозиметра/);
+  assert.match(await box.locator('.jcheck-verdicts').innerText(), /вероятнее, изменилась она/);
 
-  // запись
-  await page.locator('#js-btn-record').click();
+  // запись: измерение и обе проверки
+  await page.locator('#ph-jrec [data-jr=record]').click();
   await page.waitForTimeout(500);
-  assert.match(await page.locator('#js-status').innerText(), /проверок дозиметра: 2/);
+  assert.match(await page.locator('#status').innerText(), /Проверок второй камерой: 2/);
 
   // «Журнал и тренды»: раздел 7, одна точка за 3σ, без ложных «8 подряд» у прежних точек
   await page.goto(`${server.url}/index.html#history`);

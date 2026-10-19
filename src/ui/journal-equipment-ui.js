@@ -1,7 +1,6 @@
 // «Журнал» → «Оборудование»: учреждение и подразделение, ускорители с пучками фотонов и электронов, аппараты ⁶⁰Co, электрометры,
-// камеры. Всё хранится в журнале. У пучка здесь — только название (и признак БВФ); камера и электрометр выбираются в сеансе,
-// остальные настройки пучка редактируются на вкладке дозиметрии («Настройки пучка — во вкладке…») и возвращаются в журнал
-// кнопкой «Сохранить в журнал».
+// камеры. Всё хранится в журнале. У пучка здесь — только название (и признак БВФ); мерят во вкладке дозиметрии (пучок
+// журнала выбирается в её разделе 1, tab-journal-ui.js), настройки пучка редактируются там же и возвращаются в журнал.
 import { L } from '../core/i18n.js';
 import { CHAMBERS, chamberNote, findChamber } from '../core/chambers.js';
 import { ELECTROMETERS, OTHER as EL_OTHER, parseElectrometer, electrometerName } from '../core/electrometers.js';
@@ -88,6 +87,12 @@ function chamberDims(f) {
   return parts.length ? L(`из базы: ${parts.join(', ')}`, `from the database: ${parts.join(', ')}`) : '';
 }
 
+/** Камера или электрометр есть в записях журнала (измерения и проверки второй камерой): такие не удаляются. */
+function usedInRecords(j, key, id) {
+  return (j.sessions || []).some((s) => (s.beams || []).some((b) => b[key] === id) || (s.checks || []).some((c) => c[key] === id || (key === 'chamberId' && c.summary?.workChamberId === id)));
+}
+const RECORDS_TITLE = () => L('Есть в записях журнала: записи ссылаются на эту запись оборудования (протокол, карты пар камер)', 'Used in journal records: they refer to this equipment entry (report, chamber pair charts)');
+
 function chamberCard(c, j = getJournal()) {
   const f = c.form || {};
   const k = 'chamber';
@@ -148,7 +153,7 @@ function chamberCard(c, j = getJournal()) {
       ${field(L('Полярность при калибровке', 'Calibration polarity'), select(k, c.id, 'calPol', c.calPol, [['', L('— не указана —', '— not given —')], ['+', L('положительная (+)', 'positive (+)')], ['-', L('отрицательная (−)', 'negative (−)')]]), { forId: fieldId(k, c.id, 'calPol') })}
       ${field(L('Примечания', 'Notes'), input(k, c.id, 'notes', c.notes), { forId: fieldId(k, c.id, 'notes'), cls: 'span-2' })}
     </div>
-    <div class="row-tools"><button type="button" class="link-btn danger" data-del="chamber:${esc(c.id)}">${esc(L('Удалить камеру', 'Delete chamber'))}</button></div>
+    <div class="row-tools"><button type="button" class="link-btn danger" data-del="chamber:${esc(c.id)}"${usedInRecords(j, 'chamberId', c.id) ? ` disabled title="${esc(RECORDS_TITLE())}"` : ''}>${esc(L('Удалить камеру', 'Delete chamber'))}</button></div>
   </div>`;
 }
 
@@ -179,14 +184,14 @@ function electrometerCard(e) {
       ${field(L('Действует до', 'Valid until'), input(k, e.id, 'dueDate', e.dueDate, { type: 'date' }), { forId: fieldId(k, e.id, 'dueDate') })}
       ${field(L('Примечания', 'Notes'), input(k, e.id, 'notes', e.notes), { forId: fieldId(k, e.id, 'notes') })}
     </div>
-    <div class="row-tools"><button type="button" class="link-btn danger" data-del="electrometer:${esc(e.id)}">${esc(L('Удалить электрометр', 'Delete electrometer'))}</button></div>
+    <div class="row-tools"><button type="button" class="link-btn danger" data-del="electrometer:${esc(e.id)}"${usedInRecords(getJournal(), 'electrometerId', e.id) ? ` disabled title="${esc(RECORDS_TITLE())}"` : ''}>${esc(L('Удалить электрометр', 'Delete electrometer'))}</button></div>
   </div>`;
 }
 
 // ------------------------------------------------------------ пучки
 // В «Оборудовании» у пучка — только то, что он есть на аппарате: название (у фотонов — признак БВФ) и участие в
-// сеансах. Камера и электрометр выбираются в сеансе (раздел 1), напряжения, МЕ и геометрия — в карточке пучка
-// сеанса; остальные настройки пучка (номинал, пересчёт на d_max, качество, способ k_Q…) — во вкладке дозиметрии.
+// измерениях. Камера, электрометр и настройки пучка (геометрия, напряжения, МЕ, номинал, пересчёт на d_max, способ k_Q…)
+// — во вкладке дозиметрии, где пучок журнала выбирается в разделе 1.
 const TAB_OF = { photon: () => L('«МВ фотоны»', 'MV photons'), electron: () => L('«Электроны»', 'Electrons'), cobalt: () => L('«⁶⁰Co»', '⁶⁰Co') };
 const BEAM_PLACEHOLDER = { photon: () => L('6 МВ', '6 MV'), electron: () => L('12 МэВ', '12 MeV'), cobalt: () => L('⁶⁰Co, РИП 80 см', '⁶⁰Co, SSD 80 cm') };
 
@@ -204,11 +209,11 @@ function beamCard(j, m, b) {
   return `<div class="jbeam jbeam-line${b.active === false ? ' off' : ''}" data-card="beam:${esc(id)}">
     <div class="grid">
       ${field(L('Пучок', 'Beam'), input(k, id, 'name', b.name, { placeholder: BEAM_PLACEHOLDER[kind]() }), { forId: fieldId(k, id, 'name'), sub })}
-      <div class="field">${kind === 'photon' ? check(k, id, 'form.meta_fff', f.meta_fff, L('без выравнивающего фильтра (БВФ)', 'flattening-filter-free (FFF)')) : ''}${check(k, id, 'active', b.active !== false, L('используется в сеансах', 'used in sessions'))}</div>
+      <div class="field">${kind === 'photon' ? check(k, id, 'form.meta_fff', f.meta_fff, L('без выравнивающего фильтра (БВФ)', 'flattening-filter-free (FFF)')) : ''}${check(k, id, 'active', b.active !== false, L('используется в измерениях', 'used in measurements'))}</div>
     </div>
     <div class="row-tools">
       <button type="button" class="link-btn" data-edit-tab="${esc(m.id)}:${esc(id)}">${esc(L(`Настройки пучка — во вкладке ${TAB_OF[kind]()}`, `Beam settings: in the ${TAB_OF[kind]()} tab`))}</button>
-      <button type="button" class="link-btn danger" data-del="beam:${esc(m.id)}:${esc(id)}"${used ? ` disabled title="${esc(L('Пучок есть в сеансах журнала: снимите «используется в сеансах», чтобы убрать его из новых сеансов', 'The beam is in journal sessions: clear "used in sessions" to exclude it from new sessions'))}"` : ''}>${esc(L('Удалить пучок', 'Delete beam'))}</button>
+      <button type="button" class="link-btn danger" data-del="beam:${esc(m.id)}:${esc(id)}"${used ? ` disabled title="${esc(L('Пучок есть в записях журнала: снимите «используется в измерениях», чтобы убрать его из списка пучков вкладок', 'The beam is in journal records: clear "used in measurements" to remove it from the beam list of the tabs'))}"` : ''}>${esc(L('Удалить пучок', 'Delete beam'))}</button>
     </div>
   </div>`;
 }
@@ -250,7 +255,7 @@ function machineCard(j, m) {
     </div>` : ''}
     ${cobalt ? '' : coSection}
     <div class="row-tools">
-      <button type="button" class="link-btn danger" data-del="machine:${esc(m.id)}"${hasSessions ? ` disabled title="${esc(L('У аппарата есть сеансы в журнале', 'The machine has sessions in the journal'))}"` : ''}>${esc(L('Удалить аппарат', 'Delete machine'))}</button>
+      <button type="button" class="link-btn danger" data-del="machine:${esc(m.id)}"${hasSessions ? ` disabled title="${esc(L('У аппарата есть записи в журнале', 'The machine has records in the journal'))}"` : ''}>${esc(L('Удалить аппарат', 'Delete machine'))}</button>
     </div>
   </div>`;
 }
@@ -309,7 +314,7 @@ function renderReadout() {
   const wMachines = countWord(j.machines.length, [L('аппарат', 'machine'), L('аппарата', 'machines'), L('аппаратов', 'machines')], ['machine', 'machines']);
   const wBeams = countWord(beams, [L('пучок', 'beam'), L('пучка', 'beams'), L('пучков', 'beams')], ['beam', 'beams']);
   $('#eq-result').innerHTML = `<div class="dose-row"><div class="dose-big">${j.machines.length}<small>${esc(wMachines)} · ${beams} ${esc(wBeams)}</small></div>
-    <div class="secondary">${esc(L(`камер: ${j.chambers.length}; электрометров: ${j.electrometers.length}; сеансов в журнале: ${j.sessions.length}`, `chambers: ${j.chambers.length}; electrometers: ${j.electrometers.length}; sessions in the journal: ${j.sessions.length}`))}</div></div>`;
+    <div class="secondary">${esc(L(`камер: ${j.chambers.length}; электрометров: ${j.electrometers.length}; записей в журнале: ${j.sessions.length}`, `chambers: ${j.chambers.length}; electrometers: ${j.electrometers.length}; records in the journal: ${j.sessions.length}`))}</div></div>`;
   const msgs = [];
   for (const d of due) {
     msgs.push(`<li class="${d.status === 'overdue' ? 'warn' : 'info'}"><span class="lvl">${esc(d.status === 'overdue' ? L('Срок калибровки прошёл', 'Calibration overdue') : L('Срок калибровки подходит', 'Calibration due soon'))}</span><span>${esc(`${d.text}: ${d.status === 'overdue' ? L(`до ${fmtDate(d.dueDate)}`, `until ${fmtDate(d.dueDate)}`) : L(`до ${fmtDate(d.dueDate)}, осталось ${d.days} дн.`, `until ${fmtDate(d.dueDate)}, ${d.days} days left`)}`)}</span></li>`);
@@ -444,13 +449,17 @@ function remove(what) {
   const j0 = getJournal();
   if (kind === 'chamber' || kind === 'electrometer') {
     const key = kind === 'chamber' ? 'chamberId' : 'electrometerId';
-    const users = j0.machines.flatMap((m) => m.beams.filter((x) => x[key] === a).map((x) => `${m.name} — ${x.name}`));
-    if (users.length) {
-      setStatus(L(`Не удалено: ${kind === 'chamber' ? 'камера' : 'электрометр'} выбран у пучков: ${users.join('; ')}. Сначала выберите там другой.`, `Not deleted: the ${kind} is assigned to beams: ${users.join('; ')}. Choose another one there first.`));
+    if (usedInRecords(j0, key, a)) {
+      setStatus(L(`Не удалено: ${kind === 'chamber' ? 'камера есть' : 'электрометр есть'} в записях журнала.`, `Not deleted: the ${kind} is used in journal records.`));
       return;
     }
   }
   updateJournal((j) => {
+    // прежняя привязка к пучку (журналы до 0.21.0) — только подсказка «чем мерили», при удалении снимается
+    if (kind === 'chamber' || kind === 'electrometer') {
+      const key = kind === 'chamber' ? 'chamberId' : 'electrometerId';
+      for (const m of j.machines) for (const x of m.beams) if (x[key] === a) x[key] = '';
+    }
     if (kind === 'chamber') j.chambers = j.chambers.filter((x) => x.id !== a);
     else if (kind === 'electrometer') {
       j.electrometers = j.electrometers.filter((x) => x.id !== a);

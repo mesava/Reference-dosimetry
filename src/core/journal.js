@@ -554,7 +554,7 @@ export function beamForm(j, session, machine, beam, input = {}, { en = false } =
   const env = session.env || {};
   f[k.T] = isBlank(input.env_T) ? env.T ?? '' : input.env_T;
   f[k.P] = isBlank(input.env_P) ? env.P ?? '' : input.env_P;
-  f[k.PUnit] = env.P_unit || 'kPa';
+  f[k.PUnit] = (isBlank(input.env_P) ? env.P_unit : input.env_P_unit || env.P_unit) || 'kPa';
   f[k.H] = env.H ?? '';
   f[k.M1] = input[k.M1] ?? ['', '', ''];
   f[k.ctrl] = input[k.ctrl] ?? ['', '', ''];
@@ -1308,7 +1308,7 @@ export function tabBeamPatch(j, machineId, beamId, tab = {}, equip = null) {
 }
 
 /** Запись журнала (сеанс) для измерения вкладки: тот же аппарат, дата, режим и протокол; null — такой ещё нет. */
-function tabSessionOf(j, { machineId, form, kind = 'photon' }) {
+export function tabSessionOf(j, { machineId, form, kind = 'photon' }) {
   const k = kindOf(kind).k;
   const date = String(form?.[k.date] || '');
   const mode = fixedOf(form, kind) ? 'check' : 'cal';
@@ -1369,4 +1369,19 @@ export function recordTabBeam(j, { machineId, beamId, form, kind = 'photon' }) {
     saved: new Date().toISOString(),
   };
   return { journal: upsertSession(j, session), session, replaced: !!old, chamberFound: !!t.chamber, electrometerFound: !!t.electrometer };
+}
+
+/**
+ * Расчёт вкладки как рабочей камеры пучка журнала — для проверки дозиметра второй камерой (core/journal-check.js):
+ * { kind, form, result, summary, beam, machine, chamber, electrometer } (камера и электрометр — записи журнала,
+ * найденные по модели и №; null, если их там нет).
+ */
+export function tabWork(j, beamId, form, kind = 'photon') {
+  const found = beamOf(j, beamId);
+  if (!found) return null;
+  const K = kindOf(kind);
+  const f = K.normalize({ ...K.defaults, ...form });
+  const result = K.compute(f);
+  const t = tabEquipment(j, f, kind);
+  return { kind, form: f, result, summary: beamSummary(result, kind), beam: found.beam, machine: found.machine, chamber: t.chamber, electrometer: t.electrometer };
 }
