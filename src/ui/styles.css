@@ -155,6 +155,8 @@ a { color: var(--accent); }
 .protocol-switch { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .protocol-switch[hidden] { display: none; }
 .protocol-switch > span { font: 500 12px var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.segmented .ref-tag { display: inline-block; margin-left: 4px; padding: 0 6px; border: 1px solid currentColor; border-radius: 999px; font: 500 11px var(--font-body); vertical-align: 1px; white-space: nowrap; }
+.protocol-note { margin: 0; padding: 2px 8px; border-left: 3px solid var(--warn); background: var(--warn-soft); color: var(--warn); font-size: 12px; }
 .segmented {
   display: inline-flex;
   border: 1px solid var(--field-border);
