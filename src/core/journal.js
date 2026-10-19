@@ -106,6 +106,8 @@ const CO_EL_COMMON = [['el_model', 'co_el_model'], ['el_serial', 'co_el_serial']
 export function chamberUses(j, chamberId) {
   const u = { photon: false, electron: false, cobalt: false };
   for (const m of j.machines) for (const b of m.beams) if (b.chamberId === chamberId && b.active !== false) u[beamKind(b)] = true;
+  // камера выбирается в сеансе: где ею мерили — по записанным сеансам
+  for (const s of j.sessions || []) for (const b of s.beams || []) if (b.chamberId === chamberId) u[beamKind(b)] = true;
   return u;
 }
 /** Камеру можно взять для фотонов: она есть в базе вкладки «МВ фотоны» или своя. */
@@ -516,6 +518,16 @@ export function recordedBase(form, kind = 'photon') {
  * ним, а не по сегодняшнему оборудованию, иначе после смены N_D,w камеры старый сеанс тихо показал бы другую дозу.
  * В режиме проверки k_pol и k_s берутся из последней калибровки этого пучка (до даты сеанса); каждое можно задать вручную.
  */
+/**
+ * Условия измерения пучка, которые задаются в сеансе (карточка пучка сеанса): напряжения, полярность, МЕ (у ⁶⁰Co — время),
+ * геометрия. Пусто — из настроек пучка в «Оборудовании» (вкладка дозиметрии).
+ */
+export const SESSION_BEAM_KEYS = {
+  photon: ['setup_geometry', 'rd_V1', 'rd_V2', 'rd_polarity', 'rd_mu'],
+  electron: ['e_ssd', 'e_V1', 'e_V2', 'e_polarity', 'e_mu'],
+  cobalt: ['co_V1', 'co_V2', 'co_polarity', 'co_time'],
+};
+
 export function beamForm(j, session, machine, beam, input = {}, { en = false } = {}) {
   const kind = beamKind(beam);
   const K = kindOf(kind);
@@ -528,6 +540,7 @@ export function beamForm(j, session, machine, beam, input = {}, { en = false } =
     : kind === 'photon'
       ? withChamberLength({ ...K.defaults, ...pick(beam.form, K.beamKeys), ...K.chamberForm(ch?.form || {}), ...K.electrometerForm(el?.form || {}) }, ch)
       : { ...K.defaults, ...pick(beam.form, K.beamKeys), ...K.chamberForm(ch?.form || {}), ...K.electrometerForm(el?.form || {}) };
+  for (const key of SESSION_BEAM_KEYS[kind]) if (!isBlank(input[key])) f[key] = input[key];
   f.protocol = session.protocol === 'tg51' ? 'tg51' : 'trs';
   f[k.institution] = orgText(j);
   const machineText = [machine.name, machine.serial ? `${L('№', 'S/N')} ${machine.serial}` : ''].filter(Boolean).join(', ');
@@ -737,6 +750,37 @@ export function beamSummary(r, kind = 'photon') {
   };
 }
 export const photonSummary = (r) => beamSummary(r, 'photon');
+
+/**
+ * Камера и электрометр сеанса по умолчанию для пучков данного вида на аппарате: те, которыми мерили в последнем записанном
+ * сеансе этого аппарата; иначе — выбранные раньше у пучков (журналы до 0.21.0); иначе — первая подходящая камера и первый
+ * электрометр. Возвращает { chamberId, electrometerId } (пустые строки, если выбрать не из чего).
+ */
+export function sessionEquipDefaults(j, machineId, kind) {
+  const can = { photon: photonCapable, electron: electronCapable, cobalt: cobaltCapable }[kind] ?? photonCapable;
+  const okCh = (id) => !!id && j.chambers.some((c) => c.id === id && can(c.form));
+  const okEl = (id) => !!id && j.electrometers.some((e) => e.id === id);
+  let chamberId = '';
+  let electrometerId = '';
+  const sessions = (j.sessions || []).filter((s) => s.machineId === machineId).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  for (const s of sessions) {
+    for (const b of s.beams || []) {
+      if (beamKind(b) !== kind) continue;
+      if (!chamberId && okCh(b.chamberId)) chamberId = b.chamberId;
+      if (!electrometerId && okEl(b.electrometerId)) electrometerId = b.electrometerId;
+    }
+    if (chamberId && electrometerId) break;
+  }
+  const m = machineOf(j, machineId);
+  for (const b of m?.beams || []) {
+    if (beamKind(b) !== kind) continue;
+    if (!chamberId && okCh(b.chamberId)) chamberId = b.chamberId;
+    if (!electrometerId && okEl(b.electrometerId)) electrometerId = b.electrometerId;
+  }
+  if (!chamberId) chamberId = j.chambers.find((c) => can(c.form))?.id ?? '';
+  if (!electrometerId) electrometerId = j.electrometers[0]?.id ?? '';
+  return { chamberId, electrometerId };
+}
 
 /** Расчёт пучка в сеансе. */
 export function computeSessionBeam(j, session, beamInput, opts = {}) {

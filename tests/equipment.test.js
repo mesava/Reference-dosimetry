@@ -1,7 +1,7 @@
 // Оборудование журнала: подразделение, список электрометров, длина полости камеры, сведения о калибровке камеры.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeJournal, newJournal, orgText, certText, calibrationChecks, withChamberLength, beamForm, computeSessionBeam, applyTabFormToBeam, SESSION_DEFAULTS } from '../src/core/journal.js';
+import { normalizeJournal, newJournal, orgText, certText, calibrationChecks, withChamberLength, beamForm, computeSessionBeam, applyTabFormToBeam, SESSION_DEFAULTS, sessionEquipDefaults } from '../src/core/journal.js';
 import { parseElectrometer, ELECTROMETERS, electrometerName } from '../src/core/electrometers.js';
 
 const base = () => {
@@ -75,4 +75,36 @@ test('Длина полости из записи камеры — в k_vol пу
   // «Сохранить в журнал» из вкладки: длина камеры не становится своей длиной пучка
   const res = applyTabFormToBeam(j, 'm1', 'b1', { ...form, meta_beam: '6 МВ' }, 'photon');
   assert.equal(res.journal.machines[0].beams[0].form.prof_length, '');
+});
+
+test('Сеанс: камера и электрометр по умолчанию — из последнего сеанса аппарата, иначе прежний выбор у пучка, иначе первые', () => {
+  const j = base();
+  // журнал до 0.21.0: камера и электрометр выбраны у пучка
+  assert.deepEqual(sessionEquipDefaults(j, 'm1', 'photon'), { chamberId: 'c1', electrometerId: 'e1' });
+  // без выбора у пучка — первая подходящая камера и первый электрометр
+  j.machines[0].beams[0].chamberId = '';
+  j.machines[0].beams[0].electrometerId = '';
+  assert.deepEqual(sessionEquipDefaults(j, 'm1', 'photon'), { chamberId: 'c1', electrometerId: 'e1' });
+  // записанный сеанс с электрометром e2 — он и по умолчанию
+  j.sessions = [{ id: 's0', machineId: 'm1', date: '2026-10-01', beams: [{ beamId: 'b1', kind: 'photon', chamberId: 'c1', electrometerId: 'e2' }] }];
+  assert.equal(sessionEquipDefaults(j, 'm1', 'photon').electrometerId, 'e2');
+  // для электронов фотонная камера из базы электронов тоже годится; для другого аппарата сеанс не учитывается
+  assert.equal(sessionEquipDefaults(j, 'mX', 'photon').electrometerId, 'e1');
+});
+
+test('Сеанс: напряжения, полярность, МЕ и геометрия пучка из сеанса поверх настроек пучка', () => {
+  const j = base();
+  const s = { ...SESSION_DEFAULTS, date: '2026-10-19', machineId: 'm1' };
+  const b = j.machines[0].beams[0];
+  const plain = beamForm(j, s, j.machines[0], b).form;
+  assert.equal(plain.rd_V1, '300');
+  assert.equal(plain.setup_geometry, 'SSD');
+  const over = beamForm(j, s, j.machines[0], b, { rd_V1: '400', rd_polarity: '-', rd_mu: '200', setup_geometry: 'SAD', chamberId: 'c1', electrometerId: 'e2' }).form;
+  assert.equal(over.rd_V1, '400');
+  assert.equal(over.rd_polarity, '-');
+  assert.equal(over.rd_mu, '200');
+  assert.equal(over.setup_geometry, 'SAD');
+  assert.equal(over.el_model, 'IBA Dose 1', 'электрометр — выбранный в сеансе');
+  // пустое значение в сеансе — из настроек пучка
+  assert.equal(beamForm(j, s, j.machines[0], b, { rd_V1: '' }).form.rd_V1, '300');
 });

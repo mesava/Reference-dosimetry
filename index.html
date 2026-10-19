@@ -2678,7 +2678,7 @@
 
     <section class="step" aria-labelledby="js-s1">
       <header><span class="step-no">1</span><h2 id="js-s1">Аппарат и условия</h2>
-        <p class="hint">Протокол — общий переключатель в шапке. Температура и давление — общие для сеанса; у пучка их можно задать отдельно.</p></header>
+        <p class="hint">Протокол — общий переключатель в шапке. Камера, электрометр, температура и давление — общие для сеанса; напряжения, МЕ и геометрию можно поправить у каждого пучка.</p></header>
       <div class="grid">
         <div class="field span-2"><label for="js_machine">Аппарат</label><select id="js_machine"></select></div>
         <div class="field"><label for="js_date">Дата</label><input type="date" id="js_date"></div>
@@ -2690,6 +2690,8 @@
           <label><input type="radio" name="js_mode" id="js_mode_check" value="check"><span>Проверка выхода</span></label>
         </div>
       </div>
+      <h3 class="sub-h">Камера и электрометр</h3>
+      <div id="js-equip" class="grid" data-i18n-skip></div>
       <div class="grid">
         <div class="field"><label for="js_T">Температура воды, °C</label><input type="text" id="js_T" class="num" inputmode="decimal"></div>
         <div class="field"><label for="js_P">Давление</label><input type="text" id="js_P" class="num" inputmode="decimal"></div>
@@ -2774,7 +2776,7 @@
 
     <section class="step" aria-labelledby="eq-s2">
       <header><span class="step-no">2</span><h2 id="eq-s2">Аппараты и пучки</h2>
-        <p class="hint">У пучка — камера и электрометр по умолчанию, напряжения, МЕ, номинальный выход с допуском и последнее качество пучка (для проверки выхода до первой калибровки в журнале). У пучка ⁶⁰Co вместо МЕ — время облучения и способ определения ошибки таймера, вместо номинала — мощность дозы для сравнения: последняя калибровка в журнале с поправкой на распад или значение из настроек пучка. Остальные настройки — кнопкой «Все настройки» во вкладке дозиметрии.</p></header>
+        <p class="hint">Пучки, которые есть на аппарате: название (у фотонов — признак БВФ). Камера и электрометр выбираются в сеансе, напряжения, МЕ и геометрия — там же у пучка. Номинальный выход, пересчёт на d<sub>max</sub>, качество пучка, способ k<sub>Q</sub>, у ⁶⁰Co — источник и ошибка таймера задаются кнопкой «Настройки пучка — во вкладке…».</p></header>
       <div id="eq-machines" class="jcards" data-i18n-skip></div>
       <div class="row-tools"><button type="button" class="link-btn" id="eq-add-machine"><span aria-hidden="true">+</span> Добавить ускоритель</button><button type="button" class="link-btn" id="eq-add-cobalt"><span aria-hidden="true">+</span> Добавить аппарат ⁶⁰Co</button></div>
     </section>

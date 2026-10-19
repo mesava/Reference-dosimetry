@@ -14,8 +14,8 @@ const hasValues = (cells) => (cells || []).some((v) => !isBlank(v));
 const capable = (kind) => ({ electron: electronCapable, cobalt: cobaltCapable })[kind] ?? photonCapable;
 const lvlName = () => ({ error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') });
 
-/** Рабочая камера пучка в сеансе: записанная в открытом сеансе или из «Оборудования». */
-const workChamberId = (b, d) => (d?.base ? d.chamberId || '' : b.chamberId || '');
+/** Рабочая камера пучка в сеансе: выбранная в сеансе (раздел 1) или записанная в открытом сеансе. */
+const workChamberId = (b, d) => d?.chamberId || (d?.base ? '' : b.chamberId || '');
 /** Камеры журнала, которые годятся второй камерой для пучка: того же вида и не рабочая. */
 export const secondChambers = (j, b, d) => j.chambers.filter((c) => c.id !== workChamberId(b, d) && capable(beamKind(b))(c.form));
 
@@ -46,7 +46,7 @@ export function checksHtml(j, beams, draftBeams, checks, { tg }) {
       const chOpts = chamberList.length || recordedText
         ? opts(chamberList.map((x) => ({ id: x.id, text: chamberText(x) })), c.chamberId, recordedText ? `<option value="${esc(c.chamberId)}" selected>${esc(recordedText)}</option>` : '')
         : `<option value="">${esc(L('— нет другой камеры —', '— no other chamber —'))}</option>`;
-      const workEl = d?.base ? null : j.electrometers.find((e) => e.id === b?.electrometerId);
+      const workEl = d?.base ? null : j.electrometers.find((e) => e.id === (d?.electrometerId || b?.electrometerId));
       const sameText = L(`как у рабочей${workEl ? `: ${electrometerText(workEl)}` : ''}`, `as the working one${workEl ? `: ${electrometerText(workEl)}` : ''}`);
       const elOpts = opts(j.electrometers.map((e) => ({ id: e.id, text: electrometerText(e) })), c.electrometerId, `<option value=""${c.electrometerId ? '' : ' selected'}>${esc(sameText)}</option>`);
       const [kp, kx] = tg ? ['P<sub>pol</sub>', 'P<sub>ion</sub>'] : ['k<sub>pol</sub>', 'k<sub>s</sub>'];

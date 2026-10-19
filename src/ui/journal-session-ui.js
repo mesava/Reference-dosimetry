@@ -7,7 +7,11 @@ import { PRESSURE_UNITS, unitLabel, isBlank, parseNumber } from '../core/units.j
 import {
   computeSessionBeam, finalizeSession, upsertSession, chamberText, certText, electrometerText, machineOf, equipmentDue, recordedBase, SESSION_DEFAULTS, uid,
   beamKeys, beamKind, chamberFormFromElectrons, elFormFromElectrons, chamberFormFromCobalt, elFormFromCobalt,
+  sessionEquipDefaults, photonCapable, electronCapable, cobaltCapable,
 } from '../core/journal.js';
+import { FORM_DEFAULTS } from '../core/photons.js';
+import { E_DEFAULTS } from '../core/electrons.js';
+import { CO_DEFAULTS } from '../core/cobalt.js';
 import { $, $$, esc, fmt, fmtSigned, today, makeStatus, copyText, currentProtocol, applyProtocol, notifyUpdate, richText, armButton, renderSignBlock, printToPdf, versionText } from './common.js';
 import { localizeDecimals } from './i18n.js';
 import { renderCells, readCells, setupCells, renderStaff, readStaff, makeCombo, renderPairs, readPairs, setupPairs } from './widgets.js';
@@ -28,7 +32,7 @@ export const setSessionBridge = (b) => (bridge = { ...bridge, ...b });
  * У пучка открытого из журнала сеанса есть base — настройки пучка, камеры и электрометра, записанные в сеансе:
  * сеанс считается по ним, пока не нажата «Пересчитать по текущему «Оборудованию»». dirty — есть правки после записи.
  */
-let draft = { id: '', machineId: '', date: '', mode: 'cal', staff: [''], notes: '', env: { T: '', P: '', P_unit: 'kPa', H: '' }, beams: {}, checks: [], dirty: false };
+let draft = { id: '', machineId: '', date: '', mode: 'cal', staff: [''], notes: '', env: { T: '', P: '', P_unit: 'kPa', H: '' }, equip: {}, beams: {}, checks: [], dirty: false };
 let computed = []; // [{ beam, calc }] по пучкам формы
 let checkComp = { items: [], verdicts: [] }; // проверки дозиметра второй камерой (journal-check-ui.js)
 /** Число из профиля или общего поля — с десятичным разделителем текущего языка (для подсказок в полях). */
@@ -44,7 +48,7 @@ function saveDraft() {
 function loadDraft() {
   try {
     const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
-    if (d && typeof d === 'object') draft = { ...draft, ...d, env: { ...draft.env, ...(d.env || {}) }, beams: d.beams || {}, checks: Array.isArray(d.checks) ? d.checks : [] };
+    if (d && typeof d === 'object') draft = { ...draft, ...d, env: { ...draft.env, ...(d.env || {}) }, equip: d.equip && typeof d.equip === 'object' ? d.equip : {}, beams: d.beams || {}, checks: Array.isArray(d.checks) ? d.checks : [] };
   } catch {
     /* повреждённый черновик */
   }
@@ -72,7 +76,64 @@ const q51Field = (f) => {
 const blank3 = () => ['', '', ''];
 const hasValues = (cells) => (cells || []).some((v) => !isBlank(v));
 
+// ------------------------------------------------------------ камера и электрометр сеанса
+// Камера и электрометр выбираются в сеансе (раздел 1), а не у пучка: своя камера для пучков каждого вида (фотоны,
+// электроны, ⁶⁰Co) и один электрометр. По умолчанию — те, которыми мерили этот аппарат в последнем записанном сеансе.
+const CAPABLE = { photon: photonCapable, electron: electronCapable, cobalt: cobaltCapable };
+const DEFAULTS = { photon: FORM_DEFAULTS, electron: E_DEFAULTS, cobalt: CO_DEFAULTS };
+const KIND_NAME = { photon: () => L('для фотонов', 'for photons'), electron: () => L('для электронов', 'for electrons'), cobalt: () => L('для ⁶⁰Co', 'for ⁶⁰Co') };
+/** Камера и электрометр сеанса для пучков данного вида: выбранные в разделе 1 или по умолчанию. */
+function sessionEquip(j, kind) {
+  const def = sessionEquipDefaults(j, draft.machineId, kind);
+  const e = draft.equip || {};
+  const chamberId = e[kind] && j.chambers.some((c) => c.id === e[kind] && CAPABLE[kind](c.form)) ? e[kind] : def.chamberId;
+  const elFirst = KIND_ORDER.map((k) => sessionEquipDefaults(j, draft.machineId, k).electrometerId).find(Boolean) || def.electrometerId;
+  const electrometerId = e.el && j.electrometers.some((x) => x.id === e.el) ? e.el : elFirst;
+  return { chamberId, electrometerId };
+}
+/** Списки камер (по видам пучков аппарата) и электрометра в разделе 1. */
+function renderEquip() {
+  const box = $('#js-equip');
+  if (!box) return;
+  const j = getJournal();
+  const m = machineOf(j, draft.machineId);
+  const kinds = KIND_ORDER.filter((k) => activeBeams(m).some((b) => beamKind(b) === k));
+  if (!m || !kinds.length) {
+    box.innerHTML = `<p class="sub-hint span-2">${esc(L('Выберите аппарат с пучками.', 'Select a machine with beams.'))}</p>`;
+    return;
+  }
+  const opts = (list, cur, text, empty) => [`<option value=""${cur ? '' : ' selected'}>${esc(empty)}</option>`, ...list.map((x) => `<option value="${esc(x.id)}"${x.id === cur ? ' selected' : ''}>${esc(text(x))}</option>`)].join('');
+  const chField = (kind) => {
+    const list = j.chambers.filter((c) => CAPABLE[kind](c.form));
+    const cur = sessionEquip(j, kind).chamberId;
+    const label = kinds.length > 1 ? L(`Камера ${KIND_NAME[kind]()}`, `Chamber ${KIND_NAME[kind]()}`) : L('Камера', 'Chamber');
+    return `<div class="field"><label for="js_eq_${kind}">${esc(label)}</label><select id="js_eq_${kind}" data-eq="${kind}">${opts(list, cur, (c) => chamberText(c) || L('камера без названия', 'unnamed chamber'), list.length ? L('— камера —', '— chamber —') : L('нет подходящих камер', 'no suitable chambers'))}</select>${list.length ? '' : `<span class="sub">${esc(L('добавьте камеру в «Оборудовании» → «Камеры»', 'add a chamber in Equipment → Chambers'))}</span>`}</div>`;
+  };
+  const elCur = sessionEquip(j, kinds[0]).electrometerId;
+  box.innerHTML = kinds.map(chField).join('') +
+    `<div class="field"><label for="js_eq_el">${esc(L('Электрометр', 'Electrometer'))}</label><select id="js_eq_el" data-eq="el">${opts(j.electrometers, elCur, (e) => electrometerText(e) || L('электрометр без названия', 'unnamed electrometer'), j.electrometers.length ? L('— электрометр —', '— electrometer —') : L('нет электрометров', 'no electrometers'))}</select>${j.electrometers.length ? '' : `<span class="sub">${esc(L('добавьте электрометр в «Оборудовании» → «Электрометры»', 'add an electrometer in Equipment → Electrometers'))}</span>`}</div>`;
+}
+
 // ------------------------------------------------------------ разметка пучка
+/** Условия измерения пучка в сеансе: геометрия, напряжения, полярность, МЕ (у ⁶⁰Co — время); по умолчанию — из настроек пучка. */
+function setupFields(id, kind, f, d, mode) {
+  const v = (key) => esc(d[key] ?? f[key] ?? '');
+  const num = (key, label, cls = '') => `<div class="field ${cls}"><label for="jsb-${id}-${key}">${label}</label><input type="text" id="jsb-${id}-${key}" data-sb="${key}" class="num" inputmode="decimal" value="${v(key)}"></div>`;
+  const sel = (key, label, options) => {
+    const cur = d[key] ?? f[key] ?? '';
+    return `<div class="field"><label for="jsb-${id}-${key}">${label}</label><select id="jsb-${id}-${key}" data-sb="${key}">${options.map(([o, t]) => `<option value="${esc(o)}"${o === cur ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
+  };
+  const pol = (key) => sel(key, L('Полярность', 'Polarity'), [['+', L('положительная (+)', 'positive (+)')], ['-', L('отрицательная (−)', 'negative (−)')]]);
+  const geom = [['SSD', L('РИП 100 см, камера на 10 см', 'SSD 100 cm, chamber at 10 cm')], ['SAD', L('РИО 100 см, камера на 10 см', 'SAD 100 cm, chamber at 10 cm')]];
+  if ((d.setup_geometry ?? f.setup_geometry) === 'manual') geom.push(['manual', L('своя (задана во вкладке «МВ фотоны»)', 'custom (set in the MV photons tab)')]);
+  const fields = {
+    photon: [sel('setup_geometry', L('Установка', 'Setup'), geom), num('rd_V1', L('V₁ рабочее, В', 'V₁ operating, V')), mode === 'cal' ? num('rd_V2', L('V₂ пониженное, В', 'V₂ reduced, V')) : '', pol('rd_polarity'), num('rd_mu', L('МЕ за облучение', 'MU per irradiation'))],
+    electron: [num('e_ssd', L('РИП, см', 'SSD, cm')), num('e_V1', L('V₁ рабочее, В', 'V₁ operating, V')), mode === 'cal' ? num('e_V2', L('V₂ пониженное, В', 'V₂ reduced, V')) : '', pol('e_polarity'), num('e_mu', L('МЕ за облучение', 'MU per irradiation'))],
+    cobalt: [num('co_V1', L('V₁ рабочее, В', 'V₁ operating, V')), mode === 'cal' ? num('co_V2', L('V₂ пониженное, В', 'V₂ reduced, V')) : '', pol('co_polarity'), num('co_time', L(`Время облучения, ${timeUnit(f)}`, `Irradiation time, ${timeUnit(f)}`))],
+  }[kind];
+  return `<div class="grid three jsb-setup">${fields.join('')}</div>`;
+}
+
 function beamCard(j, m, b, mode) {
   const d = draft.beams[b.id] || {};
   const id = b.id;
@@ -83,12 +144,12 @@ function beamCard(j, m, b, mode) {
   const cobalt = kind === 'cobalt';
   const chFrom = { electron: chamberFormFromElectrons, cobalt: chamberFormFromCobalt }[kind] ?? ((x) => x);
   const elFrom = { electron: elFormFromElectrons, cobalt: elFormFromCobalt }[kind] ?? ((x) => x);
-  const ch = d.base ? { form: chFrom(d.base) } : j.chambers.find((c) => c.id === b.chamberId);
-  const el = d.base ? { form: elFrom(d.base) } : j.electrometers.find((e) => e.id === b.electrometerId);
-  const f = d.base || b.form || {};
+  const eq = sessionEquip(j, kind);
+  const ch = d.base ? { form: chFrom(d.base) } : j.chambers.find((c) => c.id === eq.chamberId);
+  const el = d.base ? { form: elFrom(d.base) } : j.electrometers.find((e) => e.id === eq.electrometerId);
+  const f = { ...DEFAULTS[kind], ...(d.base || b.form || {}) };
   const noChamber = !d.base && !ch;
-  const amount = cobalt ? (!isBlank(f.co_time) ? `t = ${locNum(f.co_time)} ${timeUnit(f)}` : '') : !isBlank(f[k.mu]) ? `${locNum(f[k.mu])} ${L('МЕ', 'MU')}` : '';
-  const info = [chamberText(ch) || L('камера не выбрана', 'no chamber selected'), electrometerText(el) || L('электрометр не выбран', 'no electrometer selected'), !isBlank(f[k.V1]) ? `V₁ ${locNum(f[k.V1])} ${L('В', 'V')}` : '', amount].filter(Boolean).join(' · ');
+  const info = [chamberText(ch) || L('камера не выбрана', 'no chamber selected'), electrometerText(el) || L('электрометр не выбран', 'no electrometer selected')].join(' · ');
   const [kp, kx] = tg51() ? ['P<sub>pol</sub>', 'P<sub>ion</sub>'] : ['k<sub>pol</sub>', 'k<sub>s</sub>'];
   const inp = (key, label, { ph = '', sub = '', cls = '' } = {}) =>
     `<div class="field ${cls}"><label for="jsb-${id}-${key}">${label}</label><input type="text" id="jsb-${id}-${key}" data-sb="${key}" class="num" inputmode="decimal" value="${esc(d[key] ?? '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}>${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;
@@ -136,8 +197,9 @@ function beamCard(j, m, b, mode) {
   return `<div class="jcard jsb${d.include === false ? ' off' : ''}" data-beam="${esc(id)}" data-kind="${kind}">
     <div class="jcard-head"><label class="check"><input type="checkbox" data-sb="include"${d.include === false ? '' : ' checked'}> <b>${esc(b.name || '—')}</b></label><span class="chip jsb-chip" data-chip></span></div>
     <p class="jsb-info">${richText(info)}</p>
-    ${noChamber ? `<p class="jsb-warn">${esc(L('У пучка не выбрана камера: выберите её в «Оборудовании».', 'The beam has no chamber selected: choose one in Equipment.'))} <button type="button" class="link-btn" data-goto-eq="${esc(id)}">${esc(L('Открыть пучок в «Оборудовании»', 'Open the beam in Equipment'))}</button></p>` : ''}
+    ${noChamber ? `<p class="jsb-warn">${esc(L('Камера не выбрана: выберите её в разделе 1 «Аппарат и условия» (камеры заводятся в «Оборудовании»).', 'No chamber selected: choose one in section 1, Machine and conditions (chambers are added in Equipment).'))}</p>` : ''}
     <div class="jsb-body">
+      ${setupFields(id, kind, f, d, mode)}
       <div class="grid three">
         ${inp('env_T', L('Температура воды, °C', 'Water temperature, °C'), { ph: locNum(draft.env.T), sub: L('пусто — общая', 'blank — common') })}
         ${inp('env_P', L('Давление', 'Pressure'), { ph: locNum(draft.env.P), sub: L('пусто — общее', 'blank — common') })}
@@ -175,6 +237,7 @@ function beamCard(j, m, b, mode) {
 
 // ------------------------------------------------------------ форма ↔ черновик
 function renderBeams() {
+  renderEquip();
   const j = getJournal();
   const m = machineOf(j, draft.machineId);
   const box = $('#js-beams');
@@ -251,6 +314,9 @@ function readDraft() {
   draft.staff = readStaff($('#js-staff-list'));
   draft.env = { T: $('#js_T').value, P: $('#js_P').value, P_unit: $('#js_P_unit').value, H: $('#js_H').value };
   draft.notes = $('#js_notes').value;
+  draft.equip = { ...(draft.equip || {}) };
+  for (const sel of $$('#js-equip [data-eq]')) draft.equip[sel.dataset.eq] = sel.value;
+  const j = getJournal();
   for (const card of $$('#js-beams .jsb')) {
     const id = card.dataset.beam;
     const d = { ...(draft.beams[id] || {}) };
@@ -262,6 +328,8 @@ function readDraft() {
     }
     const pairs = card.querySelector(`.pairs[data-a="jsb-${id}-co_tt"]`);
     if (pairs) [d[PAIRS[0]], d[PAIRS[1]]] = Object.values(readPairs(pairs));
+    // камера и электрометр сеанса (у открытого из журнала сеанса — записанные в нём)
+    if (!d.base) Object.assign(d, sessionEquip(j, card.dataset.kind));
     draft.beams[id] = d;
   }
   draft.checks = readChecks($('#js-checks'), draft.checks || []);
@@ -281,7 +349,11 @@ function sessionObject() {
     staff: draft.staff,
     notes: draft.notes,
     env: { ...draft.env },
-    beams: activeBeams(m).map((b) => ({ beamId: b.id, include: draft.beams[b.id]?.include !== false, ...(draft.beams[b.id] || {}) })),
+    beams: activeBeams(m).map((b) => {
+      const d = draft.beams[b.id] || {};
+      // камера и электрометр — выбранные в сеансе; у пучка открытого из журнала сеанса — записанные в нём
+      return { beamId: b.id, include: d.include !== false, ...d, ...(d.base ? {} : sessionEquip(j, beamKind(b))) };
+    }),
   };
 }
 
@@ -578,6 +650,11 @@ export function loadSession(s) {
     ),
     // проверки дозиметра — с записанной формой второй камеры
     checks: (s.checks || []).map((c) => ({ ...c, M: [...(c.M || [])], Mopp: [...(c.Mopp || [])], M2: [...(c.M2 || [])] })),
+    // камера и электрометр сеанса — которыми мерили (для пересчёта по текущему «Оборудованию»)
+    equip: Object.fromEntries([
+      ...KIND_ORDER.map((k) => [k, s.beams.find((b) => beamKind(b) === k && b.chamberId)?.chamberId ?? '']),
+      ['el', s.beams.find((b) => b.electrometerId)?.electrometerId ?? ''],
+    ]),
     dirty: false,
   };
   // протокол — тот, по которому сеанс записан
@@ -681,11 +758,22 @@ export function initSession() {
     onEdit();
   });
   sheet.addEventListener('change', (e) => {
+    // камера или электрометр сеанса: подписи и расчёт всех пучков
+    if (e.target.closest('#js-equip')) {
+      readDraft();
+      draft.dirty = true;
+      saveDraft();
+      renderBeams();
+      renderResults();
+      return;
+    }
     if (e.target.id === 'js_machine' || e.target.name === 'js_mode') {
       // другой аппарат или режим — это новый сеанс: записанный остаётся в журнале как есть
       const wasRecorded = !!draft.id;
       const clean = wasRecorded && !draft.dirty;
       readDraft();
+      // камера и электрометр другого аппарата — по умолчанию для него
+      if (e.target.id === 'js_machine') draft.equip = {};
       if (wasRecorded) {
         draft.id = '';
         // показания записанного сеанса не переносятся в новый, иначе его легко записать второй раз

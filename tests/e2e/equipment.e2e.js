@@ -29,13 +29,16 @@ test('оборудование: подразделение, производит
 
   await page.fill('#eq_institution', 'ООО Пример');
   await page.fill('#eq_department', 'Отделение лучевой терапии');
-  // аппарат и пучок раньше камер и электрометров: выбранные позже, они достаются пучку сами
+  // аппарат и пучок раньше камер и электрометров; у пучка в «Оборудовании» — только название
   await page.click('#eq-add-machine');
   await pause();
   await page.locator('[data-card^="machine:"] input[data-bind$="|name"]').fill('Versa HD');
   await page.locator('[data-add-beam]').click();
   await pause();
   await page.locator('[data-card^="beam:"] input[data-bind$="|name"]').fill('6 МВ');
+  const beamCard = page.locator('[data-card^="beam:"]');
+  assert.equal(await beamCard.locator('select').count(), 0, 'у пучка нет выбора камеры и электрометра');
+  assert.equal(await beamCard.locator('input[data-bind$="|form.rd_V1"]').count(), 0, 'у пучка нет напряжений');
 
   // электрометры: производитель → модель; «Другой» — своё название
   await page.click('#eq-add-electrometer');
@@ -75,16 +78,30 @@ test('оборудование: подразделение, производит
   await ch.locator('select[data-bind$="|calPol"]').selectOption('-');
   await pause();
 
-  // пучку достались камера и первый электрометр; замечания о калибровке видны и у свёрнутого пучка
-  const beam = page.locator('details[data-card^="beam:"]');
-  assert.match(await beam.locator('summary').innerText(), /PTW 30013 № 739475/);
-  assert.match(await beam.locator('summary').innerText(), /калибровка камеры: см\. замечание/);
-  const notes = await beam.locator('.jbeam-cal').textContent();
-  assert.match(notes, /калибровалась с электрометром Самодельный ЭМ-1, а выбран PTW UNIDOS Tango/);
-  assert.match(notes, /V₁ = 300 В отличается от напряжения калибровки камеры 400 В/);
-  assert.match(notes, /Полярность измерения \(\+\) не та/);
-  // сводка оборудования аппарата
-  assert.match(await page.locator('.jmachine-eq').innerText(), /PTW 30013 № 739475: 6 МВ/);
+  // сеанс: камера и электрометр выбираются в разделе 1, напряжения и МЕ — у пучка; замечания о калибровке камеры
+  await page.goto(`${server.url}/index.html#session`);
+  await page.waitForSelector('#js-equip select');
+  assert.match(await page.locator('#js_eq_photon option:checked').innerText(), /PTW 30013 № 739475/);
+  await page.selectOption('#js_eq_el', { label: 'PTW UNIDOS Tango' });
+  await page.waitForTimeout(400);
+  const sb = page.locator('#js-beams .jsb').first();
+  assert.match(await sb.locator('.jsb-info').innerText(), /PTW 30013 № 739475 · PTW UNIDOS Tango/);
+  assert.equal(await sb.locator('[data-sb="rd_V1"]').inputValue(), '300');
+  await sb.locator('.cells[data-series$="rd_M1"] input').first().fill('10');
+  await page.waitForTimeout(500);
+  const msgs = await sb.locator('.jsb-msgs').textContent();
+  assert.match(msgs, /калибровалась с электрометром Самодельный ЭМ-1, а выбран PTW UNIDOS Tango/);
+  assert.match(msgs, /V₁ = 300 В отличается от напряжения калибровки камеры 400 В/);
+  // V₁ = 400 В и отрицательная полярность у пучка в сеансе — замечаний о напряжении и полярности нет
+  await sb.locator('[data-sb="rd_V1"]').fill('400');
+  await sb.locator('[data-sb="rd_polarity"]').selectOption('-');
+  await page.waitForTimeout(500);
+  const msgs2 = await sb.locator('.jsb-msgs').textContent();
+  assert.doesNotMatch(msgs2, /отличается от напряжения калибровки|Полярность измерения/);
+  // выбран электрометр калибровки — замечания об электрометре нет
+  await page.selectOption('#js_eq_el', { label: 'Самодельный ЭМ-1' });
+  await page.waitForTimeout(500);
+  assert.doesNotMatch((await page.locator('#js-beams .jsb').first().locator('.jsb-msgs').textContent()) ?? '', /калибровалась с электрометром/);
 
   // вкладка «МВ фотоны»: камеры отделения в начале списка камер; выбор подставляет запись журнала
   await page.goto(`${server.url}/index.html#photons`);

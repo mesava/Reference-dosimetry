@@ -1033,15 +1033,14 @@ textarea.curve-data { min-height: 200px; height: 220px; font: 12.5px/1.45 var(--
 /* ------------------------------------------------------------ журнал: оборудование, сеанс, тренды */
 .jcards { display: grid; gap: 12px; }
 .jcard { border: 1px solid var(--rule); border-radius: var(--radius); padding: 12px 14px; display: grid; gap: 10px; min-width: 0; background: var(--sheet); }
-.jbeam-cal:empty { display: none; }
-.jbeam-cal { margin: 6px 0; }
-.jmachine-eq { list-style: none; margin: 4px 0 6px; padding: 6px 10px; border-radius: 6px; background: var(--calc); font-size: 12.5px; line-height: 1.5; }
-.jmachine-eq b { font-weight: 600; }
 .jcard-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
 .jcard-head b { font: 600 14px var(--font-display); }
 .jcard .sub-h { margin: 6px 0 0; }
 .jcard-head .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .jbeams { display: grid; gap: 8px; }
+.jbeam-line { padding: 10px 12px; }
+#js-equip { margin-bottom: 10px; }
+.jbeam-line.off { opacity: 0.65; }
 /* узкий экран: длинные отметки («не заполнено: …», «калибровка камеры: …») переносятся, а не растягивают карточку */
 .jcard .chip, .jbeam .chip { white-space: normal; max-width: 100%; overflow-wrap: anywhere; border-radius: 10px; }
 .jcards > *, .jbeams > *, .jcard > * { min-width: 0; }
