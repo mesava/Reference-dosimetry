@@ -388,6 +388,17 @@ details.more[open] summary { margin-bottom: 10px; }
 .compliance ul { margin: 4px 0 0; padding-left: 18px; }
 .compliance.ok { color: #7ee0a8; }
 .compliance.nonstd { color: var(--amber); }
+.compliance-unk { margin-top: 4px; }
+.compliance-list { margin-top: 4px; }
+.compliance-list summary { cursor: pointer; opacity: 0.85; }
+.compliance-list ul { list-style: none; padding-left: 4px; }
+.compliance-list li { color: var(--display-dim); }
+.compliance-list .cond-mark { display: inline-block; width: 1.2em; font-weight: 700; }
+.compliance-list .cond-met .cond-mark { color: #7ee0a8; }
+.compliance-list .cond-notmet { color: var(--amber); }
+.compliance-list .cond-unknown .cond-mark { color: var(--amber); }
+.compliance-list .cond-na { opacity: 0.6; }
+.compliance-list .cond-ref { opacity: 0.7; font-size: 11.5px; }
 .chip {
   display: inline-block;
   font: 500 12px var(--font-mono);
@@ -504,6 +515,7 @@ footer.page-foot .page-foot-legal { margin-top: 4px; font-size: 12px; }
   .demo-flag { color: #000; }
   .file-note { color: #000 !important; }
   .compliance { color: #000 !important; background: none; border-left-color: #777; }
+  .compliance-list li, .compliance-list .cond-mark { color: #000 !important; }
   /* компактная раскладка: меньше пустого места и страниц */
   /* сетка мешает разрывам страниц внутри разделов — в печати блоки идут потоком */
   .sheet, .readout { display: block; }

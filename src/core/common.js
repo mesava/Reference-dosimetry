@@ -28,24 +28,6 @@ export function readTolerance(raw, { add, parseNumber, isBlank, field, expected 
 }
 
 /**
- * Соответствие референсным условиям выбранного протокола.
- * standard — отступлений не найдено; nonstandard — доза посчитана, но есть отступления от условий протокола
- * (результат нельзя считать референсной дозиметрией по нему); invalid — итог не вычислен.
- * Причины — краткие тексты из замечаний с признаком nonstd (общие и выбранного протокола).
- */
-export function complianceOf(messages, scope, hasResult) {
-  if (!hasResult) return { status: 'invalid', reasons: [] };
-  const seen = new Set();
-  const reasons = [];
-  for (const m of messages) {
-    if (!m.nonstd || (m.scope !== 'common' && m.scope !== scope) || seen.has(m.nonstd)) continue;
-    seen.add(m.nonstd);
-    reasons.push({ text: m.nonstd, ref: m.ref });
-  }
-  return { status: reasons.length ? 'nonstandard' : 'standard', reasons };
-}
-
-/**
  * Источник коэффициента, введённого вручную (k_Q из свидетельства лаборатории и т. п.): подпись «… — источник» для
  * таблицы поправок и протокола; если источник не указан — справка у поля источника. add — функция замечаний модуля
  * (level, scope, text, ref, field).

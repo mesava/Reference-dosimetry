@@ -4,11 +4,12 @@
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec, parseBeamName } from './units.js';
 import { L } from './i18n.js';
-import { temperaturePressure, polarity, environmentChecks, outputPlausibility, readTolerance, complianceOf, manualSource } from './common.js';
+import { temperaturePressure, polarity, environmentChecks, outputPlausibility, readTolerance, manualSource } from './common.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
 import { findChamber, chamberLabel, noteText } from './chambers.js';
 import { parseProfile, kvolFromProfile } from './profile.js';
+import { PHOTON_CONDITIONS, evaluateConditions, complianceFromConditions } from './conditions.js';
 
 export const FORM_DEFAULTS = {
   protocol: 'trs', // 'trs' | 'tg51'
@@ -240,9 +241,9 @@ export function computePhotons(form) {
   const flag = (key, level) => {
     if (!flags[key] || rank[level] > rank[flags[key]]) flags[key] = level;
   };
-  // nonstd — краткая причина, если замечание означает отступление от референсных условий протокола
-  const add = (level, scope, text, ref = null, field = null, nonstd = null) => {
-    messages.push(nonstd ? { level, scope, text, ref, nonstd } : { level, scope, text, ref });
+  // отступления от референсных условий протокола определяются не замечаниями, а перечнем условий (conditions.js)
+  const add = (level, scope, text, ref = null, field = null) => {
+    messages.push({ level, scope, text, ref });
     if (field) [].concat(field).forEach((k) => flag(k, level));
   };
   /** Параметры поправки на рекомбинацию по глубине для показателя качества; null — поправка не вносится. */
@@ -313,7 +314,6 @@ export function computePhotons(form) {
         ),
         `${REF.trs}, табл. 14–15; ${REF.tg51}, разд. IX.A`,
         'setup_ssd',
-        wantTRS ? L(`РИП ${ru(geo.ssd, geo.ssd % 1 ? 1 : 0)} см вместо 100 см`, `SSD ${ru(geo.ssd, geo.ssd % 1 ? 1 : 0)} cm instead of 100 cm`) : null,
       );
     }
     if (!Number.isFinite(geo.field)) read('setup_field', L('Размер поля', 'Field size'));
@@ -329,7 +329,6 @@ export function computePhotons(form) {
         ),
         `${REF.trs}, табл. 15; ${REF.tg51}, разд. IX.A`,
         'setup_field',
-        L(`поле ${ru(geo.field, geo.field % 1 ? 1 : 0)} × ${ru(geo.field, geo.field % 1 ? 1 : 0)} см вместо 10 × 10 см`, `${ru(geo.field, geo.field % 1 ? 1 : 0)} × ${ru(geo.field, geo.field % 1 ? 1 : 0)} cm field instead of 10 × 10 cm`),
       );
     }
     if (!Number.isFinite(geo.depth)) read('setup_depth', L('Глубина камеры', 'Chamber depth'));
@@ -345,7 +344,6 @@ export function computePhotons(form) {
         ),
         `${REF.trs}, табл. 15; ${REF.tg51}, разд. IX.A`,
         'setup_depth',
-        L(`глубина ${ru(geo.depth, geo.depth % 1 ? 1 : 0)} см вместо 10 см`, `depth ${ru(geo.depth, geo.depth % 1 ? 1 : 0)} cm instead of 10 cm`),
       );
     }
   }
@@ -521,7 +519,6 @@ export function computePhotons(form) {
       ),
       `${REF.add}, табл. III; ${REF.trs}, табл. 3`,
       'rd_kleak',
-      L('утечка больше 0,1 %: камера не отвечает критерию эталонного класса', 'leakage above 0.1%: the chamber does not meet the reference-class criterion'),
     );
   }
 
@@ -542,7 +539,6 @@ export function computePhotons(form) {
         ),
         `${REF.trs}, табл. 3; ${REF.add}, табл. III`,
         'kpol',
-        L(`k_pol = ${ru(kpolRaw, 4)}: эффект полярности больше 0,4 % (критерий эталонного класса)`, `k_pol = ${ru(kpolRaw, 4)}: polarity effect above 0.4% (reference-class criterion)`),
       );
     }
     if (Math.abs(kpolRaw - 1) > 0.003 && Number.isFinite(energy) && energy <= 6 && f.lab_pol_applied && want51) {
@@ -694,7 +690,7 @@ export function computePhotons(form) {
     }
     trs.tpr = tpr;
     if (fff && Number.isFinite(energy) && energy > 10) {
-      add('warn', 'trs', L('TRS-398 Rev.1 распространяется на пучки БВФ только до ~10 МВ.', 'TRS-398 Rev.1 covers FFF beams only up to ~10 MV.'), `${REF.trs}, разд. 6.1`, null, L(`пучок БВФ ${ru(energy, energy % 1 ? 1 : 0)} МВ: выше ~10 МВ`, `${ru(energy, energy % 1 ? 1 : 0)} MV FFF beam: above ~10 MV`));
+      add('warn', 'trs', L('TRS-398 Rev.1 распространяется на пучки БВФ только до ~10 МВ.', 'TRS-398 Rev.1 covers FFF beams only up to ~10 MV.'), `${REF.trs}, разд. 6.1`);
     } else if (fff && !Number.isFinite(energy)) {
       add(
         'warn',
@@ -816,7 +812,6 @@ export function computePhotons(form) {
             ),
             `${REF.trs}, разд. 6.5`,
             'kQtrs',
-            L(`k_Q по камере-аналогу ${an}: в TRS-398 Rev.1 нет данных для этой камеры`, `k_Q from the analogue chamber ${an}: TRS-398 Rev.1 has no data for this chamber`),
           );
         }
       }
@@ -833,7 +828,6 @@ export function computePhotons(form) {
             `${noteText(n)} ${L('Для пучков с выравнивающим фильтром TRS-398 Rev.1 её не предусматривает: для них нужна камера эталонного класса.', 'TRS-398 Rev.1 does not provide for it in beams with a flattening filter: a reference-class chamber is needed for them.')}`,
             `${REF.trs}, табл. 4, 16`,
             'ch_model',
-            L(`${chamberLabel(chamber)} в пучке с выравнивающим фильтром: камера включена в протокол только для БВФ`, `${chamberLabel(chamber)} in a beam with a flattening filter: the chamber is included in the protocol for FFF beams only`),
           );
         } else add(n.level, 'trs', noteText(n));
       }
@@ -952,7 +946,6 @@ export function computePhotons(form) {
         ),
         `${REF.add}, разд. 4.K(3); ${REF.r374}, разд. 3.3`,
         'q51_method',
-        L('%dd(10) пучка БВФ без свинцовой фольги', '%dd(10) of an FFF beam without the lead foil'),
       );
     } else if (f.q51_method === 'interim' && !q.error) {
       add(
@@ -1400,7 +1393,24 @@ export function computePhotons(form) {
   // соответствие референсным условиям выбранного протокола
   const activeKey = wantTRS ? 'trs' : 'tg51';
   const shown = actual(wantTRS ? trs : tg, activeKey);
-  const compliance = complianceOf(messages, activeKey, Number.isFinite(shown.DperMU));
+  const conditions = evaluateConditions(
+    PHOTON_CONDITIONS,
+    {
+      geometry: geo,
+      fff,
+      energy,
+      chamber,
+      chamberLabel: chamber ? chamberLabel(chamber) : '',
+      analogLabel: chamber?.analog ? chamberLabel(chamber.analog) : '',
+      kQMode: f.kqtrs_mode,
+      q51Method: f.q51_method,
+      kleak,
+      kpolRaw: fixed ? NaN : kpolRaw,
+      kpolFixed: !!fixed,
+    },
+    activeKey,
+  );
+  const compliance = complianceFromConditions(conditions, Number.isFinite(shown.DperMU));
 
   // что изменила поправка на рекомбинацию по глубине: k_Q и доза на опорной глубине без неё
   if (trs.recDepth || tg.recDepth) {

@@ -92,6 +92,33 @@ test('«Выход вне допуска: проверка и подстройк
   assert.deepEqual(errors, []);
 });
 
+test('условия протокола под итогом: перечень с состояниями, своя геометрия — нестандартные условия; по-английски', async () => {
+  const { page, errors } = await openPage(browser);
+  await page.goto(`${server.url}/index.html#photons`);
+  await page.waitForSelector('#messages li');
+  const box = page.locator('#compliance');
+  assert.match(await box.innerText(), /отступлений от условий TRS-398 Rev\.1 не найдено/);
+  const summary = box.locator('details.compliance-list summary');
+  assert.match(await summary.innerText(), /Условия протокола: проверено (\d+) из \1/);
+  await summary.click();
+  assert.match(await box.locator('.compliance-list').innerText(), /поле 10 × 10 см/);
+  // своя геометрия: расчёт идёт, причины — в перечне
+  await page.selectOption('#setup_geometry', 'manual');
+  await page.fill('#setup_ssd', '90');
+  await page.fill('#setup_field', '15');
+  await page.waitForTimeout(400);
+  assert.match(await box.innerText(), /Нестандартные условия/);
+  assert.match(await box.innerText(), /РИП 90 см вместо 100 см/);
+  assert.match(await box.innerText(), /поле 15 × 15 см вместо 10 × 10 см/);
+  assert.ok((await box.locator('li.cond-notmet').count()) >= 2);
+  await page.locator('#lang_en').check();
+  await page.waitForTimeout(500);
+  const en = (await box.innerText()).split('\n').filter((l) => CYR.test(l));
+  assert.deepEqual(en, []);
+  assert.match(await box.innerText(), /Protocol conditions: \d+ of \d+ checked/);
+  assert.deepEqual(errors, []);
+});
+
 test('бюджет неопределённости: доза на z_ref по умолчанию, на d_max — с u пересчёта или с предупреждением', async () => {
   const { page, errors } = await openPage(browser);
   await page.goto(`${server.url}/index.html#uncertainty`);

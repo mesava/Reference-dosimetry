@@ -1,5 +1,5 @@
 // Общие вспомогательные функции интерфейса.
-import { L, getLang } from '../core/i18n.js';
+import { L, getLang, refText } from '../core/i18n.js';
 import { APP_VERSION, APP_DATE } from '../core/version.js';
 
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -246,34 +246,81 @@ export const ctrlErrorText = (ctrlSec, mainSec) =>
     `The check measurements (section ${ctrlSec}) contain errors — the result is not shown until they are corrected. The corrections from section ${mainSec} have been calculated.`,
   );
 
+const STATE_MARK = { met: '✓', notmet: '✗', unknown: '?', na: '—' };
+const stateText = (st) =>
+  ({
+    met: L('выполнено', 'met'),
+    notmet: L('отступление', 'deviation'),
+    unknown: L('не проверено', 'not checked'),
+    na: L('не относится', 'not applicable'),
+  })[st];
+
+/** «проверено условий: 6 из 7» — сколько условий протокола удалось проверить (без неприменимых). */
+function checkedCount(c) {
+  const all = (c.conditions || []).filter((x) => x.state !== 'na');
+  const done = all.filter((x) => x.state !== 'unknown');
+  return { done: done.length, total: all.length };
+}
+
 /**
- * Блок «соответствие протоколу» под итоговой дозой: нет отступлений / нестандартные условия со списком причин.
- * Если итога нет (ошибки), блок скрыт.
+ * Блок «соответствие протоколу» под итоговой дозой: нет отступлений / нестандартные условия со списком причин;
+ * непроверенные условия; раскрываемый перечень всех условий протокола с состоянием каждого. Если итога нет, блок скрыт.
  */
 export function renderCompliance(el, compliance, protoName) {
   if (!el) return;
   const c = compliance || { status: 'invalid', reasons: [] };
   el.hidden = c.status === 'invalid';
   if (el.hidden) return;
+  const unchecked = c.unchecked || [];
+  const { done, total } = checkedCount(c);
+  let html;
   if (c.status === 'standard') {
     el.className = 'compliance ok';
-    el.innerHTML = `<b>${L('Референсные условия', 'Reference conditions')}</b>: ${esc(L(`отступлений от условий ${protoName} не найдено.`, `no deviations from the ${protoName} conditions were found.`))}`;
+    html = `<b>${L('Референсные условия', 'Reference conditions')}</b>: ${esc(L(`отступлений от условий ${protoName} не найдено.`, `no deviations from the ${protoName} conditions were found.`))}`;
   } else {
     el.className = 'compliance nonstd';
-    el.innerHTML =
+    html =
       `<b>${L('Нестандартные условия', 'Non-standard conditions')}</b>: ${esc(L(`результат нельзя считать референсной дозиметрией по ${protoName}.`, `the result cannot be regarded as reference dosimetry per ${protoName}.`))}` +
-      `<ul>${c.reasons.map((r) => `<li>${esc(r.text)}</li>`).join('')}</ul>`;
+      `<ul>${c.reasons.map((r) => `<li>${richText(r.text)}</li>`).join('')}</ul>`;
   }
+  if (unchecked.length) {
+    html += `<div class="compliance-unk"><b>${L('Не проверено', 'Not checked')}</b>: ${richText(unchecked.map((r) => r.text).join('; '))}.</div>`;
+  }
+  if (total) {
+    const rows = c.conditions
+      .map(
+        (x) =>
+          `<li class="cond-${x.state}"><span class="cond-mark" title="${esc(stateText(x.state))}">${STATE_MARK[x.state]}</span> ${richText(x.label)}` +
+          (x.state === 'notmet' || x.state === 'unknown' ? ` — ${richText(x.reason)}` : '') +
+          (x.ref ? ` <span class="cond-ref">(${esc(refText(x.ref))})</span>` : '') +
+          `</li>`,
+      )
+      .join('');
+    html +=
+      `<details class="compliance-list"><summary>${esc(L(`Условия протокола: проверено ${done} из ${total}`, `Protocol conditions: ${done} of ${total} checked`))}</summary>` +
+      `<ul>${rows}</ul></details>`;
+  }
+  el.innerHTML = html;
 }
 
 /** Строка протокола (текст и PDF) о соответствии референсным условиям. */
 export function complianceLine(compliance, protoName) {
   const c = compliance || { status: 'invalid', reasons: [] };
   if (c.status === 'invalid') return null;
-  if (c.status === 'standard') return L(`Референсные условия: отступлений от условий ${protoName} не найдено`, `Reference conditions: no deviations from the ${protoName} conditions were found`);
-  return L(
-    `НЕСТАНДАРТНЫЕ УСЛОВИЯ — результат нельзя считать референсной дозиметрией по ${protoName}: ${c.reasons.map((r) => r.text).join('; ')}`,
-    `NON-STANDARD CONDITIONS — the result cannot be regarded as reference dosimetry per ${protoName}: ${c.reasons.map((r) => r.text).join('; ')}`,
+  const unchecked = c.unchecked || [];
+  const { done, total } = checkedCount(c);
+  const count = total ? L(` (проверено условий: ${done} из ${total})`, ` (conditions checked: ${done} of ${total})`) : '';
+  const unk = unchecked.length ? L(`; не проверено: ${unchecked.map((r) => r.text).join('; ')}`, `; not checked: ${unchecked.map((r) => r.text).join('; ')}`) : '';
+  if (c.status === 'standard') {
+    return L(`Референсные условия: отступлений от условий ${protoName} не найдено`, `Reference conditions: no deviations from the ${protoName} conditions were found`) + count + unk;
+  }
+  return (
+    L(
+      `НЕСТАНДАРТНЫЕ УСЛОВИЯ — результат нельзя считать референсной дозиметрией по ${protoName}: ${c.reasons.map((r) => r.text).join('; ')}`,
+      `NON-STANDARD CONDITIONS — the result cannot be regarded as reference dosimetry per ${protoName}: ${c.reasons.map((r) => r.text).join('; ')}`,
+    ) +
+    count +
+    unk
   );
 }
 
