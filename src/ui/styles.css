@@ -1040,6 +1040,12 @@ textarea.curve-data { min-height: 200px; height: 220px; font: 12.5px/1.45 var(--
 .jbeams { display: grid; gap: 8px; }
 .jbeam-line { padding: 10px 12px; }
 #js-equip { margin-bottom: 10px; }
+.jbind { margin: 0 0 12px; padding: 10px 12px; border: 1px dashed var(--rule); border-radius: var(--radius); }
+.jbind-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.jbind-row select { flex: 1 1 160px; min-width: 0; }
+.jbind .jlink-st { margin: 6px 0 0; }
+.jrec p { margin: 0 0 6px; }
+.jrec button:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
 .jbeam-line.off { opacity: 0.65; }
 /* узкий экран: длинные отметки («не заполнено: …», «калибровка камеры: …») переносятся, а не растягивают карточку */
 .jcard .chip, .jbeam .chip { white-space: normal; max-width: 100%; overflow-wrap: anywhere; border-radius: 10px; }

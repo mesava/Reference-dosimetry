@@ -17,6 +17,7 @@ import { initStart, renderStart } from './start-ui.js';
 import { initPwa } from './pwa.js';
 import { initSecLinks, revealSection } from './sec-links.js';
 import { initTabEquipment } from './tab-equipment-ui.js';
+import { initTabJournal } from './tab-journal-ui.js';
 import { initSession, sessionStatus, setSessionBridge, loadSession, sessionUnsaved } from './journal-session-ui.js';
 import { initEquipment, equipmentStatus, setEquipmentBridge, saveBeamFromTab, revealBeam, renderMyChambersTool } from './journal-equipment-ui.js';
 import { initHistory, historyStatus, setHistoryBridge } from './journal-history-ui.js';
@@ -372,6 +373,11 @@ function init() {
     { kind: 'cobalt', module: 'co60', box: '#co-jlink', select: '#co_ch_model', read: cobaltCurrentForm, patch: applyCobaltPatch, status: cobaltStatus, demo: () => !$('#co-demo-flag').hidden },
     { kind: 'photon', module: 'photons', box: '#ph-jlink', select: '#ch_model', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden },
     { kind: 'electron', module: 'electrons', box: '#e-jlink', select: '#e_ch_model', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden },
+  ]);
+  initTabJournal([
+    { kind: 'cobalt', module: 'co60', bind: '#co-jbind', rec: '#co-jrec', read: cobaltCurrentForm, patch: applyCobaltPatch, status: cobaltStatus, demo: () => !$('#co-demo-flag').hidden },
+    { kind: 'photon', module: 'photons', bind: '#ph-jbind', rec: '#ph-jrec', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden },
+    { kind: 'electron', module: 'electrons', bind: '#e-jbind', rec: '#e-jrec', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden },
   ]);
   setUncSources({ co60: cobaltUncSource, photons: photonsUncSource, electrons: electronsUncSource });
   initTransfer();

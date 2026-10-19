@@ -1261,3 +1261,112 @@ export function myChambersToJournal(j, mine) {
   }
   return { journal, added };
 }
+
+// ---------------------------------------------------------------- измерение во вкладке дозиметрии → журнал
+// Пучок журнала выбирается во вкладке «⁶⁰Co», «МВ фотоны» или «Электроны»: настройки пучка, камера и электрометр
+// подставляются во вкладку, измерение идёт со всеми поправками, а результат кнопкой «Записать в журнал» попадает в
+// журнал. Пучки одного аппарата за один день в одном режиме (калибровка или проверка выхода) и по одному протоколу —
+// одна запись (сеанс), как и раньше: тренды, контрольная карта и последняя калибровка читаются из неё.
+
+const SESSION_KEYS = { photon: PH_SESSION_KEYS, electron: E_SESSION_KEYS, cobalt: CO_SESSION_KEYS };
+const fixedOf = (form, kind) => !!form?.[kindOf(kind).k.fixed];
+
+/**
+ * Поля пучка журнала для вкладки: настройки пучка, камера и электрометр сеанса (по умолчанию — которыми мерили этот
+ * аппарат последний раз), учреждение, аппарат и пучок. В режиме проверки выхода (во вкладке включена «Проверка выхода»)
+ * — k_pol, k_s (у ⁶⁰Co и τ) и качество пучка из последней калибровки пучка в журнале; при калибровке качество пучка
+ * очищается: его измеряют. Показания, условия, дата и сотрудники вкладки не меняются.
+ * equip — { chamberId, electrometerId } (по умолчанию — sessionEquipDefaults). Возвращает { patch, last, kind } или null.
+ */
+export function tabBeamPatch(j, machineId, beamId, tab = {}, equip = null) {
+  const found = beamOf(j, beamId);
+  const machine = machineOf(j, machineId) || found?.machine;
+  if (!found || !machine) return null;
+  const kind = beamKind(found.beam);
+  const K = kindOf(kind);
+  const k = K.k;
+  const check = fixedOf(tab, kind);
+  const eq = equip || sessionEquipDefaults(j, machine.id, kind);
+  const date = String(tab[k.date] || '') || '9999-12-31';
+  const session = { ...SESSION_DEFAULTS, id: '', machineId: machine.id, date, mode: check ? 'check' : 'cal', protocol: tab.protocol === 'tg51' ? 'tg51' : 'trs' };
+  const { form, last } = beamForm(j, session, machine, found.beam, { chamberId: eq.chamberId, electrometerId: eq.electrometerId });
+  const keys = [...K.beamKeys, ...K.chamberKeys, ...K.electrometerKeys, k.institution, k.machine, k.beam].filter(Boolean);
+  if (check) keys.push(k.fixed, k.fixedKpol, k.fixedKs, k.fixedFrom);
+  const patch = Object.fromEntries(keys.filter((x) => x in form).map((x) => [x, form[x]]));
+  // пустое учреждение журнала не стирает учреждение вкладки; энергия — по названию пучка, если в настройках её нет
+  if (isBlank(patch[k.institution])) delete patch[k.institution];
+  if (kind === 'photon' && isBlank(patch.meta_energy)) {
+    const e = parseBeamName(found.beam.name).energy;
+    if (Number.isFinite(e)) patch.meta_energy = String(e).replace('.', ',');
+  }
+  if (kind === 'electron' && isBlank(patch.e_energy)) {
+    const e = parseElectronBeam(found.beam.name).energy;
+    if (Number.isFinite(e)) patch.e_energy = String(e).replace('.', ',');
+  }
+  if (!check) for (const q of K.qualityKeys) patch[q] = '';
+  return { patch, last, kind, chamberId: eq.chamberId, electrometerId: eq.electrometerId };
+}
+
+/** Запись журнала (сеанс) для измерения вкладки: тот же аппарат, дата, режим и протокол; null — такой ещё нет. */
+function tabSessionOf(j, { machineId, form, kind = 'photon' }) {
+  const k = kindOf(kind).k;
+  const date = String(form?.[k.date] || '');
+  const mode = fixedOf(form, kind) ? 'check' : 'cal';
+  const protocol = form?.protocol === 'tg51' ? 'tg51' : 'trs';
+  return j.sessions.find((x) => x.machineId === machineId && x.date === date && x.mode === mode && (x.protocol === 'tg51' ? 'tg51' : 'trs') === protocol) ?? null;
+}
+
+/** Запись вкладки в журнале, если она уже есть: тот же пучок, аппарат, дата, режим и протокол. */
+export function tabRecordOf(j, { machineId, beamId, form, kind = 'photon' }) {
+  const s = tabSessionOf(j, { machineId, form, kind });
+  const b = s?.beams.find((x) => x.beamId === beamId);
+  return s && b ? { session: s, beam: b } : null;
+}
+
+/**
+ * Записать измерение вкладки в журнал. form — форма вкладки (как её считает вкладка), kind — вид пучка.
+ * Дата — из вкладки (без даты не записывается), режим — «Проверка выхода» вкладки, протокол — из формы.
+ * Возвращает { journal, session, replaced, chamberFound, electrometerFound } или { error }.
+ */
+export function recordTabBeam(j, { machineId, beamId, form, kind = 'photon' }) {
+  const found = beamOf(j, beamId);
+  const machine = machineOf(j, machineId);
+  if (!found || !machine || found.machine.id !== machine.id) return { error: L('Пучок не найден в журнале: выберите аппарат и пучок заново.', 'The beam was not found in the journal: select the machine and beam again.') };
+  if (beamKind(found.beam) !== kind) return { error: L('Пучок журнала другого вида: выберите пучок этой вкладки.', 'The journal beam is of another kind: select a beam for this tab.') };
+  const K = kindOf(kind);
+  const k = K.k;
+  const f = K.normalize({ ...K.defaults, ...form });
+  const date = String(f[k.date] || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: L('Укажите дату измерения в разделе 1: по ней измерение ложится в журнал.', 'Enter the measurement date in section 1: the measurement is filed in the journal by it.') };
+  const result = K.compute(f);
+  const summary = beamSummary(result, kind);
+  if (!summary.ok) return { error: L('Есть ошибки в расчёте (см. «Замечания»): исправьте их, затем запишите в журнал.', 'The calculation has errors (see Messages): fix them, then record to the journal.') };
+  const t = tabEquipment(j, f, kind);
+  const mode = fixedOf(f, kind) ? 'check' : 'cal';
+  const protocol = f.protocol === 'tg51' ? 'tg51' : 'trs';
+  const old = tabRecordOf(j, { machineId, beamId, form: f, kind });
+  const staff = Array.isArray(f[k.staff]) ? f[k.staff].filter((x) => !isBlank(x)) : [];
+  const env = { T: String(f[k.T] ?? ''), P: String(f[k.P] ?? ''), P_unit: f[k.PUnit] || 'kPa', H: String(f[k.H] ?? '') };
+  const entry = {
+    ...pick(f, SESSION_KEYS[kind]),
+    beamId,
+    kind,
+    include: true,
+    chamberId: t.chamber?.id ?? '',
+    electrometerId: t.electrometer?.id ?? '',
+    form: f,
+    summary,
+    source: 'tab',
+  };
+  const base = tabSessionOf(j, { machineId, form: f, kind }) ?? { ...SESSION_DEFAULTS, id: uid('s'), machineId, date, mode, protocol, beams: [] };
+  // сотрудники записи — все, кто мерил пучки этой записи
+  const allStaff = [...new Set([...(base.staff || []).filter((x) => !isBlank(x)), ...staff])];
+  const session = {
+    ...base,
+    staff: allStaff.length ? allStaff : [''],
+    env: base.beams.length ? base.env : env,
+    beams: [...base.beams.filter((x) => x.beamId !== beamId), entry],
+    saved: new Date().toISOString(),
+  };
+  return { journal: upsertSession(j, session), session, replaced: !!old, chamberFound: !!t.chamber, electrometerFound: !!t.electrometer };
+}
