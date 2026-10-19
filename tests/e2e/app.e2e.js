@@ -1,6 +1,6 @@
 // Страница в браузере: установка как приложение (сервис-воркер, работа без сети, кнопка на «Начале»), автономный файл
 // dist/index.html, раздел «Выход вне допуска: проверка и подстройка», источник ручного k_Q, глубина результата в бюджете
-// неопределённости; английский интерфейс этих мест.
+// неопределённости, пометка TG-51 как справочного; английский интерфейс этих мест.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
@@ -112,5 +112,25 @@ test('бюджет неопределённости: доза на z_ref по у
   await page.locator('[data-pull="photons"]').click();
   await page.waitForTimeout(300);
   assert.equal(await page.inputValue('#unc_value_at'), 'zref');
+  assert.deepEqual(errors, []);
+});
+
+test('TG-51 в шапке помечен как справочный; при его выборе видна строка-предупреждение', async () => {
+  const { page, errors } = await openPage(browser, { fakefs: false });
+  await page.goto(`${server.url}/index.html#photons`);
+  await page.waitForSelector('#protocol_tg51');
+  assert.equal(await page.locator('#protocol_tg51 + span .ref-tag').innerText(), 'справочно');
+  assert.match(await page.locator('#protocol_tg51').locator('..').getAttribute('title'), /TRS-398 Rev\.1/);
+  await page.locator('#protocol_trs').check({ force: true });
+  assert.ok(await page.locator('#protocol-note').isHidden());
+  await page.locator('#protocol_tg51').check({ force: true });
+  assert.match(await page.locator('#protocol-note').innerText(), /справочное сравнение/);
+  await page.locator('#lang_en').check({ force: true });
+  await page.waitForTimeout(200);
+  const sw = await page.locator('.protocol-switch').innerText();
+  assert.match(sw, /reference comparison/);
+  assert.ok(!CYR.test(sw), sw);
+  await page.locator('#protocol_trs').check({ force: true });
+  assert.ok(await page.locator('#protocol-note').isHidden());
   assert.deepEqual(errors, []);
 });

@@ -3,7 +3,7 @@ import { TERMS } from './terms.js';
 import { TERMS_EN } from './terms-en.js';
 import { L, setLang, getLang } from '../core/i18n.js';
 import { initialLang, saveLang, applyLang, translateStatic, localizeDecimal } from './i18n.js';
-import { $, $$, setActiveModule, getActiveModule, PROTOCOL_KEY, applyProtocol } from './common.js';
+import { $, $$, setActiveModule, getActiveModule, PROTOCOL_KEY, applyProtocol, currentProtocol } from './common.js';
 import { initCobalt, importCobalt, cobaltStatus, applyCobaltPatch, cobaltUncSource, cobaltCurrentForm, showInCobalt, setCobaltJournalSave } from './cobalt-ui.js';
 import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch, photonsUncSource, photonsCurrentForm, showInPhotons, setPhotonsJournalSave } from './photons-ui.js';
 import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch, electronsUncSource, electronsCurrentForm, showInElectrons, setElectronsJournalSave } from './electrons-ui.js';
@@ -283,8 +283,14 @@ function initProtocol() {
     }
   }
   if (saved && $(`#protocol_${saved}`)) applyProtocol(saved);
+  // TG-51 — только справочное сравнение: при его выборе в шапке видна пометка
+  const note = $('#protocol-note');
+  const showNote = () => note && (note.hidden = currentProtocol() !== 'tg51');
+  showNote();
   document.addEventListener('change', (e) => {
-    if (e.target.name === 'protocol') store.set(PROTOCOL_KEY, e.target.value);
+    if (e.target.name !== 'protocol') return;
+    store.set(PROTOCOL_KEY, e.target.value);
+    showNote();
   });
 }
 
