@@ -5,7 +5,7 @@
 import { L, refText, getLang } from '../core/i18n.js';
 import { PRESSURE_UNITS, unitLabel, isBlank, parseNumber } from '../core/units.js';
 import {
-  computeSessionBeam, finalizeSession, upsertSession, chamberText, electrometerText, machineOf, equipmentDue, recordedBase, SESSION_DEFAULTS, uid,
+  computeSessionBeam, finalizeSession, upsertSession, chamberText, certText, electrometerText, machineOf, equipmentDue, recordedBase, SESSION_DEFAULTS, uid,
   beamKeys, beamKind, chamberFormFromElectrons, elFormFromElectrons, chamberFormFromCobalt, elFormFromCobalt,
 } from '../core/journal.js';
 import { $, $$, esc, fmt, fmtSigned, today, makeStatus, copyText, currentProtocol, applyProtocol, notifyUpdate, richText, armButton, renderSignBlock, printToPdf, versionText } from './common.js';
@@ -420,7 +420,7 @@ function renderResults() {
       if (Number.isFinite(sum.dKpol) && Math.abs(sum.dKpol) > 0.2) lines.push(`<p class="jsb-warn">${richText(L(`k_pol изменился на ${fmtSigned(sum.dKpol, 2)} % с прошлой калибровки: при изменении больше 0,2 % Report 374 советует выяснить причину (камера, кабель, электрометр).`, `k_pol changed by ${fmtSigned(sum.dKpol, 2)}% since the previous calibration: for a change above 0.2%, Report 374 advises investigating the cause (chamber, cable, electrometer).`))}</p>`);
     }
     // справки со ссылкой на протокол (рекомендации) видны всегда; список свёрнут, если нет ошибок
-    const msgs = calc.result.messages.filter((m) => m.level !== 'info' || m.ref || !sum.ok);
+    const msgs = calc.result.messages.filter((m) => m.level !== 'info' || m.ref || m.cal || !sum.ok);
     const errs = msgs.filter((m) => m.level === 'error').length;
     if (errs && sum.hasValue) lines.push(`<p class="jsb-warn">${esc(L('Доза посчитана, но в настройках есть ошибки: пока их не исправить, пучок не записывается в журнал.', 'The dose is calculated, but the settings contain errors: until they are fixed, the beam is not recorded in the journal.'))}</p>`);
     if (msgs.length) {
@@ -629,6 +629,7 @@ function reportText() {
   const out = [];
   out.push(L('СЕАНС НА ВЕСЬ АППАРАТ', 'WHOLE-MACHINE SESSION'));
   out.push(`${L('Учреждение', 'Institution')}: ${j.institution || '—'}`);
+  if (String(j.department || '').trim()) out.push(`${L('Подразделение', 'Department')}: ${j.department}`);
   out.push(`${L('Аппарат', 'Machine')}: ${[m?.name, m?.serial ? `${L('№', 'S/N')} ${m.serial}` : ''].filter(Boolean).join(', ') || '—'}`);
   const coOnly = computed.length > 0 && computed.every((c) => c.kind === 'cobalt');
   out.push(`${L('Дата', 'Date')}: ${fmtDate(s.date)}; ${L('режим', 'mode')}: ${s.mode === 'cal' ? L('калибровка', 'calibration') : coOnly ? L('проверка выхода (k_pol, k_s и τ из последней калибровки)', 'output check (k_pol, k_s and τ from the last calibration)') : L('проверка выхода (k_pol и k_s из последней калибровки)', 'output check (k_pol and k_s from the last calibration)')}; ${L('протокол', 'protocol')}: ${tg ? 'TG-51' : 'TRS-398 Rev.1'}`);
@@ -638,7 +639,8 @@ function reportText() {
   for (const { input, calc, started } of computed) {
     if (input.include === false || !calc || !started) continue;
     const sum = calc.summary;
-    out.push(`${calc.beam.name}: ${chamberText(calc.chamber)}; ${electrometerText(calc.electrometer)}`);
+    const cert = certText(calc.chamber);
+    out.push(`${calc.beam.name}: ${chamberText(calc.chamber)}${cert ? ` (${cert})` : ''}; ${electrometerText(calc.electrometer)}`);
     if (sum.hasValue) {
       if (!sum.ok) out.push(`  ${L('Есть ошибки: пучок не записан в журнал', 'There are errors: the beam is not recorded in the journal')}`);
       const co = calc.kind === 'cobalt';

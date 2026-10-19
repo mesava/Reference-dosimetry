@@ -92,7 +92,8 @@ function dueText(rec) {
 }
 
 /**
- * Строка «Журнал отделения» на вкладке. cfg: { kind, module, box: селектор, read() — форма вкладки,
+ * Строка «Журнал отделения» на вкладке и группа «Камеры отделения» в начале списка камер вкладки (cfg.select).
+ * cfg: { kind, module, box: селектор, select: селектор списка камер вкладки, read() — форма вкладки,
  * patch(поля) — подставить поля во вкладку, status(текст) — строка состояния вкладки, demo() — открыт ли демонстрационный пример }.
  */
 function makeLink(cfg) {
@@ -101,12 +102,45 @@ function makeLink(cfg) {
   // закрывался при каждом пересчёте вкладки (а с клавиатуры можно было бы выбрать только первую запись)
   let lastRow = '';
   let lastSt = '';
+  const JRN = 'JRN:';
+
+  /**
+   * Группа «Камеры отделения» в начале списка камер вкладки: выбор подставляет запись журнала (модель, №, N_D,w…),
+   * и в списке остаётся модель камеры. Список вкладка иногда собирает заново — группа тогда добавляется снова.
+   */
+  function syncGroup(chambers) {
+    const sel = cfg.select ? $(cfg.select) : null;
+    if (!sel) return;
+    const tg51 = currentProtocol() === 'tg51';
+    const html = chambers.length
+      ? chambers.map((c) => `<option value="${esc(JRN + c.id)}">${esc([chamberText(c), ndwText(c, cfg.kind, tg51), dueText(c)].filter(Boolean).join(' · '))}</option>`).join('')
+      : '';
+    let g = sel.querySelector('optgroup[data-jl-group]');
+    if (!html) {
+      g?.remove();
+      return;
+    }
+    if (!g) {
+      g = document.createElement('optgroup');
+      g.dataset.jlGroup = '1';
+      g.dataset.i18nSkip = '';
+      sel.insertBefore(g, sel.firstElementChild?.value === '' ? sel.firstElementChild.nextSibling : sel.firstElementChild);
+    }
+    g.label = L('Камеры отделения (журнал)', 'Department chambers (journal)');
+    if (g.dataset.html !== html) {
+      const keep = sel.value;
+      g.innerHTML = html;
+      g.dataset.html = html;
+      sel.value = keep;
+    }
+  }
 
   function render() {
     const el = box();
     if (!el) return;
     const j = getJournal();
     const chambers = j.chambers.filter((c) => CAPABLE[cfg.kind](c.form));
+    syncGroup(chambers);
     if (!chambers.length && !j.electrometers.length) {
       el.hidden = true;
       el.innerHTML = '';
@@ -191,6 +225,20 @@ function makeLink(cfg) {
   function init() {
     const el = box();
     if (!el) return;
+    // выбор камеры отделения в списке камер вкладки: форма вкладки его не видит (значение JRN:… — не модель),
+    // вместо этого подставляются поля записи журнала
+    const isJrn = (e) => cfg.select && e.target.matches?.(cfg.select) && String(e.target.value).startsWith(JRN);
+    document.addEventListener('input', (e) => {
+      if (isJrn(e)) e.stopImmediatePropagation();
+    }, true);
+    document.addEventListener('change', (e) => {
+      if (!isJrn(e)) return;
+      e.stopImmediatePropagation();
+      const id = e.target.value.slice(JRN.length);
+      take('chamber', getJournal().chambers.find((c) => c.id === id));
+      // если подстановка не сменила значение списка (та же модель) — вернуть модель вкладки
+      if (String(e.target.value).startsWith(JRN)) e.target.value = cfg.read()[e.target.id] ?? '';
+    }, true);
     // список и кнопки — свои, форма вкладки их не читает: событие дальше не идёт
     el.addEventListener('change', (e) => {
       const sel = e.target.closest('[data-jl-pick]');

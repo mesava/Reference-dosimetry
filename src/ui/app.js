@@ -370,9 +370,9 @@ function init() {
   initStart();
   // камеры и электрометры журнала на вкладках дозиметрии (раздел 2 «Камера и электрометр»)
   initTabEquipment([
-    { kind: 'cobalt', module: 'co60', box: '#co-jlink', read: cobaltCurrentForm, patch: applyCobaltPatch, status: cobaltStatus, demo: () => !$('#co-demo-flag').hidden },
-    { kind: 'photon', module: 'photons', box: '#ph-jlink', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden },
-    { kind: 'electron', module: 'electrons', box: '#e-jlink', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden },
+    { kind: 'cobalt', module: 'co60', box: '#co-jlink', select: '#co_ch_model', read: cobaltCurrentForm, patch: applyCobaltPatch, status: cobaltStatus, demo: () => !$('#co-demo-flag').hidden },
+    { kind: 'photon', module: 'photons', box: '#ph-jlink', select: '#ch_model', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden },
+    { kind: 'electron', module: 'electrons', box: '#e-jlink', select: '#e_ch_model', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden },
   ]);
   setUncSources({ co60: cobaltUncSource, photons: photonsUncSource, electrons: electronsUncSource });
   initTransfer();

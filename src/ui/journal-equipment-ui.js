@@ -2,17 +2,18 @@
 // в журнале. Поля пучка здесь — основные; остальные настройки (k_vol, поправки по глубине и т. п.) редактируются на
 // вкладке дозиметрии кнопкой «Все настройки» и возвращаются в журнал кнопкой «Сохранить в журнал».
 import { L, getLang } from '../core/i18n.js';
-import { CHAMBERS, chamberLabel, chamberNote } from '../core/chambers.js';
+import { CHAMBERS, chamberLabel, chamberNote, findChamber } from '../core/chambers.js';
+import { ELECTROMETERS, OTHER as EL_OTHER, parseElectrometer, electrometerName } from '../core/electrometers.js';
 import { NDW_UNITS, unitLabel, parseNumber, isBlank } from '../core/units.js';
 import { FORM_DEFAULTS, normalizeForm } from '../core/photons.js';
 import { E_DEFAULTS, normalizeElectrons, parseElectronBeam } from '../core/electrons.js';
-import { E_CHAMBERS, eChamberLabel } from '../core/electron-chambers.js';
+import { E_CHAMBERS, eChamberLabel, findEChamber } from '../core/electron-chambers.js';
 import { CO_DEFAULTS, normalizeCobalt, ACTIVITY_UNITS } from '../core/cobalt.js';
 import * as TRS from '../core/trs398.js';
 import {
   uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, beamFromTabForm, applyTabFormToBeam, equipmentDue,
   chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable, electronChamberForm, beamKind, lastCalibration,
-  cobaltCapable, cobaltChamberForm, myChambersToJournal,
+  cobaltCapable, cobaltChamberForm, myChambersToJournal, orgText, withChamberLength, calibrationChecks,
 } from '../core/journal.js';
 import { getMyChambers } from './store.js';
 import { $, esc, fmt, makeStatus, armButton, notifyUpdate, today, richText, currentProtocol, plainSymbols } from './common.js';
@@ -47,20 +48,45 @@ const field = (label, control, { forId = '', sub = '', cls = '' } = {}) =>
 const missChip = (miss) => (miss.length ? `<span class="chip warn">${richText(L(`не заполнено: ${miss.join(', ')}`, `missing: ${miss.join(', ')}`))}</span>` : '');
 
 // ------------------------------------------------------------ камеры
-function chamberModelOptions(cur) {
-  const groups = new Map();
-  for (const c of CHAMBERS) {
-    if (!groups.has(c.maker)) groups.set(c.maker, []);
-    groups.get(c.maker).push(c);
+const OTHER_MAKER = 'other';
+/** Производители камер: из базы фотонов и плоскопараллельных камер базы электронов. */
+const chamberMakers = () => [...new Set([...CHAMBERS.map((c) => c.maker), ...E_CHAMBERS.filter((c) => c.type === 'pp').map((c) => c.maker)])];
+/** Производитель камеры записи: выбранный в карточке или по модели; «Другая», своя — 'other'. */
+function chamberMakerOf(c) {
+  const m = c.form?.ch_model ?? '';
+  if (m === 'OTHER' || m === 'CUSTOM' || String(m).startsWith('MY:')) return OTHER_MAKER;
+  return findChamber(m)?.maker ?? findEChamber(m)?.maker ?? c.maker ?? '';
+}
+/** Модели камер производителя: камеры базы фотонов, затем плоскопараллельные (для электронов и ⁶⁰Co). */
+function chamberModels(maker) {
+  if (maker === OTHER_MAKER) return [];
+  const cyl = CHAMBERS.filter((c) => c.maker === maker).map((c) => [c.id, `${c.model}${c.note ? ` — ${plainSymbols(chamberNote(c))}` : ''}`]);
+  const pp = E_CHAMBERS.filter((c) => c.type === 'pp' && c.maker === maker).map((c) => [c.id, `${c.model} — ${L('плоскопараллельная, для электронов и ⁶⁰Co', 'plane-parallel, for electrons and ⁶⁰Co')}`]);
+  return [...cyl, ...pp];
+}
+function makerOptions(makers, cur, otherText) {
+  return [`<option value="">${esc(L('— производитель —', '— manufacturer —'))}</option>`, ...makers.map((m) => `<option value="${esc(m)}"${m === cur ? ' selected' : ''}>${esc(m)}</option>`), `<option value="${OTHER_MAKER}"${cur === OTHER_MAKER ? ' selected' : ''}>${esc(otherText)}</option>`].join('');
+}
+function chamberModelOptions(maker, cur) {
+  if (maker === OTHER_MAKER) {
+    const opts = [['OTHER', L('Другая камера — для электронов и ⁶⁰Co, k_Q вручную', 'Other chamber: for electrons and ⁶⁰Co, k_Q entered manually')]];
+    if (cur === 'CUSTOM') opts.push(['CUSTOM', L('Своя камера (из вкладки «МВ фотоны»)', 'Custom chamber (from the MV photons tab)')]);
+    return opts.map(([v, t]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(plainSymbols(t))}</option>`).join('');
   }
-  const parts = [`<option value="">${esc(L('— выберите камеру —', '— select a chamber —'))}</option>`];
-  for (const [maker, list] of groups) parts.push(`<optgroup label="${esc(maker)}">${list.map((c) => `<option value="${esc(c.id)}"${c.id === cur ? ' selected' : ''}>${esc(c.model)}${c.note ? ` — ${esc(plainSymbols(chamberNote(c)))}` : ''}</option>`).join('')}</optgroup>`);
-  // плоскопараллельные — только для электронов (цилиндрические из базы электронов есть и в списках выше)
-  const pp = E_CHAMBERS.filter((c) => c.type === 'pp');
-  parts.push(`<optgroup label="${esc(L('Плоскопараллельные — для электронов и ⁶⁰Co', 'Plane-parallel: for electrons and ⁶⁰Co'))}">${pp.map((c) => `<option value="${esc(c.id)}"${c.id === cur ? ' selected' : ''}>${esc(eChamberLabel(c))}</option>`).join('')}</optgroup>`);
-  parts.push(`<option value="OTHER"${cur === 'OTHER' ? ' selected' : ''}>${esc(plainSymbols(L('Другая камера — для электронов, k_Q вручную…', 'Other chamber: for electrons, k_Q entered manually…')))}</option>`);
-  if (cur === 'CUSTOM') parts.push(`<option value="CUSTOM" selected>${esc(L('Своя камера (из вкладки «МВ фотоны»)', 'Custom chamber (from the MV photons tab)'))}</option>`);
-  return parts.join('');
+  const list = chamberModels(maker);
+  const head = list.some(([v]) => v === cur) ? '' : `<option value="" selected>${esc(L('— модель —', '— model —'))}</option>`;
+  return head + list.map(([v, t]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(t)}</option>`).join('');
+}
+/** Размеры полости камеры из базы — подпись под моделью. */
+function chamberDims(f) {
+  const ph = findChamber(f.ch_model);
+  const ec = findEChamber(f.ch_model);
+  const r = ph?.rCavMm ?? ec?.rCavMm ?? ec?.trsRcylMm;
+  const len = ph?.lengthMm;
+  const parts = [];
+  if (Number.isFinite(r)) parts.push(L(`радиус полости ${fmt(r, 2)} мм`, `cavity radius ${fmt(r, 2)} mm`));
+  if (Number.isFinite(len)) parts.push(L(`длина ${fmt(len, 1)} мм`, `length ${fmt(len, 1)} mm`));
+  return parts.length ? L(`из базы: ${parts.join(', ')}`, `from the database: ${parts.join(', ')}`) : '';
 }
 
 function chamberCard(c, j = getJournal()) {
@@ -77,11 +103,14 @@ function chamberCard(c, j = getJournal()) {
   // (или модель ещё не выбрана)
   const needNdw = isBlank(f.ch_model) || (ph && !phCross) || (el && !elCross) || uses.cobalt;
   const units = Object.entries(NDW_UNITS).map(([v, u]) => [v, unitLabel(u)]);
+  const maker = chamberMakerOf(c);
   return `<div class="jcard" data-card="chamber:${esc(c.id)}">
     <div class="jcard-head"><b>${esc(chamberText(c) || L('Новая камера', 'New chamber'))}</b><span class="chips">${missChip(chamberMissing(c, uses, currentProtocol()))}${dueChip(c.dueDate)}</span></div>
     <div class="grid">
-      ${field(L('Камера', 'Chamber'), `<select ${bind(k, c.id, 'form.ch_model')}>${chamberModelOptions(f.ch_model)}</select>`, { forId: fieldId(k, c.id, 'form.ch_model'), cls: 'span-2', sub: [custom ? esc([f.cc_maker, f.cc_model].filter(Boolean).join(' ')) : '', ph && el ? esc(L('для фотонов, электронов и ⁶⁰Co', 'for photons, electrons and ⁶⁰Co')) : el ? esc(L('для электронов и ⁶⁰Co', 'for electrons and ⁶⁰Co')) : ph ? esc(L('для фотонов и ⁶⁰Co', 'for photons and ⁶⁰Co')) : ''].filter(Boolean).join(' · ') })}
+      ${field(L('Производитель', 'Manufacturer'), `<select ${bind(k, c.id, 'maker')}>${makerOptions(chamberMakers(), maker, L('Другая или своя камера', 'Other or custom chamber'))}</select>`, { forId: fieldId(k, c.id, 'maker') })}
+      ${maker ? field(L('Модель', 'Model'), `<select ${bind(k, c.id, 'form.ch_model')}>${chamberModelOptions(maker, f.ch_model)}</select>`, { forId: fieldId(k, c.id, 'form.ch_model'), sub: [custom ? esc([f.cc_maker, f.cc_model].filter(Boolean).join(' ')) : '', ph && el ? esc(L('для фотонов, электронов и ⁶⁰Co', 'for photons, electrons and ⁶⁰Co')) : el ? esc(L('для электронов и ⁶⁰Co', 'for electrons and ⁶⁰Co')) : ph ? esc(L('для фотонов и ⁶⁰Co', 'for photons and ⁶⁰Co')) : '', esc(chamberDims(f))].filter(Boolean).join(' · ') }) : ''}
       ${field(L('Заводской №', 'Serial No.'), input(k, c.id, 'form.ch_serial', f.ch_serial), { forId: fieldId(k, c.id, 'form.ch_serial') })}
+      ${ph && !custom ? field(L('Длина полости, мм', 'Cavity length, mm'), input(k, c.id, 'length', c.length, { num: true, placeholder: Number.isFinite(findChamber(f.ch_model)?.lengthMm) ? fmt(findChamber(f.ch_model).lengthMm, 1) : '' }), { forId: fieldId(k, c.id, 'length'), sub: Number.isFinite(findChamber(f.ch_model)?.lengthMm) ? L('для k<sub>vol</sub> в пучках БВФ; пусто — из базы (TRS-398 Rev.1, табл. 4)', 'for k<sub>vol</sub> in FFF beams; blank: from the database (TRS-398 Rev.1, Table 4)') : L('для k<sub>vol</sub> в пучках БВФ: в базе длины нет — возьмите из паспорта камеры', 'for k<sub>vol</sub> in FFF beams: the database has no length; take it from the chamber datasheet') }) : ''}
       ${other
         ? `${field(L('Название', 'Name'), input(k, c.id, 'form.e_other_name', f.e_other_name), { forId: fieldId(k, c.id, 'form.e_other_name') })}
           ${field(L('Тип', 'Type'), select(k, c.id, 'form.e_other_type', f.e_other_type || 'pp', [['pp', L('плоскопараллельная', 'plane-parallel')], ['cyl', L('цилиндрическая', 'cylindrical')]]), { forId: fieldId(k, c.id, 'form.e_other_type') })}
@@ -108,21 +137,43 @@ function chamberCard(c, j = getJournal()) {
         : ''}
       ${field('T₀, °C', input(k, c.id, 'form.ch_T0', f.ch_T0 ?? '20', { num: true }), { forId: fieldId(k, c.id, 'form.ch_T0') })}
       ${field(L('P₀, кПа', 'P₀, kPa'), input(k, c.id, 'form.ch_P0', f.ch_P0 ?? '101,325', { num: true }), { forId: fieldId(k, c.id, 'form.ch_P0') })}
+    </div>
+    <h4 class="sub-h">${esc(L('Свидетельство о калибровке', 'Calibration certificate'))}</h4>
+    <div class="grid">
+      ${field(L('Лаборатория', 'Laboratory'), input(k, c.id, 'calLab', c.calLab, { placeholder: L('ВНИИФТРИ', 'SSDL / PSDL') }), { forId: fieldId(k, c.id, 'calLab') })}
+      ${field(L('№ свидетельства', 'Certificate No.'), input(k, c.id, 'calCert', c.calCert), { forId: fieldId(k, c.id, 'calCert') })}
       ${field(L('Дата калибровки', 'Calibration date'), input(k, c.id, 'calDate', c.calDate, { type: 'date' }), { forId: fieldId(k, c.id, 'calDate') })}
       ${field(L('Действует до', 'Valid until'), input(k, c.id, 'dueDate', c.dueDate, { type: 'date' }), { forId: fieldId(k, c.id, 'dueDate'), sub: L('за 30 дней до срока появится напоминание', 'a reminder appears 30 days before') })}
+      ${field(L('Электрометр при калибровке', 'Electrometer at calibration'), select(k, c.id, 'calEl', c.calEl, [['', L('— не указан —', '— not given —')], ...j.electrometers.map((e) => [e.id, electrometerText(e) || L('электрометр без названия', 'unnamed electrometer')])]), { forId: fieldId(k, c.id, 'calEl'), cls: 'span-2', sub: L('если камеру калибровали вместе с электрометром: с другим электрометром нужен его k<sub>elec</sub> — сеанс об этом напомнит', 'if the chamber was calibrated together with an electrometer: another electrometer needs its own k<sub>elec</sub>; the session will remind you') })}
+      ${field(L('Напряжение при калибровке, В', 'Calibration voltage, V'), input(k, c.id, 'calV', c.calV, { num: true, placeholder: '400' }), { forId: fieldId(k, c.id, 'calV') })}
+      ${field(L('Полярность при калибровке', 'Calibration polarity'), select(k, c.id, 'calPol', c.calPol, [['', L('— не указана —', '— not given —')], ['+', L('положительная (+)', 'positive (+)')], ['-', L('отрицательная (−)', 'negative (−)')]]), { forId: fieldId(k, c.id, 'calPol') })}
       ${field(L('Примечания', 'Notes'), input(k, c.id, 'notes', c.notes), { forId: fieldId(k, c.id, 'notes'), cls: 'span-2' })}
     </div>
     <div class="row-tools"><button type="button" class="link-btn danger" data-del="chamber:${esc(c.id)}">${esc(L('Удалить камеру', 'Delete chamber'))}</button></div>
   </div>`;
 }
 
+/** Производитель электрометра записи: выбранный в карточке или по названию модели. */
+function electrometerMakerOf(e) {
+  const p = parseElectrometer(e.form?.el_model);
+  if (p.maker) return p.maker;
+  return e.maker ?? '';
+}
+
 function electrometerCard(e) {
   const f = e.form || {};
   const k = 'electrometer';
+  const maker = electrometerMakerOf(e);
+  const parsed = parseElectrometer(f.el_model);
   return `<div class="jcard" data-card="electrometer:${esc(e.id)}">
     <div class="jcard-head"><b>${esc(electrometerText(e) || L('Новый электрометр', 'New electrometer'))}</b><span class="chips">${missChip(electrometerMissing(e))}${dueChip(e.dueDate)}</span></div>
     <div class="grid">
-      ${field(L('Модель', 'Model'), input(k, e.id, 'form.el_model', f.el_model, { placeholder: 'PTW UNIDOS webline' }), { forId: fieldId(k, e.id, 'form.el_model') })}
+      ${field(L('Производитель', 'Manufacturer'), `<select ${bind(k, e.id, 'maker')}>${makerOptions(ELECTROMETERS.map((g) => g.maker), maker, L('Другой', 'Other'))}</select>`, { forId: fieldId(k, e.id, 'maker') })}
+      ${maker === EL_OTHER
+        ? field(L('Модель', 'Model'), input(k, e.id, 'form.el_model', f.el_model, { placeholder: L('производитель и модель', 'manufacturer and model') }), { forId: fieldId(k, e.id, 'form.el_model') })
+        : maker
+          ? field(L('Модель', 'Model'), select(k, e.id, 'form.el_model', f.el_model, [...(parsed.maker === maker ? [] : [['', L('— модель —', '— model —')]]), ...ELECTROMETERS.find((g) => g.maker === maker).models.map((m) => [electrometerName(maker, m), m])]), { forId: fieldId(k, e.id, 'form.el_model') })
+          : ''}
       ${field(L('Заводской №', 'Serial No.'), input(k, e.id, 'form.el_serial', f.el_serial), { forId: fieldId(k, e.id, 'form.el_serial') })}
       ${field('k<sub>elec</sub>', input(k, e.id, 'form.el_kelec', f.el_kelec ?? '1,000', { num: true }), { forId: fieldId(k, e.id, 'form.el_kelec'), sub: L('1,000, если камера калибровалась вместе с электрометром', '1.000 if the chamber was calibrated together with the electrometer') })}
       ${field(L('Дата калибровки', 'Calibration date'), input(k, e.id, 'calDate', e.calDate, { type: 'date' }), { forId: fieldId(k, e.id, 'calDate') })}
@@ -382,7 +433,22 @@ function cobeamCard(j, m, b) {
   </details>`;
 }
 
+/** Замечания о согласии пучка с калибровкой камеры (электрометр, напряжение, полярность). */
+function calNotes(notes, b) {
+  return `<ul class="messages jbeam-cal" data-live="cal-${esc(b.id)}">${notes.map((n) => `<li class="${n.level}"><span>${richText(n.text)}</span></li>`).join('')}</ul>`;
+}
+
 function beamCard(j, m, b) {
+  const html = beamCardBody(j, m, b);
+  const i = html.indexOf('</summary>');
+  if (i < 0) return html;
+  const notes = b.active === false ? [] : calibrationChecks(j, b.chamberId, b.electrometerId, b.form || {}, beamKind(b));
+  // предупреждение видно и у свёрнутого пучка
+  const chip = notes.some((n) => n.level === 'warn') ? `<span class="chip warn">${esc(L('калибровка камеры: см. замечание', 'chamber calibration: see the note'))}</span>` : '';
+  return html.slice(0, i) + chip + html.slice(i, i + 10) + calNotes(notes, b) + html.slice(i + 10);
+}
+
+function beamCardBody(j, m, b) {
   if (beamKind(b) === 'electron') return ebeamCard(j, m, b);
   if (beamKind(b) === 'cobalt') return cobeamCard(j, m, b);
   const f = { ...FORM_DEFAULTS, ...b.form };
@@ -450,6 +516,27 @@ function beamCard(j, m, b) {
   </details>`;
 }
 
+/** Камеры и электрометры аппарата по его пучкам: «PTW 30013 № 739475 — 6 МВ, 10 МВ». */
+function machineEquipment(j, m) {
+  const group = (key, list, text) => {
+    const by = new Map();
+    for (const b of m.beams) {
+      if (b.active === false || !b[key]) continue;
+      if (!by.has(b[key])) by.set(b[key], []);
+      by.get(b[key]).push(b.name || '—');
+    }
+    return [...by].map(([id, beams]) => {
+      const rec = list.find((x) => x.id === id);
+      return rec ? `${text(rec)} — ${beams.join(', ')}` : '';
+    }).filter(Boolean);
+  };
+  const ch = group('chamberId', j.chambers, chamberText);
+  const el = group('electrometerId', j.electrometers, electrometerText);
+  if (!ch.length && !el.length) return '';
+  const part = (name, xs) => (xs.length ? `<li><b>${esc(name)}:</b> ${xs.map(esc).join('; ')}</li>` : '');
+  return `<ul class="jmachine-eq" data-live="meq-${esc(m.id)}">${part(L('Камеры', 'Chambers'), ch)}${part(L('Электрометры', 'Electrometers'), el)}</ul>`;
+}
+
 function machineCard(j, m) {
   const k = 'machine';
   const hasSessions = j.sessions.some((s) => s.machineId === m.id);
@@ -475,6 +562,7 @@ function machineCard(j, m) {
       ${field(L('Заводской №', 'Serial No.'), input(k, m.id, 'serial', m.serial), { forId: fieldId(k, m.id, 'serial') })}
       ${field(L('Примечания', 'Notes'), input(k, m.id, 'notes', m.notes), { forId: fieldId(k, m.id, 'notes') })}
     </div>
+    ${machineEquipment(j, m)}
     ${cobalt ? coSection : ''}
     ${linacPart ? `<h3 class="sub-h">${esc(L('Пучки фотонов', 'Photon beams'))}</h3>
     <div class="jbeams">${m.beams.filter((b) => beamKind(b) === 'photon').map((b) => beamCard(j, m, b)).join('') || `<p class="sub-hint">${esc(L('Пучков фотонов пока нет.', 'No photon beams yet.'))}</p>`}</div>
@@ -529,6 +617,7 @@ const openBeams = new Set();
 function render() {
   const j = getJournal();
   $('#eq_institution').value = j.institution || '';
+  $('#eq_department').value = j.department || '';
   $('#eq-chambers').innerHTML = j.chambers.map((c) => chamberCard(c, j)).join('') || `<p class="sub-hint">${esc(L('Камер пока нет.', 'No chambers yet.'))}</p>`;
   $('#eq-electrometers').innerHTML = j.electrometers.map(electrometerCard).join('') || `<p class="sub-hint">${esc(L('Электрометров пока нет.', 'No electrometers yet.'))}</p>`;
   $('#eq-machines').innerHTML = j.machines.map((m) => machineCard(j, { ...m, beams: m.beams.map((b) => ({ ...b, _open: openBeams.has(b.id) })) })).join('') || `<p class="sub-hint">${esc(L('Аппаратов пока нет.', 'No machines yet.'))}</p>`;
@@ -662,6 +751,21 @@ function onInput(e) {
     o[parts.at(-1)] = value;
     // «FFF» / «БВФ» в названии пучка фотонов ставит отметку сам; у пучка электронов по названию — энергия
     if (kind === 'beam' && path === 'name' && beamKind(obj) === 'photon' && /(^|[^\p{L}])(fff|бвф)([^\p{L}]|$)/iu.test(value)) obj.form.meta_fff = true;
+    // другой производитель — модель выбирается заново (у «другого» электрометра своё название сохраняется)
+    if (kind === 'chamber' && path === 'maker') {
+      const cur = obj.form.ch_model ?? '';
+      const keep = value === OTHER_MAKER ? cur === 'OTHER' || cur === 'CUSTOM' : findChamber(cur)?.maker === value || findEChamber(cur)?.maker === value;
+      if (!keep) obj.form.ch_model = value === OTHER_MAKER ? 'OTHER' : '';
+    }
+    if (kind === 'electrometer' && path === 'maker') {
+      const p = parseElectrometer(obj.form.el_model);
+      if (p.maker !== value) obj.form.el_model = value === EL_OTHER || !value ? (p.maker === EL_OTHER ? obj.form.el_model : '') : electrometerName(value, ELECTROMETERS.find((g) => g.maker === value).models[0]);
+    }
+    // камера с выбранной моделью — пучкам, у которых камера ещё не выбрана и которым она подходит
+    if (kind === 'chamber' && path === 'form.ch_model' && !isBlank(value)) {
+      const ok = { photon: photonCapable, electron: electronCapable, cobalt: cobaltCapable };
+      for (const m of j.machines) for (const b of m.beams) if (!b.chamberId && ok[beamKind(b)](obj.form)) b.chamberId = obj.id;
+    }
     if (kind === 'beam' && path === 'name' && beamKind(obj) === 'electron') {
       const e = parseElectronBeam(value).energy;
       if (Number.isFinite(e)) obj.form.e_energy = String(e).replace('.', ',');
@@ -672,7 +776,8 @@ function onInput(e) {
     const box = document.getElementById(fieldId('beam', id, 'form.meta_fff'));
     if (box && getJournal().machines.flatMap((m) => m.beams).find((x) => x.id === id)?.form.meta_fff) box.checked = true;
   }
-  if (e.type === 'change' && (el.tagName === 'SELECT' || el.type === 'checkbox')) {
+  // сведения о калибровке камеры меняют замечания у пучков: после ввода (change) — перерисовать
+  if (e.type === 'change' && (el.tagName === 'SELECT' || el.type === 'checkbox' || (kind === 'chamber' && /^cal(V|El|Pol)$/.test(path)))) {
     const card = el.closest('details[data-card]');
     if (card?.open) openBeams.add(card.dataset.card.split(':')[1]);
     render();
@@ -696,7 +801,10 @@ function remove(what) {
   }
   updateJournal((j) => {
     if (kind === 'chamber') j.chambers = j.chambers.filter((x) => x.id !== a);
-    else if (kind === 'electrometer') j.electrometers = j.electrometers.filter((x) => x.id !== a);
+    else if (kind === 'electrometer') {
+      j.electrometers = j.electrometers.filter((x) => x.id !== a);
+      for (const c of j.chambers) if (c.calEl === a) c.calEl = '';
+    }
     else if (kind === 'machine') j.machines = j.machines.filter((x) => x.id !== a);
     else if (kind === 'beam') {
       const m = j.machines.find((x) => x.id === a);
@@ -705,6 +813,12 @@ function remove(what) {
     return j;
   }, 'equipment');
   setStatus(L('Удалено. Сохраните журнал, чтобы изменение попало в файл.', 'Deleted. Save the journal to write the change to the file.'));
+}
+
+/** Фокус на первом поле только что добавленной карточки камеры или электрометра. */
+function focusLast(kind) {
+  const cards = ROOT().querySelectorAll(`[data-card^="${kind}:"]`);
+  cards[cards.length - 1]?.querySelector('select, input')?.focus();
 }
 
 function onClick(e) {
@@ -772,23 +886,28 @@ function onClick(e) {
     // протокол — текущий в шапке: открытие пучка не должно переключать его
     const form =
       kind === 'electron'
-        ? normalizeElectrons({ ...E_DEFAULTS, ...b.form, ...electronChamberForm(ch?.form || {}), e_el_model: el?.form?.el_model ?? '', e_el_serial: el?.form?.el_serial ?? '', e_kelec: el?.form?.el_kelec ?? '1,000', e_beam: b.name, e_machine: m.name, e_institution: j.institution, protocol: currentProtocol() })
+        ? normalizeElectrons({ ...E_DEFAULTS, ...b.form, ...electronChamberForm(ch?.form || {}), e_el_model: el?.form?.el_model ?? '', e_el_serial: el?.form?.el_serial ?? '', e_kelec: el?.form?.el_kelec ?? '1,000', e_beam: b.name, e_machine: m.name, e_institution: orgText(j), protocol: currentProtocol() })
         : kind === 'cobalt'
-          ? normalizeCobalt({ ...CO_DEFAULTS, ...b.form, ...cobaltChamberForm(ch?.form || {}), co_el_model: el?.form?.el_model ?? '', co_el_serial: el?.form?.el_serial ?? '', co_kelec: el?.form?.el_kelec ?? '1,000', co_machine: [m.name, b.name].filter((x) => !isBlank(x)).join(' — '), co_institution: j.institution, protocol: currentProtocol() })
-          : normalizeForm({ ...FORM_DEFAULTS, ...b.form, ...(ch?.form || {}), ...(el?.form || {}), meta_beam: b.name, meta_machine: m.name, meta_institution: j.institution, protocol: currentProtocol() });
+          ? normalizeCobalt({ ...CO_DEFAULTS, ...b.form, ...cobaltChamberForm(ch?.form || {}), co_el_model: el?.form?.el_model ?? '', co_el_serial: el?.form?.el_serial ?? '', co_kelec: el?.form?.el_kelec ?? '1,000', co_machine: [m.name, b.name].filter((x) => !isBlank(x)).join(' — '), co_institution: orgText(j), protocol: currentProtocol() })
+          : normalizeForm(withChamberLength({ ...FORM_DEFAULTS, ...b.form, ...(ch?.form || {}), ...(el?.form || {}), meta_beam: b.name, meta_machine: m.name, meta_institution: orgText(j), protocol: currentProtocol() }, ch));
     tabBridge.edit(kind, form, { title: `${m.name || ''} — ${b.name || ''}`, target: { machineId: mid, beamId: bid, kind } });
   } else if (t.id === 'eq-add-chamber') {
     updateJournal((j) => {
       j.chambers.push({ ...CHAMBER_DEFAULTS, id: uid('ch'), form: { ch_model: '', ch_serial: '', ch_ndw: '', ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', ch_T0: '20', ch_P0: '101,325' } });
       return j;
     }, 'equipment');
+    focusLast('chamber');
   } else if (t.id === 'eq-import-mine') {
     importMine();
   } else if (t.id === 'eq-add-electrometer') {
+    const id = uid('el');
     updateJournal((j) => {
-      j.electrometers.push({ ...ELECTROMETER_DEFAULTS, id: uid('el'), form: { el_model: '', el_serial: '', el_kelec: '1,000' } });
+      j.electrometers.push({ ...ELECTROMETER_DEFAULTS, id, form: { el_model: '', el_serial: '', el_kelec: '1,000' } });
+      // пучки, у которых электрометр ещё не выбран (аппараты заводятся раньше электрометров), получают этот
+      for (const m of j.machines) for (const b of m.beams) if (!b.electrometerId) b.electrometerId = id;
       return j;
     }, 'equipment');
+    focusLast('electrometer');
   } else if (t.id === 'eq-add-machine' || t.id === 'eq-add-cobalt') {
     updateJournal((j) => {
       j.machines.push({ ...MACHINE_DEFAULTS, id: uid('m'), kind: t.id === 'eq-add-cobalt' ? 'cobalt' : 'linac', beams: [] });
@@ -810,6 +929,7 @@ export function initEquipment() {
   sheet.addEventListener('change', onInput);
   sheet.addEventListener('click', onClick);
   $('#eq_institution').addEventListener('input', (e) => updateJournal((j) => ({ ...j, institution: e.target.value }), 'equipment:input'));
+  $('#eq_department').addEventListener('input', (e) => updateJournal((j) => ({ ...j, department: e.target.value }), 'equipment:input'));
   sheet.addEventListener('toggle', (e) => {
     const d = e.target;
     if (d.tagName !== 'DETAILS' || !d.dataset.card) return;

@@ -182,7 +182,10 @@ export const elFormFromCobalt = (f = {}) => Object.fromEntries(CO_EL_COMMON.filt
 const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj && k in obj).map((k) => [k, obj[k]]));
 
 // ---------------------------------------------------------------- записи по умолчанию
-export const CHAMBER_DEFAULTS = { id: '', kind: 'photon', form: {}, calDate: '', dueDate: '', notes: '' };
+/** Запись камеры: maker — производитель, выбранный в карточке (пока модель не выбрана); length — своя длина полости, мм;
+ * calEl, calV, calPol, calLab, calCert — сведения о калибровке: электрометр, с которым её калибровали, напряжение и
+ * полярность, лаборатория, № свидетельства (пусто — проверок по ним нет, см. calibrationChecks). */
+export const CHAMBER_DEFAULTS = { id: '', kind: 'photon', form: {}, calDate: '', dueDate: '', notes: '', length: '', calEl: '', calV: '', calPol: '', calLab: '', calCert: '' };
 export const ELECTROMETER_DEFAULTS = { id: '', form: {}, calDate: '', dueDate: '', notes: '' };
 /** kind: 'linac' — ускоритель (пучки фотонов и электронов), 'cobalt' — аппарат ⁶⁰Co. */
 export const MACHINE_DEFAULTS = { id: '', name: '', serial: '', kind: 'linac', notes: '', beams: [] };
@@ -191,7 +194,7 @@ export const BEAM_DEFAULTS = { id: '', kind: 'photon', name: '', chamberId: '', 
 export const SESSION_DEFAULTS = { id: '', machineId: '', date: '', mode: 'cal', protocol: 'trs', staff: [''], notes: '', env: { T: '', P: '', P_unit: 'kPa', H: '' }, beams: [], saved: '' };
 
 export function newJournal() {
-  return { ...JOURNAL_TAG, institution: '', chambers: [], electrometers: [], machines: [], sessions: [] };
+  return { ...JOURNAL_TAG, institution: '', department: '', chambers: [], electrometers: [], machines: [], sessions: [] };
 }
 
 const arr = (v) => (Array.isArray(v) ? v : []);
@@ -211,6 +214,7 @@ export function normalizeJournal(obj) {
   }
   const j = { ...newJournal(), ...obj, version: JOURNAL_TAG.version };
   j.institution = String(j.institution ?? '');
+  j.department = String(j.department ?? '');
   j.chambers = arr(obj.chambers).map((c) => withId({ ...CHAMBER_DEFAULTS, ...c, form: { ...(c?.form || {}) } }, 'ch'));
   j.electrometers = arr(obj.electrometers).map((e) => withId({ ...ELECTROMETER_DEFAULTS, ...e, form: { ...(e?.form || {}) } }, 'el'));
   j.machines = arr(obj.machines).map((m) => {
@@ -225,6 +229,17 @@ export function normalizeJournal(obj) {
 }
 
 // ---------------------------------------------------------------- подписи
+/**
+ * Длина полости камеры из записи журнала (поле «Длина полости» карточки камеры) — в поле k_vol пучка фотонов, если у
+ * пучка своя длина не задана. Нужна для k_vol в пучках БВФ; без неё — длина из базы камер (TRS-398 Rev.1, табл. 4).
+ */
+export function withChamberLength(form, ch) {
+  if (!ch || isBlank(ch.length) || !isBlank(form.prof_length)) return form;
+  return { ...form, prof_length: ch.length };
+}
+
+/** «Учреждение, подразделение» — для протоколов и вкладок дозиметрии. */
+export const orgText = (j) => [j?.institution, j?.department].map((x) => String(x ?? '').trim()).filter(Boolean).join(', ');
 export function chamberText(c) {
   if (!c) return '';
   const f = c.form || {};
@@ -234,6 +249,16 @@ export function chamberText(c) {
       ? String(f.e_other_name || '').trim() || L('другая камера', 'other chamber')
       : findChamber(f.ch_model) ? chamberLabel(findChamber(f.ch_model)) : findEChamber(f.ch_model) ? eChamberLabel(findEChamber(f.ch_model)) : String(f.ch_model || '—');
   return [model, isBlank(f.ch_serial) ? '' : `${L('№', 'S/N')} ${f.ch_serial}`].filter(Boolean).join(' ');
+}
+/** Свидетельство о калибровке камеры для протокола: «свидетельство № 123 от 12.03.2026, ВНИИФТРИ». */
+export function certText(c) {
+  if (!c) return '';
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(c.calDate || '') ? c.calDate.split('-').reverse().join('.') : '';
+  const no = String(c.calCert || '').trim();
+  const lab = String(c.calLab || '').trim();
+  if (!no && !lab && !date) return '';
+  const head = [no ? L(`свидетельство № ${no}`, `certificate No. ${no}`) : L('калибровка', 'calibrated'), date ? L(`от ${date}`, `of ${date}`) : ''].filter(Boolean).join(' ');
+  return [head, lab].filter(Boolean).join(', ');
 }
 export function electrometerText(e) {
   if (!e) return '';
@@ -268,6 +293,63 @@ export function chamberMissing(c, uses = null, protocol = '') {
     elCross && protocol === 'tg51' && isBlank(f.e_cross_kn) && L('(k_Qecal·N_D,w)pp (электроны, Report 385)', '(k_Qecal·N_D,w)pp (electrons, Report 385)'),
   ].filter(Boolean);
 }
+const V1_KEY = { photon: 'rd_V1', electron: 'e_V1', cobalt: 'co_V1' };
+const POL_KEY = { photon: 'rd_polarity', electron: 'e_polarity', cobalt: 'co_polarity' };
+
+/**
+ * Согласие пучка с калибровкой камеры: [{ level, text }].
+ * — N_D,w относится к камере вместе с электрометром, с которым её калибровали: с другим электрометром нужен его k_elec;
+ * — напряжение и полярность: поправки лаборатории (k_pol, k_s) и N_D,w относятся к условиям калибровки.
+ * form — поля пучка (V₁ и полярность), kind — 'photon' | 'electron' | 'cobalt'.
+ */
+export function calibrationChecks(j, chamberId, electrometerId, form = {}, kind = 'photon') {
+  const ch = chamberOf(j, chamberId);
+  if (!ch) return [];
+  const out = [];
+  const chName = chamberText(ch) || L('камера', 'the chamber');
+  const calEl = ch.calEl ? electrometerOf(j, ch.calEl) : null;
+  if (calEl && electrometerId && electrometerId !== calEl.id) {
+    const el = electrometerOf(j, electrometerId);
+    const k = parseNumber(el?.form?.el_kelec);
+    const one = !Number.isFinite(k) || Math.abs(k - 1) < 1e-9;
+    out.push({
+      level: one ? 'warn' : 'info',
+      text: one
+        ? L(
+          `${chName} калибровалась с электрометром ${electrometerText(calEl)}, а выбран ${electrometerText(el)} с k_elec = 1: N_D,w относится к камере вместе с электрометром калибровки. Для другого электрометра нужен его k_elec из свидетельства (или выберите электрометр калибровки).`,
+          `${chName} was calibrated with the electrometer ${electrometerText(calEl)}, but ${electrometerText(el)} with k_elec = 1 is selected: N_D,w refers to the chamber together with the calibration electrometer. Another electrometer needs its own k_elec from its certificate (or select the calibration electrometer).`,
+        )
+        : L(
+          `${chName} калибровалась с электрометром ${electrometerText(calEl)}; с ${electrometerText(el)} учитывается его k_elec = ${String(el.form.el_kelec)}.`,
+          `${chName} was calibrated with the electrometer ${electrometerText(calEl)}; with ${electrometerText(el)} its k_elec = ${String(el.form.el_kelec).replace(',', '.')} is applied.`,
+        ),
+    });
+  }
+  const calV = parseNumber(ch.calV);
+  const v1 = Math.abs(parseNumber(form[V1_KEY[kind]]));
+  if (Number.isFinite(calV) && calV > 0 && Number.isFinite(v1) && Math.abs(v1 - calV) > 0.5) {
+    out.push({
+      level: 'info',
+      text: L(
+        `Рабочее напряжение V₁ = ${String(v1).replace('.', ',')} В отличается от напряжения калибровки камеры ${String(calV).replace('.', ',')} В: поправки лаборатории (k_pol, k_s), если они внесены в N_D,w, относятся к напряжению калибровки.`,
+        `The operating voltage V₁ = ${v1} V differs from the chamber calibration voltage ${calV} V: laboratory corrections (k_pol, k_s), if included in N_D,w, refer to the calibration voltage.`,
+      ),
+    });
+  }
+  const pol = form[POL_KEY[kind]];
+  if ((ch.calPol === '+' || ch.calPol === '-') && (pol === '+' || pol === '-') && pol !== ch.calPol) {
+    const s = (p) => (p === '+' ? '+' : '−');
+    out.push({
+      level: 'info',
+      text: L(
+        `Полярность измерения (${s(pol)}) не та, что при калибровке камеры (${s(ch.calPol)}): обычно измеряют при полярности калибровки. При другой k_pol нужно измерить при обеих полярностях, а поправку лаборатории на полярность взять по свидетельству.`,
+        `The measurement polarity (${s(pol)}) differs from the chamber calibration polarity (${s(ch.calPol)}): measurements are usually made at the calibration polarity. Otherwise k_pol must be measured at both polarities, and the laboratory polarity correction taken from the certificate.`,
+      ),
+    });
+  }
+  return out;
+}
+
 /** Чего не хватает записи электрометра: k_elec. */
 export const electrometerMissing = (e) => (isBlank(e?.form?.el_kelec) ? ['k_elec'] : []);
 export const machineOf = (j, id) => j.machines.find((m) => m.id === id) ?? null;
@@ -443,9 +525,11 @@ export function beamForm(j, session, machine, beam, input = {}, { en = false } =
   const el = base ? null : electrometerOf(j, input.electrometerId || beam.electrometerId);
   const f = base
     ? { ...K.defaults, ...pick(base, [...K.beamKeys, ...K.chamberKeys, ...K.electrometerKeys]) }
-    : { ...K.defaults, ...pick(beam.form, K.beamKeys), ...K.chamberForm(ch?.form || {}), ...K.electrometerForm(el?.form || {}) };
+    : kind === 'photon'
+      ? withChamberLength({ ...K.defaults, ...pick(beam.form, K.beamKeys), ...K.chamberForm(ch?.form || {}), ...K.electrometerForm(el?.form || {}) }, ch)
+      : { ...K.defaults, ...pick(beam.form, K.beamKeys), ...K.chamberForm(ch?.form || {}), ...K.electrometerForm(el?.form || {}) };
   f.protocol = session.protocol === 'tg51' ? 'tg51' : 'trs';
-  f[k.institution] = j.institution;
+  f[k.institution] = orgText(j);
   const machineText = [machine.name, machine.serial ? `${L('№', 'S/N')} ${machine.serial}` : ''].filter(Boolean).join(', ');
   // у вкладки «⁶⁰Co» нет поля пучка: название пучка (установки) — после аппарата
   f[k.machine] = k.beam ? machineText : [machineText, beam.name].filter((x) => !isBlank(x)).join(' — ');
@@ -662,6 +746,11 @@ export function computeSessionBeam(j, session, beamInput, opts = {}) {
   const kind = beamKind(found.beam);
   const built = beamForm(j, session, machine, found.beam, beamInput, opts);
   const result = kindOf(kind).compute(built.form);
+  // согласие с калибровкой камеры (электрометр, напряжение, полярность) — замечания к расчёту пучка
+  if (!(beamInput.base && typeof beamInput.base === 'object')) {
+    const notes = calibrationChecks(j, beamInput.chamberId || found.beam.chamberId, beamInput.electrometerId || found.beam.electrometerId, built.form, kind);
+    if (notes.length && Array.isArray(result.messages)) result.messages.push(...notes.map((n) => ({ level: n.level, scope: 'common', text: n.text, ref: null, cal: true })));
+  }
   // предыдущая калибровка этого пучка — для сравнения k_pol и k_s (изменение k_pol больше 0,2 % — повод выяснить причину)
   const prev = lastCalibration(j, found.beam.id, { before: session.date || '9999-12-31', exceptId: session.id });
   const summary = beamSummary(result, kind);
@@ -951,6 +1040,9 @@ export function applyTabFormToBeam(j, machineId, beamId, form, kind = 'photon') 
   const b = m?.beams.find((x) => x.id === beamId);
   if (!b) return { journal: j, chamber: 'none', electrometer: 'none', sharedChamber: [], sharedElectrometer: [] };
   b.form = { ...pick(f, K.beamKeys) };
+  // длина полости, подставленная из записи камеры, — не своя длина пучка: в пучок не записывается
+  const chamberRec = journal.chambers.find((c) => c.id === b.chamberId);
+  if (kind === 'photon' && chamberRec && !isBlank(chamberRec.length) && sameValue(b.form.prof_length, chamberRec.length)) b.form.prof_length = '';
   if (K.k.beam && !isBlank(f[K.k.beam])) b.name = String(f[K.k.beam]).trim();
   // другие пучки с той же записью — только если запись действительно изменилась (иначе сообщать не о чем)
   const others = (key, id) => journal.machines.flatMap((mm) => mm.beams.filter((x) => x.id !== beamId && x[key] === id).map((x) => `${mm.name} — ${x.name}`));

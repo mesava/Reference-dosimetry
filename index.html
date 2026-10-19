@@ -2757,23 +2757,26 @@
       <a href="#session" data-module="session">Сеанс</a>
       <a href="#history" data-module="history">Журнал и тренды</a>
     </nav>
-    <p class="intro">Оборудование отделения для сеансов: камеры, электрометры и аппараты с пучками. Заполняется один раз и хранится в файле журнала вместе с сеансами.</p>
+    <p class="intro">Оборудование отделения для сеансов: аппараты с пучками, электрометры и камеры. Заполняется один раз и хранится в файле журнала вместе с сеансами.</p>
     <ul class="purpose">
       <li><b>Когда:</b> при начале работы с журналом, после калибровки (поверки) камеры или электрометра и при изменении настроек пучка.</li>
-      <li><b>Что делать:</b> добавьте камеры и электрометры с калибровочными коэффициентами и сроками, затем аппарат и его пучки. Пучок, уже настроенный на вкладке «МВ фотоны», «Электроны» или «⁶⁰Co», переносится кнопкой «Пучок из вкладки…» — вместе с камерой и электрометром.</li>
+      <li><b>Что делать:</b> укажите учреждение и подразделение, добавьте аппарат и его пучки, затем электрометры и камеры с калибровочными коэффициентами и сроками. Камеры и электрометры общие для всех аппаратов отделения: у пучка выбираются камера и электрометр по умолчанию. Пучок, уже настроенный на вкладке «МВ фотоны», «Электроны» или «⁶⁰Co», переносится кнопкой «Пучок из вкладки…» — вместе с камерой и электрометром.</li>
       <li><b>Результат:</b> профили, из которых собирается расчёт каждого пучка в сеансе; напоминания о сроках калибровки камер и электрометров.</li>
     </ul>
 
     <section class="step" aria-labelledby="eq-s1">
       <header><span class="step-no">1</span><h2 id="eq-s1">Учреждение</h2></header>
-      <div class="field"><label for="eq_institution">Учреждение</label><input type="text" id="eq_institution"></div>
+      <div class="grid">
+        <div class="field"><label for="eq_institution">Учреждение</label><input type="text" id="eq_institution"></div>
+        <div class="field"><label for="eq_department">Подразделение</label><input type="text" id="eq_department" placeholder="отделение лучевой терапии"></div>
+      </div>
     </section>
 
     <section class="step" aria-labelledby="eq-s2">
-      <header><span class="step-no">2</span><h2 id="eq-s2">Камеры</h2>
-        <p class="hint">N<sub>D,w</sub>, T₀, P₀ и k<sub>лаб</sub> — из свидетельства о калибровке (поверке). Одна запись камеры служит фотонам, электронам и ⁶⁰Co. Срок «действует до» нужен для напоминаний.</p></header>
-      <div id="eq-chambers" class="jcards" data-i18n-skip></div>
-      <div class="row-tools"><button type="button" class="link-btn" id="eq-add-chamber"><span aria-hidden="true">+</span> Добавить камеру</button><span id="eq-mine" data-i18n-skip></span></div>
+      <header><span class="step-no">2</span><h2 id="eq-s2">Аппараты и пучки</h2>
+        <p class="hint">У пучка — камера и электрометр по умолчанию, напряжения, МЕ, номинальный выход с допуском и последнее качество пучка (для проверки выхода до первой калибровки в журнале). У пучка ⁶⁰Co вместо МЕ — время облучения и способ определения ошибки таймера, вместо номинала — мощность дозы для сравнения: последняя калибровка в журнале с поправкой на распад или значение из настроек пучка. Остальные настройки — кнопкой «Все настройки» во вкладке дозиметрии.</p></header>
+      <div id="eq-machines" class="jcards" data-i18n-skip></div>
+      <div class="row-tools"><button type="button" class="link-btn" id="eq-add-machine"><span aria-hidden="true">+</span> Добавить ускоритель</button><button type="button" class="link-btn" id="eq-add-cobalt"><span aria-hidden="true">+</span> Добавить аппарат ⁶⁰Co</button></div>
     </section>
 
     <section class="step" aria-labelledby="eq-s3">
@@ -2783,10 +2786,10 @@
     </section>
 
     <section class="step" aria-labelledby="eq-s4">
-      <header><span class="step-no">4</span><h2 id="eq-s4">Аппараты и пучки</h2>
-        <p class="hint">У пучка — камера и электрометр по умолчанию, напряжения, МЕ, номинальный выход с допуском и последнее качество пучка (для проверки выхода до первой калибровки в журнале). У пучка ⁶⁰Co вместо МЕ — время облучения и способ определения ошибки таймера, вместо номинала — мощность дозы для сравнения: последняя калибровка в журнале с поправкой на распад или значение из настроек пучка. Остальные настройки — кнопкой «Все настройки» во вкладке дозиметрии.</p></header>
-      <div id="eq-machines" class="jcards" data-i18n-skip></div>
-      <div class="row-tools"><button type="button" class="link-btn" id="eq-add-machine"><span aria-hidden="true">+</span> Добавить ускоритель</button><button type="button" class="link-btn" id="eq-add-cobalt"><span aria-hidden="true">+</span> Добавить аппарат ⁶⁰Co</button></div>
+      <header><span class="step-no">4</span><h2 id="eq-s4">Камеры</h2>
+        <p class="hint">N<sub>D,w</sub>, T₀, P₀ и k<sub>лаб</sub> — из свидетельства о калибровке (поверке). Одна запись камеры служит фотонам, электронам и ⁶⁰Co. Срок «действует до» нужен для напоминаний.</p></header>
+      <div id="eq-chambers" class="jcards" data-i18n-skip></div>
+      <div class="row-tools"><button type="button" class="link-btn" id="eq-add-chamber"><span aria-hidden="true">+</span> Добавить камеру</button><span id="eq-mine" data-i18n-skip></span></div>
     </section>
   </form>
 
