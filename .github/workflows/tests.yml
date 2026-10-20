@@ -3,6 +3,9 @@ name: tests
 # Тесты, проверка переводов и сборки, сквозные проверки в браузере — при каждом изменении; сайт (GitHub Pages)
 # публикуется только из main и только после того, как всё это прошло: неуспешная сборка или тест на сайт не попадают.
 # В настройках репозитория: Settings → Pages → Source: GitHub Actions.
+# Версии: действия GitHub — на Node.js 24 (checkout@v6, setup-node@v6, configure-pages@v6, upload-pages-artifact@v5,
+# deploy-pages@v5); система сборки закреплена (ubuntu-24.04), чтобы переход ubuntu-latest на новую Ubuntu не сломал
+# установку Chromium для сквозных проверок. Обновлять — сознательно, вместе с Playwright.
 
 on:
   push:
@@ -14,10 +17,10 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - run: npm ci
@@ -31,10 +34,10 @@ jobs:
 
   # сквозные проверки в браузере (Chromium): файл журнала, проверка дозиметра, установка как приложение, работа без сети
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - run: npm ci
@@ -44,7 +47,7 @@ jobs:
   deploy:
     needs: [test, e2e]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       pages: write
       id-token: write
@@ -55,11 +58,12 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      # сайт — корень репозитория, как и раньше (index.html, src/, dist/, docs/, значки, манифест, сервис-воркер)
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/checkout@v6
+      - uses: actions/configure-pages@v6
+      # сайт — корень репозитория, как и раньше (index.html, src/, dist/, docs/, значки, манифест, сервис-воркер);
+      # скрытые файлы (.git, .github) в архив сайта не попадают
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: .
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

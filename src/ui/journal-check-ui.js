@@ -19,7 +19,7 @@ const workChamberId = (b, d) => d?.chamberId || (d?.base ? '' : b.chamberId || '
 /** Камеры журнала, которые годятся второй камерой для пучка: того же вида и не рабочая. */
 export const secondChambers = (j, b, d) => j.chambers.filter((c) => c.id !== workChamberId(b, d) && capable(beamKind(b))(c.form));
 
-/** Разметка проверок (карточки); beams — пучки сеанса. */
+/** Разметка проверок (карточки); beams — пучки записи. */
 export function checksHtml(j, beams, draftBeams, checks, { tg }) {
   if (!checks.length) return '';
   return checks
@@ -51,7 +51,7 @@ export function checksHtml(j, beams, draftBeams, checks, { tg }) {
       const volts = [!isBlank(f[k.V1]) ? `V₁ ${f[k.V1]} ${L('В', 'V')}` : '', !isBlank(v2) ? `V₂ ${v2} ${L('В', 'V')}` : ''].filter(Boolean).join(', ');
       return `<div class="jcard jsb jsc" data-check="${esc(id)}" data-kind="${kind}">
         <div class="jcard-head"><b>${esc(L(`Проверка ${i + 1}`, `Check ${i + 1}`))}</b><span class="chip jsb-chip" data-chip></span></div>
-        ${recorded ? `<p class="sub-hint">${esc(L('Вторая камера и электрометр — как записано в сеансе.', 'The second chamber and electrometer are as recorded in the session.'))}</p>` : ''}
+        ${recorded ? `<p class="sub-hint">${esc(L('Вторая камера и электрометр — как в записи журнала.', 'The second chamber and electrometer are as in the journal record.'))}</p>` : ''}
         <div class="grid three">
           <div class="field"><label for="jsc-${id}-beamId">${esc(L('Пучок', 'Beam'))}</label><select id="jsc-${id}-beamId" data-ck="beamId">${beamOpts}</select></div>
           <div class="field"><label for="jsc-${id}-chamberId">${esc(L('Вторая камера', 'Second chamber'))}</label><select id="jsc-${id}-chamberId" data-ck="chamberId"${chamberList.length || recordedText ? '' : ' disabled'}>${chOpts}</select>${chamberList.length || recordedText ? '' : `<span class="sub">${esc(L('добавьте её в «Оборудовании» → «Камеры»', 'add it in Equipment → Chambers'))}</span>`}</div>
@@ -86,7 +86,7 @@ export function checksHtml(j, beams, draftBeams, checks, { tg }) {
 function recordedChamberText(c, kind) {
   const f = c.form || {};
   const form = kind === 'electron' ? chamberFormFromElectrons(f) : kind === 'cobalt' ? chamberFormFromCobalt(f) : f;
-  return chamberText({ form }) || L('камера из записанного сеанса', 'chamber from the recorded session');
+  return chamberText({ form }) || L('камера из записи журнала', 'chamber from the journal record');
 }
 
 /** Ячейки показаний карточек: заполнить и подключить. */
@@ -127,7 +127,7 @@ export function computeChecks(j, session, checks, works) {
     const res = started && w?.calc && w.input.include !== false ? computeDosimeterCheck(j, session, check, w.calc) : null;
     const hist = res?.ok ? checkHistory(j, session, res) : null;
     const msgs = res ? checkMessages(res, hist) : [];
-    if (started && w && w.input.include === false) msgs.push({ level: 'warn', text: L('Пучок исключён из сеанса: проверка не считается.', 'The beam is excluded from the session: the check is not calculated.') });
+    if (started && w && w.input.include === false) msgs.push({ level: 'warn', text: L('Пучок исключён из записи: проверка не считается.', 'The beam is excluded from the record: the check is not calculated.') });
     return { check, res, hist, msgs, started };
   });
   const verdicts = checkVerdicts(items).map((v) => verdictMessage(v, works.get(v.beamId)?.calc?.beam.name ?? '—', (r) => chamberText(j.chambers.find((x) => x.id === r.check.chamberId)) || '—'));

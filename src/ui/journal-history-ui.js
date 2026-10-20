@@ -16,7 +16,7 @@ let machineId = '';
 let kindFilter = 'photon'; // какие пучки показывать, если у аппарата их несколько видов (фотоны, электроны, ⁶⁰Co)
 let kindChosen = false; // вид выбран переключателем (до смены аппарата)
 let spcBeamId = ''; // пучок контрольной карты
-let commonRes = null; // общая часть сеансов показанного вида
+let commonRes = null; // общая часть записей показанного вида
 let checkKey = ''; // пара камер «Контроля дозиметра»
 let checkRes = null; // её карта и оценка стабильности
 /** Ряды трендов выбранного аппарата и вида пучков; переключатель вида — только если у аппарата их несколько. */
@@ -47,7 +47,7 @@ function renderChart(series) {
   const legend = $('#hs-legend');
   const withData = series.filter((s) => s.points.some((p) => Number.isFinite(p.deviation)));
   if (!withData.length) {
-    box.innerHTML = `<p class="chart-empty">${esc(kindFilter === 'cobalt' ? L('График появится, когда в журнале будут сеансы этого аппарата со значением для сравнения: после первой калибровки или со значением из «Оборудования».', 'The plot appears once the journal has sessions of this machine with a comparison value: after the first calibration or with the value from Equipment.') : L('График появится, когда в журнале будут сеансы этого аппарата с номинальным выходом.', 'The plot appears once the journal has sessions of this machine with a nominal output.'))}</p>`;
+    box.innerHTML = `<p class="chart-empty">${esc(kindFilter === 'cobalt' ? L('График появится, когда в журнале будут записи этого аппарата со значением для сравнения: после первой калибровки или со значением из «Оборудования».', 'The plot appears once the journal has records of this machine with a comparison value: after the first calibration or with the value from Equipment.') : L('График появится, когда в журнале будут записи этого аппарата с номинальным выходом.', 'The plot appears once the journal has records of this machine with a nominal output.'))}</p>`;
     legend.innerHTML = '';
     return;
   }
@@ -59,8 +59,8 @@ function renderChart(series) {
   const x1 = Math.max(...days);
   const co = kindFilter === 'cobalt';
   const spec = {
-    label: co ? L('Отклонение мощности дозы от ожидаемой по датам сеансов', 'Dose rate deviation from the expected value by session date') : L('Отклонение выхода от номинала по датам сеансов', 'Output deviation from nominal by session date'),
-    xLabel: L('Дата сеанса', 'Session date'),
+    label: co ? L('Отклонение мощности дозы от ожидаемой по датам записей', 'Dose rate deviation from the expected value by record date') : L('Отклонение выхода от номинала по датам записей', 'Output deviation from nominal by record date'),
+    xLabel: L('Дата измерения', 'Measurement date'),
     yLabel: co ? L('Отклонение от ожидаемой, %', 'Deviation from expected, %') : L('Отклонение от номинала, %', 'Deviation from nominal, %'),
     fmt,
     xFmt: monthLabel,
@@ -195,8 +195,8 @@ function renderReadout(j, series) {
   const last = sessions.at(-1);
   const lastCal = sessions.filter((s) => s.mode === 'cal').at(-1);
   const outLast = last ? last.beams.filter((b) => b.summary?.status === 'out').length : 0;
-  $('#hs-result').innerHTML = `<div class="dose-row"><div class="proto"><span>${esc(m?.name || '—')}</span>${last ? (outLast ? `<span class="chip warn">${esc(L(`вне допуска: ${outLast}`, `out of tolerance: ${outLast}`))}</span>` : `<span class="chip good">${esc(L('последний сеанс в допуске', 'last session within tolerance'))}</span>`) : ''}</div>
-    <div class="dose-big">${sessions.length}<small>${esc(countWord(sessions.length, [L('сеанс', 'session'), L('сеанса', 'sessions'), L('сеансов', 'sessions')], ['session', 'sessions']))}</small></div>
+  $('#hs-result').innerHTML = `<div class="dose-row"><div class="proto"><span>${esc(m?.name || '—')}</span>${last ? (outLast ? `<span class="chip warn">${esc(L(`вне допуска: ${outLast}`, `out of tolerance: ${outLast}`))}</span>` : `<span class="chip good">${esc(L('последняя запись в допуске', 'last record within tolerance'))}</span>`) : ''}</div>
+    <div class="dose-big">${sessions.length}<small>${esc(countWord(sessions.length, [L('запись', 'record'), L('записи', 'records'), L('записей', 'records')], ['record', 'records']))}</small></div>
     <div class="secondary">${esc(L(`последний: ${last ? fmtDate(last.date) : '—'}; последняя калибровка: ${lastCal ? fmtDate(lastCal.date) : '—'}`, `last: ${last ? fmtDate(last.date) : '—'}; last calibration: ${lastCal ? fmtDate(lastCal.date) : '—'}`))}</div></div>`;
   const msgs = equipmentDue(j, today()).map((d) => `<li class="${d.status === 'overdue' ? 'warn' : 'info'}"><span class="lvl">${esc(d.status === 'overdue' ? L('Срок калибровки прошёл', 'Calibration overdue') : L('Срок калибровки подходит', 'Calibration due soon'))}</span><span>${esc(`${d.text}: ${fmtDate(d.dueDate)}`)}</span></li>`);
   for (const x of [...spcMessages(j, machineId, series.map((s) => s.beam), commonRes), ...checkSignalMessages(j, machineId)]) msgs.push(`<li class="${x.level}"><span class="lvl">${esc(x.head)}</span><span>${esc(x.text)}</span></li>`);
@@ -205,7 +205,7 @@ function renderReadout(j, series) {
   $('#hs-mobile-value').textContent = `${m?.name || '—'}: ${sessions.length}`;
 }
 
-/** Контрольная карта выбранного пучка и общая часть сеансов (пучки показанного вида). */
+/** Контрольная карта выбранного пучка и общая часть записей (пучки показанного вида). */
 function renderControl(j, series) {
   const beams = series.map((s) => s.beam);
   spcBeamId = renderSpc(j, machineId, beams, spcBeamId, { cobalt: kindFilter === 'cobalt' });
@@ -255,7 +255,7 @@ export function initHistory() {
   $('#hs-csv').addEventListener('click', () => {
     const j = getJournal();
     if (!j.sessions.length) {
-      setStatus(L('В журнале нет сеансов — выгружать нечего.', 'The journal has no sessions: nothing to export.'));
+      setStatus(L('В журнале нет записей — выгружать нечего.', 'The journal has no records: nothing to export.'));
       return;
     }
     downloadText(journalCsv(j), csvFileName(j), 'text/csv;charset=utf-8');

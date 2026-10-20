@@ -25,7 +25,7 @@ function cell(v, sep) {
 const kindText = (k) => ({ photon: L('фотоны', 'photons'), electron: L('электроны', 'electrons'), cobalt: '⁶⁰Co' })[k];
 const statusText = (s) => ({ ok: L('в допуске', 'within tolerance'), out: L('вне допуска', 'out of tolerance'), nonominal: L('нет номинала', 'no nominal'), error: L('ошибка', 'error') })[s] ?? '';
 
-/** Текст CSV всего журнала (все аппараты и сеансы). */
+/** Текст CSV всего журнала (все аппараты и записи). */
 export function journalCsv(j) {
   const ru = getLang() !== 'en';
   const sep = ru ? ';' : ',';
@@ -59,7 +59,7 @@ export function journalCsv(j) {
     'P',
     L('Единица P', 'P unit'),
     L('Сигналы контрольной карты', 'Control chart signals'),
-    L('Общая часть сеанса, %', 'Common part of the session, %'),
+    L('Общая часть записи, %', 'Common part of the record, %'),
     L('Собственная часть пучка, %', 'Own part of the beam, %'),
     L('Сотрудники', 'Staff'),
     L('Примечания', 'Notes'),
@@ -144,7 +144,7 @@ export function checksCsv(j) {
   const head = [
     L('Аппарат', 'Machine'),
     L('Дата', 'Date'),
-    L('Режим сеанса', 'Session mode'),
+    L('Режим записи', 'Record mode'),
     L('Протокол', 'Protocol'),
     L('Пучок', 'Beam'),
     L('Рабочая камера', 'Working chamber'),

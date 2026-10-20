@@ -212,7 +212,7 @@ export async function openJournalFile(fileFromInput = null) {
   emit('open');
   const j = state.journal;
   return L(
-    `Открыт журнал «${file.name}»: аппаратов ${j.machines.length}, камер ${j.chambers.length}, сеансов ${j.sessions.length}.`,
+    `Открыт журнал «${file.name}»: аппаратов ${j.machines.length}, камер ${j.chambers.length}, записей ${j.sessions.length}.`,
     `Journal "${file.name}" opened: ${j.machines.length} machines, ${j.chambers.length} chambers, ${j.sessions.length} sessions.`,
   );
 }

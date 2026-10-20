@@ -148,7 +148,7 @@ function chamberCard(c, j = getJournal()) {
       ${field(L('№ свидетельства', 'Certificate No.'), input(k, c.id, 'calCert', c.calCert), { forId: fieldId(k, c.id, 'calCert') })}
       ${field(L('Дата калибровки', 'Calibration date'), input(k, c.id, 'calDate', c.calDate, { type: 'date' }), { forId: fieldId(k, c.id, 'calDate') })}
       ${field(L('Действует до', 'Valid until'), input(k, c.id, 'dueDate', c.dueDate, { type: 'date' }), { forId: fieldId(k, c.id, 'dueDate'), sub: L('за 30 дней до срока появится напоминание', 'a reminder appears 30 days before') })}
-      ${field(L('Электрометр при калибровке', 'Electrometer at calibration'), select(k, c.id, 'calEl', c.calEl, [['', L('— не указан —', '— not given —')], ...j.electrometers.map((e) => [e.id, electrometerText(e) || L('электрометр без названия', 'unnamed electrometer')])]), { forId: fieldId(k, c.id, 'calEl'), cls: 'span-2', sub: L('если камеру калибровали вместе с электрометром: с другим электрометром нужен его k<sub>elec</sub> — сеанс об этом напомнит', 'if the chamber was calibrated together with an electrometer: another electrometer needs its own k<sub>elec</sub>; the session will remind you') })}
+      ${field(L('Электрометр при калибровке', 'Electrometer at calibration'), select(k, c.id, 'calEl', c.calEl, [['', L('— не указан —', '— not given —')], ...j.electrometers.map((e) => [e.id, electrometerText(e) || L('электрометр без названия', 'unnamed electrometer')])]), { forId: fieldId(k, c.id, 'calEl'), cls: 'span-2', sub: L('если камеру калибровали вместе с электрометром: с другим электрометром нужен его k<sub>elec</sub> — блок «Журнал» на вкладке дозиметрии об этом напомнит', 'if the chamber was calibrated together with an electrometer: another electrometer needs its own k<sub>elec</sub>; the Journal block of the dosimetry tab will remind you') })}
       ${field(L('Напряжение при калибровке, В', 'Calibration voltage, V'), input(k, c.id, 'calV', c.calV, { num: true, placeholder: '400' }), { forId: fieldId(k, c.id, 'calV') })}
       ${field(L('Полярность при калибровке', 'Calibration polarity'), select(k, c.id, 'calPol', c.calPol, [['', L('— не указана —', '— not given —')], ['+', L('положительная (+)', 'positive (+)')], ['-', L('отрицательная (−)', 'negative (−)')]]), { forId: fieldId(k, c.id, 'calPol') })}
       ${field(L('Примечания', 'Notes'), input(k, c.id, 'notes', c.notes), { forId: fieldId(k, c.id, 'notes'), cls: 'span-2' })}
@@ -339,7 +339,7 @@ export function saveBeamFromTab(target, form, title = '') {
   return L(`Настройки пучка «${title}» сохранены в журнал (камера и электрометр журнала не менялись). Сохраните журнал в файл.`, `Beam settings "${title}" saved to the journal (the journal chamber and electrometer were not changed). Save the journal to the file.`);
 }
 
-/** Открыть карточку пучка и прокрутить к ней (из сеанса). */
+/** Открыть карточку пучка и прокрутить к ней. */
 export function revealBeam(beamId) {
   if (!beamId) return;
   render();

@@ -137,6 +137,8 @@ test('проверка дозиметра: вкладка с пучком жур
   assert.match(summary, /точка за 3σ/);
   assert.match(summary, /не вошедших в расчёт границ: 1/);
   assert.doesNotMatch(summary, /8 точек подряд/);
+  // запись журнала везде называется «запись», не «сеанс» (подраздела «Сеанс» больше нет)
+  assert.doesNotMatch(await page.locator('#module-history').innerText(), /сеанс/i);
 
   // перенос оценки стабильности (пара с NE 2571) в бюджет неопределённости
   await page.selectOption('#hs_check', { index: pairs.findIndex((t) => /2571/.test(t)) });
@@ -159,5 +161,6 @@ test('проверка дозиметра: вкладка с пучком жур
   await page.waitForTimeout(500);
   const en = (await page.locator('#hs-check-sec').innerText()).split('\n').filter((l) => CYR.test(l) && !/МВ|№/.test(l));
   assert.deepEqual(en, []);
+  assert.doesNotMatch(await page.locator('#module-history').innerText(), /session/i);
   assert.deepEqual(errors, []);
 });
