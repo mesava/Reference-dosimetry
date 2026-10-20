@@ -133,6 +133,7 @@ test('вкладка «МВ фотоны»: пучок журнала, запи�
   // вкладки в шапке — по порядку работы; «Оборудование» и «Журнал и тренды» — отдельные вкладки
   assert.deepEqual((await page.locator('.modules a').allInnerTexts()).map((t) => t.trim()), ['Начало', 'Оборудование', 'Дозиметрия', 'Камера и пучок', 'Неопределённость', 'Журнал и тренды']);
   assert.equal(await page.locator('#tab-equipment').getAttribute('aria-current'), 'page');
+  assert.ok(await page.locator('.protocol-switch').isHidden(), 'в «Оборудовании» переключателя протокола нет');
   // прежний адрес «Сеанса» ведёт в «Журнал и тренды»
   await page.goto(`${server.url}/index.html#session`);
   await pause(500);

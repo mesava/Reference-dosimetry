@@ -28,7 +28,7 @@ const subKey = (group) => `reference-dosimetry.sub.${group}`;
 // старые ссылки и закладки. Подразделы перечислены в порядке работы.
 const MODULES = {
   start: { title: () => L('Референсная дозиметрия', 'Reference dosimetry'), file: '-', importData: () => {}, status: (t) => { $('#start-status').textContent = t; }, tab: 'start', proto: false },
-  equipment: { title: () => L('Оборудование отделения', 'Department equipment'), file: '-', importData: () => {}, status: (t) => equipmentStatus(t), tab: 'equipment' },
+  equipment: { title: () => L('Оборудование отделения', 'Department equipment'), file: '-', importData: () => {}, status: (t) => equipmentStatus(t), tab: 'equipment', proto: false },
   history: { title: () => L('Журнал и тренды', 'Journal and trends'), file: 'journal', importData: (obj) => importJournalObject(obj), status: (t) => historyStatus(t), tab: 'history', proto: false },
   co60: { title: () => L('⁶⁰Co — референсная дозиметрия', '⁶⁰Co — reference dosimetry'), file: 'cobalt', importData: importCobalt, status: cobaltStatus, tab: 'dosimetry' },
   photons: { title: () => L('МВ фотоны — референсная дозиметрия', 'MV photons — reference dosimetry'), file: 'photons', importData: importPhotons, status: photonsStatus, tab: 'dosimetry' },
@@ -111,7 +111,7 @@ function showModule(name) {
   }
   setActiveModule(name);
   // переключатель протокола — только там, где он влияет на расчёт (proto: false — «Начало», «Литература», заглушки,
-  // «Журнал и тренды»: записанные сеансы хранят свой протокол); выбранный протокол при этом не меняется
+  // «Оборудование» — «не заполнено» по TRS-398 Rev.1; «Журнал и тренды»: записи хранят свой протокол); выбранный протокол при этом не меняется
   const sw = $('.protocol-switch');
   if (sw) sw.hidden = MODULES[name].proto === false;
   document.title = MODULES[name].title();

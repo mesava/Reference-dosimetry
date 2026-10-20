@@ -109,7 +109,7 @@ function chamberCard(c, j = getJournal()) {
   const units = Object.entries(NDW_UNITS).map(([v, u]) => [v, unitLabel(u)]);
   const maker = chamberMakerOf(c);
   return `<div class="jcard" data-card="chamber:${esc(c.id)}">
-    <div class="jcard-head"><b>${esc(chamberText(c) || L('Новая камера', 'New chamber'))}</b><span class="chips">${missChip(chamberMissing(c, uses, currentProtocol()))}${dueChip(c.dueDate)}</span></div>
+    <div class="jcard-head"><b>${esc(chamberText(c) || L('Новая камера', 'New chamber'))}</b><span class="chips">${missChip(chamberMissing(c, uses, 'trs'))}${dueChip(c.dueDate)}</span></div>
     <div class="grid">
       ${field(L('Производитель', 'Manufacturer'), `<select ${bind(k, c.id, 'maker')}>${makerOptions(chamberMakers(), maker, L('Другая или своя камера', 'Other or custom chamber'))}</select>`, { forId: fieldId(k, c.id, 'maker') })}
       ${maker ? field(L('Модель', 'Model'), `<select ${bind(k, c.id, 'form.ch_model')}>${chamberModelOptions(maker, f.ch_model)}</select>`, { forId: fieldId(k, c.id, 'form.ch_model'), sub: [custom ? esc([f.cc_maker, f.cc_model].filter(Boolean).join(' ')) : '', ph && el ? esc(L('для фотонов, электронов и ⁶⁰Co', 'for photons, electrons and ⁶⁰Co')) : el ? esc(L('для электронов и ⁶⁰Co', 'for electrons and ⁶⁰Co')) : ph ? esc(L('для фотонов и ⁶⁰Co', 'for photons and ⁶⁰Co')) : '', esc(chamberDims(f))].filter(Boolean).join(' · ') }) : ''}
@@ -321,7 +321,8 @@ function renderReadout() {
   }
   const missItem = (who, miss) => `<li class="info"><span class="lvl">${esc(L('Не заполнено', 'Missing'))}</span><span>${esc(`${who}: `)}${richText(miss.join(', '))}</span></li>`;
   for (const c of j.chambers) {
-    const miss = chamberMissing(c, chamberUses(j, c.id), currentProtocol());
+    // «не заполнено» — по TRS-398 Rev.1 (основной протокол); переключателя протокола в «Оборудовании» нет
+    const miss = chamberMissing(c, chamberUses(j, c.id), 'trs');
     if (miss.length) msgs.push(missItem(chamberText(c) || L('камера', 'chamber'), miss));
   }
   for (const e of j.electrometers) {
