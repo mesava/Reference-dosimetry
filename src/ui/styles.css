@@ -309,6 +309,9 @@ input.num, textarea.num { font-family: var(--font-mono); font-size: 14px; font-v
 textarea { resize: vertical; min-height: 64px; }
 textarea.mono { font: 13px/1.5 var(--font-mono); min-height: 140px; }
 select { cursor: pointer; }
+/* WebKit (Safari на iPhone и Mac): текст выбранного пункта длинного списка не обрезается рамкой select и расширяет
+   страницу — на телефоне страница «уезжает» вбок. Отрисовка содержимого select ограничена его рамкой. */
+select { contain: paint; }
 .inline { display: flex; gap: 6px; min-width: 0; }
 .inline > input { flex: 1 1 auto; }
 .inline > select { flex: 0 0 auto; width: auto; }

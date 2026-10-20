@@ -168,6 +168,9 @@ test('телефон: поля ввода не мельче 16 px — iOS не �
       await page.waitForTimeout(400);
     }
     assert.deepEqual(await small(), [], h);
+    // Safari (WebKit) не обрезает рамкой текст выбранного пункта длинного списка, и он расширяет страницу (на «МВ
+    // фотоны» — «Геометрия измерения дозы», «Как получен TPR20,10»); проверено в WebKitGTK. Защита — contain: paint.
+    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('.module:not([hidden]) select')].filter((e) => !/paint/.test(getComputedStyle(e).contain)).map((e) => e.id)), [], `${h}: select без contain: paint`);
     const sw = await page.evaluate(() => document.documentElement.scrollWidth);
     assert.ok(sw <= 390, `${h}: ширина страницы ${sw} px при экране 390 px`);
   }
