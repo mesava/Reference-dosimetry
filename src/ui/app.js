@@ -12,7 +12,7 @@ import { initUncTool, importUncTool, uncToolStatus, setUncSources, applyStabilit
 import { initJaffe, importJaffe, jaffeStatus } from './jaffe-ui.js';
 import { initEdepth, importEdepth, edepthStatus, setEdepthTransfer } from './edepth-ui.js';
 import { initSectionNavs, refreshSectionNav } from './section-nav.js';
-import { initJournalStore, importJournalObject, getJournal, onJournal, onFileState } from './journal-store.js';
+import { initJournalStore, importJournalObject, onJournal, onFileState } from './journal-store.js';
 import { initStart, renderStart } from './start-ui.js';
 import { initPwa } from './pwa.js';
 import { initSecLinks, revealSection } from './sec-links.js';
@@ -22,14 +22,14 @@ import { initEquipment, equipmentStatus, setEquipmentBridge, saveBeamFromTab, re
 import { initHistory, historyStatus, setHistoryBridge } from './journal-history-ui.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
-// последний открытый подраздел вкладки в шапке («Дозиметрия», «Камера и пучок», «Журнал»)
+// последний открытый подраздел вкладки в шапке («Дозиметрия», «Камера и пучок»)
 const subKey = (group) => `reference-dosimetry.sub.${group}`;
 // tab — вкладка в шапке, к которой относится модуль. Адреса модулей (#photons, #tools…) прежние: так открываются
 // старые ссылки и закладки. Подразделы перечислены в порядке работы.
 const MODULES = {
   start: { title: () => L('Референсная дозиметрия', 'Reference dosimetry'), file: '-', importData: () => {}, status: (t) => { $('#start-status').textContent = t; }, tab: 'start', proto: false },
-  equipment: { title: () => L('Журнал — оборудование', 'Journal — equipment'), file: '-', importData: () => {}, status: (t) => equipmentStatus(t), tab: 'journal' },
-  history: { title: () => L('Журнал — записи и тренды', 'Journal — records and trends'), file: 'journal', importData: (obj) => importJournalObject(obj), status: (t) => historyStatus(t), tab: 'journal', proto: false },
+  equipment: { title: () => L('Оборудование отделения', 'Department equipment'), file: '-', importData: () => {}, status: (t) => equipmentStatus(t), tab: 'equipment' },
+  history: { title: () => L('Журнал и тренды', 'Journal and trends'), file: 'journal', importData: (obj) => importJournalObject(obj), status: (t) => historyStatus(t), tab: 'history', proto: false },
   co60: { title: () => L('⁶⁰Co — референсная дозиметрия', '⁶⁰Co — reference dosimetry'), file: 'cobalt', importData: importCobalt, status: cobaltStatus, tab: 'dosimetry' },
   photons: { title: () => L('МВ фотоны — референсная дозиметрия', 'MV photons — reference dosimetry'), file: 'photons', importData: importPhotons, status: photonsStatus, tab: 'dosimetry' },
   electrons: { title: () => L('Электроны — референсная дозиметрия', 'Electrons — reference dosimetry'), file: 'electrons', importData: importElectrons, status: electronsStatus, tab: 'dosimetry' },
@@ -45,15 +45,9 @@ const MODULES = {
 };
 const tabOf = (name) => MODULES[name]?.tab ?? name;
 /** Подраздел по умолчанию для вкладки в шапке (если с ней ещё не работали). */
-const GROUP_DEFAULT = { start: 'start', journal: 'history', dosimetry: 'photons', prep: 'jaffe', uncertainty: 'uncertainty' };
-/** Журнал пуст (нет ни аппаратов, ни камер): работа с ним начинается с «Оборудования». */
-const journalEmpty = () => {
-  const j = getJournal();
-  return !j.machines.length && !j.chambers.length && !j.electrometers.length;
-};
+const GROUP_DEFAULT = { start: 'start', equipment: 'equipment', dosimetry: 'photons', prep: 'jaffe', uncertainty: 'uncertainty', history: 'history' };
 /** Какой подраздел открыть по щелчку на вкладке в шапке: тот, с которым работали последним. */
 function moduleForGroup(group) {
-  if (group === 'journal' && journalEmpty()) return 'equipment';
   const last = store.get(subKey(group));
   if (last && MODULES[last] && tabOf(last) === group) return last;
   return GROUP_DEFAULT[group] ?? 'start';
@@ -381,8 +375,6 @@ function init() {
   // подразделы, с которыми работали в версиях до 0.12.0 («Инструменты» и «Журнал» в шапке)
   const oldTool = store.get('reference-dosimetry.tool');
   if (!store.get(subKey('prep')) && ['jaffe', 'tools', 'edepth'].includes(oldTool)) store.set(subKey('prep'), oldTool);
-  const oldJournal = store.get('reference-dosimetry.journal-sub');
-  if (!store.get(subKey('journal')) && MODULES[oldJournal]) store.set(subKey('journal'), oldJournal);
   // первое открытие — «Начало»; дальше — то место, где работали в прошлый раз
   const saved = store.get(TAB_KEY);
   showModule(moduleFromHash() ?? (MODULES[saved] ? saved : 'start'));

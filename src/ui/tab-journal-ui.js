@@ -1,5 +1,5 @@
 // Пучок журнала на вкладке дозиметрии («⁶⁰Co», «МВ фотоны», «Электроны»): в разделе 1 — выбор аппарата и пучка из
-// «Журнал» → «Оборудование» (выбор подставляет настройки пучка, камеру и электрометр), под результатом — «Записать в
+// вкладка «Оборудование» (выбор подставляет настройки пучка, камеру и электрометр), под результатом — «Записать в
 // журнал». Измерение идёт во вкладке со всеми поправками; в журнал попадает форма вкладки и итог (core/journal.js:
 // recordTabBeam). Пучки одного аппарата за день в одном режиме — одна запись журнала.
 import { L } from '../core/i18n.js';
@@ -79,8 +79,8 @@ function makeTabJournal(cfg) {
         `Journal beam: ${m.name || '—'} — ${b.name || '—'}${last ? `; last calibration in the journal ${fmtDate(last.date)}` : '; no calibrations in the journal yet'}. The measurement is recorded with the "Record to journal" button under the result.`,
       )
       : L(
-        'Выберите аппарат и пучок из «Журнал» → «Оборудование»: подставятся настройки пучка, камера и электрометр (которыми мерили этот аппарат последний раз). Показания, условия и дата вкладки не меняются.',
-        'Select the machine and beam from Journal → Equipment: the beam settings, chamber and electrometer (the ones last used on this machine) are filled in. The tab readings, conditions and date are not changed.',
+        'Выберите аппарат и пучок из вкладки «Оборудование»: подставятся настройки пучка, камера и электрометр (которыми мерили этот аппарат последний раз). Показания, условия и дата вкладки не меняются.',
+        'Select the machine and beam from the Equipment tab: the beam settings, chamber and electrometer (the ones last used on this machine) are filled in. The tab readings, conditions and date are not changed.',
       );
     const html = `<div class="jbind-row"><span class="jlink-h">${esc(L('Журнал отделения', 'Department journal'))}</span>
       <select data-jb="machine" aria-label="${esc(L('Аппарат журнала', 'Journal machine'))}">${opt('', L('аппарат…', 'machine…'), mSel)}${ms.map((x) => opt(x.id, [x.name || L('аппарат без названия', 'unnamed machine'), x.serial ? `№ ${x.serial}` : ''].filter(Boolean).join(', '), mSel)).join('')}</select>
@@ -261,8 +261,8 @@ function makeTabJournal(cfg) {
         : '';
     cfg.status(
       L(
-        `${res.replaced ? 'Запись заменена' : 'Записано'} в журнал: ${m.name} — ${b.name}, ${fmtDate(res.session.date)}, ${res.session.mode === 'check' ? 'проверка выхода' : 'калибровка'}.${chkText} Записи и тренды — в «Журнал» → «Журнал и тренды»; сохраните журнал в файл, если автосохранение не включено.`,
-        `${res.replaced ? 'Record replaced' : 'Recorded'} to the journal: ${m.name} — ${b.name}, ${fmtDate(res.session.date)}, ${res.session.mode === 'check' ? 'output check' : 'calibration'}.${chkText} Records and trends: Journal → Journal and trends; save the journal file if autosave is off.`,
+        `${res.replaced ? 'Запись заменена' : 'Записано'} в журнал: ${m.name} — ${b.name}, ${fmtDate(res.session.date)}, ${res.session.mode === 'check' ? 'проверка выхода' : 'калибровка'}.${chkText} Записи и тренды — во вкладке «Журнал и тренды»; сохраните журнал в файл, если автосохранение не включено.`,
+        `${res.replaced ? 'Record replaced' : 'Recorded'} to the journal: ${m.name} — ${b.name}, ${fmtDate(res.session.date)}, ${res.session.mode === 'check' ? 'output check' : 'calibration'}.${chkText} Records and trends: the Journal and trends tab; save the journal file if autosave is off.`,
       ),
     );
     render();

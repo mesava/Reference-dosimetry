@@ -130,10 +130,14 @@ test('вкладка «МВ фотоны»: пучок журнала, запи�
   await pause(400);
   assert.ok(await page.locator('[data-del^="chamber:"]').isDisabled());
   assert.ok(await page.locator('[data-del^="electrometer:"]').isDisabled());
+  // вкладки в шапке — по порядку работы; «Оборудование» и «Журнал и тренды» — отдельные вкладки
+  assert.deepEqual((await page.locator('.modules a').allInnerTexts()).map((t) => t.trim()), ['Начало', 'Оборудование', 'Дозиметрия', 'Камера и пучок', 'Неопределённость', 'Журнал и тренды']);
+  assert.equal(await page.locator('#tab-equipment').getAttribute('aria-current'), 'page');
   // прежний адрес «Сеанса» ведёт в «Журнал и тренды»
   await page.goto(`${server.url}/index.html#session`);
   await pause(500);
   assert.ok(await page.locator('#module-history').isVisible());
+  assert.equal(await page.locator('#tab-history').getAttribute('aria-current'), 'page');
 
   // по-английски — без кириллицы в блоках журнала (кроме названий)
   await page.goto(`${server.url}/index.html#photons`);

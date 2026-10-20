@@ -216,7 +216,7 @@ function makeLink(cfg) {
     const name = what === 'chamber' ? L('Камера', 'The chamber') : L('Электрометр', 'The electrometer');
     cfg.status(
       state === 'added'
-        ? L(`${name} добавлен${what === 'chamber' ? 'а' : ''} в журнал отделения: укажите даты калибровки в «Журнал» → «Оборудование» и сохраните журнал в файл.`, `${name} has been added to the department journal: enter its calibration dates under Journal → Equipment and save the journal to the file.`)
+        ? L(`${name} добавлен${what === 'chamber' ? 'а' : ''} в журнал отделения: укажите даты калибровки в «Оборудовании» и сохраните журнал в файл.`, `${name} has been added to the department journal: enter its calibration dates in Equipment and save the journal to the file.`)
         : L(`${name} в журнале обновлен${what === 'chamber' ? 'а' : ''} полями вкладки — для всех пучков, где он${what === 'chamber' ? 'а' : ''} выбран${what === 'chamber' ? 'а' : ''}. Сохраните журнал в файл.`, `${name} in the journal has been updated with the tab fields, for all beams that use it. Save the journal to the file.`),
     );
     render();
