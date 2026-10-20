@@ -1,7 +1,7 @@
 // Измерение во вкладке дозиметрии → журнал: подстановка пучка журнала во вкладку и запись результата.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newJournal, normalizeJournal, tabBeamPatch, recordTabBeam, tabRecordOf, lastCalibration, PH_BEAM_KEYS, PH_CHAMBER_KEYS, PH_ELECTROMETER_KEYS } from '../src/core/journal.js';
+import { newJournal, normalizeJournal, tabBeamPatch, recordTabBeam, tabRecordOf, lastCalibration, saveBeamSettings, PH_BEAM_KEYS, PH_CHAMBER_KEYS, PH_ELECTROMETER_KEYS } from '../src/core/journal.js';
 import { SAMPLE_FORM } from '../src/core/sample.js';
 
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]]));
@@ -83,4 +83,21 @@ test('Запись в журнал: без даты, с ошибками или 
   assert.match(recordTabBeam(j, { machineId: 'm1', beamId: 'b6', form: tab({ rd_M1: ['', '', ''] }), kind: 'photon' }).error, /ошибки/);
   assert.match(recordTabBeam(j, { machineId: 'm1', beamId: 'b6', form: tab(), kind: 'electron' }).error, /другого вида/);
   assert.match(recordTabBeam(j, { machineId: 'm1', beamId: 'nope', form: tab(), kind: 'photon' }).error, /не найден/);
+});
+
+test('«Сохранить настройки пучка в журнал»: только настройки пучка — камера, электрометр и название пучка не меняются', () => {
+  const j = journal();
+  const before = JSON.stringify({ chambers: j.chambers, electrometers: j.electrometers });
+  // на вкладке — другой N_D,w той же камеры, другой k_elec и вовсе другая камера во второй попытке
+  const r = saveBeamSettings(j, 'm1', 'b6', tab({ dd_zmax: '1,6', ch_ndw: '0,06000', el_kelec: '1,010', meta_beam: 'Переименован' }), 'photon');
+  assert.ok(r.saved);
+  const b = r.journal.machines[0].beams.find((x) => x.id === 'b6');
+  assert.equal(b.form.dd_zmax, '1,6', 'настройка пучка сохранена');
+  assert.equal(b.name, '6 МВ', 'название пучка — только в «Оборудовании»');
+  assert.ok(!('ch_ndw' in b.form) && !('el_kelec' in b.form) && !('rd_M1' in b.form), 'в настройках пучка нет полей камеры, электрометра и показаний');
+  assert.equal(JSON.stringify({ chambers: r.journal.chambers, electrometers: r.journal.electrometers }), before, 'камеры и электрометры журнала не изменились');
+  const r2 = saveBeamSettings(j, 'm1', 'b6', tab({ ch_model: 'NE2571', ch_serial: '999' }), 'photon');
+  assert.equal(r2.journal.chambers.length, 1, 'другая камера вкладки в журнал не добавляется');
+  assert.equal(JSON.stringify(j.machines[0].beams[0].form), JSON.stringify(journal().machines[0].beams[0].form), 'исходный журнал не меняется');
+  assert.equal(saveBeamSettings(j, 'm1', 'nope', tab(), 'photon').saved, false);
 });

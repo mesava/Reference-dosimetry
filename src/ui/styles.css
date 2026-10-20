@@ -1130,3 +1130,10 @@ textarea.curve-data { min-height: 200px; height: 220px; font: 12.5px/1.45 var(--
   .journal-file, .jsb-more > summary, .jbeam > summary::before { display: none !important; }
   .jsb.off { display: none; }
 }
+
+/* Телефоны и планшеты: iOS Safari увеличивает страницу при фокусе на поле со шрифтом меньше 16 px и не возвращает
+   масштаб — страница «уезжает» вбок и текст обрезается справа. Шрифт полей ввода на сенсорных экранах — 16 px. */
+@media screen and (pointer: coarse) {
+  input[type="text"], input[type="number"], input[type="date"], select, textarea,
+  input.num, textarea.num, textarea.mono, input.unc-in, table.jf-table td input[type="text"] { font-size: 16px; }
+}

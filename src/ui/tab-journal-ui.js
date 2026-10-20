@@ -3,7 +3,7 @@
 // журнал». Измерение идёт во вкладке со всеми поправками; в журнал попадает форма вкладки и итог (core/journal.js:
 // recordTabBeam). Пучки одного аппарата за день в одном режиме — одна запись журнала.
 import { L } from '../core/i18n.js';
-import { beamKind, machineOf, tabBeamPatch, recordTabBeam, tabRecordOf, tabSessionOf, tabWork, calibrationChecks, tabEquipment, lastCalibration, chamberText, electrometerText, chamberOf, electrometerOf, applyTabFormToBeam, SESSION_DEFAULTS } from '../core/journal.js';
+import { beamKind, machineOf, tabBeamPatch, recordTabBeam, tabRecordOf, tabSessionOf, tabWork, calibrationChecks, tabEquipment, lastCalibration, chamberText, electrometerText, chamberOf, electrometerOf, saveBeamSettings, SESSION_DEFAULTS } from '../core/journal.js';
 import { newCheck, withTabChecks, CHECK_REF } from '../core/journal-check.js';
 import { $, esc, richText, currentProtocol, fmt, fmtSigned } from './common.js';
 import { refText } from '../core/i18n.js';
@@ -273,11 +273,11 @@ function makeTabJournal(cfg) {
     const j = getJournal();
     const { m, b } = current(j);
     if (!b) return;
-    updateJournal((jj) => applyTabFormToBeam(jj, m.id, b.id, cfg.read(), cfg.kind).journal, 'tab-journal');
+    updateJournal((jj) => saveBeamSettings(jj, m.id, b.id, cfg.read(), cfg.kind).journal, 'tab-journal');
     cfg.status(
       L(
-        `Настройки пучка «${m.name} — ${b.name}» сохранены в журнал: в следующий раз они подставятся при выборе пучка. Показания и условия в настройки не входят.`,
-        `The settings of beam "${m.name} — ${b.name}" have been saved to the journal: they will be filled in next time the beam is selected. Readings and conditions are not part of the settings.`,
+        `Настройки пучка «${m.name} — ${b.name}» сохранены в журнал: в следующий раз они подставятся при выборе пучка. Показания, условия, камера и электрометр в настройки пучка не входят: камеру и электрометр журнала меняют в «Оборудовании» или в строке «Журнал отделения» раздела 2.`,
+        `The settings of beam "${m.name} — ${b.name}" have been saved to the journal: they will be filled in next time the beam is selected. Readings, conditions, chamber and electrometer are not part of the beam settings: the journal chamber and electrometer are changed in Equipment or in the "Department journal" row of section 2.`,
       ),
     );
   }

@@ -30,8 +30,9 @@ export async function startServer() {
 export const launch = () => chromium.launch();
 
 /** Новая страница (свой контекст): подмена файловой системы, ошибки страницы — в errors. */
-export async function openPage(browser, { locale = 'ru-RU', fakefs = true, viewport = { width: 1400, height: 1000 } } = {}) {
-  const ctx = await browser.newContext({ locale, viewport });
+export async function openPage(browser, { locale = 'ru-RU', fakefs = true, viewport = { width: 1400, height: 1000 }, mobile = false } = {}) {
+  // mobile — телефон: сенсорный экран, мобильная область просмотра (как iPhone)
+  const ctx = await browser.newContext({ locale, viewport, ...(mobile ? { isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : {}) });
   if (fakefs) await ctx.addInitScript({ content: await readFile(new URL('./fakefs.js', import.meta.url), 'utf8') });
   const page = await ctx.newPage();
   const errors = [];

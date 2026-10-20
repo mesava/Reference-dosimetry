@@ -1069,7 +1069,29 @@ export function beamFromTabForm(j, machineId, form, kind = 'photon') {
 export const beamFromPhotonsForm = (j, machineId, form) => beamFromTabForm(j, machineId, form, 'photon');
 
 /**
- * Настройки пучка, отредактированные на вкладке («Все настройки»), — обратно в журнал.
+ * «Сохранить настройки пучка в журнал» (вкладка дозиметрии и «Настройки пучка — во вкладке…»): в журнал попадают только
+ * настройки пучка — геометрия, напряжения, полярность, МЕ, пересчёт на d_max, номинал и допуск, способ k_Q и т. п.
+ * Камера и электрометр журнала не меняются: их правят в «Оборудовании» или кнопками строки «Журнал отделения» в разделе 2
+ * вкладки. Название пучка — тоже только в «Оборудовании». Возвращает { journal, saved }.
+ */
+export function saveBeamSettings(j, machineId, beamId, form, kind = 'photon') {
+  const K = kindOf(kind);
+  const f = tabForm(form, kind);
+  const journal = copyJournal(j);
+  const b = journal.machines.find((x) => x.id === machineId)?.beams.find((x) => x.id === beamId);
+  if (!b) return { journal: j, saved: false };
+  b.form = { ...pick(f, K.beamKeys) };
+  // длина полости, подставленная из записи камеры вкладки, — не своя длина пучка: в пучок не записывается
+  if (kind === 'photon') {
+    const ch = tabEquipment(journal, f, kind).chamber;
+    if (ch && !isBlank(ch.length) && sameValue(b.form.prof_length, ch.length)) b.form.prof_length = '';
+  }
+  return { journal, saved: true };
+}
+
+/**
+ * Перенос пучка вкладки в журнал вместе с камерой и электрометром (интерфейс им больше не пользуется — настройки пучка
+ * сохраняет saveBeamSettings; функция остаётся для сопоставления камер и электрометров по модели и №, см. тесты).
  * Камера и электрометр записи журнала общие для нескольких пучков (и для фотонов, и для электронов), поэтому другая
  * модель или номер на вкладке означает другую камеру: она находится в журнале или добавляется, а прежняя запись не
  * меняется. Та же камера (модель и номер совпали) обновляется полями вкладки — это та же физическая камера и для

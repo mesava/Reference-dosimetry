@@ -10,8 +10,8 @@ authors:
   - family-names: Melentev
     given-names: Aleksandr Valerievich
     alias: mesava
-version: 0.23.0
-date-released: "2026-10-19"
+version: 0.23.1
+date-released: "2026-10-20"
 license: AGPL-3.0-or-later
 doi: 10.5281/zenodo.23430818
 identifiers:

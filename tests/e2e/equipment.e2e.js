@@ -145,3 +145,31 @@ test('оборудование на телефоне: страница не ши
   }
   assert.deepEqual(errors, []);
 });
+
+test('телефон: поля ввода не мельче 16 px — iOS не увеличивает страницу при вводе, и она не «уезжает» вбок', async () => {
+  const { page, errors } = await openPage(browser, { viewport: { width: 390, height: 844 }, mobile: true });
+  const small = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('.module:not([hidden]) input, .module:not([hidden]) select, .module:not([hidden]) textarea')]
+        .filter((e) => e.offsetParent && !/^(checkbox|radio|button|submit|file|range|color|hidden)$/.test(e.type))
+        .map((e) => ({ id: e.id || e.name || e.className, size: parseFloat(getComputedStyle(e).fontSize) }))
+        .filter((x) => x.size < 16),
+    );
+  await page.goto(`${server.url}/index.html#equipment`);
+  await page.waitForSelector('#eq_department');
+  await page.click('#eq-add-machine');
+  await page.click('#eq-add-chamber');
+  await page.waitForTimeout(400);
+  for (const h of ['equipment', 'photons', 'electrons', 'co60', 'jaffe', 'uncertainty']) {
+    if (h !== 'equipment') await page.goto(`${server.url}/index.html#${h}`);
+    await page.waitForTimeout(500);
+    if (h === 'photons') {
+      await page.click('#btn-sample');
+      await page.waitForTimeout(400);
+    }
+    assert.deepEqual(await small(), [], h);
+    const sw = await page.evaluate(() => document.documentElement.scrollWidth);
+    assert.ok(sw <= 390, `${h}: ширина страницы ${sw} px при экране 390 px`);
+  }
+  assert.deepEqual(errors, []);
+});

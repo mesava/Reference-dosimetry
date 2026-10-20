@@ -10,7 +10,7 @@ import { E_DEFAULTS, normalizeElectrons, parseElectronBeam } from '../core/elect
 import { E_CHAMBERS, findEChamber } from '../core/electron-chambers.js';
 import { CO_DEFAULTS, normalizeCobalt } from '../core/cobalt.js';
 import {
-  uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, applyTabFormToBeam, equipmentDue,
+  uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, saveBeamSettings, equipmentDue,
   chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable, electronChamberForm, beamKind, cobaltCapable, cobaltChamberForm, myChambersToJournal, orgText, withChamberLength,
 } from '../core/journal.js';
 import { getMyChambers } from './store.js';
@@ -332,27 +332,11 @@ function renderReadout() {
 }
 
 // ------------------------------------------------------------ связь с вкладкой «МВ фотоны» и сеансом
-/** «Сохранить в журнал» на вкладке: настройки пучка, камеры и электрометра — в журнал. Возвращает текст состояния. */
+/** «Сохранить в журнал» на вкладке: настройки пучка — в журнал (камера и электрометр журнала не меняются). Возвращает текст состояния. */
 export function saveBeamFromTab(target, form, title = '') {
   if (!target?.beamId) return '';
-  let info = null;
-  updateJournal((j) => {
-    info = applyTabFormToBeam(j, target.machineId, target.beamId, form, ['electron', 'cobalt'].includes(target.kind) ? target.kind : 'photon');
-    return info.journal;
-  }, 'equipment');
-  const ch = {
-    same: info.sharedChamber.length ? L(` Камера обновлена — она же выбрана у пучков: ${info.sharedChamber.join('; ')}.`, ` The chamber has been updated; it is also used by: ${info.sharedChamber.join('; ')}.`) : '',
-    found: L(' У пучка теперь другая камера — она уже была в журнале; прежняя запись камеры не изменена.', ' The beam now uses another chamber that was already in the journal; the previous chamber record is unchanged.'),
-    added: L(' На вкладке выбрана другая камера: она добавлена в список камер (проверьте даты её калибровки), прежняя запись камеры не изменена.', ' A different chamber was selected in the tab: it has been added to the chamber list (check its calibration dates); the previous chamber record is unchanged.'),
-    none: '',
-  }[info.chamber];
-  const el = {
-    same: info.sharedElectrometer.length ? L(` Электрометр обновлён — он же выбран у пучков: ${info.sharedElectrometer.join('; ')}.`, ` The electrometer has been updated; it is also used by: ${info.sharedElectrometer.join('; ')}.`) : '',
-    found: L(' У пучка теперь другой электрометр из журнала.', ' The beam now uses another electrometer from the journal.'),
-    added: L(' На вкладке указан другой электрометр: он добавлен в список электрометров.', ' A different electrometer was given in the tab: it has been added to the electrometer list.'),
-    none: '',
-  }[info.electrometer];
-  return L(`Настройки пучка «${title}» сохранены в журнал.${ch}${el} Сохраните журнал в файл.`, `Beam settings "${title}" saved to the journal.${ch}${el} Save the journal to the file.`);
+  updateJournal((j) => saveBeamSettings(j, target.machineId, target.beamId, form, ['electron', 'cobalt'].includes(target.kind) ? target.kind : 'photon').journal, 'equipment');
+  return L(`Настройки пучка «${title}» сохранены в журнал (камера и электрометр журнала не менялись). Сохраните журнал в файл.`, `Beam settings "${title}" saved to the journal (the journal chamber and electrometer were not changed). Save the journal to the file.`);
 }
 
 /** Открыть карточку пучка и прокрутить к ней (из сеанса). */
