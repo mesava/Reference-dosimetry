@@ -234,7 +234,10 @@ export const ELECTRON_CONDITIONS = [
     label: () => L('k_Q по данным TRS-398 Rev.1 (или измерен)', 'k_Q from TRS-398 Rev.1 data (or measured)'),
     ref: `${TRS}, табл. 20–21, прил. II`,
     check: (c) => (c.chamber ? !c.kQNonstandard : null),
-    reason: (c) => L(`${chamberName(c)}: k_Q рассчитан по Report 385 — TRS-398 Rev.1 для этой камеры при калибровке в ⁶⁰Co k_Q не даёт`, `${chamberName(c)}: k_Q calculated per Report 385; TRS-398 Rev.1 gives no k_Q for this chamber calibrated in ⁶⁰Co`),
+    reason: (c) =>
+      c.kQNonstandard === 'trs2004'
+        ? L(`${chamberName(c)}: k_Q из табл. 18 TRS-398 первого издания — TRS-398 Rev.1 для этой камеры при калибровке в ⁶⁰Co k_Q не даёт`, `${chamberName(c)}: k_Q from TRS-398 first edition Table 18; TRS-398 Rev.1 gives no k_Q for this chamber calibrated in ⁶⁰Co`)
+        : L(`${chamberName(c)}: k_Q рассчитан по Report 385 — TRS-398 Rev.1 для этой камеры при калибровке в ⁶⁰Co k_Q не даёт`, `${chamberName(c)}: k_Q calculated per Report 385; TRS-398 Rev.1 gives no k_Q for this chamber calibrated in ⁶⁰Co`),
   },
   {
     id: 'chamber385',

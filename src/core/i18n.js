@@ -20,6 +20,7 @@ export function L(ru, en) {
 // Ссылки на источники («TRS-398 Rev.1, табл. 12; аддендум TG-51 (2014), разд. 5.A.5») по-английски.
 const REF_RULES = [
   [/аддендум TG-51/g, 'TG-51 addendum'],
+  [/рус\. изд\. /g, 'Russian ed. '],
   [/аддендум для фотонов/g, 'photon addendum'],
   [/рабочая запись/g, 'worksheet'],
   [/рабочий лист/g, 'Worksheet'],

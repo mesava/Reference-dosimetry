@@ -9,7 +9,7 @@ import { L } from './i18n.js';
 import { temperaturePressure, polarity, environmentChecks, outputPlausibility, readTolerance, manualSource } from './common.js';
 import * as TG51 from './tg51.js';
 import * as TRS from './trs398.js';
-import { findEChamber, eChamberLabel, interpE, kQprime385, trsFit, R385_RANGE } from './electron-chambers.js';
+import { findEChamber, eChamberLabel, interpE, kQprime385, trsFit, R385_RANGE, T18_NODES } from './electron-chambers.js';
 import { ELECTRON_CONDITIONS, evaluateConditions, complianceFromConditions } from './conditions.js';
 
 export const E_DEFAULTS = {
@@ -101,6 +101,7 @@ const REF = {
   add: 'аддендум TG-51 (2014)',
   r374: 'WGTG51 Report 374',
   trs: 'TRS-398 Rev.1',
+  trs2004: 'TRS-398 (рус. изд. 2004)',
 };
 
 // первая буква — заглавная, кроме обозначений величин (k_Q, k′_Q, …)
@@ -500,6 +501,11 @@ export function computeElectrons(form) {
             ? L(`k_Q,Qint для пучка перекрёстной калибровки: ${b.error}`, `k_Q,Qint for the cross-calibration beam: ${b.error}`)
             : null;
         trs.kQFormula = trs.kQTableError ? NaN : trsFit(chamber, chamber.trsFit21, r50) / trsFit(chamber, chamber.trsFit21, crossR50);
+      } else if (!cross && !chamber.trsT20 && (chamber.t2004 || chamber.r385)) {
+        // нет данных Rev.1 при калибровке в ⁶⁰Co: рядом — два нестандартных значения, табл. 18 первого издания и Report 385
+        trs.kQCompare = 'nonstandard';
+        trs.kQTable = chamber.t2004 ? interpE(chamber.t2004, r50, T18_NODES).value : NaN;
+        trs.kQFormula = chamber.r385 && r50 >= R385_RANGE[0] - 1e-9 && r50 <= R385_RANGE[1] + 1e-9 ? chamber.r385.kQecal * kQprime385(chamber, r50) : NaN;
       }
       trs.kQDiff = (trs.kQTable / trs.kQFormula - 1) * 100;
     }
@@ -527,7 +533,7 @@ export function computeElectrons(form) {
         trs.kQprime385 = kQprime385(chamber, r50);
         trs.kQecal385 = chamber.r385.kQecal;
         trs.kQ = trs.kQprime385 * trs.kQecal385;
-        trs.kQNonstandard = true;
+        trs.kQNonstandard = 'r385';
         const fit = chamber.type === 'cyl'
           ? `${ru(chamber.r385.a, 3)} + ${ru(chamber.r385.b, 3)}·R50^(−${ru(chamber.r385.c, 3)})`
           : `${ru(chamber.r385.a, 3)} + ${ru(chamber.r385.b, 3)}·exp(−R50/${ru(chamber.r385.c, 3)})`;
@@ -545,18 +551,49 @@ export function computeElectrons(form) {
               `Non-standard calculation: k_Q for ${eChamberLabel(chamber)} is taken from Report 385 (TG-51), not from TRS-398 Rev.1. Rev.1 gives k_Q for ⁶⁰Co calibration only for the Roos and NACP-02 plane-parallel chambers and recommends calibration in an electron beam or cross-calibration for the others. Rev.1 Table 47 for the Roos and NACP-02 is the same product k_Qecal·k′_Q from the same calculations, but Rev.1 does not endorse it for this chamber: the result is not reference dosimetry per TRS-398; cross-calibration is preferable.`,
             ), `${REF.trs}, прил. II, табл. 47; ${REF.r385}, табл. ${chamber.type === 'cyl' ? '4–5' : '6–7'}`, ['e_kqtrs_mode', 'kQtrs']);
       } else trs.kQ = NaN;
-    } else if (cross && f.e_kqtrs_mode === 'r385') {
+    } else if (!cross && f.e_kqtrs_mode === 'trs2004') {
+      // нестандартно: k_Q из табл. 18 TRS-398 первого издания (рус. изд. 2004) для камер, которых нет в табл. 20 Rev.1
+      if (!chamber.t2004) {
+        add('error', 'trs', L(
+          `Для ${eChamberLabel(chamber)} в табл. 18 TRS-398 первого издания нет данных: способ недоступен.`,
+          `TRS-398 first edition Table 18 has no data for ${eChamberLabel(chamber)}: the method is not available.`,
+        ), `${REF.trs2004}, табл. 18`, ['e_kqtrs_mode', 'kQtrs']);
+        trs.kQ = NaN;
+      } else if (r50ok) {
+        const t = interpE(chamber.t2004, r50, T18_NODES);
+        if (t.error) add('error', 'trs', L(`k_Q по табл. 18 TRS-398 первого издания: ${t.error}.`, `k_Q from TRS-398 first edition Table 18: ${t.error}.`), `${REF.trs2004}, табл. 18`, ['kQtrs', 'e_i50', 'e_r50']);
+        trs.kQ = t.value;
+        trs.kQNonstandard = 'trs2004';
+        trs.kQSource = L(
+          'нестандартно, по TRS-398 первого издания (рус. изд. 2004), табл. 18, линейная интерполяция по R50',
+          'non-standard, from TRS-398 first edition (Russian ed. 2004), Table 18, linear interpolation in R50',
+        );
+        const alt = trs.kQFormula;
+        const altTxt = Number.isFinite(alt) && Number.isFinite(t.value)
+          ? L(` Report 385 для этой камеры даёт ${ru(alt, 4)} (табл. 18 ниже на ${ru((1 - t.value / alt) * 100, 2)} %).`, ` Report 385 gives ${ru(alt, 4)} for this chamber (Table 18 is lower by ${ru((1 - t.value / alt) * 100, 2)} %).`)
+          : '';
+        add('warn', 'trs', chamber.trsT20
+          ? L(
+              `Для ${eChamberLabel(chamber)} есть данные TRS-398 Rev.1 (табл. 20): k_Q первого издания здесь не нужен — выберите табл. 20.`,
+              `TRS-398 Rev.1 has data for ${eChamberLabel(chamber)} (Table 20): the first-edition k_Q is not needed here; select Table 20.`,
+            )
+          : L(
+              `Нестандартный расчёт: k_Q для ${eChamberLabel(chamber)} взят из табл. 18 TRS-398 первого издания (рус. изд. 2004), а не из Rev.1. В Rev.1 этих данных нет: из плоскопараллельных камер k_Q при калибровке в ⁶⁰Co оставлен только для Roos и NACP-02, для остальных рекомендована калибровка в пучке электронов или перекрёстная. Табл. 18 рассчитана со старыми тормозными способностями и p_wall в ⁶⁰Co: для Roos и NACP-02 Rev.1 поднял k_Q относительно неё на 0,1–1,7 %.${altTxt} Неопределённость k_Q плоскопараллельной камеры при калибровке в ⁶⁰Co по первому изданию — 1,7 % (прил. II, табл. 40); перекрёстная калибровка (разд. 7.6) надёжнее.`,
+              `Non-standard calculation: k_Q for ${eChamberLabel(chamber)} is taken from TRS-398 first edition (Russian ed. 2004) Table 18, not from Rev.1. Rev.1 does not contain these data: among plane-parallel chambers it keeps k_Q for ⁶⁰Co calibration only for the Roos and NACP-02 and recommends calibration in an electron beam or cross-calibration for the others. Table 18 was calculated with the old stopping powers and p_wall in ⁶⁰Co: for the Roos and NACP-02, Rev.1 raised k_Q relative to it by 0.1–1.7 %.${altTxt} The first-edition uncertainty of k_Q for a plane-parallel chamber calibrated in ⁶⁰Co is 1.7 % (App. II, Table 40); cross-calibration (Sec. 7.6) is more reliable.`,
+            ), `${REF.trs2004}, разд. 7.5.1, 7.6, табл. 18, 40; ${REF.trs}, прил. II`, ['e_kqtrs_mode', 'kQtrs']);
+      } else trs.kQ = NaN;
+    } else if (cross && (f.e_kqtrs_mode === 'r385' || f.e_kqtrs_mode === 'trs2004')) {
       add('error', 'trs', L(
-        'Способ «по Report 385» — только для камеры, откалиброванной в ⁶⁰Co. При перекрёстной калибровке в электронах k_Q,Qcross берётся из табл. 21 TRS-398.',
-        'The "per Report 385" method applies only to a chamber calibrated in ⁶⁰Co. With cross-calibration in electrons, k_Q,Qcross comes from TRS-398 Table 21.',
+        'Нестандартные способы k_Q (по Report 385, по TRS-398 первого издания) — только для камеры, откалиброванной в ⁶⁰Co. При перекрёстной калибровке в электронах k_Q,Qcross берётся из табл. 21 TRS-398 Rev.1.',
+        'The non-standard k_Q methods (per Report 385, from TRS-398 first edition) apply only to a chamber calibrated in ⁶⁰Co. With cross-calibration in electrons, k_Q,Qcross comes from TRS-398 Rev.1 Table 21.',
       ), `${REF.trs}, разд. 7.6`, ['e_kqtrs_mode', 'kQtrs']);
       trs.kQ = NaN;
     } else if (!cross) {
       if (!chamber.trsT20) {
         if (chamber.type === 'pp' && chamber.trsT21) {
           add('error', 'trs', L(
-            `Для ${eChamberLabel(chamber)} TRS-398 не даёт k_Q при калибровке в ⁶⁰Co (табл. 20): нужна калибровка в пучке электронов — перекрёстная или в лаборатории.${chamber.r385 ? ' Нестандартно k_Q можно рассчитать по Report 385: способ «по Report 385» в разделе k_Q.' : ''}`,
-            `TRS-398 gives no k_Q for ${eChamberLabel(chamber)} calibrated in ⁶⁰Co (Table 20): calibration in an electron beam is required, either by cross-calibration or at a calibration laboratory.${chamber.r385 ? ' As a non-standard option, k_Q can be calculated per Report 385: the "per Report 385" method in the k_Q section.' : ''}`,
+            `Для ${eChamberLabel(chamber)} TRS-398 не даёт k_Q при калибровке в ⁶⁰Co (табл. 20): нужна калибровка в пучке электронов — перекрёстная или в лаборатории.${chamber.r385 || chamber.t2004 ? ` Нестандартно k_Q можно взять ${[chamber.r385 ? 'по Report 385' : '', chamber.t2004 ? 'из табл. 18 TRS-398 первого издания' : ''].filter(Boolean).join(' или ')}: способы в разделе k_Q.` : ''}`,
+            `TRS-398 gives no k_Q for ${eChamberLabel(chamber)} calibrated in ⁶⁰Co (Table 20): calibration in an electron beam is required, either by cross-calibration or at a calibration laboratory.${chamber.r385 || chamber.t2004 ? ` As a non-standard option, k_Q can be taken ${[chamber.r385 ? 'per Report 385' : '', chamber.t2004 ? 'from TRS-398 first edition Table 18' : ''].filter(Boolean).join(' or ')}: see the methods in the k_Q section.` : ''}`,
           ), `${REF.trs}, разд. 7.5–7.6, табл. 20–21`, ['e_cal_route', 'kQtrs']);
         } else {
           add('error', 'trs', L(
@@ -863,7 +900,7 @@ export function computeElectrons(form) {
       kleak,
       kpolRaw: fixed ? NaN : kpolRaw,
       kpolFixed: !!fixed,
-      kQNonstandard: !!trs.kQNonstandard,
+      kQNonstandard: trs.kQNonstandard || false,
     },
     activeKey,
   );

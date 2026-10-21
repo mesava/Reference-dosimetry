@@ -314,3 +314,28 @@ test('Нестандартный k_Q по Report 385 при калибровке
   const cross = computeElectrons({ ...f, e_kqtrs_mode: 'r385', e_cal_route: 'cross', e_cross_ndw: '0,08', e_cross_r50: '7,8' });
   assert.ok(errorsOf(cross, 'trs').some((m) => /только для камеры, откалиброванной в ⁶⁰Co/.test(m.text)));
 });
+
+test('Нестандартный k_Q из табл. 18 TRS-398 первого издания (рус. изд. 2004) для Markus и Exradin P11: значения, сравнение с Report 385, пометка', () => {
+  const f = { ...SAMPLE_ELECTRONS, protocol: 'trs', e_ch_model: 'MARKUS', e_cal_route: 'co60', e_r50_method: 'r50', e_r50: '5' };
+  // в режиме по умолчанию (табл. 20 Rev.1 нет) рядом показываются оба нестандартных значения
+  const table = computeElectrons(f);
+  assert.equal(table.trs.kQCompare, 'nonstandard');
+  near(table.trs.kQTable, 0.904, 1e-12, 'табл. 18 при R50 = 5,0');
+  near(table.trs.kQFormula, 0.898 * (0.984 + 0.112 * Math.exp(-5 / 3.826)), 1e-12, 'Report 385');
+  assert.ok(errorsOf(table, 'trs').some((m) => /из табл\. 18 TRS-398 первого издания/.test(m.text)));
+  // способ «по TRS-398 первого издания»: интерполяция по узлам табл. 18 (в том числе выше 10 г/см²)
+  const r = computeElectrons({ ...f, e_kqtrs_mode: 'trs2004', e_r50: '4,25' });
+  near(r.trs.kQ, (0.910 + 0.907) / 2, 1e-12, 'середина между 4,0 и 4,5');
+  assert.equal(r.trs.kQNonstandard, 'trs2004');
+  assert.match(r.trs.kQSource, /первого издания \(рус\. изд\. 2004\), табл\. 18/);
+  assert.ok(r.messages.some((m) => m.level === 'warn' && /Нестандартный расчёт/.test(m.text) && /Report 385 для этой камеры даёт/.test(m.text)));
+  assert.equal(r.compliance.status, 'nonstandard');
+  assert.ok(r.compliance.reasons.some((x) => /табл\. 18 TRS-398 первого издания/.test(x.text)));
+  near(computeElectrons({ ...f, e_kqtrs_mode: 'trs2004', e_r50: '11,5' }).trs.kQ, (0.881 + 0.870) / 2, 1e-12, 'между 10 и 13 г/см²');
+  // ниже 2,0 г/см² у Markus данных нет — ошибка; у Exradin P11 есть с 1,0
+  assert.ok(errorsOf(computeElectrons({ ...f, e_kqtrs_mode: 'trs2004', e_r50: '1,6' }), 'trs').some((m) => /вне диапазона/.test(m.text)));
+  near(computeElectrons({ ...f, e_ch_model: 'P11', e_kqtrs_mode: 'trs2004', e_r50: '1,4' }).trs.kQ, 0.948, 1e-12, 'P11 при 1,4');
+  // у камеры без данных табл. 18 способ недоступен; при перекрёстной калибровке — ошибка
+  assert.ok(errorsOf(computeElectrons({ ...f, e_ch_model: 'PPC40', e_kqtrs_mode: 'trs2004' }), 'trs').some((m) => /нет данных: способ недоступен/.test(m.text)));
+  assert.ok(errorsOf(computeElectrons({ ...f, e_kqtrs_mode: 'trs2004', e_cal_route: 'cross', e_cross_ndw: '0,08', e_cross_r50: '7,8' }), 'trs').some((m) => /только для камеры, откалиброванной в ⁶⁰Co/.test(m.text)));
+});

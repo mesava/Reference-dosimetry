@@ -261,6 +261,7 @@ export const STATIC_EN = {
   "Как определить k<sub>Q,Q₀</sub>": "How to determine k<sub>Q,Q₀</sub>",
   "по табл. 20 с интерполяцией по R50": "from Table 20 with interpolation in R50",
   "по аппроксимации прил. II (табл. 47)": "by the fit in App. II (Table 47)",
+  "нестандартно: по TRS-398 первого издания (2004), табл. 18": "non-standard: from TRS-398 first edition (2004), Table 18",
   "нестандартно: по Report 385, k_Qecal·k′_Q (камеры без данных табл. 20)": "non-standard: per Report 385, k_Qecal·k′_Q (chambers without Table 20 data)",
   "ввести вручную (например, измерен в лаборатории)": "enter manually (e.g., measured by the laboratory)",
   "по таблице": "from table",

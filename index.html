@@ -1343,6 +1343,7 @@
               <option value="formula" id="e-opt-trs-formula">по аппроксимации прил. II (табл. 47)</option>
               <option value="manual">ввести вручную (например, измерен в лаборатории)</option>
               <option value="r385" id="e-opt-trs-r385">нестандартно: по Report 385, k_Qecal·k′_Q (камеры без данных табл. 20)</option>
+              <option value="trs2004" id="e-opt-trs-2004">нестандартно: по TRS-398 первого издания (2004), табл. 18</option>
             </select>
           </div>
           <div class="field" data-show="e_kqtrs_mode:manual"><label for="e_kqtrs_manual" id="e-lbl-kqtrs">k<sub>Q,Q₀</sub></label><input type="text" id="e_kqtrs_manual" class="num" inputmode="decimal"></div>
@@ -1352,9 +1353,9 @@
             <div class="field out-cell"><span class="label">k<sub>Qcross,Qint</sub></span><output data-out="trs.kQcrossInt" data-digits="4"></output></div>
           </div>
           <div class="grid four">
-            <div class="field out-cell"><span class="label">по таблице</span><output data-out="trs.kQTable" data-digits="4"></output></div>
-            <div class="field out-cell"><span class="label">по аппроксимации</span><output data-out="trs.kQFormula" data-digits="4"></output></div>
-            <div class="field out-cell"><span class="label">таблица − аппрокс.</span><output data-out="trs.kQDiff" data-digits="3" data-signed="1" data-suffix=" %"></output></div>
+            <div class="field out-cell"><span class="label" id="e-lbl-kq-table">по таблице</span><output data-out="trs.kQTable" data-digits="4"></output></div>
+            <div class="field out-cell"><span class="label" id="e-lbl-kq-formula">по аппроксимации</span><output data-out="trs.kQFormula" data-digits="4"></output></div>
+            <div class="field out-cell"><span class="label" id="e-lbl-kq-diff">таблица − аппрокс.</span><output data-out="trs.kQDiff" data-digits="3" data-signed="1" data-suffix=" %"></output></div>
             <div class="field out-cell used"><span class="label">k<sub>Q</sub> в расчёте</span><output data-out="trs.kQ" data-digits="4" data-flag="kQtrs"></output></div>
           </div>
           <p class="eq" data-out-text="trs.kQSource"></p>

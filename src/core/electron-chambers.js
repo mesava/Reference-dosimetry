@@ -8,6 +8,9 @@
 //          ур. (99) a + b·R50^(−c) для цилиндрических.
 // trsRcylMm — радиус полости r_cyl, мм, TRS-398 Rev.1, табл. 4 (сдвиг 0,5·r_cyl при позиционировании).
 // windowMgCm2, windowMm — толщина входного окна плоскопараллельной камеры, TRS-398 Rev.1, табл. 5.
+// t2004 — TRS-398 первого издания (рус. изд. МАГАТЭ, 2004), табл. 18: k_Q для камеры, откалиброванной в ⁶⁰Co, в узлах
+//          R50 = T18_NODES. Только для камер, которым Rev.1 k_Q при калибровке в ⁶⁰Co не даёт (PTW 23343 Markus, Exradin P11):
+//          нестандартный расчёт, данные до Rev.1 (другие тормозные способности и p_wall плоскопараллельных камер в ⁶⁰Co).
 // r385 — WGTG51 Report 385 (2024):
 //   kQecal — табл. 4 (цилиндрические) и табл. 6 (плоскопараллельные);
 //   fit    — табл. 5: k′_Q = a + b·R50^(−c) (цилиндрические, ур. 7);
@@ -21,6 +24,8 @@ import { dec } from './units.js';
 
 export const E_NODES = [1.0, 1.4, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 7.0, 8.0, 10.0];
 export const R385_RANGE = [1.7, 8.7];
+/** Узлы R50 табл. 18 TRS-398 первого издания (рус. изд. 2004). */
+export const T18_NODES = [1.0, 1.4, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 7.0, 8.0, 10.0, 13.0, 16.0, 20.0];
 
 const cyl = (v) => [null, null, null, null, ...v];
 
@@ -51,6 +56,7 @@ export const E_CHAMBERS = [
     trsFit21: { a: 0.984, b: 0.112, c: 3.826 },
     trsT21: [1.0705, 1.0620, 1.0507, 1.0425, 1.0354, 1.0291, 1.0236, 1.0188, 1.0146, 1.0108, 1.0076, 1.0022, 0.9981, 0.9924],
     r385: { kQecal: 0.898, a: 0.984, b: 0.112, c: 3.826, shiftMm: 1.5 },
+    t2004: [null, null, 0.925, 0.920, 0.916, 0.913, 0.910, 0.907, 0.904, 0.901, 0.899, 0.894, 0.889, 0.881, 0.870, 0.860, 0.849],
   },
   {
     id: 'PPC40', maker: 'IBA', model: 'PPC40', type: 'pp', windowMgCm2: 118, windowMm: 1.0,
@@ -81,6 +87,7 @@ export const E_CHAMBERS = [
     trsFit21: { a: 0.989, b: 0.177, c: 2.687 },
     trsT21: [1.1113, 1.0944, 1.0733, 1.0590, 1.0472, 1.0373, 1.0291, 1.0223, 1.0167, 1.0120, 1.0081, 1.0022, 0.9982, 0.9934],
     r385: { kQecal: 0.883, a: 0.989, b: 0.177, c: 2.687, shiftMm: 1.4 },
+    t2004: [0.958, 0.948, 0.937, 0.930, 0.923, 0.918, 0.913, 0.908, 0.904, 0.901, 0.897, 0.891, 0.885, 0.875, 0.863, 0.853, 0.841],
   },
   {
     id: 'P11TW', maker: 'Exradin', model: 'P11TW', type: 'pp',
@@ -147,10 +154,10 @@ export const E_CHAMBERS = [
 export const findEChamber = (id) => E_CHAMBERS.find((c) => c.id === id) ?? null;
 export const eChamberLabel = (c) => (c ? `${c.maker} ${c.model}` : '');
 
-/** Линейная интерполяция по узлам R50; null вне диапазона данных. */
-export function interpE(values, r50) {
+/** Линейная интерполяция по узлам R50 (по умолчанию — узлы табл. 20–21 Rev.1); null вне диапазона данных. */
+export function interpE(values, r50, nodes = E_NODES) {
   if (!values || !Number.isFinite(r50)) return { value: NaN, error: L('нет данных', 'no data') };
-  const pts = E_NODES.map((x, i) => [x, values[i]]).filter(([, v]) => v != null);
+  const pts = nodes.map((x, i) => [x, values[i]]).filter(([, v]) => v != null);
   const lo = pts[0][0];
   const hi = pts[pts.length - 1][0];
   if (r50 < lo - 1e-9 || r50 > hi + 1e-9) return { value: NaN, error: L(`R50 вне диапазона таблицы (${dec(lo)}–${dec(hi)} г/см²)`, `R50 outside the table range (${dec(lo)}–${dec(hi)} g/cm²)`), lo, hi };

@@ -62,6 +62,12 @@ test('дозиметрия: T и P перед контрольными изме�
   await page.selectOption('#e_ch_model', 'MARKUS');
   await pause();
   assert.match(await page.locator('#e-dose-rows').innerText(), /Исправьте ошибки/);
+  // рядом — оба нестандартных значения: табл. 18 первого издания и Report 385
+  assert.match(await page.locator('#e-lbl-kq-table').innerText(), /TRS-398 \(2004\), табл\. 18/);
+  assert.equal(await page.locator('#e-lbl-kq-formula').innerText(), 'Report 385');
+  await page.selectOption('#e_kqtrs_mode', 'trs2004');
+  await pause();
+  assert.match(await page.locator('#e-messages').innerText(), /первого издания[\s\S]*Report 385 для этой камеры даёт/);
   await page.selectOption('#e_kqtrs_mode', 'r385');
   await pause();
   assert.match(await page.locator('section[aria-labelledby="e-s5"] [data-inline-result]').innerText(), /Гр на 100 МЕ/);

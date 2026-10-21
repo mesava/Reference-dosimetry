@@ -131,6 +131,12 @@ function applyVisibility(data, r) {
     : L('по аппроксимации прил. II (табл. 47)', 'from the App. II fit (Table 47)');
   // нестандартный k_Q по Report 385 — только для калибровки в ⁶⁰Co и камер с данными Report 385
   $('#e-opt-trs-r385').disabled = cross || !c?.r385;
+  $('#e-opt-trs-2004').disabled = cross || !c?.t2004;
+  // для камер без данных табл. 20 рядом — два нестандартных значения: табл. 18 первого издания и Report 385
+  const nonstd = r.trs?.kQCompare === 'nonstandard';
+  $('#e-lbl-kq-table').textContent = nonstd ? L('TRS-398 (2004), табл. 18', 'TRS-398 (2004), Table 18') : L('по таблице', 'from table');
+  $('#e-lbl-kq-formula').textContent = nonstd ? 'Report 385' : L('по аппроксимации', 'from fit');
+  $('#e-lbl-kq-diff').textContent = nonstd ? L('табл. 18 − Report 385', 'Table 18 − Report 385') : L('таблица − аппрокс.', 'table − fit');
   $('#e-lbl-kqtrs').innerHTML = cross ? 'k<sub>Q,Qcross</sub>' : 'k<sub>Q,Q₀</sub>';
   $('#e-lbl-kq51').innerHTML = cross ? 'k′<sub>Q</sub>' : 'k<sub>Q</sub>';
   $('#e-lbl-kq51-used').innerHTML = cross ? L('k′<sub>Q</sub> в расчёте', 'k′<sub>Q</sub> used') : 'k<sub>Q</sub> = k′<sub>Q</sub>·k<sub>Qecal</sub>';
