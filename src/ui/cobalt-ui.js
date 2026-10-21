@@ -288,7 +288,8 @@ function renderReadout(result, data) {
     const p = primaryOf(first.x);
     mv.innerHTML = `${first.k === 'trs' ? 'TRS' : 'TG-51'}: <b>${fmt(rateAt(p, result.depth), 2)}</b> ${L('сГр/мин', 'cGy/min')}${Number.isFinite(p.deviation) ? ` (${fmtSigned(p.deviation, 2)} %)` : ''}`;
   } else {
-    const n = result.messages.filter((m) => m.level === 'error').length;
+    // только ошибки, которые видны в «Замечаниях» (ошибки другого протокола там не показываются)
+    const n = result.messages.filter((m) => m.level === 'error' && (['common', 'depth', 'ctrl', 'source'].includes(m.scope) || keys.includes(m.scope))).length;
     mv.textContent = n ? L(`Ошибок: ${n}`, `Errors: ${n}`) : '—';
   }
 

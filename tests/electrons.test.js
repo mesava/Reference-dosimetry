@@ -127,8 +127,18 @@ test('Ограничения: цилиндрическая камера при R
   assert.ok(high.tg51.blocked);
   const manual = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'tg51', e_r50_method: 'r50', e_r50: '9,5', e_kq51_mode: 'manual', e_kq51_manual: '0,905' });
   assert.ok(!manual.tg51.blocked);
+  // для Advanced Markus нет k_Q при калибровке в ⁶⁰Co: по умолчанию — нестандартно по Report 385, а не ошибка
   const adv = computeElectrons({ ...SAMPLE_ELECTRONS, e_ch_model: 'ADVMARKUS' });
-  assert.ok(adv.trs.blocked, 'для Advanced Markus нет k_Q при калибровке в ⁶⁰Co');
+  assert.equal(adv.trs.kQMode, 'r385');
+  assert.equal(adv.trs.kQNonstandard, 'r385');
+  assert.equal(adv.compliance.status, 'nonstandard');
+  // у SNC350p нет ни табл. 20, ни Report 385: k_Q только вручную, без ввода — ошибка в поле k_Q, а не в калибровке
+  const snc = computeElectrons({ ...SAMPLE_ELECTRONS, e_ch_model: 'SNC350P' });
+  assert.deepEqual(snc.trs.kQModes, ['manual']);
+  assert.ok(snc.trs.blocked);
+  assert.equal(snc.flags.e_kqtrs_manual, 'error');
+  assert.notEqual(snc.flags.e_cal_route, 'error');
+  assert.ok(snc.messages.some((m) => m.level === 'info' && /не даёт k_Q для Sun Nuclear SNC350p при калибровке в ⁶⁰Co/.test(m.text)));
   const p30012 = computeElectrons({ ...SAMPLE_ELECTRONS, protocol: 'tg51', e_ch_model: 'PTW30012' });
   assert.ok(p30012.tg51.blocked, 'PTW 30012 нет в Report 385');
 });
@@ -296,9 +306,6 @@ test('Нестандартный k_Q по Report 385 при калибровке
     for (const r50 of [2, 3, 5, 8]) near(c.r385.kQecal * kQprime385(c, r50), trsFit(c, c.trsFit20, r50), 6e-4, `${id}, R50 = ${r50}`);
   }
   const f = { ...SAMPLE_ELECTRONS, protocol: 'trs', e_ch_model: 'MARKUS', e_cal_route: 'co60' };
-  // по умолчанию (табл. 20) — ошибка с подсказкой о нестандартном способе
-  const table = computeElectrons(f);
-  assert.ok(errorsOf(table, 'trs').some((m) => /не даёт k_Q при калибровке в ⁶⁰Co/.test(m.text) && /по Report 385/.test(m.text)));
   // способ «по Report 385»
   const r = computeElectrons({ ...f, e_kqtrs_mode: 'r385' });
   const r50 = r.quality.r50;
@@ -309,20 +316,34 @@ test('Нестандартный k_Q по Report 385 при калибровке
   assert.deepEqual(errorsOf(r, 'trs').map((m) => m.text), errorsOf(computeElectrons({ ...f, e_ch_model: 'ROOS' }), 'trs').map((m) => m.text), 'ошибок, кроме тех же, что у Roos, нет');
   assert.equal(r.compliance.status, 'nonstandard');
   assert.ok(r.compliance.reasons.some((x) => /Report 385/.test(x.text)));
-  // камера с данными табл. 20 — способ не нужен (предупреждение), перекрёстная калибровка — ошибка
-  assert.ok(computeElectrons({ ...f, e_ch_model: 'ROOS', e_kqtrs_mode: 'r385' }).messages.some((m) => /здесь не нужен/.test(m.text)));
+  // нестандартный способ подсвечивает калибровку предупреждением, а не ошибкой
+  assert.equal(r.flags.e_cal_route, 'warn');
+  // камере с данными табл. 20 и при перекрёстной калибровке способ не предлагается: форма приводится к табл. 20/21
+  const roos = computeElectrons({ ...f, e_ch_model: 'ROOS', e_kqtrs_mode: 'r385' });
+  assert.equal(roos.trs.kQMode, 'table');
+  assert.ok(!roos.trs.kQNonstandard);
   const cross = computeElectrons({ ...f, e_kqtrs_mode: 'r385', e_cal_route: 'cross', e_cross_ndw: '0,08', e_cross_r50: '7,8' });
-  assert.ok(errorsOf(cross, 'trs').some((m) => /только для камеры, откалиброванной в ⁶⁰Co/.test(m.text)));
+  assert.equal(cross.trs.kQMode, 'table');
+  assert.deepEqual(cross.trs.kQModes, ['table', 'formula', 'manual']);
 });
 
 test('Нестандартный k_Q из табл. 18 TRS-398 первого издания (рус. изд. 2004) для Markus и Exradin P11: значения, сравнение с Report 385, пометка', () => {
   const f = { ...SAMPLE_ELECTRONS, protocol: 'trs', e_ch_model: 'MARKUS', e_cal_route: 'co60', e_r50_method: 'r50', e_r50: '5' };
-  // в режиме по умолчанию (табл. 20 Rev.1 нет) рядом показываются оба нестандартных значения
-  const table = computeElectrons(f);
-  assert.equal(table.trs.kQCompare, 'nonstandard');
-  near(table.trs.kQTable, 0.904, 1e-12, 'табл. 18 при R50 = 5,0');
-  near(table.trs.kQFormula, 0.898 * (0.984 + 0.112 * Math.exp(-5 / 3.826)), 1e-12, 'Report 385');
-  assert.ok(errorsOf(table, 'trs').some((m) => /из табл\. 18 TRS-398 первого издания/.test(m.text)));
+  // табл. 20 Rev.1 нет: в списке только табл. 18, Report 385 и ввод вручную; по умолчанию (в форме «табл. 20») — табл. 18,
+  // без ошибок; рядом показываются оба нестандартных значения
+  const def = computeElectrons(f);
+  assert.deepEqual(def.trs.kQModes, ['trs2004', 'r385', 'manual']);
+  assert.equal(def.trs.kQMode, 'trs2004');
+  assert.equal(def.form.e_kqtrs_mode, 'trs2004', 'форма приведена к доступному способу');
+  assert.deepEqual(errorsOf(def, 'trs'), []);
+  assert.ok(!def.trs.blocked);
+  assert.equal(def.trs.kQCompare, 'nonstandard');
+  near(def.trs.kQ, 0.904, 1e-12, 'табл. 18 при R50 = 5,0');
+  near(def.trs.kQTable, 0.904, 1e-12);
+  near(def.trs.kQFormula, 0.898 * (0.984 + 0.112 * Math.exp(-5 / 3.826)), 1e-12, 'Report 385');
+  assert.equal(def.flags.e_cal_route, 'warn');
+  assert.equal(computeElectrons({ ...f, e_kqtrs_mode: 'formula' }).trs.kQMode, 'trs2004');
+  assert.equal(computeElectrons({ ...f, e_kqtrs_mode: 'manual', e_kqtrs_manual: '0,91' }).trs.kQMode, 'manual', 'ввод вручную остаётся');
   // способ «по TRS-398 первого издания»: интерполяция по узлам табл. 18 (в том числе выше 10 г/см²)
   const r = computeElectrons({ ...f, e_kqtrs_mode: 'trs2004', e_r50: '4,25' });
   near(r.trs.kQ, (0.910 + 0.907) / 2, 1e-12, 'середина между 4,0 и 4,5');
@@ -335,7 +356,9 @@ test('Нестандартный k_Q из табл. 18 TRS-398 первого и
   // ниже 2,0 г/см² у Markus данных нет — ошибка; у Exradin P11 есть с 1,0
   assert.ok(errorsOf(computeElectrons({ ...f, e_kqtrs_mode: 'trs2004', e_r50: '1,6' }), 'trs').some((m) => /вне диапазона/.test(m.text)));
   near(computeElectrons({ ...f, e_ch_model: 'P11', e_kqtrs_mode: 'trs2004', e_r50: '1,4' }).trs.kQ, 0.948, 1e-12, 'P11 при 1,4');
-  // у камеры без данных табл. 18 способ недоступен; при перекрёстной калибровке — ошибка
-  assert.ok(errorsOf(computeElectrons({ ...f, e_ch_model: 'PPC40', e_kqtrs_mode: 'trs2004' }), 'trs').some((m) => /нет данных: способ недоступен/.test(m.text)));
-  assert.ok(errorsOf(computeElectrons({ ...f, e_kqtrs_mode: 'trs2004', e_cal_route: 'cross', e_cross_ndw: '0,08', e_cross_r50: '7,8' }), 'trs').some((m) => /только для камеры, откалиброванной в ⁶⁰Co/.test(m.text)));
+  // у камеры без данных табл. 18 способа в списке нет — по умолчанию Report 385; при перекрёстной калибровке — табл. 21
+  const ppc = computeElectrons({ ...f, e_ch_model: 'PPC40', e_kqtrs_mode: 'trs2004' });
+  assert.deepEqual(ppc.trs.kQModes, ['r385', 'manual']);
+  assert.equal(ppc.trs.kQMode, 'r385');
+  assert.equal(computeElectrons({ ...f, e_kqtrs_mode: 'trs2004', e_cal_route: 'cross', e_cross_ndw: '0,08', e_cross_r50: '7,8' }).trs.kQMode, 'table');
 });

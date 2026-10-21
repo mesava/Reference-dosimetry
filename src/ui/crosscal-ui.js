@@ -288,7 +288,7 @@ function renderReadout(r, data) {
   const mv = $('#cc-mobile-value');
   if (ok) mv.innerHTML = `${r.protocolUsed === 'tg51' ? '(k·N)pp' : r.type === 'co60' ? 'N<sub>D,w</sub>' : 'N<sub>Qcross</sub>'}: <b>${fmt(value, 5)}</b> ${L('Гр/нКл', 'Gy/nC')}`;
   else {
-    const n = r.messages.filter((m) => m.level === 'error').length;
+    const n = r.messages.filter((m) => m.level === 'error' && (m.scope === 'common' || m.scope === r.protocolUsed)).length;
     mv.textContent = n ? L(`Ошибок: ${n}`, `Errors: ${n}`) : '—';
   }
 

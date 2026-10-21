@@ -1,5 +1,5 @@
 // Модуль «Электроны»: связывает форму с расчётным ядром electrons.js.
-import { computeElectrons, E_DEFAULTS, normalizeElectrons, parseElectronBeam } from '../core/electrons.js';
+import { computeElectrons, E_DEFAULTS, normalizeElectrons, parseElectronBeam, kqTrsModes, resolveEChamber } from '../core/electrons.js';
 import { E_CHAMBERS, eChamberLabel } from '../core/electron-chambers.js';
 import { SAMPLE_ELECTRONS, SAMPLE_ELECTRONS_EN } from '../core/sample-electrons.js';
 import { L, getLang, refText } from '../core/i18n.js';
@@ -31,7 +31,7 @@ function fillSelects() {
     const list = E_CHAMBERS.filter((c) => c.type === type);
     return `<optgroup label="${label}">${list
       .map((c) => {
-        const tags = [c.trsT20 ? 'TRS: ⁶⁰Co' : null, c.trsT21 ? L('TRS: перекр.', 'TRS: cross-cal.') : null, c.r385 ? 'Report 385' : null].filter(Boolean).join(', ');
+        const tags = [c.trsT20 ? 'TRS: ⁶⁰Co' : null, c.trsT21 ? L('TRS: перекр.', 'TRS: cross-cal.') : null, c.r385 ? 'Report 385' : null, c.t2004 ? 'TRS 2004: ⁶⁰Co' : null].filter(Boolean).join(', ');
         return `<option value="${c.id}">${esc(eChamberLabel(c))} [${tags}]</option>`;
       })
       .join('')}</optgroup>`;
@@ -70,6 +70,7 @@ function readForm() {
 
 function writeForm(values) {
   const data = normalizeElectrons(values);
+  syncKqOptions(kqTrsModes(resolveEChamber(data), data.e_cal_route === 'cross'));
   for (const [key, value] of Object.entries(data)) {
     if (key === 'protocol') continue;
     if (key === 'e_staff') renderStaff($('#e-staff-list'), value, update);
@@ -82,6 +83,55 @@ function writeForm(values) {
     }
   }
   localizeDecimals(ROOT());
+}
+
+// ------------------------------------------------------------ способы k_Q по TRS-398
+// В списке — только способы, которые для выбранной камеры и калибровки что-то считают (kqTrsModes): камере без данных
+// табл. 20 при калибровке в ⁶⁰Co табл. 20 и аппроксимация не предлагаются. Пункты убираются из списка, а не скрываются:
+// скрытые <option> в Safari на iPhone всё равно видны.
+let kqOptions = null;
+let kqKey = '';
+function syncKqOptions(modes) {
+  const sel = $('#e_kqtrs_mode');
+  if (!kqOptions) kqOptions = Object.fromEntries([...sel.options].map((o) => [o.value, o]));
+  const key = modes.join(',');
+  if (key === kqKey) return;
+  kqKey = key;
+  sel.replaceChildren(...modes.map((m) => kqOptions[m]));
+}
+
+/** Подписи способов k_Q на текущем языке (убранные из списка пункты статический перевод не видит). */
+function kqOptionTexts(cross) {
+  kqOptions.table.textContent = cross
+    ? L('по табл. 21: k_Q,Qint / k_Qcross,Qint (ур. 44)', 'from Table 21: k_Q,Qint / k_Qcross,Qint (Eq. 44)')
+    : L('по табл. 20 с интерполяцией по R50', 'from Table 20, interpolated in R50');
+  kqOptions.formula.textContent = cross
+    ? L('по аппроксимации прил. II (табл. 48), ур. (44)', 'from the App. II fit (Table 48), Eq. (44)')
+    : L('по аппроксимации прил. II (табл. 47)', 'from the App. II fit (Table 47)');
+  kqOptions.manual.textContent = L('ввести вручную (например, измерен в лаборатории)', 'enter manually (e.g. measured by a calibration laboratory)');
+  kqOptions.r385.textContent = L('нестандартно: по Report 385, k_Qecal·k′_Q', 'non-standard: per Report 385, k_Qecal·k′_Q');
+  kqOptions.trs2004.textContent = L('нестандартно: по TRS-398 первого издания (2004), табл. 18', 'non-standard: from TRS-398 first edition (2004), Table 18');
+}
+
+/** Пояснение под «Калибровкой камеры»: TRS-398 Rev.1 не даёт k_Q этой камере при калибровке в ⁶⁰Co — сразу, а не только в разделе 5. */
+function renderCalNote(data, r) {
+  const note = $('#e-cal-note');
+  const c = r.chamber;
+  const show = data.protocol !== 'tg51' && data.e_cal_route !== 'cross' && c && !c.other && !c.trsT20;
+  note.hidden = !show;
+  if (!show) return;
+  const how = {
+    trs2004: L('нестандартно, по табл. 18 TRS-398 первого издания (2004)', 'non-standard, from TRS-398 first edition (2004) Table 18'),
+    r385: L('нестандартно, по Report 385', 'non-standard, per Report 385'),
+    manual: L('вводится вручную', 'entered manually'),
+  }[data.e_kqtrs_mode];
+  const better = c.type === 'pp'
+    ? L(' Надёжнее перекрёстная калибровка в пучке электронов.', ' Cross-calibration in an electron beam is more reliable.')
+    : '';
+  note.textContent = L(
+    `TRS-398 Rev.1 не даёт k_Q этой камере при калибровке в ⁶⁰Co: k_Q ${how} (способ — в разделе 5).${better}`,
+    `TRS-398 Rev.1 gives no k_Q for this chamber calibrated in ⁶⁰Co: k_Q is ${how} (method in section 5).${better}`,
+  );
 }
 
 // ------------------------------------------------------------ видимость и подписи
@@ -123,15 +173,11 @@ function applyVisibility(data, r) {
   $('#e-nominal-sub').textContent = !data.e_dd_on
     ? L('Без пересчёта на z_max номинальный выход относится к опорной глубине.', 'Without transfer to z_max the nominal output refers to the reference depth.')
     : L('Итог показывается на этой глубине; отклонение считается от номинала на ней.', 'The result is shown at this depth, and the deviation is calculated from the nominal output there.');
-  $('#e-opt-trs-table').textContent = cross
-    ? L('по табл. 21: k_Q,Qint / k_Qcross,Qint (ур. 44)', 'from Table 21: k_Q,Qint / k_Qcross,Qint (Eq. 44)')
-    : L('по табл. 20 с интерполяцией по R50', 'from Table 20, interpolated in R50');
-  $('#e-opt-trs-formula').textContent = cross
-    ? L('по аппроксимации прил. II (табл. 48), ур. (44)', 'from the App. II fit (Table 48), Eq. (44)')
-    : L('по аппроксимации прил. II (табл. 47)', 'from the App. II fit (Table 47)');
-  // нестандартный k_Q по Report 385 — только для калибровки в ⁶⁰Co и камер с данными Report 385
-  $('#e-opt-trs-r385').disabled = cross || !c?.r385;
-  $('#e-opt-trs-2004').disabled = cross || !c?.t2004;
+  // способы k_Q: только доступные для камеры и калибровки; способ формы уже приведён к доступному (normalizeElectrons)
+  syncKqOptions(kqTrsModes(c, cross));
+  kqOptionTexts(cross);
+  $('#e_kqtrs_mode').value = data.e_kqtrs_mode;
+  renderCalNote(data, r);
   // для камер без данных табл. 20 рядом — два нестандартных значения: табл. 18 первого издания и Report 385
   const nonstd = r.trs?.kQCompare === 'nonstandard';
   $('#e-lbl-kq-table').textContent = nonstd ? L('TRS-398 (2004), табл. 18', 'TRS-398 (2004), Table 18') : L('по таблице', 'from table');
@@ -161,13 +207,13 @@ function renderChamberInfo(r) {
   const c = r.chamber;
   const info = $('#e-chamber-info');
   if (!c) info.textContent = '';
-  else if (c.other) info.innerHTML = richText(L('k_Q вводится вручную в разделе 6.', 'k_Q is entered manually in section 6.'));
+  else if (c.other) info.innerHTML = richText(L('k_Q вводится вручную в разделе 5.', 'k_Q is entered manually in section 5.'));
   else {
     const bits = [c.type === 'pp' ? L('плоскопараллельная', 'plane-parallel') : L('цилиндрическая', 'cylindrical')];
     if (c.type === 'pp' && Number.isFinite(c.windowMgCm2)) bits.push(L(`входное окно ${fmt(c.windowMgCm2, c.windowMgCm2 < 10 ? 2 : 0)} мг/см²`, `entrance window ${fmt(c.windowMgCm2, c.windowMgCm2 < 10 ? 2 : 0)} mg/cm²`));
     else if (c.type === 'pp' && Number.isFinite(c.windowMm)) bits.push(L(`входное окно ${fmt(c.windowMm, 1)} мм`, `entrance window ${fmt(c.windowMm, 1)} mm`));
     if (c.type === 'cyl' && Number.isFinite(c.trsRcylMm)) bits.push(L(`r_cyl = ${fmt(c.trsRcylMm, 1)} мм (табл. 4 TRS-398)`, `r_cyl = ${fmt(c.trsRcylMm, 1)} mm (TRS-398 Table 4)`));
-    const src = [c.trsT20 ? L('TRS-398 табл. 20', 'TRS-398 Table 20') : null, c.trsT21 ? L('табл. 21', 'Table 21') : null, c.r385 ? 'Report 385' : null].filter(Boolean);
+    const src = [c.trsT20 ? L('TRS-398 табл. 20', 'TRS-398 Table 20') : null, c.trsT21 ? L('табл. 21', 'Table 21') : null, c.r385 ? 'Report 385' : null, c.t2004 ? L('табл. 18 TRS-398 (2004)', 'TRS-398 (2004) Table 18') : null].filter(Boolean);
     bits.push(L(`данные k_Q: ${src.join(', ')}`, `k_Q data: ${src.join(', ')}`));
     info.innerHTML = richText(bits.join(' · '));
   }
@@ -291,7 +337,8 @@ function renderReadout(r, data) {
     const val = atMaxOf(p, r) ? p.DmaxPerMU : p.DperMU;
     mv.innerHTML = `${first.k === 'trs' ? 'TRS' : 'TG-51'}: <b>${fmt(val, 4)}</b> ${L('Гр/100 МЕ', 'Gy/100 MU')}${Number.isFinite(p.deviation) ? ` (${fmtSigned(p.deviation, 2)} %)` : ''}`;
   } else {
-    const n = r.messages.filter((m) => m.level === 'error').length;
+    // только ошибки, которые видны в «Замечаниях» (ошибки другого протокола там не показываются)
+    const n = r.messages.filter((m) => m.level === 'error' && (['common', 'depth', 'ctrl', 'recal'].includes(m.scope) || keys.includes(m.scope))).length;
     mv.textContent = n ? L(`Ошибок: ${n}`, `Errors: ${n}`) : '—';
   }
 

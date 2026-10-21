@@ -408,7 +408,8 @@ function renderReadout(result, data) {
     const val = atMaxOf(p, result) ? p.DmaxPerMU : p.DperMU;
     mv.innerHTML = `${first.k === 'trs' ? 'TRS' : 'TG-51'}: <b>${fmt(val, 4)}</b> ${L('Гр/100 МЕ', 'Gy/100 MU')}${Number.isFinite(p.deviation) ? ` (${fmtSigned(p.deviation, 2)} %)` : ''}`;
   } else {
-    const n = result.messages.filter((m) => m.level === 'error').length;
+    // только ошибки, которые видны в «Замечаниях» (ошибки другого протокола там не показываются)
+    const n = result.messages.filter((m) => m.level === 'error' && (['common', 'depth', 'ctrl', 'recal'].includes(m.scope) || keys.includes(m.scope))).length;
     mv.textContent = n ? L(`Ошибок: ${n}`, `Errors: ${n}`) : '—';
   }
 

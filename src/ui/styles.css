@@ -287,6 +287,7 @@ a.sec-link:hover { color: var(--accent); }
 }
 .field .sub { color: var(--muted); font: 12px/1.35 var(--font-body); }
 .field .sub.use-note { color: var(--accent); }
+.field .sub.cal-note { color: var(--warn); background: var(--warn-soft); border-left: 3px solid var(--warn); padding: 4px 8px; margin-top: 2px; }
 .field .sub.use-note:empty, .field .sub:empty { display: none; }
 input[type="text"], input[type="number"], input[type="date"], select, textarea, output.box {
   font: 15px var(--font-body);
