@@ -14,7 +14,7 @@ import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
-  notifyUpdate, flashFields, richText } from './common.js';
+  notifyUpdate, flashFields, richText, inlineResultHtml, setInlineResult } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.photons.v2';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'photons', version: 2 };
@@ -163,7 +163,7 @@ function applyVisibility(data, result) {
   $('#custom-chamber').hidden = !isCustom(data.ch_model);
   $('#btn-del-chamber').hidden = !String(data.ch_model).startsWith('MY:');
 
-  // раздел 6 активен только для БВФ; формула (22) и табл. 11 требуют TPR20,10, то есть протокол TRS-398
+  // раздел 5 (k_vol) активен только для БВФ; формула (22) и табл. 11 требуют TPR20,10, то есть протокол TRS-398
   const fff = !!data.meta_fff;
   const trsOn = p !== 'tg51';
   $('#kvol-fields').disabled = !fff;
@@ -186,6 +186,13 @@ function applyVisibility(data, result) {
           'Формула (22) и табл. 11 взяты из TRS-398 и требуют TPR20,10: в режиме «только TG-51» рассчитайте P_rp по измеренному профилю или введите своё значение.',
           'Eq. (22) and Table 11 come from TRS-398 and require TPR20,10: in "TG-51 only" mode, calculate P_rp from a measured profile or enter your own value.',
         );
+
+  // геометрия словами: числа выбранной установки видны сразу под списком
+  $('#geom-view').textContent = data.setup_geometry === 'SAD'
+    ? L('РИО 100 см: РИП 90 см, поле 10 × 10 см в плоскости камеры, камера на глубине 10 см.', 'SAD 100 cm: SSD 90 cm, 10 × 10 cm field at the chamber plane, chamber at 10 cm depth.')
+    : data.setup_geometry === 'manual'
+      ? L('Введите РИП, размер поля и глубину камеры ниже.', 'Enter the SSD, field size and chamber depth below.')
+      : L('РИП 100 см, поле 10 × 10 см на поверхности воды, камера на глубине 10 см.', 'SSD 100 cm, 10 × 10 cm field at the water surface, chamber at 10 cm depth.');
 
   // подписи, зависящие от выбора
   const pdd = data.qtrs_method === 'pdd2010';
@@ -246,8 +253,8 @@ function applyVisibility(data, result) {
   const ksName = tg ? 'P_ion' : 'k_s';
   $('#q-rec-ks-sub').innerHTML = richText(
     Number.isFinite(ksTab)
-      ? L(`пусто — ${ksName} из раздела 4 (${fmt(ksTab, 4)}): годится, если ${tg ? '%dd(10)' : 'TPR20,10'} измерен той же камерой при том же напряжении`, `blank — ${ksName} from section 4 (${fmt(ksTab, 4)}): valid if ${tg ? '%dd(10)' : 'TPR20,10'} was measured with the same chamber at the same voltage`)
-      : L(`пусто — ${ksName} из раздела 4 (там он пока не определён)`, `blank — ${ksName} from section 4 (not determined there yet)`),
+      ? L(`пусто — ${ksName} из раздела 3 (${fmt(ksTab, 4)}): годится, если ${tg ? '%dd(10)' : 'TPR20,10'} измерен той же камерой при том же напряжении`, `blank — ${ksName} from section 3 (${fmt(ksTab, 4)}): valid if ${tg ? '%dd(10)' : 'TPR20,10'} was measured with the same chamber at the same voltage`)
+      : L(`пусто — ${ksName} из раздела 3 (там он пока не определён)`, `blank — ${ksName} from section 3 (not determined there yet)`),
   );
 }
 
@@ -293,7 +300,7 @@ const PROTO = {
   },
 };
 
-/** Доза до подстройки: по контрольным измерениям, если они введены и без ошибок, иначе по M₁ раздела 4. */
+/** Доза до подстройки: по контрольным измерениям, если они введены и без ошибок, иначе по M₁ раздела 3. */
 const preOf = (x) => (x.ctrl && !x.ctrl.blocked && !x.blocked ? x.ctrl : x);
 /** Контрольные измерения введены, но с ошибками: итога нет (подменять его показанием M₁ нельзя). */
 const ctrlFailed = (x) => !x.blocked && !!x.ctrl?.blocked;
@@ -356,7 +363,7 @@ function doseRow(key, x, result) {
           `Before adjustment: ${fmt(atMax ? p.pre.DmaxPerMU : p.pre.DperMU, 4)} Gy per 100 MU (from nominal ${fmtSigned(p.pre.deviation, 2)} %; from the dose after adjustment ${fmtSigned(p.preVsNew, 2)} %)`,
         )
       : null,
-    fromRecal || fromCtrl ? null : L('Контрольные измерения не введены — доза по показанию M₁ раздела 4', 'No check measurements entered — dose from reading M₁ of section 4'),
+    fromRecal || fromCtrl ? null : L('Контрольные измерения не введены — доза по показанию M₁ раздела 3', 'No check measurements entered — dose from reading M₁ of section 3'),
     !fromRecal && result.recal.needed
       ? result.recal.answer === 'no'
         ? L(`Вне допуска ±${tolText(result)} %; калибровка не проводилась`, `Outside the ±${tolText(result)} % tolerance; no calibration performed`)
@@ -403,6 +410,30 @@ function renderReadout(result, data) {
   } else {
     const n = result.messages.filter((m) => m.level === 'error').length;
     mv.textContent = n ? L(`Ошибок: ${n}`, `Errors: ${n}`) : '—';
+  }
+
+  // строка итога в разделах 3 и 7 — те же числа, что в окне результата
+  {
+    const x = data.protocol === 'tg51' ? result.tg51 : result.trs;
+    const p = primaryOf(x);
+    const none = x.blocked || ctrlFailed(x);
+    const atMax = atMaxOf(p, result);
+    const z = result.depth.zref;
+    const zT = Number.isFinite(z) ? fmt(z, z % 1 ? 1 : 0) : '10';
+    setInlineResult($('#module-photons'), inlineResultHtml({
+      value: none ? NaN : atMax ? p.DmaxPerMU : p.DperMU,
+      unit: L('Гр на 100 МЕ', 'Gy per 100 MU'),
+      where: atMax ? L('на d<sub>max</sub>', 'at d<sub>max</sub>') : L(`на ${zT} см`, `at ${zT} cm`),
+      deviation: p.deviation,
+      tol: result.recal.tolerance,
+      source: p === x.recal
+        ? L('после подстройки ускорителя (раздел 9)', 'after the linac adjustment (section 9)')
+        : p === x.ctrl
+          ? L('по контрольным измерениям (раздел 7)', 'from the check measurements (section 7)')
+          : L('по показанию M₁ раздела 3 (контрольные измерения не введены)', 'from reading M₁ of section 3 (no check measurements entered)'),
+      errors: result.messages.filter((m) => m.level === 'error' && (m.scope === 'common' || m.scope === data.protocol || m.scope === 'ctrl')).length,
+      failedText: ctrlFailed(x) ? L('не посчитан — ошибки в контрольных измерениях (раздел 7)', 'not calculated: errors in the check measurements (section 7)') : '',
+    }));
   }
 
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
@@ -620,7 +651,7 @@ function reportText(data, r) {
         }
       } else if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (раздел 7)', 'From check measurements (section 7)'), r.ctrl.mu);
       else if (r.ctrl.on) out.push(L('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: в контрольных измерениях (раздел 7) ошибки (см. замечания).', 'RESULT NOT CALCULATED: the check measurements (section 7) contain errors (see Messages).'));
-      else describe(x, L('По показанию M₁ раздела 4 (контрольные измерения не введены)', 'From reading M₁ of section 4 (no check measurements entered)'), r.inputs.mu);
+      else describe(x, L('По показанию M₁ раздела 3 (контрольные измерения не введены)', 'From reading M₁ of section 3 (no check measurements entered)'), r.inputs.mu);
       const cl = complianceLine(r.compliance, PROTO[k].name);
       if (cl) out.push(cl);
     }

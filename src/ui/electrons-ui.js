@@ -10,7 +10,7 @@ import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
-  notifyUpdate, flashFields, richText, applyProtocol } from './common.js';
+  notifyUpdate, flashFields, richText, applyProtocol, inlineResultHtml, setInlineResult } from './common.js';
 import { makeJournalView } from './journal-view.js';
 
 const DRAFT_KEY = 'reference-dosimetry.electrons.v1';
@@ -129,6 +129,8 @@ function applyVisibility(data, r) {
   $('#e-opt-trs-formula').textContent = cross
     ? L('по аппроксимации прил. II (табл. 48), ур. (44)', 'from the App. II fit (Table 48), Eq. (44)')
     : L('по аппроксимации прил. II (табл. 47)', 'from the App. II fit (Table 47)');
+  // нестандартный k_Q по Report 385 — только для калибровки в ⁶⁰Co и камер с данными Report 385
+  $('#e-opt-trs-r385').disabled = cross || !c?.r385;
   $('#e-lbl-kqtrs').innerHTML = cross ? 'k<sub>Q,Qcross</sub>' : 'k<sub>Q,Q₀</sub>';
   $('#e-lbl-kq51').innerHTML = cross ? 'k′<sub>Q</sub>' : 'k<sub>Q</sub>';
   $('#e-lbl-kq51-used').innerHTML = cross ? L('k′<sub>Q</sub> в расчёте', 'k′<sub>Q</sub> used') : 'k<sub>Q</sub> = k′<sub>Q</sub>·k<sub>Qecal</sub>';
@@ -175,7 +177,7 @@ function renderChamberInfo(r) {
 }
 
 // ------------------------------------------------------------ вывод
-/** Доза до подстройки: по контрольным измерениям, если они введены и без ошибок, иначе по M₁ раздела 5. */
+/** Доза до подстройки: по контрольным измерениям, если они введены и без ошибок, иначе по M₁ раздела 4. */
 const preOf = (x) => (x.ctrl && !x.ctrl.blocked && !x.blocked ? x.ctrl : x);
 /** Контрольные измерения введены, но с ошибками: итога нет (подменять его показанием M₁ нельзя). */
 const ctrlFailed = (x) => !x.blocked && !!x.ctrl?.blocked;
@@ -237,7 +239,7 @@ function doseRow(key, x, r) {
           `Before adjustment: ${fmt(atMax ? p.pre.DmaxPerMU : p.pre.DperMU, 4)} Gy per 100 MU (from nominal ${fmtSigned(p.pre.deviation, 2)} %; from the dose after adjustment ${fmtSigned(p.preVsNew, 2)} %)`,
         )
       : null,
-    fromRecal || fromCtrl ? null : L('Контрольные измерения не введены — доза по показанию M₁ раздела 5', 'No check measurements entered — dose from reading M₁ of section 5'),
+    fromRecal || fromCtrl ? null : L('Контрольные измерения не введены — доза по показанию M₁ раздела 4', 'No check measurements entered — dose from reading M₁ of section 4'),
     !fromRecal && r.recal.needed
       ? r.recal.answer === 'no'
         ? L(`Вне допуска ±${tolText(r)} %; калибровка не проводилась`, `Outside the ±${tolText(r)} % tolerance; no calibration performed`)
@@ -285,6 +287,29 @@ function renderReadout(r, data) {
   } else {
     const n = r.messages.filter((m) => m.level === 'error').length;
     mv.textContent = n ? L(`Ошибок: ${n}`, `Errors: ${n}`) : '—';
+  }
+
+  // строка итога в разделах 4 и 7 — те же числа, что в окне результата
+  {
+    const x = pick(data.protocol);
+    const p = primaryOf(x);
+    const none = x.blocked || ctrlFailed(x);
+    const atMax = atMaxOf(p, r);
+    const z = zTxt(r.quality.zref);
+    setInlineResult($('#module-electrons'), inlineResultHtml({
+      value: none ? NaN : atMax ? p.DmaxPerMU : p.DperMU,
+      unit: L('Гр на 100 МЕ', 'Gy per 100 MU'),
+      where: atMax ? L('на z<sub>max</sub>', 'at z<sub>max</sub>') : L(`на ${z} см`, `at ${z} cm`),
+      deviation: p.deviation,
+      tol: r.recal.tolerance,
+      source: p === x.recal
+        ? L('после подстройки ускорителя (раздел 9)', 'after the linac adjustment (section 9)')
+        : p === x.ctrl
+          ? L('по контрольным измерениям (раздел 7)', 'from the check measurements (section 7)')
+          : L('по показанию M₁ раздела 4 (контрольные измерения не введены)', 'from reading M₁ of section 4 (no check measurements entered)'),
+      errors: r.messages.filter((m) => m.level === 'error' && (m.scope === 'common' || m.scope === data.protocol || m.scope === 'ctrl')).length,
+      failedText: ctrlFailed(x) ? L('не посчитан — ошибки в контрольных измерениях (раздел 7)', 'not calculated: errors in the check measurements (section 7)') : '',
+    }));
   }
 
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
@@ -479,7 +504,7 @@ function reportText(data, r) {
         }
       } else if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (раздел 7)', 'From check measurements (section 7)'), r.ctrl.mu);
       else if (r.ctrl.on) out.push(L('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: в контрольных измерениях (раздел 7) ошибки (см. замечания).', 'RESULT NOT CALCULATED: the check measurements (section 7) contain errors (see Messages).'));
-      else describe(x, L('По показанию M₁ раздела 5 (контрольные измерения не введены)', 'From reading M₁ of section 5 (no check measurements entered)'), i.mu);
+      else describe(x, L('По показанию M₁ раздела 4 (контрольные измерения не введены)', 'From reading M₁ of section 4 (no check measurements entered)'), i.mu);
       const cl = complianceLine(r.compliance, PROTO[k].name);
       if (cl) out.push(cl);
     }

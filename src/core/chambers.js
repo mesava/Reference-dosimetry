@@ -12,7 +12,10 @@
 // rCavMm — радиус полости, мм: WGTG51 Report 374, табл. 1; для старых камер — TG-51, табл. III;
 //          для PTW 31021 — TRS-398 Rev.1, табл. 4.
 // lengthMm — длина полости, мм: TRS-398 Rev.1, табл. 4 (только там, где она указана).
-// sleeve — камера не водонепроницаема, нужен чехол (ПММА ≤ 1 мм).
+// sleeve — камера не водонепроницаема, нужен чехол (ПММА ≤ 1 мм); TRS-398 Rev.1, табл. 4 (столбец «Водонепроницаемость»),
+//          для камер вне табл. 4 — по данным производителя. Остальные камеры базы водонепроницаемы.
+// note — тип и объём; для камер табл. 4 TRS-398 Rev.1 — объём и материал стенки оттуда (у IBA FC65-P стенка — POM,
+//          полиоксиметилен; FC65-G и FC65-P обе водонепроницаемы).
 // notes — замечания к камере: scope 'tg51' | 'trs', level 'warn' | 'info'.
 
 // noteEn, textEn — те же пояснения и замечания по-английски.
@@ -20,7 +23,7 @@
 import { L } from './i18n.js';
 
 /** Пояснение к модели («Фармер 0,6 см³») на текущем языке. */
-export const chamberNote = (c) => (c?.note ? L(c.note, c.noteEn) : '');
+export const chamberNote = (c) => [c?.note ? L(c.note, c.noteEn) : '', c?.sleeve ? L('не водонепроницаема, нужен чехол', 'not waterproof, sleeve needed') : ''].filter(Boolean).join(', ');
 
 /** Текст замечания к камере на текущем языке. */
 export const noteText = (n) => L(n.text, n.textEn);
@@ -37,10 +40,10 @@ export const CHAMBERS = [
     notes: [{ scope: 'tg51', level: 'warn', text: 'Аддендум 2014 разрешает эту камеру, только если она отвечает требованиям к камерам эталонного класса (табл. III аддендума).', textEn: 'The 2014 addendum allows this chamber only if it meets the reference-class chamber specification (addendum Table III).' }] },
 
   // ---- Exradin (Standard Imaging)
-  { id: 'A19', maker: 'Exradin', model: 'A19', note: 'водонепроницаемый Фармер', noteEn: 'waterproof Farmer', rCavMm: 3.05,
+  { id: 'A19', maker: 'Exradin', model: 'A19', note: 'Фармер 0,62 см³, стенка C-552', noteEn: 'Farmer 0.62 cm³, C-552 wall', rCavMm: 3.05,
     tg51: { A: 0.9934, B: 1.384, C: -2.125, kq63: 0.996 }, trs: { a: 1.12024, b: -0.10493 },
     trsTable: [1.0005, 0.9989, 0.9968, 0.9940, 0.9904, 0.9873, 0.9836, 0.9792, 0.9738, 0.9675, 0.9599, 0.9509] },
-  { id: 'A12', maker: 'Exradin', model: 'A12', note: 'Фармер 0,6 см³', noteEn: 'Farmer 0.6 cm³', rCavMm: 3.05,
+  { id: 'A12', maker: 'Exradin', model: 'A12', note: 'Фармер 0,64 см³, стенка C-552', noteEn: 'Farmer 0.64 cm³, C-552 wall', rCavMm: 3.05,
     tg51: { A: 1.0146, B: 0.777, C: -1.666, kq63: 0.997 }, trs: { a: 1.09783, b: -0.09544 },
     trsTable: [1.0004, 0.9991, 0.9973, 0.9948, 0.9915, 0.9887, 0.9852, 0.9809, 0.9756, 0.9693, 0.9615, 0.9521] },
   { id: 'A12S', maker: 'Exradin', model: 'A12S', note: 'короткий Фармер 0,2 см³', noteEn: 'short Farmer 0.2 cm³', rCavMm: 3.05,
@@ -60,7 +63,7 @@ export const CHAMBERS = [
     trsTable: [1.0004, 0.9990, 0.9972, 0.9947, 0.9914, 0.9886, 0.9853, 0.9813, 0.9764, 0.9706, 0.9636, 0.9552] },
 
   // ---- NE
-  { id: 'NE2571', maker: 'NE', model: '2571', note: 'Фармер 0,6 см³', noteEn: 'Farmer 0.6 cm³', sleeve: true, rCavMm: 3.14, lengthMm: 24.1,
+  { id: 'NE2571', maker: 'NE', model: '2571', note: 'Фармер 0,69 см³, стенка графит', noteEn: 'Farmer 0.69 cm³, graphite wall', sleeve: true, rCavMm: 3.14, lengthMm: 24.1,
     tg51: { A: 0.9882, B: 1.486, C: -2.14, kq63: 0.997 }, trs: { a: 1.08918, b: -0.09222 },
     trsTable: [1.0004, 0.9991, 0.9974, 0.9951, 0.9919, 0.9891, 0.9856, 0.9813, 0.9761, 0.9697, 0.9618, 0.9522] },
   { id: 'NE2561', maker: 'NE', model: '2561 / 2611A', note: 'вторичный эталон NPL', noteEn: 'NPL secondary standard', sleeve: true, rCavMm: 3.7,
@@ -72,16 +75,16 @@ export const CHAMBERS = [
     tg51Legacy: [1.0, 0.998, 0.995, 0.988, 0.972, 0.951] },
 
   // ---- PTW
-  { id: 'PTW30010', maker: 'PTW', model: '30010', note: 'Фармер 0,6 см³', noteEn: 'Farmer 0.6 cm³', sleeve: true, rCavMm: 3.05, lengthMm: 23.0,
+  { id: 'PTW30010', maker: 'PTW', model: '30010', note: 'Фармер 0,6 см³, стенка ПММА/графит', noteEn: 'Farmer 0.6 cm³, PMMA/graphite wall', sleeve: true, rCavMm: 3.05, lengthMm: 23.0,
     tg51: { A: 1.0093, B: 0.926, C: -1.771, kq63: 0.997 }, trs: { a: 1.12594, b: -0.1074 },
     trsTable: [1.0005, 0.9989, 0.9967, 0.9938, 0.9901, 0.9869, 0.9832, 0.9787, 0.9734, 0.9671, 0.9595, 0.9506] },
   { id: 'PTW30011', maker: 'PTW', model: '30011', note: 'Фармер 0,6 см³', noteEn: 'Farmer 0.6 cm³', sleeve: true, rCavMm: 3.05,
     tg51: { A: 0.9676, B: 2.061, C: -2.528, kq63: 0.997 }, trs: { a: 1.1085, b: -0.10107 },
     trsTable: [1.0005, 0.9989, 0.9969, 0.9942, 0.9906, 0.9875, 0.9838, 0.9793, 0.9739, 0.9674, 0.9595, 0.9501] },
-  { id: 'PTW30012', maker: 'PTW', model: '30012', note: 'Фармер 0,6 см³', noteEn: 'Farmer 0.6 cm³', sleeve: true, rCavMm: 3.05, lengthMm: 23.0,
+  { id: 'PTW30012', maker: 'PTW', model: '30012', note: 'Фармер 0,6 см³, стенка графит', noteEn: 'Farmer 0.6 cm³, graphite wall', sleeve: true, rCavMm: 3.05, lengthMm: 23.0,
     tg51: { A: 0.9537, B: 2.44, C: -2.75, kq63: 0.998 }, trs: { a: 1.12442, b: -0.10415 },
     trsTable: [1.0004, 0.9990, 0.9970, 0.9944, 0.9910, 0.9881, 0.9846, 0.9804, 0.9754, 0.9694, 0.9622, 0.9536] },
-  { id: 'PTW30013', maker: 'PTW', model: '30013', note: 'водонепроницаемый Фармер', noteEn: 'waterproof Farmer', rCavMm: 3.05, lengthMm: 23.0,
+  { id: 'PTW30013', maker: 'PTW', model: '30013', note: 'Фармер 0,6 см³, стенка ПММА/графит', noteEn: 'Farmer 0.6 cm³, PMMA/graphite wall', rCavMm: 3.05, lengthMm: 23.0,
     tg51: { A: 0.9652, B: 2.141, C: -2.623, kq63: 0.996 }, trs: { a: 1.18273, b: -0.13256 },
     trsTable: [1.0007, 0.9984, 0.9956, 0.9920, 0.9876, 0.9840, 0.9800, 0.9753, 0.9699, 0.9636, 0.9565, 0.9484] },
   { id: 'PTW31013', maker: 'PTW', model: '31013', note: 'Semiflex 0,3 см³', noteEn: 'Semiflex 0.3 cm³', rCavMm: 2.75, lengthMm: 16.3,
@@ -117,10 +120,10 @@ export const CHAMBERS = [
     tg51Legacy: [1.0, 0.998, 0.995, 0.988, 0.973, 0.952] },
 
   // ---- IBA
-  { id: 'FC65G', maker: 'IBA', model: 'FC65-G', note: 'водонепроницаемый Фармер', noteEn: 'waterproof Farmer', rCavMm: 3.1, lengthMm: 23.0,
+  { id: 'FC65G', maker: 'IBA', model: 'FC65-G', note: 'Фармер 0,65 см³, стенка графит', noteEn: 'Farmer 0.65 cm³, graphite wall', rCavMm: 3.1, lengthMm: 23.0,
     tg51: { A: 0.9708, B: 1.972, C: -2.48, kq63: 0.997 }, trs: { a: 1.09752, b: -0.09642 },
     trsTable: [1.0004, 0.9990, 0.9972, 0.9946, 0.9912, 0.9882, 0.9846, 0.9802, 0.9748, 0.9683, 0.9603, 0.9507] },
-  { id: 'FC65P', maker: 'IBA', model: 'FC65-P', note: 'Фармер', noteEn: 'Farmer', rCavMm: 3.1, lengthMm: 23.0,
+  { id: 'FC65P', maker: 'IBA', model: 'FC65-P', note: 'Фармер 0,65 см³, стенка POM', noteEn: 'Farmer 0.65 cm³, POM wall', rCavMm: 3.1, lengthMm: 23.0,
     tg51: { A: 0.9828, B: 1.664, C: -2.296, kq63: 0.997 }, trs: { a: 1.12374, b: -0.10784 },
     trsTable: [1.0005, 0.9988, 0.9966, 0.9936, 0.9897, 0.9865, 0.9826, 0.9780, 0.9725, 0.9660, 0.9583, 0.9491] },
   { id: 'FC23C', maker: 'IBA', model: 'FC23-C', note: 'короткий Фармер 0,2 см³', noteEn: 'short Farmer 0.2 cm³', rCavMm: 3.1,
@@ -129,7 +132,7 @@ export const CHAMBERS = [
   { id: 'CC25', maker: 'IBA', model: 'CC25', note: '0,25 см³', noteEn: '0.25 cm³', rCavMm: 3.0,
     tg51: { A: 0.9551, B: 2.353, C: -2.687, kq63: 0.997 }, trs: { a: 1.08981, b: -0.09254 },
     trsTable: [1.0004, 0.9991, 0.9974, 0.9950, 0.9918, 0.9890, 0.9855, 0.9812, 0.9760, 0.9695, 0.9617, 0.9521] },
-  { id: 'CC13', maker: 'IBA', model: 'CC13', note: '0,13 см³', noteEn: '0.13 cm³', rCavMm: 3.0, lengthMm: 5.8,
+  { id: 'CC13', maker: 'IBA', model: 'CC13', note: '0,13 см³, стенка C552', noteEn: '0.13 cm³, C552 wall', rCavMm: 3.0, lengthMm: 5.8,
     tg51: { A: 0.9515, B: 2.455, C: -2.768, kq63: 0.996 }, trs: { a: 1.11441, b: -0.1026 },
     trsTable: [1.0005, 0.9989, 0.9969, 0.9942, 0.9906, 0.9876, 0.9839, 0.9795, 0.9742, 0.9678, 0.9601, 0.9510] },
   { id: 'IC10', maker: 'IBA', model: 'IC10 (Wellhöfer)', note: 'k_Q как у CC13 по аддендуму TG-51', noteEn: 'k_Q as for the CC13 per the TG-51 addendum',

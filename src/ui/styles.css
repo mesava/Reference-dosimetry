@@ -1140,3 +1140,18 @@ textarea.curve-data { min-height: 200px; height: 220px; font: 12.5px/1.45 var(--
   input[type="text"], input[type="number"], input[type="date"], select, textarea,
   input.num, textarea.num, textarea.mono, input.unc-in, table.jf-table td input[type="text"] { font-size: 16px; }
 }
+
+/* строка итога в разделах показаний и контрольных измерений */
+.inline-result {
+  margin: 12px 0 0; padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--calc);
+  border-radius: 0 var(--radius) var(--radius) 0; font-size: 14px; line-height: 1.6;
+}
+.inline-result .ir-label { font: 500 12px var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-right: 6px; }
+.inline-result b { font: 500 17px var(--font-mono); font-variant-numeric: tabular-nums; }
+.inline-result .chip { font-size: 12px; }
+.inline-result .chip.good { color: var(--ok); }
+.inline-result .chip.warn { color: var(--warn); }
+.inline-result .chip.bad { color: var(--err); }
+.inline-result .ir-src { display: block; color: var(--muted); font-size: 12.5px; }
+.inline-result .ir-none { color: var(--muted); }
+@media print { .inline-result { display: none; } }

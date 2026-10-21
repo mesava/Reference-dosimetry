@@ -473,3 +473,28 @@ export function renderFileNote(el, note) {
   el.className = `file-note ${note.kind}`;
   el.textContent = note.text;
 }
+
+/**
+ * Строка итога рядом с измерениями (в разделе показаний и в контрольных измерениях): итоговая доза, глубина,
+ * отклонение от номинала (у ⁶⁰Co — от ожидаемой мощности дозы) и откуда она взята — те же числа, что в окне результата,
+ * чтобы не прокручивать к нему. o: { value, digits, unit, where (html), deviation, tol, devLabel, source, errors, failedText }.
+ */
+export function inlineResultHtml(o) {
+  const head = `<span class="ir-label">${esc(L('Итог', 'Result'))}</span>`;
+  if (!Number.isFinite(o.value)) {
+    const why = o.failedText || (o.errors ? L(`не посчитан — ошибок: ${o.errors}, см. «Замечания»`, `not calculated: ${o.errors} error(s), see Messages`) : L('не посчитан', 'not calculated'));
+    return `${head} <span class="ir-none">${esc(why)}</span>`;
+  }
+  let dev = '';
+  if (Number.isFinite(o.deviation)) {
+    const a = Math.abs(o.deviation);
+    const cls = a <= 1 ? 'good' : Number.isFinite(o.tol) && a > o.tol + 1e-9 ? 'bad' : 'warn';
+    dev = ` · <span class="chip ${cls}">${fmtSigned(o.deviation, 2)} %</span> ${esc(o.devLabel || L('от номинала', 'from nominal'))}`;
+  }
+  return `${head} <b>${fmt(o.value, o.digits ?? 4)}</b> ${esc(o.unit)} ${o.where || ''}${dev}${o.source ? `<span class="ir-src">${esc(o.source)}</span>` : ''}`;
+}
+
+/** Записать строку итога во все места модуля root ([data-inline-result]). */
+export function setInlineResult(root, html) {
+  for (const el of root?.querySelectorAll('[data-inline-result]') || []) if (el.innerHTML !== html) el.innerHTML = html;
+}

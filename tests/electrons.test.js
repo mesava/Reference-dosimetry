@@ -201,11 +201,11 @@ test('Электроны: доза на МЕ вне 0,3–2 сГр/МЕ — пр
   assert.ok(typo.messages.some((m) => m.level === 'warn' && /вне обычного диапазона/.test(m.text)));
 });
 
-test('Контрольные измерения: итог по ним с поправками из раздела 5 (TRS-398 и TG-51)', () => {
+test('Контрольные измерения: итог по ним с поправками из раздела 4 (TRS-398 и TG-51)', () => {
   const S = SAMPLE_ELECTRONS;
   for (const protocol of ['trs', 'tg51']) {
     const key = protocol === 'trs' ? 'trs' : 'tg51';
-    // те же показания, что в разделе 5 — та же доза
+    // те же показания, что в разделе 4 — та же доза
     const same = computeElectrons({ ...S, protocol, e_ctrl_M: S.e_M1 });
     assert.deepEqual(errorsOf(same), []);
     near(same[key].ctrl.D, same[key].D, 1e-12, protocol);
@@ -287,4 +287,30 @@ test('Электроны, проверка выхода: k_pol и k_s из ка�
   assert.equal(empty.flags.e_fixed_kpol, 'error');
   assert.ok(!empty.messages.some((m) => /NaN/.test(m.text)));
   assert.equal(computeElectrons({ ...RB, e_fixed: true, e_fixed_kpol: '1', e_fixed_ks: '0,99' }).flags.e_fixed_ks, 'error', 'k_s < 1');
+});
+
+test('Нестандартный k_Q по Report 385 при калибровке в ⁶⁰Co (PTW 23343 Markus): k_Qecal·k′_Q, пометка, статус соответствия', () => {
+  // табл. 47 TRS-398 Rev.1 для Roos и NACP-02 — то же произведение k_Qecal·k′_Q по Report 385 (табл. 6–7), в пределах округления
+  for (const id of ['ROOS', 'NACP02']) {
+    const c = findEChamber(id);
+    for (const r50 of [2, 3, 5, 8]) near(c.r385.kQecal * kQprime385(c, r50), trsFit(c, c.trsFit20, r50), 6e-4, `${id}, R50 = ${r50}`);
+  }
+  const f = { ...SAMPLE_ELECTRONS, protocol: 'trs', e_ch_model: 'MARKUS', e_cal_route: 'co60' };
+  // по умолчанию (табл. 20) — ошибка с подсказкой о нестандартном способе
+  const table = computeElectrons(f);
+  assert.ok(errorsOf(table, 'trs').some((m) => /не даёт k_Q при калибровке в ⁶⁰Co/.test(m.text) && /по Report 385/.test(m.text)));
+  // способ «по Report 385»
+  const r = computeElectrons({ ...f, e_kqtrs_mode: 'r385' });
+  const r50 = r.quality.r50;
+  near(r.trs.kQ, 0.898 * (0.984 + 0.112 * Math.exp(-r50 / 3.826)), 1e-12, 'k_Q = k_Qecal·k′_Q');
+  assert.ok(r.trs.kQNonstandard);
+  assert.match(r.trs.kQSource, /нестандартно, по Report 385/);
+  assert.ok(r.messages.some((m) => m.level === 'warn' && /Нестандартный расчёт/.test(m.text)));
+  assert.deepEqual(errorsOf(r, 'trs').map((m) => m.text), errorsOf(computeElectrons({ ...f, e_ch_model: 'ROOS' }), 'trs').map((m) => m.text), 'ошибок, кроме тех же, что у Roos, нет');
+  assert.equal(r.compliance.status, 'nonstandard');
+  assert.ok(r.compliance.reasons.some((x) => /Report 385/.test(x.text)));
+  // камера с данными табл. 20 — способ не нужен (предупреждение), перекрёстная калибровка — ошибка
+  assert.ok(computeElectrons({ ...f, e_ch_model: 'ROOS', e_kqtrs_mode: 'r385' }).messages.some((m) => /здесь не нужен/.test(m.text)));
+  const cross = computeElectrons({ ...f, e_kqtrs_mode: 'r385', e_cal_route: 'cross', e_cross_ndw: '0,08', e_cross_r50: '7,8' });
+  assert.ok(errorsOf(cross, 'trs').some((m) => /только для камеры, откалиброванной в ⁶⁰Co/.test(m.text)));
 });

@@ -219,6 +219,23 @@ test('TPR20,10 через PDD(20)/PDD(10)', () => {
   near(r.trs.tpr, 1.2661 * (38.5 / 66.4) - 0.0595, 1e-12);
 });
 
+test('TPR20,10 уже известен: k_Q и доза — как при измеренном отношении; СВФ и БВФ; пустое и неправдоподобное значение', () => {
+  const ratio = computeP(SAMPLE);
+  const known = computeP({ ...SAMPLE, qtrs_method: 'known', qtrs_tpr: ratio.trs.tpr.toFixed(12).replace('.', ','), qtrs_v20: '', qtrs_v10: '' });
+  near(known.trs.tpr, ratio.trs.tpr, 1e-12);
+  near(known.trs.kQ, ratio.trs.kQ, 1e-12);
+  near(known.trs.DperMU, ratio.trs.DperMU, 1e-12);
+  assert.ok(known.trs.tprKnown);
+  assert.ok(known.messages.some((m) => /введён вручную/.test(m.text) && /6\.2\.1/.test(m.ref || '')));
+  assert.deepEqual(errorsOf(known).map((m) => m.text), errorsOf(ratio).map((m) => m.text), 'поля M на 20 и 10 см не требуются');
+  // пучок БВФ: тот же TPR, k_Q по нему
+  const fff = computeP({ ...SAMPLE, meta_fff: true, qtrs_method: 'known', qtrs_tpr: '0,6680' });
+  near(fff.trs.tpr, 0.668, 1e-12);
+  assert.ok(Number.isFinite(fff.trs.kQ));
+  assert.match(errorsOf(computeP({ ...SAMPLE, qtrs_method: 'known', qtrs_tpr: '' }))[0]?.text ?? '', /TPR20,10/);
+  assert.ok(errorsOf(computeP({ ...SAMPLE, qtrs_method: 'known', qtrs_tpr: '0,95' })).some((m) => /проверьте введённое значение/.test(m.text)));
+});
+
 test('Своя камера: аналог из базы, параметры a и b, k_Q вручную', () => {
   const custom = { ...SAMPLE, ch_model: 'CUSTOM', cc_model: 'Тестовая', cc_length: '23', cc_radius: '3,05' };
   const none = computeP(custom);
@@ -323,7 +340,8 @@ test('Старые файлы: показания строкой, медицин
   const f = normalizeForm({ rd_M1: '12,346 12,348', meta_physicist: 'Иванов', qtrs_method: 'direct', qtrs_tpr: '0,668', ch_model: 'OTHER', kqtrs_manual_on: true });
   assert.deepEqual(f.rd_M1, ['12,346', '12,348']);
   assert.deepEqual(f.meta_staff, ['Иванов']);
-  assert.equal(f.qtrs_method, 'ratio');
+  assert.equal(f.qtrs_method, 'known', 'прежний «TPR напрямую» — способ «значение известно»');
+  assert.equal(f.qtrs_tpr, '0,668');
   assert.equal(f.ch_model, 'CUSTOM');
   assert.equal(f.kqtrs_mode, 'manual');
   const none = normalizeForm({ prof_mode: 'none' });
@@ -334,7 +352,7 @@ test('Старые файлы: показания строкой, медицин
   near(r.trs.tpr, 0.668, 1e-12);
 });
 
-test('Контрольные измерения (Versa HD): поправки раздела 4, итог по контрольным показаниям', () => {
+test('Контрольные измерения (Versa HD): поправки раздела 3, итог по контрольным показаниям', () => {
   // пример из рабочей таблицы: PTW 31010, 6 МВ БВФ, РИО 100 см, 500 МЕ, k_Q введён вручную
   const f = {
     ...FORM_DEFAULTS, protocol: 'trs', meta_beam: '6 FFF', meta_fff: true, setup_geometry: 'SAD',
@@ -495,7 +513,7 @@ test('Калибровка ускорителя при отклонении бо
 
 test('Поправка на рекомбинацию по глубине для TPR20,10 и %dd(10): общая часть k_s пропорциональна показанию', () => {
   const base = computeP(SAMPLE);
-  // TRS-398: k_s из раздела 4, C_init = 0,1 %
+  // TRS-398: k_s из раздела 3, C_init = 0,1 %
   const on = computePhotons({ ...SAMPLE_FORM, protocol: 'trs', q_rec_on: true, q_rec_cinit: '0,1' });
   const off = computePhotons({ ...SAMPLE_FORM, protocol: 'trs' });
   const rd = on.trs.recDepth;

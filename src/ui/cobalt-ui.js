@@ -12,7 +12,7 @@ import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
-  notifyUpdate, flashFields, richText } from './common.js';
+  notifyUpdate, flashFields, richText, inlineResultHtml, setInlineResult } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.cobalt.v1';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'cobalt', version: 1 };
@@ -145,7 +145,7 @@ function applyVisibility(data, result) {
   $('#co-lbl-tmr .term').textContent = `TMR(${z})`;
   const windowMode = data.co_timer_mode === 'window';
   $('#co-lbl-time').textContent = windowMode ? L('Время накопления заряда', 'Charge collection time') : L('Заданное время облучения', 'Set irradiation time');
-  $('#co-time-sub').textContent = windowMode ? L('интервал, на котором электрометр накапливал заряд', 'the interval over which the electrometer collected charge') : L('время для всех серий показаний в разделе 5', 'the time for all reading series in section 5');
+  $('#co-time-sub').textContent = windowMode ? L('интервал, на котором электрометр накапливал заряд', 'the interval over which the electrometer collected charge') : L('время для всех серий показаний в разделе 4', 'the time for all reading series in section 4');
   $('#co-lbl-tau').textContent = `τ, ${unit}`;
   $('#co-lbl-tt').textContent = L(`Заданное время, ${unit}`, `Set time, ${unit}`);
   $('#co-lbl-nxt').textContent = L(`Время одиночного облучения t, ${unit}`, `Single exposure time t, ${unit}`);
@@ -248,7 +248,7 @@ function doseRow(key, x, result) {
         ? L(`На ${z} г/см²: ${fmt(p.rate, 2)} сГр/мин`, `At ${z} g/cm²: ${fmt(p.rate, 2)} cGy/min`)
         : L(`На z<sub>max</sub>: ${fmt(p.rateMax, 2)} сГр/мин`, `At z<sub>max</sub>: ${fmt(p.rateMax, 2)} cGy/min`)
       : null,
-    fromCtrl ? null : L('Контрольные измерения не введены — мощность дозы по показанию M₁ раздела 5', 'No check measurements entered — dose rate from reading M₁ of section 5'),
+    fromCtrl ? null : L('Контрольные измерения не введены — мощность дозы по показанию M₁ раздела 4', 'No check measurements entered — dose rate from reading M₁ of section 4'),
   ].filter(Boolean).join('<br>');
   return `<div class="dose-row ${none ? 'blocked' : ''}">
     <div class="proto"><span>${PROTO[key].name}${fromCtrl || failed ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
@@ -290,6 +290,29 @@ function renderReadout(result, data) {
   } else {
     const n = result.messages.filter((m) => m.level === 'error').length;
     mv.textContent = n ? L(`Ошибок: ${n}`, `Errors: ${n}`) : '—';
+  }
+
+  // строка итога в разделах 4 и 6 — те же числа, что в окне результата
+  {
+    const x = pick(data.protocol);
+    const p = primaryOf(x);
+    const none = x.blocked || ctrlFailed(x);
+    const atMax = atMaxOf(p, result.depth);
+    const z = zText(result.inputs.zref);
+    setInlineResult($('#module-co60'), inlineResultHtml({
+      value: none ? NaN : rateAt(p, result.depth),
+      digits: 2,
+      unit: L('сГр/мин', 'cGy/min'),
+      where: atMax ? L('на z<sub>max</sub>', 'at z<sub>max</sub>') : L(`на ${z} г/см²`, `at ${z} g/cm²`),
+      deviation: p.deviation,
+      tol: result.depth.tolerance,
+      devLabel: L('от ожидаемой', 'from expected'),
+      source: p !== x
+        ? L('по контрольным измерениям (раздел 6)', 'from the check measurements (section 6)')
+        : L('по показанию M₁ раздела 4 (контрольные измерения не введены)', 'from reading M₁ of section 4 (no check measurements entered)'),
+      errors: result.messages.filter((m) => m.level === 'error' && (m.scope === 'common' || m.scope === data.protocol || m.scope === 'ctrl')).length,
+      failedText: ctrlFailed(x) ? L('не посчитан — ошибки в контрольных измерениях (раздел 6)', 'not calculated: errors in the check measurements (section 6)') : '',
+    }));
   }
 
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
@@ -470,7 +493,7 @@ function reportText(data, r) {
       };
       if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (раздел 6)', 'From check measurements (section 6)'));
       else if (r.ctrl.on) out.push(L('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: в контрольных измерениях (раздел 6) ошибки (см. замечания).', 'RESULT NOT CALCULATED: the check measurements (section 6) contain errors (see Messages).'));
-      else describe(x, L('По показанию M₁ раздела 5 (контрольные измерения не введены)', 'From reading M₁ of section 5 (no check measurements entered)'));
+      else describe(x, L('По показанию M₁ раздела 4 (контрольные измерения не введены)', 'From reading M₁ of section 4 (no check measurements entered)'));
       const cl = complianceLine(r.compliance, PROTO[k].name);
       if (cl) out.push(cl);
     }

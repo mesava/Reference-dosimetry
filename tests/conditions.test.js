@@ -42,6 +42,7 @@ const CASES = [
       field: ['trs', { e_field: '8' }],
       r50range: ['tg51', { e_r50_method: 'r50', e_r50: '9,2', e_kq51_mode: 'manual', e_kq51_manual: '0,9' }],
       chamber385: ['tg51', { e_ch_model: 'OTHER', e_kq51_mode: 'manual', e_kq51_manual: '0,9', e_kqtrs_mode: 'manual', e_kqtrs_manual: '0,9' }],
+      kQtrs: ['trs', { e_ch_model: 'MARKUS', e_cal_route: 'co60', e_kqtrs_mode: 'r385' }],
       leakage: ['tg51', { e_kleak: '1,003' }],
       polarity: ['trs', { e_Mopp: opp(SAMPLE_ELECTRONS.e_M1, 1.05) }],
     },

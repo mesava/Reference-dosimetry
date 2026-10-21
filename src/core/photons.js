@@ -89,15 +89,16 @@ export const FORM_DEFAULTS = {
   q51_pdd10pb: '',
   q51_manual: '',
 
-  qtrs_method: 'ratio', // 'ratio' (измерение на 20 и 10 см) | 'pdd2010' (через PDD)
+  qtrs_method: 'ratio', // 'ratio' (измерение на 20 и 10 см) | 'pdd2010' (через PDD) | 'known' (значение известно)
   qtrs_v20: '',
   qtrs_v10: '',
+  qtrs_tpr: '', // TPR20,10, введённый вручную (способ 'known')
   qtrs_fff_pdd10: '',
 
   // поправка на рекомбинацию по глубине для показателя качества (TRS-398 Rev.1, разд. 4.4.3.4 e и разд. 6 о TPR20,10:
   // при изменении с глубиной учесть рекомбинацию на обеих глубинах); общая часть k_s пропорциональна показанию
   q_rec_on: false,
-  q_rec_ks: '', // k_s (P_ion) на 10 см для камеры, которой измерено отношение; пусто — из раздела 4
+  q_rec_ks: '', // k_s (P_ion) на 10 см для камеры, которой измерено отношение; пусто — из раздела 3
   q_rec_cinit: '', // начальная рекомбинация, %; пусто — 0
 
   kqtrs_mode: 'formula', // 'formula' | 'table' | 'manual'
@@ -113,13 +114,13 @@ export const FORM_DEFAULTS = {
   prof_sdd: '',
   prof_text: '',
 
-  // контрольные измерения: обычная полярность, V₁; поправки — из раздела 4
+  // контрольные измерения: обычная полярность, V₁; поправки — из раздела 3
   ctrl_M: ['', '', ''],
-  ctrl_mu: '', // пусто — столько же МЕ, сколько в разделе 4
+  ctrl_mu: '', // пусто — столько же МЕ, сколько в разделе 3
   // калибровка (подстройка) ускорителя, если доза вне ±2 % от номинала: ответ и показания после неё
   recal_needed: '', // '' | 'yes' | 'no'
   recal_M: ['', '', ''],
-  recal_mu: '', // пусто — как в разделе 7 (или 4)
+  recal_mu: '', // пусто — как в разделе 7 (или 3)
 
   dd_on: true,
   dd_sad: 'tmr', // установка по РИО: 'tmr' | 'pdd' (PDD при РИП = 100 − z_ref)
@@ -154,9 +155,9 @@ export function normalizeForm(input) {
   if (f.meta_staff.length === 0) f.meta_staff = [''];
   if (f.ch_model === 'OTHER') f.ch_model = 'CUSTOM';
   if (input && input.qtrs_method === 'direct') {
-    f.qtrs_method = 'ratio';
-    f.qtrs_v20 = String(input.qtrs_tpr ?? '');
-    f.qtrs_v10 = '1';
+    // прежний способ «TPR20,10 введён» (до 0.5) — теперь «значение известно»
+    f.qtrs_method = 'known';
+    f.qtrs_tpr = String(input.qtrs_tpr ?? '');
   } else if (input && input.qtrs_method === 'ratio' && 'qtrs_m20' in input && !('qtrs_v20' in input)) {
     f.qtrs_v20 = input.qtrs_m20;
     f.qtrs_v10 = input.qtrs_m10;
@@ -638,12 +639,29 @@ export function computePhotons(form) {
 
     // качество пучка
     let tpr = NaN;
-    const v20 = parseNumber(f.qtrs_v20);
-    const v10 = parseNumber(f.qtrs_v10);
+    const known = f.qtrs_method === 'known';
+    const v20 = known ? NaN : parseNumber(f.qtrs_v20);
+    const v10 = known ? NaN : parseNumber(f.qtrs_v10);
     const label20 = f.qtrs_method === 'pdd2010' ? 'PDD(20)' : L('M на 20 см', 'M at 20 cm');
     const label10 = f.qtrs_method === 'pdd2010' ? 'PDD(10)' : L('M на 10 см', 'M at 10 cm');
-    if (!Number.isFinite(v20)) read('qtrs_v20', label20, 'trs');
-    if (!Number.isFinite(v10)) read('qtrs_v10', label10, 'trs');
+    if (known) {
+      // TPR20,10 известен (система сканирования, прежнее измерение): берётся как есть — и для СВФ, и для БВФ
+      tpr = read('qtrs_tpr', 'TPR20,10', 'trs');
+      trs.tprEquation = L('TPR20,10 введён вручную', 'TPR20,10 entered manually');
+      trs.tprKnown = true;
+      add(
+        'info',
+        'trs',
+        L(
+          'TPR20,10 введён вручную. По TRS-398 Rev.1 он определяется как отношение показаний на глубинах 20 и 10 г/см² при РИК 100 см и поле 10 × 10 см в плоскости камеры или пересчитывается из PDD(20)/PDD(10) по сноске 36 — так же для пучков БВФ. Убедитесь, что значение получено одним из этих способов; поправка на рекомбинацию по глубине здесь не применяется.',
+          'TPR20,10 entered manually. Per TRS-398 Rev.1 it is the ratio of readings at 20 and 10 g/cm² depth at SCD 100 cm with a 10 × 10 cm field at the chamber plane, or is converted from PDD(20)/PDD(10) by footnote 36 — the same for FFF beams. Make sure the value was obtained one of these ways; the recombination correction with depth is not applied here.',
+        ),
+        `${REF.trs}, разд. 6.2.1, сноска 36`,
+      );
+    } else {
+      if (!Number.isFinite(v20)) read('qtrs_v20', label20, 'trs');
+      if (!Number.isFinite(v10)) read('qtrs_v10', label10, 'trs');
+    }
     if (Number.isFinite(v10) && v10 === 0) add('error', 'trs', L(`${label10} не может быть нулевым.`, `${label10} cannot be zero.`), null, 'qtrs_v10');
     if (Number.isFinite(v20) && Number.isFinite(v10) && v10 !== 0) {
       let ratio = Math.abs(v20) / Math.abs(v10);
@@ -683,9 +701,11 @@ export function computePhotons(form) {
       add(
         'error',
         'trs',
-        L(`TPR20,10 = ${ru(tpr, 3)} неправдоподобно: проверьте значения на 20 и 10 см.`, `TPR20,10 = ${ru(tpr, 3)} is implausible: check the values at 20 and 10 cm.`),
+        known
+          ? L(`TPR20,10 = ${ru(tpr, 3)} неправдоподобно: проверьте введённое значение.`, `TPR20,10 = ${ru(tpr, 3)} is implausible: check the entered value.`)
+          : L(`TPR20,10 = ${ru(tpr, 3)} неправдоподобно: проверьте значения на 20 и 10 см.`, `TPR20,10 = ${ru(tpr, 3)} is implausible: check the values at 20 and 10 cm.`),
         null,
-        ['tpr', 'qtrs_v20', 'qtrs_v10'],
+        known ? ['tpr', 'qtrs_tpr'] : ['tpr', 'qtrs_v20', 'qtrs_v10'],
       );
     }
     trs.tpr = tpr;
@@ -1300,12 +1320,12 @@ export function computePhotons(form) {
   }
 
   // Отклонение от номинала оценивается по итоговому результату: по контрольным измерениям, если они есть.
-  // Если контрольные измерения введены, но содержат ошибки, итога нет: подменять его показанием M₁ раздела 4 нельзя.
+  // Если контрольные измерения введены, но содержат ошибки, итога нет: подменять его показанием M₁ раздела 3 нельзя.
   const mainBlocked = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
   const final = (x, scope) => (mainBlocked(scope) ? {} : x.ctrl ? (x.ctrl.blocked ? {} : x.ctrl) : x);
 
   // ---------------------------------------------- калибровка (подстройка) ускорителя
-  // Если доза (по контрольным измерениям, иначе по M₁ раздела 4) отличается от номинального выхода
+  // Если доза (по контрольным измерениям, иначе по M₁ раздела 3) отличается от номинального выхода
   // больше допуска (по умолчанию ±2 %), предлагается калибровка. После подстройки снимают новые показания при V₁ и
   // обычной полярности в той же геометрии; поправки те же, итог — по новым показаниям, прежний
   // результат остаётся для справки.
@@ -1374,7 +1394,7 @@ export function computePhotons(form) {
     const y = actual(x, scope);
     if (Number.isFinite(y.DperMU)) finals.push({ x: y, units: y.units });
   }
-  outputPlausibility(finals, { add, ru, tol, muSections: L('разделы 4 и 7', 'sections 4 and 7'), zrefText: L(`(${ru(zref, 0)} см)`, `(${ru(zref, 0)} cm)`) });
+  outputPlausibility(finals, { add, ru, tol, muSections: L('разделы 3 и 7', 'sections 3 and 7'), zrefText: L(`(${ru(zref, 0)} см)`, `(${ru(zref, 0)} cm)`) });
 
   const hasError = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
   const noDose = () => L('Не удалось вычислить дозу: проверьте качество пучка и k_Q.', 'Could not calculate the dose: check the beam quality and k_Q.');

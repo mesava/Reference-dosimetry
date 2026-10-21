@@ -195,27 +195,8 @@
     </section>
 
     <!-- 3 -->
-    <section class="step" aria-labelledby="co-s3">
-      <header><span class="step-no">3</span><h2 id="co-s3">Температура и давление</h2>
-        <p class="hint">Температура воды у камеры и давление по поверенному барометру в помещении, без приведения к уровню моря. Поправка k<sub>TP</sub> действительна, пока камера и электрометр работают в условиях эксплуатации, указанных производителем, и в условиях, для которых лаборатория выдала N<sub>D,w</sub>. Влажность в расчёт не входит и записывается для протокола.</p></header>
-      <div class="grid">
-        <div class="field"><label for="co_env_T">Температура воды, °C</label><input type="text" id="co_env_T" class="num" inputmode="decimal"><span class="sub">обычный диапазон 15–25 °C</span></div>
-        <div class="field"><label for="co_env_H">Относительная влажность, %</label><input type="text" id="co_env_H" class="num" inputmode="decimal"><span class="sub">20–80 %, лучше 40–60 %</span></div>
-        <div class="field">
-          <label for="co_env_P">Давление</label>
-          <div class="inline">
-            <input type="text" id="co_env_P" class="num" inputmode="decimal">
-            <select id="co_env_P_unit" aria-label="Единица давления"></select>
-          </div>
-        </div>
-        <div class="field out-cell" data-protocol="trs"><span class="label"><button type="button" class="term" data-term="kTP">k<sub>TP</sub></button></span><output data-out="trs.kTP" data-digits="4"></output></div>
-        <div class="field out-cell" data-protocol="tg51"><span class="label"><button type="button" class="term" data-term="kTP">P<sub>TP</sub></button></span><output data-out="tg51.PTP" data-digits="4"></output></div>
-      </div>
-    </section>
-
-    <!-- 4 -->
     <section class="step" aria-labelledby="co-s4">
-      <header><span class="step-no">4</span><h2 id="co-s4">Время облучения и <button type="button" class="term" data-term="timer">ошибка таймера</button></h2>
+      <header><span class="step-no">3</span><h2 id="co-s4">Время облучения и <button type="button" class="term" data-term="timer">ошибка таймера</button></h2>
         <p class="hint">Источник облучает и во время перемещения, поэтому фактическое время облучения t + τ отличается от заданного t. TRS-398 (разд. 5.4.2) и TG-51 (разд. VII) требуют учитывать эту ошибку.</p></header>
       <div class="grid">
         <div class="field">
@@ -224,7 +205,7 @@
             <input type="text" id="co_time" class="num" inputmode="decimal">
             <select id="co_time_unit" aria-label="Единица времени"><option value="min">мин</option><option value="s">с</option></select>
           </div>
-          <span class="sub" id="co-time-sub">время для всех серий показаний в разделе 5</span>
+          <span class="sub" id="co-time-sub">время для всех серий показаний в разделе 4</span>
         </div>
         <div class="field span-2">
           <label for="co_timer_mode">Ошибка таймера τ</label>
@@ -289,10 +270,10 @@
       </div>
     </section>
 
-    <!-- 5 -->
+    <!-- 4 -->
     <section class="step" aria-labelledby="co-s5">
-      <header><span class="step-no">5</span><h2 id="co-s5">Показания электрометра</h2>
-        <p class="hint">Эти показания нужны для поправок на полярность и рекомбинацию (k<sub>pol</sub>, k<sub>s</sub>); мощность дозы считается по контрольным измерениям раздела 6. Камера в опорной точке на глубине z<sub>ref</sub>. Все серии — при одном и том же заданном времени из раздела 4; значения можно вводить со знаком или без. Кнопка «+» добавляет ячейку.</p></header>
+      <header><span class="step-no">4</span><h2 id="co-s5">Показания электрометра</h2>
+        <p class="hint">Эти показания нужны для поправок на полярность и рекомбинацию (k<sub>pol</sub>, k<sub>s</sub>); мощность дозы считается по контрольным измерениям раздела 6. Камера в опорной точке на глубине z<sub>ref</sub>. Все серии — при одном и том же заданном времени из раздела 3; значения можно вводить со знаком или без. Кнопка «+» добавляет ячейку.</p></header>
       <div class="grid">
         <div class="field">
           <label for="co_polarity">Обычная полярность</label>
@@ -308,7 +289,7 @@
         <div class="field"><label for="co_fixed_ks">k<sub>s</sub> (P<sub>ion</sub>) из калибровки</label><input type="text" id="co_fixed_ks" class="num" inputmode="decimal"><span class="sub">измеренный, до деления на значение лаборатории</span></div>
         <div class="field"><label for="co_fixed_from">Дата калибровки</label><input type="text" id="co_fixed_from" placeholder="15.09.2026"></div>
       </div>
-      <p class="sub-hint" data-show="co_fixed:true">Для регулярной проверки выхода: показания только при V₁ и обычной полярности, поправки на полярность и рекомбинацию — из последней полной калибровки; ошибку таймера из неё введите в разделе 4 как известное значение. Для референсной дозиметрии их измеряют каждый раз.</p>
+      <p class="sub-hint" data-show="co_fixed:true">Для регулярной проверки выхода: показания только при V₁ и обычной полярности, поправки на полярность и рекомбинацию — из последней полной калибровки; ошибку таймера из неё введите в разделе 3 как известное значение. Для референсной дозиметрии их измеряют каждый раз.</p>
 
       <div class="series">
         <div class="cells" data-series="co_M1" data-label="M при V₁, обычная полярность">
@@ -385,12 +366,32 @@
       </div>
       <p class="eq" data-protocol="trs">k<sub>s</sub>: <span data-out-text="trs.ksEquation"></span>.</p>
       <p class="sub-hint no-print">Насыщение камеры и рекомбинацию при разных напряжениях подробно проверяет <a href="#jaffe" data-goto="jaffe">график Яффе</a> (вкладка «Камера и пучок»).</p>
+      <p class="inline-result" data-inline-result aria-live="polite"></p>
+    </section>
+
+    <!-- 5 -->
+    <section class="step" aria-labelledby="co-s3">
+      <header><span class="step-no">5</span><h2 id="co-s3">Температура и давление</h2>
+        <p class="hint">Температура воды у камеры и давление по поверенному барометру в помещении, без приведения к уровню моря. Поправка k<sub>TP</sub> действительна, пока камера и электрометр работают в условиях эксплуатации, указанных производителем, и в условиях, для которых лаборатория выдала N<sub>D,w</sub>. Влажность в расчёт не входит и записывается для протокола.</p></header>
+      <div class="grid">
+        <div class="field"><label for="co_env_T">Температура воды, °C</label><input type="text" id="co_env_T" class="num" inputmode="decimal"><span class="sub">обычный диапазон 15–25 °C</span></div>
+        <div class="field"><label for="co_env_H">Относительная влажность, %</label><input type="text" id="co_env_H" class="num" inputmode="decimal"><span class="sub">20–80 %, лучше 40–60 %</span></div>
+        <div class="field">
+          <label for="co_env_P">Давление</label>
+          <div class="inline">
+            <input type="text" id="co_env_P" class="num" inputmode="decimal">
+            <select id="co_env_P_unit" aria-label="Единица давления"></select>
+          </div>
+        </div>
+        <div class="field out-cell" data-protocol="trs"><span class="label"><button type="button" class="term" data-term="kTP">k<sub>TP</sub></button></span><output data-out="trs.kTP" data-digits="4"></output></div>
+        <div class="field out-cell" data-protocol="tg51"><span class="label"><button type="button" class="term" data-term="kTP">P<sub>TP</sub></button></span><output data-out="tg51.PTP" data-digits="4"></output></div>
+      </div>
     </section>
 
     <!-- 6 -->
     <section class="step" aria-labelledby="co-s6c">
       <header><span class="step-no">6</span><h2 id="co-s6c">Контрольные измерения</h2>
-        <p class="hint">Заряд, по которому считается мощность поглощённой дозы: обычная полярность, рабочее напряжение V₁, та же геометрия. Поправки k<sub>pol</sub> и k<sub>s</sub> берутся из раздела 5 — повторно их не измеряют. Если раздел не заполнен, мощность дозы считается по показанию M₁ раздела 5.</p></header>
+        <p class="hint">По желанию: показания, по которым считается итоговая мощность дозы, — обычная полярность, рабочее напряжение V₁, та же геометрия (например, повтор после прогрева). Поправки k<sub>pol</sub> и k<sub>s</sub> берутся из раздела 4, k<sub>TP</sub> — из раздела 5; повторно их не измеряют. Если раздел пуст, итог считается по показанию M₁ раздела 4. Итог — в строке под показаниями.</p></header>
       <div class="series">
         <div class="cells" data-series="co_Mc" data-label="M при V₁, обычная полярность">
           <span class="label">M при V₁, обычная полярность, нКл</span>
@@ -405,9 +406,10 @@
         </div>
       </div>
       <div class="grid">
-        <div class="field"><label for="co_ctrl_time" id="co-lbl-ctrl-time">Время облучения, мин</label><input type="text" id="co_ctrl_time" class="num" inputmode="decimal"><span class="sub">если пусто — как в разделе 4</span></div>
-        <div class="field out-cell"><span class="label">Изменение относительно раздела 5</span><output data-out="ctrl.changePct" data-digits="2" data-signed="1" data-suffix=" %"></output><span class="sub">по показанию на единицу времени</span></div>
+        <div class="field"><label for="co_ctrl_time" id="co-lbl-ctrl-time">Время облучения, мин</label><input type="text" id="co_ctrl_time" class="num" inputmode="decimal"><span class="sub">если пусто — как в разделе 3</span></div>
+        <div class="field out-cell"><span class="label">Отличие от M₁ раздела 4</span><output data-out="ctrl.changePct" data-digits="2" data-signed="1" data-suffix=" %"></output><span class="sub">по показанию на единицу времени</span></div>
       </div>
+      <p class="inline-result" data-inline-result aria-live="polite"></p>
     </section>
 
     <!-- 6 -->
@@ -539,10 +541,11 @@
         <div class="field span-all">
           <label for="setup_geometry">Геометрия измерения дозы</label>
           <select id="setup_geometry">
-            <option value="SSD">РИП = 100 см, поле 10 × 10 см на поверхности воды, камера на глубине 10 см</option>
-            <option value="SAD">РИО = 100 см, поле 10 × 10 см в плоскости камеры, камера на глубине 10 см</option>
-            <option value="manual">Ручной ввод</option>
+            <option value="SSD">РИП 100 см — поле на поверхности воды</option>
+            <option value="SAD">РИО 100 см — поле в плоскости камеры</option>
+            <option value="manual">Ручной ввод: РИП, поле, глубина</option>
           </select>
+          <span class="sub" id="geom-view"></span>
         </div>
       </div>
       <div class="grid subgrid" data-show="setup_geometry:manual">
@@ -682,27 +685,8 @@
     </section>
 
     <!-- 3 -->
-    <section class="step" aria-labelledby="s3">
-      <header><span class="step-no">3</span><h2 id="s3">Температура и давление</h2>
-        <p class="hint">Температура воды у камеры и давление по поверенному барометру в помещении, без приведения к уровню моря. Поправка k<sub>TP</sub> действительна, пока камера и электрометр работают в условиях эксплуатации, указанных производителем, и в условиях, для которых лаборатория выдала N<sub>D,w</sub>. Влажность в расчёт не входит и записывается для протокола.</p></header>
-      <div class="grid">
-        <div class="field"><label for="env_T">Температура воды, °C</label><input type="text" id="env_T" class="num" inputmode="decimal"><span class="sub">обычный диапазон 15–25 °C</span></div>
-        <div class="field"><label for="env_H">Относительная влажность, %</label><input type="text" id="env_H" class="num" inputmode="decimal"><span class="sub">20–80 %, лучше 40–60 %</span></div>
-        <div class="field">
-          <label for="env_P">Давление</label>
-          <div class="inline">
-            <input type="text" id="env_P" class="num" inputmode="decimal">
-            <select id="env_P_unit" aria-label="Единица давления"></select>
-          </div>
-        </div>
-        <div class="field out-cell" data-protocol="trs"><span class="label"><button type="button" class="term" data-term="kTP">k<sub>TP</sub></button></span><output data-out="trs.kTP" data-digits="4"></output></div>
-        <div class="field out-cell" data-protocol="tg51"><span class="label"><button type="button" class="term" data-term="kTP">P<sub>TP</sub></button></span><output data-out="tg51.PTP" data-digits="4"></output></div>
-      </div>
-    </section>
-
-    <!-- 4 -->
     <section class="step" aria-labelledby="s4">
-      <header><span class="step-no">4</span><h2 id="s4">Показания электрометра</h2>
+      <header><span class="step-no">3</span><h2 id="s4">Показания электрометра</h2>
         <p class="hint">Эти показания нужны для поправок на полярность и рекомбинацию (k<sub>pol</sub>, k<sub>s</sub>); поглощённая доза считается по контрольным измерениям раздела 7. Камера в точке измерения на опорной глубине. Все серии — при одном и том же числе МЕ; значения можно вводить со знаком или без. Кнопка «+» добавляет ячейку для ещё одного измерения.</p></header>
       <div class="grid">
         <div class="field"><span class="label"><label for="rd_mu">Облучение, МЕ</label> <button type="button" class="tip" aria-label="Подсказка: сколько МЕ отпускать" data-tip="Сколько МЕ отпускать. Число МЕ протоколы не задают: важно, чтобы показания были стабильны — в пределах ±0,1 % без тренда (Report 374, разд. 4.4.2). Для пучков БВФ часто отпускают 200–500 МЕ. Причины: камеры малого объёма, которые берут для БВФ, собирают мало заряда на МЕ, и при 100 МЕ разрешение электрометра (например, 0,01 нКл при показании около 3 нКл) ограничивает точность долями процента; кроме того, небольшой постоянный эффект включения и выключения пучка при большем числе МЕ составляет меньшую долю. Камере «успевать» не нужно: заряд на МЕ не зависит от числа МЕ. Результат всё равно приводится к 1 МЕ и к 100 МЕ.">?</button></span><input type="text" id="rd_mu" class="num" inputmode="decimal"></div>
@@ -793,11 +777,12 @@
       </div>
       <p class="eq" data-protocol="trs">k<sub>s</sub>: <span data-out-text="trs.ksEquation"></span>. <span>P<sub>ion</sub> по TG-51 — ур. (12) для импульсного пучка.</span></p>
       <p class="sub-hint no-print">Насыщение камеры и рекомбинацию при разных напряжениях подробно проверяет <a href="#jaffe" data-goto="jaffe">график Яффе</a> (вкладка «Камера и пучок»).</p>
+      <p class="inline-result" data-inline-result aria-live="polite"></p>
     </section>
 
-    <!-- 5 -->
+    <!-- 4 -->
     <section class="step" aria-labelledby="s5">
-      <header><span class="step-no">5</span><h2 id="s5">Качество пучка и <button type="button" class="term" data-term="kQ">k<sub>Q</sub></button></h2>
+      <header><span class="step-no">4</span><h2 id="s5">Качество пучка и <button type="button" class="term" data-term="kQ">k<sub>Q</sub></button></h2>
         <p class="hint" id="shift-hint">Качество пучка измеряют при каждой референсной дозиметрии.</p></header>
       <div class="duo">
         <div class="proto-card" data-protocol="trs">
@@ -807,11 +792,13 @@
             <select id="qtrs_method">
               <option value="ratio">Измерение: РИК = 100 см, поле 10 × 10 см в плоскости камеры, глубины 20 и 10 см</option>
               <option value="pdd2010">Через PDD на глубинах 20 и 10 см (РИП 100 см, поле 10 × 10 см на поверхности)</option>
+              <option value="known">Значение уже известно (система сканирования, прежнее измерение)</option>
             </select>
           </div>
           <div class="grid three">
-            <div class="field"><label for="qtrs_v20" id="lbl-v20">M на 20 см</label><input type="text" id="qtrs_v20" class="num" inputmode="decimal"></div>
-            <div class="field"><label for="qtrs_v10" id="lbl-v10">M на 10 см</label><input type="text" id="qtrs_v10" class="num" inputmode="decimal"></div>
+            <div class="field" data-show="qtrs_method:ratio,pdd2010"><label for="qtrs_v20" id="lbl-v20">M на 20 см</label><input type="text" id="qtrs_v20" class="num" inputmode="decimal"></div>
+            <div class="field" data-show="qtrs_method:ratio,pdd2010"><label for="qtrs_v10" id="lbl-v10">M на 10 см</label><input type="text" id="qtrs_v10" class="num" inputmode="decimal"></div>
+            <div class="field" data-show="qtrs_method:known"><label for="qtrs_tpr">TPR<sub>20,10</sub>, введённый</label><input type="text" id="qtrs_tpr" class="num" inputmode="decimal" placeholder="0,6680"></div>
             <div class="field out-cell"><span class="label">TPR<sub>20,10</sub></span><output data-out="trs.tpr" data-digits="4" data-flag="tpr"></output><span class="sub" id="tpr-rec-note"></span></div>
           </div>
           <p class="eq" data-out-text="trs.tprEquation"></p>
@@ -886,9 +873,9 @@
       </div>
     </section>
 
-    <!-- 6 -->
+    <!-- 5 -->
     <section class="step" id="step-kvol" aria-labelledby="s6" data-nav="Усреднение по объёму">
-      <header><span class="step-no">6</span><h2 id="s6">Усреднение по объёму: <button type="button" class="term" data-term="kvol">k<sub>vol</sub></button> (TRS-398) / P<sub>rp</sub> (TG-51)</h2>
+      <header><span class="step-no">5</span><h2 id="s6">Усреднение по объёму: <button type="button" class="term" data-term="kvol">k<sub>vol</sub></button> (TRS-398) / P<sub>rp</sub> (TG-51)</h2>
         <p class="hint" id="kvol-hint"></p></header>
       <fieldset id="kvol-fields" class="plain">
         <div class="grid">
@@ -923,10 +910,29 @@
       </fieldset>
     </section>
 
+    <!-- 6 -->
+    <section class="step" aria-labelledby="s3">
+      <header><span class="step-no">6</span><h2 id="s3">Температура и давление</h2>
+        <p class="hint">Температура воды у камеры и давление по поверенному барометру в помещении, без приведения к уровню моря. Поправка k<sub>TP</sub> действительна, пока камера и электрометр работают в условиях эксплуатации, указанных производителем, и в условиях, для которых лаборатория выдала N<sub>D,w</sub>. Влажность в расчёт не входит и записывается для протокола.</p></header>
+      <div class="grid">
+        <div class="field"><label for="env_T">Температура воды, °C</label><input type="text" id="env_T" class="num" inputmode="decimal"><span class="sub">обычный диапазон 15–25 °C</span></div>
+        <div class="field"><label for="env_H">Относительная влажность, %</label><input type="text" id="env_H" class="num" inputmode="decimal"><span class="sub">20–80 %, лучше 40–60 %</span></div>
+        <div class="field">
+          <label for="env_P">Давление</label>
+          <div class="inline">
+            <input type="text" id="env_P" class="num" inputmode="decimal">
+            <select id="env_P_unit" aria-label="Единица давления"></select>
+          </div>
+        </div>
+        <div class="field out-cell" data-protocol="trs"><span class="label"><button type="button" class="term" data-term="kTP">k<sub>TP</sub></button></span><output data-out="trs.kTP" data-digits="4"></output></div>
+        <div class="field out-cell" data-protocol="tg51"><span class="label"><button type="button" class="term" data-term="kTP">P<sub>TP</sub></button></span><output data-out="tg51.PTP" data-digits="4"></output></div>
+      </div>
+    </section>
+
     <!-- 7 -->
     <section class="step" aria-labelledby="s7c">
       <header><span class="step-no">7</span><h2 id="s7c">Контрольные измерения</h2>
-        <p class="hint">Заряд, по которому считается поглощённая доза: обычная полярность, рабочее напряжение V₁, та же геометрия — например, после подстройки ускорителя. Поправки (k<sub>pol</sub>, k<sub>s</sub>, k<sub>TP</sub>, k<sub>vol</sub>, k<sub>Q</sub>) берутся из разделов 3–6 — повторно их не измеряют. Если раздел не заполнен, доза считается по показанию M₁ раздела 4.</p></header>
+        <p class="hint">По желанию: показания, по которым считается итоговая доза, — обычная полярность, рабочее напряжение V₁, та же геометрия (например, повтор после прогрева или после подстройки ускорителя). Поправки (k<sub>pol</sub>, k<sub>s</sub>, k<sub>Q</sub>, k<sub>vol</sub>, k<sub>TP</sub>) берутся из разделов 3–6; повторно их не измеряют. Если раздел пуст, итог считается по показанию M₁ раздела 3. Итог — в строке под показаниями.</p></header>
       <div class="series">
         <div class="cells" data-series="ctrl_M" data-label="Контрольные измерения, M при V₁, обычная полярность">
           <span class="label">M при V₁, обычная полярность, нКл</span>
@@ -941,9 +947,10 @@
         </div>
       </div>
       <div class="grid">
-        <div class="field"><label for="ctrl_mu">Облучение, МЕ</label><input type="text" id="ctrl_mu" class="num" inputmode="decimal"><span class="sub">если пусто — как в разделе 4</span></div>
-        <div class="field out-cell"><span class="label">Изменение относительно раздела 4</span><output data-out="ctrl.changePct" data-digits="2" data-signed="1" data-suffix=" %"></output><span class="sub">по показанию на МЕ</span></div>
+        <div class="field"><label for="ctrl_mu">Облучение, МЕ</label><input type="text" id="ctrl_mu" class="num" inputmode="decimal"><span class="sub">если пусто — как в разделе 3</span></div>
+        <div class="field out-cell"><span class="label">Отличие от M₁ раздела 3</span><output data-out="ctrl.changePct" data-digits="2" data-signed="1" data-suffix=" %"></output><span class="sub">по показанию на МЕ</span></div>
       </div>
+      <p class="inline-result" data-inline-result aria-live="polite"></p>
     </section>
 
     <!-- 7 -->
@@ -1226,27 +1233,8 @@
     </section>
 
     <!-- 4 -->
-    <section class="step" aria-labelledby="e-s4">
-      <header><span class="step-no">4</span><h2 id="e-s4">Температура и давление</h2>
-        <p class="hint">Температура воды у камеры и давление по поверенному барометру в помещении, без приведения к уровню моря. Поправка k<sub>TP</sub> действительна, пока камера и электрометр работают в условиях эксплуатации, указанных производителем, и в условиях, для которых лаборатория выдала N<sub>D,w</sub>. Влажность в расчёт не входит и записывается для протокола.</p></header>
-      <div class="grid">
-        <div class="field"><label for="e_env_T">Температура воды, °C</label><input type="text" id="e_env_T" class="num" inputmode="decimal"><span class="sub">обычный диапазон 15–25 °C</span></div>
-        <div class="field"><label for="e_env_H">Относительная влажность, %</label><input type="text" id="e_env_H" class="num" inputmode="decimal"><span class="sub">20–80 %, лучше 40–60 %</span></div>
-        <div class="field">
-          <label for="e_env_P">Давление</label>
-          <div class="inline">
-            <input type="text" id="e_env_P" class="num" inputmode="decimal">
-            <select id="e_env_P_unit" aria-label="Единица давления"></select>
-          </div>
-        </div>
-        <div class="field out-cell" data-protocol="trs"><span class="label"><button type="button" class="term" data-term="kTP">k<sub>TP</sub></button></span><output data-out="trs.kTP" data-digits="4"></output></div>
-        <div class="field out-cell" data-protocol="tg51"><span class="label"><button type="button" class="term" data-term="kTP">P<sub>TP</sub></button></span><output data-out="tg51.PTP" data-digits="4"></output></div>
-      </div>
-    </section>
-
-    <!-- 5 -->
     <section class="step" aria-labelledby="e-s5">
-      <header><span class="step-no">5</span><h2 id="e-s5">Показания электрометра</h2>
+      <header><span class="step-no">4</span><h2 id="e-s5">Показания электрометра</h2>
         <p class="hint" id="e-readings-hint">Эти показания нужны для поправок на полярность и рекомбинацию (k<sub>pol</sub>, k<sub>s</sub>); поглощённая доза считается по контрольным измерениям раздела 7. Камера на опорной глубине. Все серии — при одном и том же числе МЕ; значения можно вводить со знаком или без. Кнопка «+» добавляет ячейку.</p></header>
       <div class="grid">
         <div class="field"><label for="e_mu">Облучение, МЕ</label><input type="text" id="e_mu" class="num" inputmode="decimal"></div>
@@ -1339,11 +1327,12 @@
       </div>
       <p class="eq" data-protocol="trs">k<sub>s</sub>: <span data-out-text="trs.ksEquation"></span>. <span>P<sub>ion</sub> по TG-51 — ур. (12) для импульсного пучка.</span></p>
       <p class="sub-hint no-print">Насыщение камеры и рекомбинацию при разных напряжениях подробно проверяет <a href="#jaffe" data-goto="jaffe">график Яффе</a> (вкладка «Камера и пучок»).</p>
+      <p class="inline-result" data-inline-result aria-live="polite"></p>
     </section>
 
-    <!-- 6 -->
+    <!-- 5 -->
     <section class="step" aria-labelledby="e-s6">
-      <header><span class="step-no">6</span><h2 id="e-s6"><button type="button" class="term" data-term="kQe">k<sub>Q</sub></button> для пучка электронов</h2></header>
+      <header><span class="step-no">5</span><h2 id="e-s6"><button type="button" class="term" data-term="kQe">k<sub>Q</sub></button> для пучка электронов</h2></header>
       <div class="duo">
         <div class="proto-card" data-protocol="trs">
           <h3>TRS-398 Rev.1</h3>
@@ -1353,6 +1342,7 @@
               <option value="table" id="e-opt-trs-table">по табл. 20 с интерполяцией по R50</option>
               <option value="formula" id="e-opt-trs-formula">по аппроксимации прил. II (табл. 47)</option>
               <option value="manual">ввести вручную (например, измерен в лаборатории)</option>
+              <option value="r385" id="e-opt-trs-r385">нестандартно: по Report 385, k_Qecal·k′_Q (камеры без данных табл. 20)</option>
             </select>
           </div>
           <div class="field" data-show="e_kqtrs_mode:manual"><label for="e_kqtrs_manual" id="e-lbl-kqtrs">k<sub>Q,Q₀</sub></label><input type="text" id="e_kqtrs_manual" class="num" inputmode="decimal"></div>
@@ -1390,10 +1380,29 @@
       </div>
     </section>
 
+    <!-- 6 -->
+    <section class="step" aria-labelledby="e-s4">
+      <header><span class="step-no">6</span><h2 id="e-s4">Температура и давление</h2>
+        <p class="hint">Температура воды у камеры и давление по поверенному барометру в помещении, без приведения к уровню моря. Поправка k<sub>TP</sub> действительна, пока камера и электрометр работают в условиях эксплуатации, указанных производителем, и в условиях, для которых лаборатория выдала N<sub>D,w</sub>. Влажность в расчёт не входит и записывается для протокола.</p></header>
+      <div class="grid">
+        <div class="field"><label for="e_env_T">Температура воды, °C</label><input type="text" id="e_env_T" class="num" inputmode="decimal"><span class="sub">обычный диапазон 15–25 °C</span></div>
+        <div class="field"><label for="e_env_H">Относительная влажность, %</label><input type="text" id="e_env_H" class="num" inputmode="decimal"><span class="sub">20–80 %, лучше 40–60 %</span></div>
+        <div class="field">
+          <label for="e_env_P">Давление</label>
+          <div class="inline">
+            <input type="text" id="e_env_P" class="num" inputmode="decimal">
+            <select id="e_env_P_unit" aria-label="Единица давления"></select>
+          </div>
+        </div>
+        <div class="field out-cell" data-protocol="trs"><span class="label"><button type="button" class="term" data-term="kTP">k<sub>TP</sub></button></span><output data-out="trs.kTP" data-digits="4"></output></div>
+        <div class="field out-cell" data-protocol="tg51"><span class="label"><button type="button" class="term" data-term="kTP">P<sub>TP</sub></button></span><output data-out="tg51.PTP" data-digits="4"></output></div>
+      </div>
+    </section>
+
     <!-- 7 -->
     <section class="step" aria-labelledby="e-s7c">
       <header><span class="step-no">7</span><h2 id="e-s7c">Контрольные измерения</h2>
-        <p class="hint">Заряд, по которому считается поглощённая доза: обычная полярность, рабочее напряжение V₁, то же положение камеры — например, после подстройки ускорителя. Поправки (k<sub>pol</sub>, k<sub>s</sub>, k<sub>TP</sub>, k<sub>Q</sub>) берутся из разделов 4–6 — повторно их не измеряют. Если раздел не заполнен, доза считается по показанию M₁ раздела 5.</p></header>
+        <p class="hint">По желанию: показания, по которым считается итоговая доза, — обычная полярность, рабочее напряжение V₁, то же положение камеры (например, повтор после прогрева или после подстройки ускорителя). Поправки (k<sub>pol</sub>, k<sub>s</sub>, k<sub>Q</sub>, k<sub>TP</sub>) берутся из разделов 4–6; повторно их не измеряют. Если раздел пуст, итог считается по показанию M₁ раздела 4. Итог — в строке под показаниями.</p></header>
       <div class="series">
         <div class="series-group">
           <div class="cells" data-series="e_ctrl_M" data-label="Контрольные измерения, M при V₁, обычная полярность">
@@ -1410,9 +1419,10 @@
         </div>
       </div>
       <div class="grid">
-        <div class="field"><label for="e_ctrl_mu">Облучение, МЕ</label><input type="text" id="e_ctrl_mu" class="num" inputmode="decimal"><span class="sub">если пусто — как в разделе 5</span></div>
-        <div class="field out-cell"><span class="label">Изменение относительно раздела 5</span><output data-out="ctrl.changePct" data-digits="2" data-signed="1" data-suffix=" %"></output><span class="sub">по показанию на МЕ</span></div>
+        <div class="field"><label for="e_ctrl_mu">Облучение, МЕ</label><input type="text" id="e_ctrl_mu" class="num" inputmode="decimal"><span class="sub">если пусто — как в разделе 4</span></div>
+        <div class="field out-cell"><span class="label">Отличие от M₁ раздела 4</span><output data-out="ctrl.changePct" data-digits="2" data-signed="1" data-suffix=" %"></output><span class="sub">по показанию на МЕ</span></div>
       </div>
+      <p class="inline-result" data-inline-result aria-live="polite"></p>
     </section>
 
     <!-- 8 -->

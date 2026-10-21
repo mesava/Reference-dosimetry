@@ -55,7 +55,7 @@ export const PH_SESSION_KEYS = [
 /** Пучок: всё остальное — геометрия, напряжения, МЕ, способ определения качества и k_Q, k_vol, пересчёт на d_max, номинал. */
 export const PH_BEAM_KEYS = Object.keys(FORM_DEFAULTS).filter((k) => ![...PH_CHAMBER_KEYS, ...PH_ELECTROMETER_KEYS, ...PH_SESSION_KEYS].includes(k));
 /** Показатель качества: в профиле — последнее измеренное значение, в сеансе калибровки — новое. */
-export const PH_QUALITY_KEYS = ['qtrs_v20', 'qtrs_v10', 'q51_pdd10', 'q51_pdd10pb', 'q51_manual'];
+export const PH_QUALITY_KEYS = ['qtrs_v20', 'qtrs_v10', 'qtrs_tpr', 'q51_pdd10', 'q51_pdd10pb', 'q51_manual'];
 
 // ---------------------------------------------------------------- поля формы вкладки «Электроны» по владельцу
 export const E_CHAMBER_KEYS = [

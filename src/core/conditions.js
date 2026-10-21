@@ -228,6 +228,15 @@ export const ELECTRON_CONDITIONS = [
     reason: (c) => L(`R50 = ${ru(c.r50, 2)} см вне области Report 385 (1,70–8,70 см)`, `R50 = ${ru(c.r50, 2)} cm outside the scope of Report 385 (1.70–8.70 cm)`),
   },
   {
+    id: 'kQtrs',
+    group: 'coefficients',
+    scope: 'trs',
+    label: () => L('k_Q по данным TRS-398 Rev.1 (или измерен)', 'k_Q from TRS-398 Rev.1 data (or measured)'),
+    ref: `${TRS}, табл. 20–21, прил. II`,
+    check: (c) => (c.chamber ? !c.kQNonstandard : null),
+    reason: (c) => L(`${chamberName(c)}: k_Q рассчитан по Report 385 — TRS-398 Rev.1 для этой камеры при калибровке в ⁶⁰Co k_Q не даёт`, `${chamberName(c)}: k_Q calculated per Report 385; TRS-398 Rev.1 gives no k_Q for this chamber calibrated in ⁶⁰Co`),
+  },
+  {
     id: 'chamber385',
     group: 'detector',
     scope: 'tg51',

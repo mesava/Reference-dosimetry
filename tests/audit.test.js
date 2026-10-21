@@ -104,7 +104,7 @@ test('Допуск на отклонение от номинала настра�
 test('Ошибки в контрольных измерениях: итог не подменяется показанием M₁ основного раздела', () => {
   const r = computePhotons({ ...VERSA, ctrl_M: ['16,83', '16,83', '1,681'] }); // опечатка в 10 раз
   assert.ok(errorsOf(r).some((m) => m.scope === 'ctrl'));
-  assert.equal(r.trs.blocked, false, 'поправки раздела 4 посчитаны');
+  assert.equal(r.trs.blocked, false, 'поправки раздела 3 посчитаны');
   assert.equal(r.trs.ctrl.blocked, true);
   assert.equal(r.compliance.status, 'invalid', 'итога нет');
   assert.equal(r.recal.needed, false);

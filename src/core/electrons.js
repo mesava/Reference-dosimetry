@@ -71,16 +71,16 @@ export const E_DEFAULTS = {
   e_fixed_kpol: '', // k_pol, измеренный при калибровке
   e_fixed_ks: '', // k_s (P_ion), измеренный при калибровке (до деления на значение лаборатории)
   e_fixed_from: '', // дата калибровки, из которой взяты значения
-  // контрольные измерения: обычная полярность, V₁; поправки — из основных серий (раздел 5)
+  // контрольные измерения: обычная полярность, V₁; поправки — из основных серий (раздел 4)
   e_ctrl_M: ['', '', ''],
-  e_ctrl_mu: '', // пусто — столько же МЕ, сколько в разделе 5
+  e_ctrl_mu: '', // пусто — столько же МЕ, сколько в разделе 4
   // калибровка (подстройка) ускорителя, если доза вне ±2 % от номинала: ответ и показания после неё
   e_recal_needed: '', // '' | 'yes' | 'no'
   e_recal_M: ['', '', ''],
-  e_recal_mu: '', // пусто — как в разделе 7 (или 5)
+  e_recal_mu: '', // пусто — как в разделе 7 (или 4)
   e_kleak: '1,000',
 
-  e_kqtrs_mode: 'table', // 'table' (табл. 20 или 21) | 'formula' (прил. II, табл. 47 или 48) | 'manual'
+  e_kqtrs_mode: 'table', // 'table' (табл. 20 или 21) | 'formula' (прил. II, табл. 47 или 48) | 'manual' | 'r385' (нестандартно, Report 385)
   e_kqtrs_manual: '',
   e_kqtrs_src: '', // источник ручного k_Q (свидетельство лаборатории, №, дата)
   e_kq51_mode: 'fit', // 'fit' (Report 385) | 'manual'
@@ -510,12 +510,53 @@ export function computeElectrons(form) {
     } else if (!chamber || chamber.other) {
       if (chamber?.other) add('error', 'trs', L('Для камеры не из таблиц TRS-398 введите k_Q вручную.', 'For a chamber not in the TRS-398 tables, enter k_Q manually.'), `${REF.trs}, табл. 20–21`, 'e_kqtrs_mode');
       trs.kQ = NaN;
+    } else if (!cross && f.e_kqtrs_mode === 'r385') {
+      // нестандартно: k_Q = k_Qecal·k′_Q по Report 385 для камер, которым TRS-398 Rev.1 при калибровке в ⁶⁰Co k_Q не даёт.
+      // Табл. 47 Rev.1 для Roos и NACP-02 — то же произведение по тем же данным (Muir, Rogers 2014), поэтому формализм
+      // один; для остальных плоскопараллельных камер Rev.1 рекомендует калибровку в пучке электронов (прил. II).
+      if (!chamber.r385) {
+        add('error', 'trs', L(
+          `Для ${eChamberLabel(chamber)} в Report 385 нет данных: способ «по Report 385» недоступен.`,
+          `Report 385 gives no data for ${eChamberLabel(chamber)}: the "per Report 385" method is not available.`,
+        ), `${REF.r385}, разд. 6.6`, ['e_kqtrs_mode', 'kQtrs']);
+        trs.kQ = NaN;
+      } else if (r50ok) {
+        if (r50 < 1.7 - 1e-9 || r50 > 8.7 + 1e-9) {
+          add('error', 'trs', L(`R50 = ${ru(r50, 2)} г/см² вне области Report 385 (1,70–8,70 см): аппроксимации k′_Q там не проверены.`, `R50 = ${ru(r50, 2)} g/cm² is outside the Report 385 range (1.70–8.70 cm): the k′_Q fits have not been verified there.`), `${REF.r385}, ур. (7)–(8)`, ['kQtrs', 'e_i50', 'e_r50']);
+        }
+        trs.kQprime385 = kQprime385(chamber, r50);
+        trs.kQecal385 = chamber.r385.kQecal;
+        trs.kQ = trs.kQprime385 * trs.kQecal385;
+        trs.kQNonstandard = true;
+        const fit = chamber.type === 'cyl'
+          ? `${ru(chamber.r385.a, 3)} + ${ru(chamber.r385.b, 3)}·R50^(−${ru(chamber.r385.c, 3)})`
+          : `${ru(chamber.r385.a, 3)} + ${ru(chamber.r385.b, 3)}·exp(−R50/${ru(chamber.r385.c, 3)})`;
+        trs.kQSource = L(
+          `нестандартно, по Report 385: k_Q = k_Qecal·k′_Q = ${ru(trs.kQecal385, 3)}·(${fit}) (табл. ${chamber.type === 'cyl' ? '4–5' : '6–7'})`,
+          `non-standard, per Report 385: k_Q = k_Qecal·k′_Q = ${ru(trs.kQecal385, 3)}·(${fit}) (Tables ${chamber.type === 'cyl' ? '4–5' : '6–7'})`,
+        );
+        add('warn', 'trs', chamber.trsT20
+          ? L(
+              `Для ${eChamberLabel(chamber)} есть данные TRS-398 Rev.1 (табл. 20): нестандартный расчёт k_Q по Report 385 здесь не нужен — выберите табл. 20.`,
+              `TRS-398 Rev.1 has data for ${eChamberLabel(chamber)} (Table 20): the non-standard Report 385 k_Q is not needed here; select Table 20.`,
+            )
+          : L(
+              `Нестандартный расчёт: k_Q для ${eChamberLabel(chamber)} взят из Report 385 (TG-51), а не из TRS-398 Rev.1. Rev.1 даёт k_Q при калибровке в ⁶⁰Co только для плоскопараллельных камер Roos и NACP-02, для остальных рекомендует калибровку в пучке электронов или перекрёстную калибровку. Табл. 47 Rev.1 для Roos и NACP-02 — это то же произведение k_Qecal·k′_Q по тем же расчётам, но для этой камеры Rev.1 его не подтверждает: результат — не референсная дозиметрия по TRS-398, лучше выполнить перекрёстную калибровку.`,
+              `Non-standard calculation: k_Q for ${eChamberLabel(chamber)} is taken from Report 385 (TG-51), not from TRS-398 Rev.1. Rev.1 gives k_Q for ⁶⁰Co calibration only for the Roos and NACP-02 plane-parallel chambers and recommends calibration in an electron beam or cross-calibration for the others. Rev.1 Table 47 for the Roos and NACP-02 is the same product k_Qecal·k′_Q from the same calculations, but Rev.1 does not endorse it for this chamber: the result is not reference dosimetry per TRS-398; cross-calibration is preferable.`,
+            ), `${REF.trs}, прил. II, табл. 47; ${REF.r385}, табл. ${chamber.type === 'cyl' ? '4–5' : '6–7'}`, ['e_kqtrs_mode', 'kQtrs']);
+      } else trs.kQ = NaN;
+    } else if (cross && f.e_kqtrs_mode === 'r385') {
+      add('error', 'trs', L(
+        'Способ «по Report 385» — только для камеры, откалиброванной в ⁶⁰Co. При перекрёстной калибровке в электронах k_Q,Qcross берётся из табл. 21 TRS-398.',
+        'The "per Report 385" method applies only to a chamber calibrated in ⁶⁰Co. With cross-calibration in electrons, k_Q,Qcross comes from TRS-398 Table 21.',
+      ), `${REF.trs}, разд. 7.6`, ['e_kqtrs_mode', 'kQtrs']);
+      trs.kQ = NaN;
     } else if (!cross) {
       if (!chamber.trsT20) {
         if (chamber.type === 'pp' && chamber.trsT21) {
           add('error', 'trs', L(
-            `Для ${eChamberLabel(chamber)} TRS-398 не даёт k_Q при калибровке в ⁶⁰Co (табл. 20): нужна калибровка в пучке электронов — перекрёстная или в лаборатории.`,
-            `TRS-398 gives no k_Q for ${eChamberLabel(chamber)} calibrated in ⁶⁰Co (Table 20): calibration in an electron beam is required, either by cross-calibration or at a calibration laboratory.`,
+            `Для ${eChamberLabel(chamber)} TRS-398 не даёт k_Q при калибровке в ⁶⁰Co (табл. 20): нужна калибровка в пучке электронов — перекрёстная или в лаборатории.${chamber.r385 ? ' Нестандартно k_Q можно рассчитать по Report 385: способ «по Report 385» в разделе k_Q.' : ''}`,
+            `TRS-398 gives no k_Q for ${eChamberLabel(chamber)} calibrated in ⁶⁰Co (Table 20): calibration in an electron beam is required, either by cross-calibration or at a calibration laboratory.${chamber.r385 ? ' As a non-standard option, k_Q can be calculated per Report 385: the "per Report 385" method in the k_Q section.' : ''}`,
           ), `${REF.trs}, разд. 7.5–7.6, табл. 20–21`, ['e_cal_route', 'kQtrs']);
         } else {
           add('error', 'trs', L(
@@ -713,12 +754,12 @@ export function computeElectrons(form) {
     for (const x of [trs.ctrl, tg.ctrl]) if (x) x.blocked = ctrlBlocked || !x.ok;
   }
   // Отклонение от номинала — по итоговому результату: по контрольным измерениям, если они есть.
-  // Если контрольные измерения введены, но содержат ошибки, итога нет: подменять его показанием M₁ раздела 5 нельзя.
+  // Если контрольные измерения введены, но содержат ошибки, итога нет: подменять его показанием M₁ раздела 4 нельзя.
   const mainBlocked = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
   const final = (x, scope) => (mainBlocked(scope) ? {} : x.ctrl ? (x.ctrl.blocked ? {} : x.ctrl) : x);
 
   // ---------------------------------------------- калибровка (подстройка) ускорителя
-  // Если доза (по контрольным измерениям, иначе по M₁ раздела 5) отличается от номинального выхода
+  // Если доза (по контрольным измерениям, иначе по M₁ раздела 4) отличается от номинального выхода
   // больше допуска (по умолчанию ±2 %), предлагается калибровка. После подстройки снимают новые показания при V₁ и
   // обычной полярности; поправки те же, итог — по новым показаниям, прежний результат остаётся для справки.
   const recal = { tolerance: tol, answer: f.e_recal_needed === 'yes' || f.e_recal_needed === 'no' ? f.e_recal_needed : '' };
@@ -792,7 +833,7 @@ export function computeElectrons(form) {
     const y = actual(x, scope);
     if (Number.isFinite(y.DperMU)) finals.push({ x: y, units: y.units });
   }
-  outputPlausibility(finals, { add, ru, tol, muSections: L('разделы 5 и 7', 'sections 5 and 7'), zrefText: Number.isFinite(zref) ? L(`(${ru(zref, 2)} см)`, `(${ru(zref, 2)} cm)`) : 'z_ref' });
+  outputPlausibility(finals, { add, ru, tol, muSections: L('разделы 4 и 7', 'sections 4 and 7'), zrefText: Number.isFinite(zref) ? L(`(${ru(zref, 2)} см)`, `(${ru(zref, 2)} cm)`) : 'z_ref' });
 
   const hasError = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));
   if (wantTRS && !trs.ok && !hasError('trs')) add('error', 'trs', L('Не удалось вычислить дозу: проверьте R50 и k_Q.', 'Could not calculate the dose: check R50 and k_Q.'));
@@ -822,6 +863,7 @@ export function computeElectrons(form) {
       kleak,
       kpolRaw: fixed ? NaN : kpolRaw,
       kpolFixed: !!fixed,
+      kQNonstandard: !!trs.kQNonstandard,
     },
     activeKey,
   );
