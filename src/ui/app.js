@@ -20,6 +20,7 @@ import { initTabEquipment } from './tab-equipment-ui.js';
 import { initTabJournal } from './tab-journal-ui.js';
 import { initEquipment, equipmentStatus, setEquipmentBridge, saveBeamFromTab, revealBeam, renderMyChambersTool } from './journal-equipment-ui.js';
 import { initHistory, historyStatus, setHistoryBridge } from './journal-history-ui.js';
+import { initSession, renderSessionPage, sessionStatus } from './session-ui.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
 // последний открытый подраздел вкладки в шапке («Дозиметрия», «Камера и пучок»)
@@ -36,6 +37,8 @@ const MODULES = {
   // в разработке: страница с планом, без расчёта; transient — не запоминается местом работы (последним подразделом)
   kv: { title: () => L('kV-рентген — в разработке', 'kV x-rays — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', transient: true, proto: false },
   brachy: { title: () => L('Брахитерапия — в разработке', 'Brachytherapy — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', transient: true, proto: false },
+  // сеанс: несколько пучков аппарата подряд, каждый — в своей вкладке дозиметрии (протокол — во вкладке)
+  session: { title: () => L('Сеанс — пучки аппарата подряд', 'Session — machine beams in a row'), file: '-', importData: () => {}, status: (t) => sessionStatus(t), tab: 'dosimetry', proto: false },
   jaffe: { title: () => L('Камера и пучок — график Яффе', 'Chamber and beam — Jaffé plot'), file: 'jaffe', importData: importJaffe, status: jaffeStatus, tab: 'prep' },
   tools: { title: () => L('Камера и пучок — перекрёстная калибровка', 'Chamber and beam — cross-calibration'), file: 'crosscal', importData: importCrossCal, status: crossCalStatus, tab: 'prep' },
   edepth: { title: () => L('Камера и пучок — кривая дозы электронов', 'Chamber and beam — electron depth dose'), file: 'edepth', importData: importEdepth, status: edepthStatus, tab: 'prep' },
@@ -120,6 +123,7 @@ function showModule(name) {
     store.set(subKey(tabOf(name)), name);
   }
   if (name === 'start') renderStart();
+  if (name === 'session') renderSessionPage();
   // «Мои камеры» меняются на вкладках дозиметрии: кнопку переноса в журнал обновить при открытии «Оборудования»
   if (name === 'equipment') renderMyChambersTool();
   refreshSectionNav($(`#module-${name}`));
@@ -137,8 +141,8 @@ function switchTo(name) {
   showModule(name);
 }
 
-// подраздел «Сеанс» (до 0.23.0) убран: измерения записываются в журнал из вкладок дозиметрии
-const OLD_MODULES = { session: 'history' };
+// подразделы прежних версий, которых больше нет; «Сеанс» до 0.23.0 был подразделом журнала, с 0.27.0 — подраздел «Дозиметрии»
+const OLD_MODULES = {};
 
 function moduleFromHash() {
   const raw = location.hash.replace('#', '');
@@ -358,11 +362,22 @@ function init() {
     { kind: 'photon', module: 'photons', box: '#ph-jlink', select: '#ch_model', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden },
     { kind: 'electron', module: 'electrons', box: '#e-jlink', select: '#e_ch_model', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden },
   ]);
-  initTabJournal([
+  const tabJournals = initTabJournal([
     { kind: 'cobalt', module: 'co60', bind: '#co-jbind', rec: '#co-jrec', check: '#co-jcheck', read: cobaltCurrentForm, patch: applyCobaltPatch, status: cobaltStatus, demo: () => !$('#co-demo-flag').hidden },
     { kind: 'photon', module: 'photons', bind: '#ph-jbind', rec: '#ph-jrec', check: '#ph-jcheck', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden },
     { kind: 'electron', module: 'electrons', bind: '#e-jbind', rec: '#e-jrec', check: '#e-jcheck', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden },
   ]);
+  // сеанс: пучок журнала открывается в своей вкладке, «Записать и далее» — запись вкладки в журнал
+  initSession({
+    open: (kind, machineId, beamId, opts) => {
+      switchTo({ electron: 'electrons', cobalt: 'co60' }[kind] ?? 'photons');
+      tabJournals[kind]?.select(machineId, beamId, opts);
+      window.scrollTo({ top: 0 });
+    },
+    record: (kind) => tabJournals[kind]?.record() ?? false,
+    bound: (kind) => tabJournals[kind]?.bound() ?? null,
+    go: (name) => goTo(name),
+  });
   setUncSources({ co60: cobaltUncSource, photons: photonsUncSource, electrons: electronsUncSource });
   initTransfer();
   initPaste();

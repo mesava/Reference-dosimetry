@@ -752,6 +752,7 @@ export const STATIC_EN = {
   "Насыщение камеры и рекомбинацию при разных напряжениях подробно проверяет <a href=\"#jaffe\" data-goto=\"jaffe\">график Яффе</a> (вкладка «Камера и пучок»).": "The chamber saturation and recombination at different voltages are checked in detail by the <a href=\"#jaffe\" data-goto=\"jaffe\">Jaffé plot</a> (Chamber and beam tab).",
   "kV-рентген <span class=\"wip-tag\">в разработке</span>": "kV x-rays <span class=\"wip-tag\">in development</span>",
   "Брахитерапия <span class=\"wip-tag\">в разработке</span>": "Brachytherapy <span class=\"wip-tag\">in development</span>",
+  "Сеанс": "Session",
   "Рабочий лист референсной дозиметрии рентгеновского излучения низких и средних энергий по TRS-398 Rev.1. Раздел пока не работает: расчёта на этой странице нет.": "A worksheet for reference dosimetry of low- and medium-energy x-rays according to TRS-398 Rev.1. This section does not work yet: there is no calculation on this page.",
   "Что планируется": "What is planned",
   "качество пучка: слой половинного ослабления (СПО) и анодное напряжение;": "beam quality: half-value layer (HVL) and tube voltage;",

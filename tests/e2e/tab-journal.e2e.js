@@ -134,11 +134,11 @@ test('вкладка «МВ фотоны»: пучок журнала, запи�
   assert.deepEqual((await page.locator('.modules a').allInnerTexts()).map((t) => t.trim()), ['Начало', 'Оборудование', 'Дозиметрия', 'Камера и пучок', 'Неопределённость', 'Журнал и тренды']);
   assert.equal(await page.locator('#tab-equipment').getAttribute('aria-current'), 'page');
   assert.ok(await page.locator('.protocol-switch').isHidden(), 'в «Оборудовании» переключателя протокола нет');
-  // прежний адрес «Сеанса» ведёт в «Журнал и тренды»
+  // #session — с 0.27.0 подраздел «Сеанс» вкладки «Дозиметрия» (до 0.23.0 так назывался подраздел журнала)
   await page.goto(`${server.url}/index.html#session`);
   await pause(500);
-  assert.ok(await page.locator('#module-history').isVisible());
-  assert.equal(await page.locator('#tab-history').getAttribute('aria-current'), 'page');
+  assert.ok(await page.locator('#module-session').isVisible());
+  assert.equal(await page.locator('#tab-dosimetry').getAttribute('aria-current'), 'page');
 
   // по-английски — без кириллицы в блоках журнала (кроме названий)
   await page.goto(`${server.url}/index.html#photons`);

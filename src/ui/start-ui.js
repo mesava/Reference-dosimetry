@@ -55,28 +55,30 @@ export function renderStart() {
       <section class="start-card">
         <h3>${esc(L('Работа отделения — журнал', 'Department routine: the journal'))}</h3>
         <p class="start-when">${L(
-          '<b>Когда:</b> регулярные калибровки и проверки выхода всех пучков ускорителя или аппарата ⁶⁰Co, тренды, сроки поверки камер и электрометров.',
-          '<b>When:</b> routine calibrations and output checks of all beams of a linac or ⁶⁰Co unit, trends, chamber and electrometer calibration due dates.',
+          '<b>Когда:</b> журнал отделения: аппараты и пучки, камеры и электрометры, тренды калибровок и проверок выхода, контрольные карты, сроки поверки. Измерения записываются в журнал из «Дозиметрии».',
+          '<b>When:</b> the department journal: machines and beams, chambers and electrometers, trends of calibrations and output checks, control charts, calibration due dates. Measurements are recorded to the journal from Dosimetry.',
         )}</p>
         <ol class="start-steps">
           <li>${go('equipment', esc(L('Оборудование', 'Equipment')), { sub: esc(L('камеры, электрометры, аппараты и пучки — один раз', 'chambers, electrometers, machines and beams, once')) })}</li>
-          <li>${go('photons', esc(L('Измерение во вкладке дозиметрии', 'Measurement in a dosimetry tab')), { sub: esc(L('пучок журнала в разделе 1, затем «Записать в журнал»', 'a journal beam in section 1, then “Record to journal”')) })}</li>
           <li>${go('history', esc(L('Журнал и тренды', 'Journal and trends')), { sub: esc(L('отклонение по датам, k_pol и k_s по калибровкам', 'deviation by date, k_pol and k_s by calibration')).replace(/k_(pol|s)/g, 'k<sub>$1</sub>') })}</li>
         </ol>
         <p class="start-state" role="status">${esc(journalLine())}</p>
       </section>
       <section class="start-card">
-        <h3>${esc(L('Калибровка одного пучка', 'Calibrating a single beam'))}</h3>
+        <h3>${esc(L('Дозиметрия', 'Dosimetry'))}</h3>
         <p class="start-when">${L(
-          '<b>Когда:</b> калибровка или проверка одного пучка с подробным протоколом: все поправки со ссылками на протокол, PDF со строками для подписей, файл с данными.',
-          '<b>When:</b> calibration or check of a single beam with a detailed report: all corrections with protocol references, a PDF with signature lines, a data file.',
+          '<b>Когда:</b> калибровка в воде в референсных условиях TRS-398 Rev.1 — одного пучка или всех пучков аппарата подряд, с подробным протоколом: все поправки со ссылками на протокол, PDF со строками для подписей, файл с данными.',
+          '<b>When:</b> calibration in water under TRS-398 Rev.1 reference conditions, of a single beam or of all beams of a machine in a row, with a detailed report: all corrections with protocol references, a PDF with signature lines, a data file.',
         )}</p>
+        <p class="start-note">${esc(L('Один пучок:', 'A single beam:'))}</p>
         <div class="start-row">
           ${go('co60', '⁶⁰Co')}
           ${go('photons', esc(L('МВ фотоны', 'MV photons')))}
           ${go('electrons', esc(L('Электроны', 'Electrons')))}
         </div>
-        <p class="start-note">${esc(L('Пучок из журнала открывается здесь же кнопкой «Все настройки» или «Открыть во вкладке».', 'A journal beam opens here with the All settings or Open in the tab button.'))}</p>
+        <p class="start-note">${esc(L('Несколько пучков аппарата подряд, каждый записывается в журнал:', 'Several beams of a machine in a row, each recorded to the journal:'))}</p>
+        <div class="start-row">${go('session', esc(L('Сеанс — пучки аппарата', 'Session: machine beams')))}</div>
+        <p class="start-note">${esc(L('Пучок журнала выбирается в разделе 1 вкладки; записанный пучок открывается из журнала кнопкой «Открыть во вкладке».', 'A journal beam is selected in section 1 of the tab; a recorded beam opens from the journal with the Open in the tab button.'))}</p>
       </section>
       <section class="start-card">
         <h3>${esc(L('Камера и пучок — до измерений', 'Chamber and beam: before measurements'))}</h3>

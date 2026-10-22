@@ -65,7 +65,9 @@
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv" class="wip-link">kV-рентген <span class="wip-tag">в разработке</span></a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
+      <a href="#session" data-module="session">Сеанс</a>
     </nav>
+    <div class="session-bar no-print" id="co-sbar" hidden data-i18n-skip></div>
     <p class="intro">Рабочий лист калибровки пучка гамма-излучения ⁶⁰Co: мощность поглощённой дозы в воде на опорной глубине и на z<sub>max</sub>. Для ⁶⁰Co k<sub>Q</sub> = 1, качество пучка не измеряют: D<sub>w</sub> = M · N<sub>D,w</sub>. Числа можно вводить с запятой или точкой; обозначения с пунктирным подчёркиванием открывают справку.</p>
     <div class="journal-bar no-print" id="co-journal-bar" hidden data-i18n-skip></div>
 
@@ -513,7 +515,9 @@
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv" class="wip-link">kV-рентген <span class="wip-tag">в разработке</span></a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
+      <a href="#session" data-module="session">Сеанс</a>
     </nav>
+    <div class="session-bar no-print" id="ph-sbar" hidden data-i18n-skip></div>
     <p class="intro">Рабочий лист калибровки пучка МВ фотонов: поглощённая доза в воде на опорной глубине и на d<sub>max</sub>. Числа можно вводить с запятой или точкой. Обозначения коэффициентов с пунктирным подчёркиванием открывают справку. Всё считается в браузере, данные никуда не отправляются.</p>
     <div class="journal-bar no-print" id="ph-journal-bar" hidden data-i18n-skip></div>
 
@@ -1073,7 +1077,9 @@
       <a href="#electrons" data-module="electrons" aria-current="page">Электроны</a>
       <a href="#kv" data-module="kv" class="wip-link">kV-рентген <span class="wip-tag">в разработке</span></a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
+      <a href="#session" data-module="session">Сеанс</a>
     </nav>
+    <div class="session-bar no-print" id="e-sbar" hidden data-i18n-skip></div>
     <p class="intro">Рабочий лист калибровки пучка электронов: поглощённая доза в воде на опорной глубине z<sub>ref</sub> = 0,6·R50 − 0,1 и на z<sub>max</sub>. TRS-398 Rev.1 — глава 7; TG-51 — с аддендумом для электронов WGTG51 Report 385 (2024). Числа можно вводить с запятой или точкой; обозначения с пунктирным подчёркиванием открывают справку.</p>
     <div class="journal-bar no-print" id="e-journal-bar" hidden data-i18n-skip></div>
 
@@ -1540,6 +1546,7 @@
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv" class="wip-link" aria-current="page">kV-рентген <span class="wip-tag">в разработке</span></a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
+      <a href="#session" data-module="session">Сеанс</a>
     </nav>
     <section class="start-card wip-card">
       <h2>kV-рентген <span class="wip-tag">в разработке</span></h2>
@@ -1565,6 +1572,7 @@
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv" class="wip-link">kV-рентген <span class="wip-tag">в разработке</span></a>
       <a href="#brachy" data-module="brachy" class="wip-link" aria-current="page">Брахитерапия <span class="wip-tag">в разработке</span></a>
+      <a href="#session" data-module="session">Сеанс</a>
     </nav>
     <section class="start-card wip-card">
       <h2>Брахитерапия <span class="wip-tag">в разработке</span></h2>
@@ -1579,6 +1587,21 @@
       </ul>
       <p class="start-note">Пока раздел в разработке, для пучков ⁶⁰Co, МВ фотонов и электронов используйте соседние вкладки.</p>
     </section>
+</main>
+</div>
+
+<div class="module" id="module-session" role="tabpanel" aria-labelledby="tab-dosimetry" hidden>
+<main class="start session">
+    <nav class="subtools" aria-label="Дозиметрия">
+      <a href="#co60" data-module="co60">⁶⁰Co</a>
+      <a href="#photons" data-module="photons">МВ фотоны</a>
+      <a href="#electrons" data-module="electrons">Электроны</a>
+      <a href="#kv" data-module="kv" class="wip-link">kV-рентген <span class="wip-tag">в разработке</span></a>
+      <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
+      <a href="#session" data-module="session" aria-current="page">Сеанс</a>
+    </nav>
+    <div id="session-root" data-i18n-skip></div>
+    <p class="status-line" id="session-status" role="status"></p>
 </main>
 </div>
 

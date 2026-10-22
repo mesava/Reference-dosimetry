@@ -1,6 +1,6 @@
 {
   "name": "reference-dosimetry",
-  "version": "0.26.2",
+  "version": "0.27.0",
   "private": true,
   "description": "Калькулятор референсной дозиметрии по TG-51 и TRS-398 Rev.1",
   "license": "AGPL-3.0-or-later",

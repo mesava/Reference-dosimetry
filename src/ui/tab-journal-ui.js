@@ -234,10 +234,11 @@ function makeTabJournal(cfg) {
     render();
   }
 
+  /** Записать измерение вкладки в журнал; true — записано. */
   function record() {
     const j = getJournal();
     const { m, b } = current(j);
-    if (!b) return;
+    if (!b) return false;
     let res = null;
     let chk = null;
     const form = cfg.read();
@@ -252,7 +253,7 @@ function makeTabJournal(cfg) {
     }, 'tab-journal');
     if (res.error) {
       cfg.status(res.error);
-      return;
+      return false;
     }
     const chkText = chk?.checks.length
       ? L(` Проверок второй камерой: ${chk.checks.length}${chk.skipped ? `, с ошибками не записано: ${chk.skipped}` : ''}.`, ` Second-chamber checks: ${chk.checks.length}${chk.skipped ? `; not recorded because of errors: ${chk.skipped}` : ''}.`)
@@ -266,6 +267,7 @@ function makeTabJournal(cfg) {
       ),
     );
     render();
+    return true;
   }
 
   /** Настройки пучка вкладки (без показаний и условий) — в «Оборудование» как значения по умолчанию для пучка. */
@@ -382,10 +384,29 @@ function makeTabJournal(cfg) {
     lastFixed = !!cfg.read()[FIXED[cfg.kind]];
     render();
   }
-  return { init, render };
+  /**
+   * Выбрать пучок журнала из сеанса (ui/session-ui.js): сначала дата и режим сеанса («Проверка выхода» — check), затем
+   * настройки пучка, камера и электрометр — как при выборе в разделе 1.
+   */
+  function select(machineId, beamId, { date = '', check = false } = {}) {
+    bind = { machineId, beamId };
+    persist();
+    note = '';
+    cfg.patch({ [DATE[cfg.kind]]: date, [FIXED[cfg.kind]]: check });
+    lastFixed = check;
+    apply();
+  }
+
+  return { init, render, select, record, bound: () => ({ ...bind }) };
 }
 
-/** Подключить пучок журнала ко вкладкам дозиметрии. */
+/** Подключить пучок журнала ко вкладкам дозиметрии; возвращает { photon, electron, cobalt } — выбор пучка и запись. */
 export function initTabJournal(list) {
-  for (const cfg of list) makeTabJournal(cfg).init();
+  const out = {};
+  for (const cfg of list) {
+    const t = makeTabJournal(cfg);
+    t.init();
+    out[cfg.kind] = t;
+  }
+  return out;
 }
