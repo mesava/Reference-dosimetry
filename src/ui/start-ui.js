@@ -79,6 +79,8 @@ export function renderStart() {
         <p class="start-note">${esc(L('Несколько пучков аппарата подряд, каждый записывается в журнал:', 'Several beams of a machine in a row, each recorded to the journal:'))}</p>
         <div class="start-row">${go('session', esc(L('Сеанс — пучки аппарата', 'Session: machine beams')))}</div>
         <p class="start-note">${esc(L('Пучок журнала выбирается в разделе 1 вкладки; записанный пучок открывается из журнала кнопкой «Открыть во вкладке».', 'A journal beam is selected in section 1 of the tab; a recorded beam opens from the journal with the Open in the tab button.'))}</p>
+        <p class="start-note">${esc(L('Не референсные условия: ежедневная проверка выхода в пластинах относительно калибровки пучка в воде.', 'Not reference conditions: a routine output check in plates against the calibration of the beam in water.'))}</p>
+        <div class="start-row">${go('plates', esc(L('В пластинах — проверка выхода', 'In plates: output check')))}</div>
       </section>
       <section class="start-card">
         <h3>${esc(L('Камера и пучок — до измерений', 'Chamber and beam: before measurements'))}</h3>

@@ -21,6 +21,7 @@ import { initTabJournal } from './tab-journal-ui.js';
 import { initEquipment, equipmentStatus, setEquipmentBridge, saveBeamFromTab, revealBeam, renderMyChambersTool } from './journal-equipment-ui.js';
 import { initHistory, historyStatus, setHistoryBridge } from './journal-history-ui.js';
 import { initSession, renderSessionPage, sessionStatus } from './session-ui.js';
+import { initPlates, renderPlatesPage, platesStatus } from './plates-ui.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
 // последний открытый подраздел вкладки в шапке («Дозиметрия», «Камера и пучок»)
@@ -39,6 +40,8 @@ const MODULES = {
   brachy: { title: () => L('Брахитерапия — в разработке', 'Brachytherapy — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', transient: true, proto: false },
   // сеанс: несколько пучков аппарата подряд, каждый — в своей вкладке дозиметрии (протокол — во вкладке)
   session: { title: () => L('Сеанс — пучки аппарата подряд', 'Session — machine beams in a row'), file: '-', importData: () => {}, status: (t) => sessionStatus(t), tab: 'dosimetry', proto: false },
+  // проверка выхода в пластинах относительно калибровки в воде — не референсные условия
+  plates: { title: () => L('В пластинах — проверка выхода', 'In plates — output check'), file: '-', importData: () => {}, status: (t) => platesStatus(t), tab: 'dosimetry', proto: false },
   jaffe: { title: () => L('Камера и пучок — график Яффе', 'Chamber and beam — Jaffé plot'), file: 'jaffe', importData: importJaffe, status: jaffeStatus, tab: 'prep' },
   tools: { title: () => L('Камера и пучок — перекрёстная калибровка', 'Chamber and beam — cross-calibration'), file: 'crosscal', importData: importCrossCal, status: crossCalStatus, tab: 'prep' },
   edepth: { title: () => L('Камера и пучок — кривая дозы электронов', 'Chamber and beam — electron depth dose'), file: 'edepth', importData: importEdepth, status: edepthStatus, tab: 'prep' },
@@ -124,6 +127,7 @@ function showModule(name) {
   }
   if (name === 'start') renderStart();
   if (name === 'session') renderSessionPage();
+  if (name === 'plates') renderPlatesPage();
   // «Мои камеры» меняются на вкладках дозиметрии: кнопку переноса в журнал обновить при открытии «Оборудования»
   if (name === 'equipment') renderMyChambersTool();
   refreshSectionNav($(`#module-${name}`));
@@ -378,6 +382,7 @@ function init() {
     bound: (kind) => tabJournals[kind]?.bound() ?? null,
     go: (name) => goTo(name),
   });
+  initPlates();
   setUncSources({ co60: cobaltUncSource, photons: photonsUncSource, electrons: electronsUncSource });
   initTransfer();
   initPaste();

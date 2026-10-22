@@ -89,7 +89,8 @@ function chamberDims(f) {
 
 /** Камера или электрометр есть в записях журнала (измерения и проверки второй камерой): такие не удаляются. */
 function usedInRecords(j, key, id) {
-  return (j.sessions || []).some((s) => (s.beams || []).some((b) => b[key] === id) || (s.checks || []).some((c) => c[key] === id || (key === 'chamberId' && c.summary?.workChamberId === id)));
+  return (j.sessions || []).some((s) => (s.beams || []).some((b) => b[key] === id) || (s.checks || []).some((c) => c[key] === id || (key === 'chamberId' && c.summary?.workChamberId === id)))
+    || (j.plateChecks || []).some((p) => p.binding?.[key] === id);
 }
 const RECORDS_TITLE = () => L('Есть в записях журнала: записи ссылаются на эту запись оборудования (протокол, карты пар камер)', 'Used in journal records: they refer to this equipment entry (report, chamber pair charts)');
 
@@ -200,7 +201,7 @@ function beamCard(j, m, b) {
   const k = 'beam';
   const id = b.id;
   const f = b.form || {};
-  const used = j.sessions.some((s) => s.beams.some((x) => x.beamId === id));
+  const used = j.sessions.some((s) => s.beams.some((x) => x.beamId === id)) || (j.plateChecks || []).some((p) => p.beamId === id);
   const sub = {
     photon: L('как в протоколе; «FFF» или «БВФ» в названии ставит отметку сам', 'as in the report; "FFF" in the name sets the checkbox'),
     electron: L('как в протоколе; энергия — по названию', 'as in the report; the energy is taken from the name'),
@@ -220,7 +221,7 @@ function beamCard(j, m, b) {
 
 function machineCard(j, m) {
   const k = 'machine';
-  const hasSessions = j.sessions.some((s) => s.machineId === m.id);
+  const hasSessions = j.sessions.some((s) => s.machineId === m.id) || (j.plateChecks || []).some((p) => p.machineId === m.id);
   const cobalt = m.kind === 'cobalt';
   const has = (kind) => m.beams.some((b) => beamKind(b) === kind);
   // у ускорителя — пучки фотонов и электронов, у аппарата ⁶⁰Co — пучки ⁶⁰Co (установки); чужие пучки видны, если есть

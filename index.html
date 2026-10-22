@@ -66,6 +66,7 @@
       <a href="#kv" data-module="kv" class="wip-link">kV-рентген <span class="wip-tag">в разработке</span></a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
       <a href="#session" data-module="session">Сеанс</a>
+      <a href="#plates" data-module="plates">В пластинах</a>
     </nav>
     <div class="session-bar no-print" id="co-sbar" hidden data-i18n-skip></div>
     <p class="intro">Рабочий лист калибровки пучка гамма-излучения ⁶⁰Co: мощность поглощённой дозы в воде на опорной глубине и на z<sub>max</sub>. Для ⁶⁰Co k<sub>Q</sub> = 1, качество пучка не измеряют: D<sub>w</sub> = M · N<sub>D,w</sub>. Числа можно вводить с запятой или точкой; обозначения с пунктирным подчёркиванием открывают справку.</p>
@@ -516,6 +517,7 @@
       <a href="#kv" data-module="kv" class="wip-link">kV-рентген <span class="wip-tag">в разработке</span></a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
       <a href="#session" data-module="session">Сеанс</a>
+      <a href="#plates" data-module="plates">В пластинах</a>
     </nav>
     <div class="session-bar no-print" id="ph-sbar" hidden data-i18n-skip></div>
     <p class="intro">Рабочий лист калибровки пучка МВ фотонов: поглощённая доза в воде на опорной глубине и на d<sub>max</sub>. Числа можно вводить с запятой или точкой. Обозначения коэффициентов с пунктирным подчёркиванием открывают справку. Всё считается в браузере, данные никуда не отправляются.</p>
@@ -1078,6 +1080,7 @@
       <a href="#kv" data-module="kv" class="wip-link">kV-рентген <span class="wip-tag">в разработке</span></a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
       <a href="#session" data-module="session">Сеанс</a>
+      <a href="#plates" data-module="plates">В пластинах</a>
     </nav>
     <div class="session-bar no-print" id="e-sbar" hidden data-i18n-skip></div>
     <p class="intro">Рабочий лист калибровки пучка электронов: поглощённая доза в воде на опорной глубине z<sub>ref</sub> = 0,6·R50 − 0,1 и на z<sub>max</sub>. TRS-398 Rev.1 — глава 7; TG-51 — с аддендумом для электронов WGTG51 Report 385 (2024). Числа можно вводить с запятой или точкой; обозначения с пунктирным подчёркиванием открывают справку.</p>
@@ -1547,6 +1550,7 @@
       <a href="#kv" data-module="kv" class="wip-link" aria-current="page">kV-рентген <span class="wip-tag">в разработке</span></a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
       <a href="#session" data-module="session">Сеанс</a>
+      <a href="#plates" data-module="plates">В пластинах</a>
     </nav>
     <section class="start-card wip-card">
       <h2>kV-рентген <span class="wip-tag">в разработке</span></h2>
@@ -1573,6 +1577,7 @@
       <a href="#kv" data-module="kv" class="wip-link">kV-рентген <span class="wip-tag">в разработке</span></a>
       <a href="#brachy" data-module="brachy" class="wip-link" aria-current="page">Брахитерапия <span class="wip-tag">в разработке</span></a>
       <a href="#session" data-module="session">Сеанс</a>
+      <a href="#plates" data-module="plates">В пластинах</a>
     </nav>
     <section class="start-card wip-card">
       <h2>Брахитерапия <span class="wip-tag">в разработке</span></h2>
@@ -1599,9 +1604,26 @@
       <a href="#kv" data-module="kv" class="wip-link">kV-рентген <span class="wip-tag">в разработке</span></a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
       <a href="#session" data-module="session" aria-current="page">Сеанс</a>
+      <a href="#plates" data-module="plates">В пластинах</a>
     </nav>
     <div id="session-root" data-i18n-skip></div>
     <p class="status-line" id="session-status" role="status"></p>
+</main>
+</div>
+
+<div class="module" id="module-plates" role="tabpanel" aria-labelledby="tab-dosimetry" hidden>
+<main class="start plates">
+    <nav class="subtools" aria-label="Дозиметрия">
+      <a href="#co60" data-module="co60">⁶⁰Co</a>
+      <a href="#photons" data-module="photons">МВ фотоны</a>
+      <a href="#electrons" data-module="electrons">Электроны</a>
+      <a href="#kv" data-module="kv" class="wip-link">kV-рентген <span class="wip-tag">в разработке</span></a>
+      <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
+      <a href="#session" data-module="session">Сеанс</a>
+      <a href="#plates" data-module="plates" aria-current="page">В пластинах</a>
+    </nav>
+    <div id="plates-root" data-i18n-skip></div>
+    <p class="status-line" id="plates-status" role="status"></p>
 </main>
 </div>
 
@@ -2838,6 +2860,11 @@
       <div class="chart-legend" id="hs-check-legend" data-i18n-skip></div>
       <div class="hs-spc-summary" id="hs-check-summary" data-i18n-skip></div>
       <div class="actions"><button type="button" id="hs-check-unc">Перенести в бюджет неопределённости</button><button type="button" id="hs-check-csv">Выгрузить проверки в CSV</button></div>
+    </section>
+    <section class="step" aria-labelledby="hs-s8" id="hs-plates-sec" hidden>
+      <header><span class="step-no">8</span><h2 id="hs-s8">Проверки в пластинах</h2>
+        <p class="hint">Проверки выхода в пластинах — не референсные условия: выход относительно калибровки пучка в воде, к которой привязан набор пластин. Контрольная карта каждого пучка — в «Дозиметрии», подраздел «В пластинах».</p></header>
+      <div class="table-wrap" id="hs-plates" data-i18n-skip></div>
     </section>
   </form>
 

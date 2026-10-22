@@ -165,6 +165,22 @@ function renderTables(j, series) {
   }
 }
 
+/** Проверки аппарата в пластинах (не референсные условия): таблица по датам; раздел скрыт, если проверок нет. */
+function renderPlates(j) {
+  const m = machineOf(j, machineId);
+  const rows = (j.plateChecks || []).filter((x) => x.machineId === machineId).slice().reverse();
+  $('#hs-plates-sec').hidden = !rows.length;
+  if (!rows.length) {
+    $('#hs-plates').innerHTML = '';
+    return;
+  }
+  const name = (id) => m?.beams.find((b) => b.id === id)?.name || '—';
+  const co = (id) => beamKind(m?.beams.find((b) => b.id === id)) === 'cobalt';
+  $('#hs-plates').innerHTML = `<table class="factors"><thead><tr><th>${esc(L('Дата', 'Date'))}</th><th>${esc(L('Пучок', 'Beam'))}</th><th class="v">${esc(L('Отношение к привязке', 'Ratio to the binding'))}</th><th class="v">${esc(L('Отклонение', 'Deviation'))}</th><th>${esc(L('Привязка', 'Binding'))}</th></tr></thead><tbody>${rows
+    .map((r) => `<tr class="${r.summary?.status === 'out' ? 'st-out' : ''}"><td>${esc(fmtDate(r.date))}</td><td>${esc(name(r.beamId))}</td><td class="v">${esc(fmt(r.summary?.ratio, 4))}</td><td class="v">${esc(fmtSigned(r.summary?.deviation, 2))} %${co(r.beamId) ? ` ${esc(L('от ожидаемой', 'from expected'))}` : ''}</td><td>${esc(L(`к калибровке ${fmtDate(r.binding?.calDate)}`, `to the calibration of ${fmtDate(r.binding?.calDate)}`))}</td></tr>`)
+    .join('')}</tbody></table><div class="actions"><a class="link-btn" href="#plates" data-goto="plates">${esc(L('Открыть «В пластинах»', 'Open In plates'))}</a></div>`;
+}
+
 // ------------------------------------------------------------ протокол записи
 let reportId = '';
 function showReport(id) {
@@ -222,6 +238,7 @@ function render() {
   renderChart(series);
   renderControl(j, series);
   renderTables(j, series);
+  renderPlates(j);
   renderReadout(j, series);
   renderReport();
   notifyUpdate(ROOT());

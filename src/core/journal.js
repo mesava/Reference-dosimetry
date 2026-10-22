@@ -196,7 +196,7 @@ export const BEAM_DEFAULTS = { id: '', kind: 'photon', name: '', chamberId: '', 
 export const SESSION_DEFAULTS = { id: '', machineId: '', date: '', mode: 'cal', protocol: 'trs', staff: [''], notes: '', env: { T: '', P: '', P_unit: 'kPa', H: '' }, beams: [], saved: '' };
 
 export function newJournal() {
-  return { ...JOURNAL_TAG, institution: '', department: '', chambers: [], electrometers: [], machines: [], sessions: [] };
+  return { ...JOURNAL_TAG, institution: '', department: '', chambers: [], electrometers: [], machines: [], sessions: [], plateChecks: [] };
 }
 
 const arr = (v) => (Array.isArray(v) ? v : []);
@@ -226,6 +226,11 @@ export function normalizeJournal(obj) {
   });
   j.sessions = arr(obj.sessions)
     .map((s) => withId({ ...SESSION_DEFAULTS, ...s, env: { ...SESSION_DEFAULTS.env, ...(s?.env || {}) }, beams: arr(s?.beams) }, 's'))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  // проверки выхода в пластинах (core/plates.js, с 0.28.0); привязка пластин — у пучка (beam.plates)
+  j.plateChecks = arr(obj.plateChecks)
+    .filter((p) => p && typeof p === 'object')
+    .map((p) => withId({ ...p, M: arr(p.M), summary: { ...(p.summary || {}) }, binding: { ...(p.binding || {}) } }, 'p'))
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
   return j;
 }

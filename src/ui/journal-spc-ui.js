@@ -2,7 +2,7 @@
 import { L, refText } from '../core/i18n.js';
 import { beamChart, sessionCommon, BEAM_Z } from '../core/journal-spc.js';
 import { checkPairs, checkChart, stabilityNote, CHECK_REF } from '../core/journal-check.js';
-import { BASELINE_POINTS, PROVISIONAL_BELOW, MIN_POINTS } from '../core/spc.js';
+import { BASELINE_POINTS, PROVISIONAL_BELOW, MIN_POINTS, controlChart } from '../core/spc.js';
 import { signalText } from '../core/spc-text.js';
 
 export { signalText };
@@ -17,6 +17,7 @@ const reasonText = (r) =>
     equipment: L('после смены камеры, электрометра или их калибровочных коэффициентов', 'after a change of the chamber, electrometer or their calibration coefficients'),
     manual: L('по отметке «новый отсчёт»', 'by the “new count” mark'),
     factors: L('после того как k_pol и k_s второй камеры стали известны', 'after k_pol and k_s of the second chamber became known'),
+    binding: L('после новой привязки пластин к калибровке в воде', 'after a new binding of the plates to a calibration in water'),
   })[r] ?? '';
 
 const stageText = (p) => (p.stage === 'found' ? L(' (до подстройки)', ' (before adjustment)') : p.stage === 'left' ? L(' (после подстройки)', ' (after adjustment)') : '');
@@ -42,7 +43,7 @@ function segmentLines(chart, xMax) {
 const segmentMarks = (chart) =>
   chart.segments.slice(1).map((seg, i) => ({
     x: chart.points[seg.from].day,
-    label: seg.reason === 'adjust' ? L('подстройка', 'adjustment') : seg.reason === 'equipment' ? L('оборудование', 'equipment') : seg.reason === 'factors' ? 'k_pol, k_s' : L('новый отсчёт', 'new count'),
+    label: seg.reason === 'adjust' ? L('подстройка', 'adjustment') : seg.reason === 'equipment' ? L('оборудование', 'equipment') : seg.reason === 'factors' ? 'k_pol, k_s' : seg.reason === 'binding' ? L('привязка', 'binding') : L('новый отсчёт', 'new count'),
     row: i % 2,
   }));
 
@@ -189,6 +190,37 @@ export function renderSpc(j, machineId, beams, beamId, { cobalt = false } = {}) 
   ]);
   summary.innerHTML = `<p>${segmentLine(chart)}</p>${chart.trend ? `<p>${trendLine(chart, tol)}</p>` : ''}${signalsHtml(chart)}${helpHtml()}`;
   return chosen.beam.id;
+}
+
+/**
+ * Контрольная карта проверок выхода в пластинах пучка (ui/plates-ui.js): точки — core/plates.js platesPoints, новый
+ * отсчёт — с новой привязки пластин. Возвращает false, если точек нет.
+ */
+export function renderPlatesSpc({ box, legend, summary }, points, { tol, name, cobalt = false }) {
+  if (!points.length) {
+    box.innerHTML = `<p class="chart-empty">${esc(L('Карта появится после первой записанной проверки в пластинах.', 'The chart appears after the first recorded check in plates.'))}</p>`;
+    legend.innerHTML = '';
+    summary.innerHTML = '';
+    return false;
+  }
+  const chart = controlChart(points, { tol });
+  drawChart(box, chart, {
+    tol,
+    label: L(`Контрольная карта в пластинах: ${name}`, `Control chart in plates: ${name}`),
+    yLabel: cobalt ? L('Отклонение от ожидаемой, %', 'Deviation from expected, %') : L('Отклонение от номинала, %', 'Deviation from nominal, %'),
+    check: () => false,
+    pointTitle: (p) => `${fmtDate(p.date)}: ${fmtSigned(p.value, 2)} %${Number.isFinite(p.z) ? ` (${fmtSigned(p.z, 1)}σ)` : ''}${pointRules(p)}`,
+  });
+  legend.innerHTML = legendHtml([
+    [{ cls: 't1' }, L('отклонение в пластинах', 'deviation in plates')],
+    [{ cls: 'sig', shape: 'square' }, L('сигнал карты', 'chart signal')],
+    [{ line: true, cls: 'cl' }, L('центральная линия', 'centre line')],
+    [{ line: true, cls: 'lim2' }, '±2σ'],
+    [{ line: true, cls: 'lim3', dashed: true }, '±3σ'],
+    [{ line: true, cls: 'aux', dashed: true }, L('допуск', 'tolerance')],
+  ]);
+  summary.innerHTML = `<p>${segmentLine(chart)}</p>${chart.trend ? `<p>${trendLine(chart, tol)}</p>` : ''}${signalsHtml(chart)}${helpHtml()}`;
+  return true;
 }
 
 /** Общая часть сеансов по пучкам показанного вида. */
