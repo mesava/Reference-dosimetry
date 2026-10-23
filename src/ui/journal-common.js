@@ -256,3 +256,9 @@ export const journalEmpty = () => {
   const j = getJournal();
   return !j.machines.length && !j.chambers.length && !j.electrometers.length && !j.sessions.length;
 };
+
+/** Пучок «как у аппарата» сохранён с другой геометрией калибровки. */
+export const GEO_OWN_TEXT = () => L(
+  'Геометрия калибровки отличается от заданной у аппарата: у пучка теперь своя геометрия («Оборудование» → пучок → «Геометрия калибровки»).',
+  'The calibration geometry differs from the one set for the machine: the beam now has its own geometry (Equipment → beam → "Calibration geometry").',
+);

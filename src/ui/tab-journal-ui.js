@@ -3,13 +3,13 @@
 // журнал». Измерение идёт во вкладке со всеми поправками; в журнал попадает форма вкладки и итог (core/journal.js:
 // recordTabBeam). Пучки одного аппарата за день в одном режиме — одна запись журнала.
 import { L } from '../core/i18n.js';
-import { beamKind, machineOf, tabBeamPatch, recordTabBeam, tabRecordOf, tabSessionOf, tabWork, calibrationChecks, tabEquipment, lastCalibration, chamberText, electrometerText, chamberOf, electrometerOf, saveBeamSettings, SESSION_DEFAULTS } from '../core/journal.js';
+import { beamKind, machineOf, tabBeamPatch, recordTabBeam, tabRecordOf, tabSessionOf, tabWork, calibrationChecks, tabEquipment, lastCalibration, chamberText, electrometerText, chamberOf, electrometerOf, saveBeamSettings, SESSION_DEFAULTS, CAL_GEO_KEYS, calGeoText, sameCalGeo } from '../core/journal.js';
 import { newCheck, withTabChecks, CHECK_REF } from '../core/journal-check.js';
 import { $, esc, richText, currentProtocol, fmt, fmtSigned } from './common.js';
 import { refText } from '../core/i18n.js';
 import { secondChambers, checksHtml, setupCheckCells, readChecks, computeChecks, renderCheckResults } from './journal-check-ui.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
-import { fmtDate } from './journal-common.js';
+import { fmtDate, GEO_OWN_TEXT } from './journal-common.js';
 
 const FIXED = { photon: 'rd_fixed', electron: 'e_fixed', cobalt: 'co_fixed' };
 const DATE = { photon: 'meta_date', electron: 'e_date', cobalt: 'co_date' };
@@ -73,10 +73,14 @@ function makeTabJournal(cfg) {
     const mSel = m && ms.includes(m) ? m.id : '';
     const opt = (v, t, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(t)}</option>`;
     const last = b ? lastCalibration(j, b.id) : null;
+    // геометрия калибровки пучка в «Оборудовании»: у аппарата (для всех пучков вида) или своя
+    const geo = b && cfg.kind in CAL_GEO_KEYS
+      ? L(` Геометрия калибровки — ${calGeoText(cfg.kind, b.form)} (${b.geoOwn ? 'своя у пучка' : 'как у аппарата'}).`, ` Calibration geometry: ${calGeoText(cfg.kind, b.form)} (${b.geoOwn ? 'own for the beam' : 'as the machine'}).`)
+      : '';
     const st = b
       ? L(
-        `Пучок журнала: ${m.name || '—'} — ${b.name || '—'}${last ? `; последняя калибровка в журнале ${fmtDate(last.date)}` : '; калибровок в журнале ещё нет'}. Измерение записывается кнопкой «Записать в журнал» под результатом.`,
-        `Journal beam: ${m.name || '—'} — ${b.name || '—'}${last ? `; last calibration in the journal ${fmtDate(last.date)}` : '; no calibrations in the journal yet'}. The measurement is recorded with the "Record to journal" button under the result.`,
+        `Пучок журнала: ${m.name || '—'} — ${b.name || '—'}${last ? `; последняя калибровка в журнале ${fmtDate(last.date)}` : '; калибровок в журнале ещё нет'}.${geo} Измерение записывается кнопкой «Записать в журнал» под результатом.`,
+        `Journal beam: ${m.name || '—'} — ${b.name || '—'}${last ? `; last calibration in the journal ${fmtDate(last.date)}` : '; no calibrations in the journal yet'}.${geo} The measurement is recorded with the "Record to journal" button under the result.`,
       )
       : L(
         'Выберите аппарат и пучок из вкладки «Оборудование»: подставятся настройки пучка, камера и электрометр (которыми мерили этот аппарат последний раз). Показания, условия и дата вкладки не меняются.',
@@ -117,6 +121,13 @@ function makeTabJournal(cfg) {
     const warn = !why && dry && !dry.chamberFound
       ? L('Камера вкладки не найдена в журнале (по модели и №): запись будет без привязки к камере журнала, контрольная карта и проверки второй камерой её не свяжут с камерой.', 'The tab chamber was not found in the journal (by model and serial number): the record will not be linked to a journal chamber.')
       : '';
+    // геометрия во вкладке другая, чем у пучка в «Оборудовании»: от неё зависят номинал и отсчёт контрольной карты
+    const geoWarn = cfg.kind in CAL_GEO_KEYS && !sameCalGeo(cfg.kind, form, b.form)
+      ? L(
+        `Геометрия во вкладке (${calGeoText(cfg.kind, form)}) отличается от геометрии калибровки пучка в «Оборудовании» (${calGeoText(cfg.kind, b.form)}): проверьте номинальный выход — он зависит от геометрии; в контрольной карте с записи в другой геометрии начинается новый отсчёт.`,
+        `The geometry in the tab (${calGeoText(cfg.kind, form)}) differs from the calibration geometry of the beam in Equipment (${calGeoText(cfg.kind, b.form)}): check the nominal output, it depends on the geometry; the control chart starts a new count from a record in another geometry.`,
+      )
+      : '';
     // калибровка: k_pol и k_s сравниваются с прошлой калибровкой пучка (изменение k_pol больше 0,2 % — выяснить причину)
     const sum = !check && dry && !dry.error ? dry.session.beams.find((x) => x.beamId === b.id)?.summary : null;
     const prev = sum && Number.isFinite(sum.kpolRaw) && Number.isFinite(sum.ksRaw) ? lastCalibration(j, b.id, { before: String(date || ''), exceptId: tabSessionOf(j, { machineId: m.id, form, kind: cfg.kind })?.id || '' }) : null;
@@ -134,7 +145,7 @@ function makeTabJournal(cfg) {
     const html = `<h2>${esc(L('Журнал', 'Journal'))}</h2>
       <p>${richText(`${m.name || '—'} — ${b.name || '—'} · ${check ? L('проверка выхода', 'output check') : L('калибровка', 'calibration')} · ${fmtDate(date)}`)}</p>
       ${old ? `<p class="sub-hint">${esc(L('Этот пучок за эту дату в этом режиме уже есть в журнале: запись будет заменена.', 'This beam for this date and mode is already in the journal: the record will be replaced.'))}</p>` : ''}
-      ${why ? `<p class="jlink-st warn">${richText(why)}</p>` : ''}${warn ? `<p class="jlink-st warn">${richText(warn)}</p>` : ''}
+      ${why ? `<p class="jlink-st warn">${richText(why)}</p>` : ''}${warn ? `<p class="jlink-st warn">${richText(warn)}</p>` : ''}${geoWarn ? `<p class="jlink-st warn">${richText(geoWarn)}</p>` : ''}
       ${prevHtml}
       ${cal.length ? `<ul class="messages jrec-cal">${cal.map((n) => `<li class="${n.level}"><span>${richText(n.text)}</span></li>`).join('')}</ul>` : ''}
       <div class="actions"><button type="button" class="primary" data-jr="record"${why ? ' disabled' : ''}>${esc(old ? L('Заменить запись в журнале', 'Replace the journal record') : L('Записать в журнал', 'Record to journal'))}</button><button type="button" data-jr="settings" title="${esc(L('Геометрия, напряжения, МЕ, пересчёт на d_max, номинал, способ k_Q и т. п. — значения по умолчанию для этого пучка', 'Geometry, voltages, MU, transfer to d_max, nominal, k_Q method, etc.: the defaults for this beam'))}">${esc(L('Сохранить настройки пучка в журнал', 'Save the beam settings to the journal'))}</button><button type="button" data-jr="unbind">${esc(L('Отвязать пучок', 'Unlink the beam'))}</button></div>`;
@@ -275,12 +286,17 @@ function makeTabJournal(cfg) {
     const j = getJournal();
     const { m, b } = current(j);
     if (!b) return;
-    updateJournal((jj) => saveBeamSettings(jj, m.id, b.id, cfg.read(), cfg.kind).journal, 'tab-journal');
+    let geoOwn = false;
+    updateJournal((jj) => {
+      const res = saveBeamSettings(jj, m.id, b.id, cfg.read(), cfg.kind);
+      geoOwn = !!res.geoOwn;
+      return res.journal;
+    }, 'tab-journal');
     cfg.status(
       L(
         `Настройки пучка «${m.name} — ${b.name}» сохранены в журнал: в следующий раз они подставятся при выборе пучка. Показания, условия, камера и электрометр в настройки пучка не входят: камеру и электрометр журнала меняют в «Оборудовании» или в строке «Журнал отделения» раздела 2.`,
         `The settings of beam "${m.name} — ${b.name}" have been saved to the journal: they will be filled in next time the beam is selected. Readings, conditions, chamber and electrometer are not part of the beam settings: the journal chamber and electrometer are changed in Equipment or in the "Department journal" row of section 2.`,
-      ),
+      ) + (geoOwn ? ` ${GEO_OWN_TEXT()}` : ''),
     );
   }
 

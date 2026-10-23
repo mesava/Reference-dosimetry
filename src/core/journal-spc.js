@@ -44,7 +44,7 @@ export function sessionCommon(j, machineId, beamIds) {
       const p = ch.points.find((q) => q.sessionId === s.id);
       if (!p) continue;
       day = p.day;
-      if (p.restart && (p.reason === 'equipment' || p.reason === 'manual')) restart = p.reason;
+      if (p.restart && (p.reason === 'equipment' || p.reason === 'geometry' || p.reason === 'manual')) restart = p.reason;
       const seg = ch.segments[p.segment];
       if (!seg?.limits) continue;
       beams.push({ beamId, d: p.value - seg.cl, sigma: seg.sigma });

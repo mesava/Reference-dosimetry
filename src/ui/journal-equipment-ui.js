@@ -12,12 +12,13 @@ import { CO_DEFAULTS, normalizeCobalt } from '../core/cobalt.js';
 import {
   uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, saveBeamSettings, equipmentDue,
   chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable, electronChamberForm, beamKind, cobaltCapable, cobaltChamberForm, myChambersToJournal, orgText, withChamberLength,
+  CAL_GEO_KEYS, machineCalGeo, calGeoKey, calGeoText, syncCalGeo,
 } from '../core/journal.js';
 import { getMyChambers } from './store.js';
 import { $, esc, fmt, makeStatus, armButton, notifyUpdate, today, richText, currentProtocol, plainSymbols } from './common.js';
 import { localizeDecimals } from './i18n.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
-import { setupFilePanel, dueChip, fmtDate, countWord } from './journal-common.js';
+import { setupFilePanel, dueChip, fmtDate, countWord, GEO_OWN_TEXT } from './journal-common.js';
 
 let setStatus = () => {};
 let tabBridge = { edit: () => {} };
@@ -196,6 +197,77 @@ function electrometerCard(e) {
 const TAB_OF = { photon: () => L('«МВ фотоны»', 'MV photons'), electron: () => L('«Электроны»', 'Electrons'), cobalt: () => L('«⁶⁰Co»', '⁶⁰Co') };
 const BEAM_PLACEHOLDER = { photon: () => L('6 МВ', '6 MV'), electron: () => L('12 МэВ', '12 MeV'), cobalt: () => L('⁶⁰Co, РИП 80 см', '⁶⁰Co, SSD 80 cm') };
 
+// ------------------------------------------------------------ геометрия калибровки дозы аппарата
+// Одна на все пучки фотонов (электронов) аппарата: подставляется в настройки пучков «как у аппарата» (core/journal.js:
+// syncCalGeo). У пучка может быть своя — её задают во вкладке дозиметрии, как остальные настройки пучка.
+const KIND_PLURAL = { photon: () => L('фотонов', 'photon'), electron: () => L('электронов', 'electron') };
+/** Последняя показанная геометрия аппарата (machineId|вид) — чтобы сказать о смене один раз, по «change». */
+const geoSeen = new Map();
+
+function calGeoBlock(m, kind) {
+  const k = 'machine';
+  const g = machineCalGeo(m, kind);
+  const p = (key) => `calGeo.${kind}.${key}`;
+  const fid = (key) => fieldId(k, m.id, p(key));
+  const beams = m.beams.filter((b) => beamKind(b) === kind);
+  const own = beams.filter((b) => b.geoOwn).map((b) => b.name || L('без названия', 'unnamed'));
+  const whom = !beams.length
+    ? L('подставится в новые пучки', 'will be filled into new beams')
+    : own.length
+      ? L(`для пучков «как у аппарата»; своя у: ${own.join(', ')}`, `for the beams "as the machine"; own geometry: ${own.join(', ')}`)
+      : L(`для всех пучков ${KIND_PLURAL[kind]()} аппарата`, `for all ${KIND_PLURAL[kind]()} beams of the machine`);
+  let body;
+  if (kind === 'photon') {
+    const manual = g.setup_geometry === 'manual';
+    body = `${field(L('Геометрия измерения дозы', 'Dose measurement geometry'), select(k, m.id, p('setup_geometry'), g.setup_geometry, [['SSD', L('РИП 100 см — поле на поверхности воды', 'SSD 100 cm: field at the water surface')], ['SAD', L('РИО 100 см — поле в плоскости камеры', 'SAD 100 cm: field at the chamber plane')], ['manual', L('Ручной ввод: РИП, поле, глубина', 'Manual: SSD, field, depth')]]), { forId: fid('setup_geometry'), cls: 'span-2', sub: whom })}
+      ${manual ? `${field(L('РИП, см', 'SSD, cm'), input(k, m.id, p('setup_ssd'), g.setup_ssd, { num: true }), { forId: fid('setup_ssd') })}
+      ${field(L('Размер поля, см', 'Field size, cm'), input(k, m.id, p('setup_field'), g.setup_field, { num: true }), { forId: fid('setup_field') })}
+      ${field(L('Глубина камеры, см', 'Chamber depth, cm'), input(k, m.id, p('setup_depth'), g.setup_depth, { num: true }), { forId: fid('setup_depth') })}` : ''}
+      <div class="field span-2">${check(k, m.id, p('dd_on'), g.dd_on, L('Пересчитать дозу на глубину максимума d<sub>max</sub>', 'Transfer the dose to the depth of maximum d<sub>max</sub>'))}</div>
+      ${g.dd_on && g.setup_geometry === 'SAD' ? field(L('Пересчёт при установке по РИО', 'Transfer for the SAD set-up'), select(k, m.id, p('dd_sad'), g.dd_sad, [['tmr', L('через TMR — на d_max в изоцентре', 'via TMR: to d_max at the isocentre')], ['pdd', L('через PDD при РИП 90 см', 'via PDD at SSD 90 cm')]]), { forId: fid('dd_sad'), cls: 'span-2' }) : ''}
+      ${g.dd_on ? field(L('Номинальный выход задан', 'The nominal output is given'), select(k, m.id, p('dd_nominal_at'), g.dd_nominal_at, [['dmax', L('на d_max (после пересчёта)', 'at d_max (after the transfer)')], ['zref', L('на опорной глубине — аппарат калибруют на 10 см', 'at the reference depth: the linac is calibrated at 10 cm')]]), { forId: fid('dd_nominal_at'), cls: 'span-2' }) : ''}`;
+  } else {
+    body = `${field(L('РИП, см', 'SSD, cm'), input(k, m.id, p('e_ssd'), g.e_ssd, { num: true }), { forId: fid('e_ssd'), sub: whom })}
+      <div class="field">${check(k, m.id, p('e_dd_on'), g.e_dd_on, L('Пересчитать дозу на глубину максимума z<sub>max</sub>', 'Transfer the dose to the depth of maximum z<sub>max</sub>'))}</div>
+      ${g.e_dd_on ? field(L('Номинальный выход задан', 'The nominal output is given'), select(k, m.id, p('e_nominal_at'), g.e_nominal_at, [['zmax', L('на z_max (после пересчёта)', 'at z_max (after the transfer)')], ['zref', L('на опорной глубине z_ref', 'at the reference depth z_ref')]]), { forId: fid('e_nominal_at') }) : ''}`;
+  }
+  return `<div class="jgeo"><h4 class="sub-h">${esc(L('Геометрия калибровки дозы', 'Dose calibration geometry'))}</h4>
+    <div class="grid">${body}</div></div>`;
+}
+
+/** Поле пучка «Геометрия калибровки»: как у аппарата или своя (своя задаётся во вкладке дозиметрии). */
+function beamGeoField(m, b) {
+  const kind = beamKind(b);
+  const opts = [
+    ['', L(`как у аппарата: ${calGeoText(kind, machineCalGeo(m, kind))}`, `as the machine: ${calGeoText(kind, machineCalGeo(m, kind))}`)],
+    ['own', b.geoOwn ? L(`своя: ${calGeoText(kind, b.form)}`, `own: ${calGeoText(kind, b.form)}`) : L('своя — задаётся во вкладке дозиметрии', 'own: set in the dosimetry tab')],
+  ];
+  return field(L('Геометрия калибровки', 'Calibration geometry'), select('beam', b.id, 'geoOwn', b.geoOwn ? 'own' : '', opts), {
+    forId: fieldId('beam', b.id, 'geoOwn'),
+    cls: 'span-2',
+    sub: b.geoOwn ? L(`своя геометрия меняется кнопкой «Настройки пучка — во вкладке ${TAB_OF[kind]()}»`, `the own geometry is changed with the “Beam settings: in the ${TAB_OF[kind]()} tab” button`) : '',
+  });
+}
+
+/** Сказать о смене геометрии аппарата: в какие пучки она подставлена и что номинал от неё зависит. */
+function geoChanged(m, kind) {
+  const key = `${m.id}|${kind}`;
+  const now = calGeoKey(kind, machineCalGeo(m, kind));
+  const was = geoSeen.get(key);
+  geoSeen.set(key, now);
+  if (was === undefined || was === now) return;
+  const names = m.beams.filter((b) => beamKind(b) === kind && !b.geoOwn).map((b) => b.name || L('без названия', 'unnamed'));
+  const text = calGeoText(kind, machineCalGeo(m, kind));
+  setStatus(
+    names.length
+      ? L(
+        `Геометрия калибровки ${KIND_PLURAL[kind]()} аппарата «${m.name || '—'}»: ${text}. Подставлена в пучки: ${names.join(', ')}. Номинальный выход зависит от геометрии и точки номинала: проверьте номиналы этих пучков во вкладке ${TAB_OF[kind]()}. В контрольной карте со следующей записи начнётся новый отсчёт.`,
+        `${kind === 'photon' ? 'Photon' : 'Electron'} calibration geometry of “${m.name || '—'}”: ${text}. Filled into the beams: ${names.join(', ')}. The nominal output depends on the geometry and the nominal point: check the nominals of these beams in the ${TAB_OF[kind]()} tab. The control chart starts a new count from the next record.`,
+      )
+      : L(`Геометрия калибровки ${KIND_PLURAL[kind]()} аппарата «${m.name || '—'}»: ${text}.`, `${kind === 'photon' ? 'Photon' : 'Electron'} calibration geometry of “${m.name || '—'}”: ${text}.`),
+  );
+}
+
 function beamCard(j, m, b) {
   const kind = beamKind(b);
   const k = 'beam';
@@ -211,6 +283,7 @@ function beamCard(j, m, b) {
     <div class="grid">
       ${field(L('Пучок', 'Beam'), input(k, id, 'name', b.name, { placeholder: BEAM_PLACEHOLDER[kind]() }), { forId: fieldId(k, id, 'name'), sub })}
       <div class="field">${kind === 'photon' ? check(k, id, 'form.meta_fff', f.meta_fff, L('без выравнивающего фильтра (БВФ)', 'flattening-filter-free (FFF)')) : ''}${check(k, id, 'active', b.active !== false, L('используется в измерениях', 'used in measurements'))}</div>
+      ${kind in CAL_GEO_KEYS ? beamGeoField(m, b) : ''}
     </div>
     <div class="row-tools">
       <button type="button" class="link-btn" data-edit-tab="${esc(m.id)}:${esc(id)}">${esc(L(`Настройки пучка — во вкладке ${TAB_OF[kind]()}`, `Beam settings: in the ${TAB_OF[kind]()} tab`))}</button>
@@ -245,11 +318,13 @@ function machineCard(j, m) {
     </div>
     ${cobalt ? coSection : ''}
     ${linacPart ? `<h3 class="sub-h">${esc(L('Пучки фотонов', 'Photon beams'))}</h3>
+    ${calGeoBlock(m, 'photon')}
     <div class="jbeams">${m.beams.filter((b) => beamKind(b) === 'photon').map((b) => beamCard(j, m, b)).join('') || `<p class="sub-hint">${esc(L('Пучков фотонов пока нет.', 'No photon beams yet.'))}</p>`}</div>
     <div class="row-tools">
       <button type="button" class="link-btn" data-add-beam="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить пучок фотонов', 'Add a photon beam'))}</button>
     </div>
     <h3 class="sub-h">${esc(L('Пучки электронов', 'Electron beams'))}</h3>
+    ${calGeoBlock(m, 'electron')}
     <div class="jbeams">${m.beams.filter((b) => beamKind(b) === 'electron').map((b) => beamCard(j, m, b)).join('') || `<p class="sub-hint">${esc(L('Пучков электронов пока нет.', 'No electron beams yet.'))}</p>`}</div>
     <div class="row-tools">
       <button type="button" class="link-btn" data-add-ebeam="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить пучок электронов', 'Add an electron beam'))}</button>
@@ -297,6 +372,7 @@ function render() {
   $('#eq_department').value = j.department || '';
   $('#eq-chambers').innerHTML = j.chambers.map((c) => chamberCard(c, j)).join('') || `<p class="sub-hint">${esc(L('Камер пока нет.', 'No chambers yet.'))}</p>`;
   $('#eq-electrometers').innerHTML = j.electrometers.map(electrometerCard).join('') || `<p class="sub-hint">${esc(L('Электрометров пока нет.', 'No electrometers yet.'))}</p>`;
+  for (const m of j.machines) for (const kind of Object.keys(CAL_GEO_KEYS)) geoSeen.set(`${m.id}|${kind}`, calGeoKey(kind, machineCalGeo(m, kind)));
   $('#eq-machines').innerHTML = j.machines.map((m) => machineCard(j, m)).join('') || `<p class="sub-hint">${esc(L('Аппаратов пока нет.', 'No machines yet.'))}</p>`;
   for (const btn of ROOT().querySelectorAll('[data-del]')) {
     if (btn.disabled) continue;
@@ -337,8 +413,13 @@ function renderReadout() {
 /** «Сохранить в журнал» на вкладке: настройки пучка — в журнал (камера и электрометр журнала не меняются). Возвращает текст состояния. */
 export function saveBeamFromTab(target, form, title = '') {
   if (!target?.beamId) return '';
-  updateJournal((j) => saveBeamSettings(j, target.machineId, target.beamId, form, ['electron', 'cobalt'].includes(target.kind) ? target.kind : 'photon').journal, 'equipment');
-  return L(`Настройки пучка «${title}» сохранены в журнал (камера и электрометр журнала не менялись). Сохраните журнал в файл.`, `Beam settings "${title}" saved to the journal (the journal chamber and electrometer were not changed). Save the journal to the file.`);
+  let geoOwn = false;
+  updateJournal((j) => {
+    const res = saveBeamSettings(j, target.machineId, target.beamId, form, ['electron', 'cobalt'].includes(target.kind) ? target.kind : 'photon');
+    geoOwn = !!res.geoOwn;
+    return res.journal;
+  }, 'equipment');
+  return L(`Настройки пучка «${title}» сохранены в журнал (камера и электрометр журнала не менялись). Сохраните журнал в файл.`, `Beam settings "${title}" saved to the journal (the journal chamber and electrometer were not changed). Save the journal to the file.`) + (geoOwn ? ` ${GEO_OWN_TEXT()}` : '');
 }
 
 /** Открыть карточку пучка и прокрутить к ней. */
@@ -390,7 +471,7 @@ function onInput(e) {
   const el = e.target.closest('[data-bind]');
   if (!el) return;
   const [kind, id, path] = el.dataset.bind.split('|');
-  const value = el.type === 'checkbox' ? el.checked : el.value;
+  const value = el.type === 'checkbox' ? el.checked : kind === 'beam' && path === 'geoOwn' ? el.value === 'own' : el.value;
   updateJournal((j) => {
     const list = kind === 'chamber' ? j.chambers : kind === 'electrometer' ? j.electrometers : kind === 'machine' ? j.machines : j.machines.flatMap((m) => m.beams);
     const obj = list.find((x) => x.id === id);
@@ -415,13 +496,24 @@ function onInput(e) {
       const e = parseElectronBeam(value).energy;
       if (Number.isFinite(e)) obj.form.e_energy = String(e).replace('.', ',');
     }
+    // геометрия калибровки аппарата — в пучки «как у аппарата»; пучок, вернувшийся к «как у аппарата», получает её же
+    if (kind === 'machine' && path.startsWith('calGeo.')) syncCalGeo(obj);
+    if (kind === 'beam' && path === 'geoOwn') {
+      const m = j.machines.find((x) => x.beams.includes(obj));
+      if (m) syncCalGeo(m);
+    }
     return j;
   }, 'equipment:input');
+  if (kind === 'machine' && path.startsWith('calGeo.') && e.type === 'change') {
+    const m = getJournal().machines.find((x) => x.id === id);
+    if (m) geoChanged(m, path.split('.')[1]);
+  }
   if (kind === 'beam' && path === 'name') {
     const box = document.getElementById(fieldId('beam', id, 'form.meta_fff'));
     if (box && getJournal().machines.flatMap((m) => m.beams).find((x) => x.id === id)?.form.meta_fff) box.checked = true;
   }
-  if (e.type === 'change' && (el.tagName === 'SELECT' || el.type === 'checkbox')) {
+  // у геометрии аппарата и после ввода числа: подписи «как у аппарата» в карточках пучков
+  if (e.type === 'change' && (el.tagName === 'SELECT' || el.type === 'checkbox' || (kind === 'machine' && path.startsWith('calGeo.')))) {
     render();
     document.getElementById(el.id)?.focus({ preventScroll: true });
     return;
@@ -473,7 +565,10 @@ function onClick(e) {
   if (t.dataset.addBeam) {
     const id = uid('b');
     updateJournal((j) => {
-      j.machines.find((m) => m.id === t.dataset.addBeam)?.beams.push({ ...BEAM_DEFAULTS, id, name: '', chamberId: j.chambers.find((c) => photonCapable(c.form))?.id ?? '', electrometerId: j.electrometers[0]?.id ?? '', form: { rd_V1: FORM_DEFAULTS.rd_V1, rd_V2: FORM_DEFAULTS.rd_V2, rd_polarity: '+', rd_mu: '100', dd_nominal: '1,000', dd_nominal_at: 'dmax', dd_tol: '2', dd_on: true, qtrs_method: 'ratio', kqtrs_mode: 'formula', setup_geometry: 'SSD' } });
+      const m = j.machines.find((x) => x.id === t.dataset.addBeam);
+      // геометрия калибровки — аппарата (syncCalGeo)
+      m?.beams.push({ ...BEAM_DEFAULTS, id, name: '', chamberId: j.chambers.find((c) => photonCapable(c.form))?.id ?? '', electrometerId: j.electrometers[0]?.id ?? '', form: { rd_V1: FORM_DEFAULTS.rd_V1, rd_V2: FORM_DEFAULTS.rd_V2, rd_polarity: '+', rd_mu: '100', dd_nominal: '1,000', dd_tol: '2', qtrs_method: 'ratio', kqtrs_mode: 'formula' } });
+      if (m) syncCalGeo(m);
       return j;
     }, 'equipment');
     document.getElementById(fieldId('beam', id, 'name'))?.focus();
@@ -481,10 +576,12 @@ function onClick(e) {
     const id = uid('b');
     updateJournal((j) => {
       const ch = j.chambers.find((c) => electronCapable(c.form));
-      j.machines.find((m) => m.id === t.dataset.addEbeam)?.beams.push({
+      const m = j.machines.find((x) => x.id === t.dataset.addEbeam);
+      m?.beams.push({
         ...BEAM_DEFAULTS, id, kind: 'electron', name: '', chamberId: ch?.id ?? '', electrometerId: j.electrometers[0]?.id ?? '',
-        form: { e_ssd: '100', e_field: '10', e_r50_method: 'i50', e_mu: '100', e_polarity: '+', e_V1: E_DEFAULTS.e_V1, e_V2: E_DEFAULTS.e_V2, e_beam_mode: 'pulsed', e_dd_on: true, e_nominal: '1,000', e_nominal_at: 'zmax', e_tol: '2', e_kqtrs_mode: 'table', e_kq51_mode: 'fit' },
+        form: { e_field: '10', e_r50_method: 'i50', e_mu: '100', e_polarity: '+', e_V1: E_DEFAULTS.e_V1, e_V2: E_DEFAULTS.e_V2, e_beam_mode: 'pulsed', e_nominal: '1,000', e_tol: '2', e_kqtrs_mode: 'table', e_kq51_mode: 'fit' },
       });
+      if (m) syncCalGeo(m);
       return j;
     }, 'equipment');
     document.getElementById(fieldId('beam', id, 'name'))?.focus();
@@ -533,7 +630,7 @@ function onClick(e) {
     focusLast('electrometer');
   } else if (t.id === 'eq-add-machine' || t.id === 'eq-add-cobalt') {
     updateJournal((j) => {
-      j.machines.push({ ...MACHINE_DEFAULTS, id: uid('m'), kind: t.id === 'eq-add-cobalt' ? 'cobalt' : 'linac', beams: [] });
+      j.machines.push({ ...MACHINE_DEFAULTS, id: uid('m'), kind: t.id === 'eq-add-cobalt' ? 'cobalt' : 'linac', calGeo: { photon: machineCalGeo(null, 'photon'), electron: machineCalGeo(null, 'electron') }, beams: [] });
       return j;
     }, 'equipment');
   }

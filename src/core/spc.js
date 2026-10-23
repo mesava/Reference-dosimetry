@@ -103,7 +103,7 @@ export function linearTrend(xs, ys) {
 
 /**
  * Карта по точкам [{ day, value, restart?, reason?, ... }] (value — отклонение, %); restart — с этой точки начинается
- * новый отсчёт (reason: 'adjust' | 'equipment' | 'manual'). tol — допуск, % (для прогноза по тренду).
+ * новый отсчёт (reason: 'adjust' | 'equipment' | 'geometry' | 'manual'). tol — допуск, % (для прогноза по тренду).
  * Возвращает { points, segments, current, trend, forecast }:
  *   points[i] — исходная точка + segment, z = (x − CL)/σ, cusumUp, cusumDown, signals — сигналы ('3s', 'cusumUp',
  *     'cusumDown'), watch — наблюдения ('2of3', 'run8', 'trend6');

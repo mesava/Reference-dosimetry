@@ -191,8 +191,10 @@ export const CHAMBER_DEFAULTS = { id: '', kind: 'photon', form: {}, calDate: '',
 export const ELECTROMETER_DEFAULTS = { id: '', form: {}, calDate: '', dueDate: '', notes: '' };
 /** kind: 'linac' — ускоритель (пучки фотонов и электронов), 'cobalt' — аппарат ⁶⁰Co. */
 export const MACHINE_DEFAULTS = { id: '', name: '', serial: '', kind: 'linac', notes: '', beams: [] };
-/** kind: 'photon' | 'electron' | 'cobalt'. refSrc (⁶⁰Co): с чем сравнивать мощность дозы — 'last' (последняя калибровка в журнале с поправкой на распад) или 'profile' (значение из настроек пучка). */
-export const BEAM_DEFAULTS = { id: '', kind: 'photon', name: '', chamberId: '', electrometerId: '', form: {}, active: true };
+/**
+ * kind: 'photon' | 'electron' | 'cobalt'. geoOwn (фотоны и электроны): у пучка своя геометрия калибровки дозы; иначе — как
+ * у аппарата (machine.calGeo, см. syncCalGeo). refSrc (⁶⁰Co): с чем сравнивать мощность дозы — 'last' (последняя калибровка в журнале с поправкой на распад) или 'profile' (значение из настроек пучка). */
+export const BEAM_DEFAULTS = { id: '', kind: 'photon', name: '', chamberId: '', electrometerId: '', form: {}, active: true, geoOwn: false };
 export const SESSION_DEFAULTS = { id: '', machineId: '', date: '', mode: 'cal', protocol: 'trs', staff: [''], notes: '', env: { T: '', P: '', P_unit: 'kPa', H: '' }, beams: [], saved: '' };
 
 export function newJournal() {
@@ -222,7 +224,7 @@ export function normalizeJournal(obj) {
   j.machines = arr(obj.machines).map((m) => {
     const machine = withId({ ...MACHINE_DEFAULTS, ...m }, 'm');
     machine.beams = arr(m?.beams).map((b) => withId({ ...BEAM_DEFAULTS, ...b, form: { ...(b?.form || {}) } }, 'b'));
-    return machine;
+    return withCalGeo(machine);
   });
   j.sessions = arr(obj.sessions)
     .map((s) => withId({ ...SESSION_DEFAULTS, ...s, env: { ...SESSION_DEFAULTS.env, ...(s?.env || {}) }, beams: arr(s?.beams) }, 's'))
@@ -233,6 +235,107 @@ export function normalizeJournal(obj) {
     .map((p) => withId({ ...p, M: arr(p.M), summary: { ...(p.summary || {}) }, binding: { ...(p.binding || {}) } }, 'p'))
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
   return j;
+}
+
+// ---------------------------------------------------------------- геометрия калибровки дозы аппарата
+/**
+ * Геометрия калибровки дозы — одна на группу пучков аппарата (все фотоны, все электроны): установка (РИП или РИО),
+ * пересчёт на глубину максимума и где задан номинальный выход (референсные условия: TRS-398 Rev.1, табл. 15 — фотоны,
+ * табл. 19 — электроны). Хранится у аппарата (machine.calGeo) и копируется в настройки пучков «как у аппарата»
+ * (syncCalGeo): расчёт, сеанс и прежние версии калькулятора читают геометрию из настроек пучка, как раньше. У ⁶⁰Co пучок
+ * и есть установка.
+ */
+export const CAL_GEO_KEYS = {
+  photon: ['setup_geometry', 'setup_ssd', 'setup_field', 'setup_depth', 'dd_on', 'dd_sad', 'dd_nominal_at'],
+  electron: ['e_ssd', 'e_dd_on', 'e_nominal_at'],
+};
+const GEO_DEFAULTS = { photon: () => FORM_DEFAULTS, electron: () => E_DEFAULTS };
+/** Геометрия калибровки по умолчанию: РИП 100 см, номинал на d_max (z_max у электронов). */
+export const calGeoDefaults = (kind) => pick(GEO_DEFAULTS[kind](), CAL_GEO_KEYS[kind]);
+const geoNum = (v) => {
+  const x = parseNumber(v);
+  return Number.isFinite(x) ? String(x) : String(v ?? '').trim();
+};
+/** Подпись геометрии для сравнения: только поля, которые при этой установке что-то значат. */
+export function calGeoKey(kind, g = {}) {
+  const f = { ...calGeoDefaults(kind), ...pick(g, CAL_GEO_KEYS[kind]) };
+  if (kind === 'electron') return ['e', geoNum(f.e_ssd), f.e_dd_on ? f.e_nominal_at : 'zref'].join('|');
+  const manual = f.setup_geometry === 'manual';
+  return [
+    f.setup_geometry,
+    manual ? geoNum(f.setup_ssd) : '', manual ? geoNum(f.setup_field) : '', manual ? geoNum(f.setup_depth) : '',
+    f.dd_on ? f.dd_nominal_at : 'zref',
+    f.dd_on && f.setup_geometry === 'SAD' ? f.dd_sad : '',
+  ].join('|');
+}
+export const sameCalGeo = (kind, a, b) => calGeoKey(kind, a) === calGeoKey(kind, b);
+/** Геометрия калибровки, заданная у аппарата для пучков данного вида. */
+export const machineCalGeo = (machine, kind) => ({ ...calGeoDefaults(kind), ...pick(machine?.calGeo?.[kind] || {}, CAL_GEO_KEYS[kind]) });
+/** Пучок берёт геометрию калибровки у аппарата. */
+export const inheritsCalGeo = (beam) => beamKind(beam) in CAL_GEO_KEYS && !beam.geoOwn;
+
+/** Геометрия аппарата → в настройки пучков «как у аппарата» (меняет machine). */
+export function syncCalGeo(machine) {
+  for (const b of machine.beams) {
+    if (!inheritsCalGeo(b)) continue;
+    b.form = { ...b.form, ...machineCalGeo(machine, beamKind(b)) };
+  }
+  return machine;
+}
+
+/**
+ * Геометрия калибровки аппарата при открытии журнала. В журнале до 0.29.0 её нет: геометрией аппарата становится та,
+ * что у большинства пучков вида (при равенстве — у первого), а пучки с другой получают свою (geoOwn) — расчёт не меняется.
+ */
+function withCalGeo(machine) {
+  const has = machine.calGeo && typeof machine.calGeo === 'object';
+  const calGeo = {};
+  for (const kind of Object.keys(CAL_GEO_KEYS)) {
+    const beams = machine.beams.filter((b) => beamKind(b) === kind);
+    if (has) {
+      calGeo[kind] = machineCalGeo(machine, kind);
+      for (const b of beams) b.geoOwn = !!b.geoOwn;
+      continue;
+    }
+    const count = new Map();
+    for (const b of beams) {
+      const key = calGeoKey(kind, b.form);
+      count.set(key, (count.get(key) ?? 0) + 1);
+    }
+    let best = '';
+    for (const [key, n] of count) if (!best || n > count.get(best)) best = key;
+    const src = beams.find((b) => calGeoKey(kind, b.form) === best);
+    calGeo[kind] = { ...calGeoDefaults(kind), ...pick(src?.form || {}, CAL_GEO_KEYS[kind]) };
+    for (const b of beams) b.geoOwn = calGeoKey(kind, b.form) !== best;
+  }
+  machine.calGeo = calGeo;
+  return syncCalGeo(machine);
+}
+
+/** Пучок «как у аппарата» с другой геометрией в настройках (сохранены из вкладки) становится пучком со своей. */
+function ownIfDiffers(machine, beam) {
+  if (!machine || !inheritsCalGeo(beam)) return false;
+  if (sameCalGeo(beamKind(beam), beam.form, machineCalGeo(machine, beamKind(beam)))) return false;
+  beam.geoOwn = true;
+  return true;
+}
+
+/** Геометрия калибровки для текста: «РИП 100 см, номинал на d_max». */
+export function calGeoText(kind, g = {}) {
+  const f = { ...calGeoDefaults(kind), ...pick(g, CAL_GEO_KEYS[kind]) };
+  const cm = L('см', 'cm');
+  if (kind === 'electron') {
+    const at = f.e_dd_on && f.e_nominal_at !== 'zref' ? 'z_max' : 'z_ref';
+    return L(`РИП ${f.e_ssd} ${cm}, номинал на ${at}`, `SSD ${f.e_ssd} ${cm}, nominal at ${at}`);
+  }
+  const at = f.dd_on && f.dd_nominal_at !== 'zref' ? 'd_max' : 'z_ref';
+  const setup = f.setup_geometry === 'SAD'
+    ? L(`РИО 100 ${cm}`, `SAD 100 ${cm}`)
+    : f.setup_geometry === 'manual'
+      ? L(`РИП ${f.setup_ssd} ${cm}, поле ${f.setup_field}×${f.setup_field} ${cm}, глубина ${f.setup_depth} ${cm}`, `SSD ${f.setup_ssd} ${cm}, field ${f.setup_field}×${f.setup_field} ${cm}, depth ${f.setup_depth} ${cm}`)
+      : L(`РИП 100 ${cm}`, `SSD 100 ${cm}`);
+  const via = f.dd_on && f.setup_geometry === 'SAD' && at === 'd_max' ? (f.dd_sad === 'pdd' ? L(' (через PDD)', ' (via PDD)') : L(' (через TMR)', ' (via TMR)')) : '';
+  return L(`${setup}, номинал на ${at}${via}`, `${setup}, nominal at ${at}${via}`);
 }
 
 // ---------------------------------------------------------------- подписи
@@ -935,24 +1038,28 @@ export function trendSeries(j, machineId) {
  * Точки контрольной карты пучка (core/spc.js controlChart) по сеансам аппарата.
  * Сеанс с подстройкой ускорителя даёт две точки: «до подстройки» (последняя в прежнем отсчёте) и «после» — с неё
  * начинается новый отсчёт. Новый отсчёт начинается и при смене камеры, электрометра, N_D,w или k_elec (сравниваются
- * только известные значения: в сеансах до версии 0.16.0 коэффициенты не записывались) и по отметке «новый отсчёт»
- * у сеанса (session.spcRestart).
+ * только известные значения: в сеансах до версии 0.16.0 коэффициенты не записывались), при смене геометрии калибровки
+ * или точки номинала (d_max ↔ z_ref) и по отметке «новый отсчёт» у сеанса (session.spcRestart).
  */
 export function controlPoints(j, machineId, beamId) {
   const out = [];
   let prev = null;
   const differs = (a, b) => !isBlank(a) && !isBlank(b) && a !== b;
   const differsNum = (a, b) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a / b - 1) > 1e-9;
+  const kind = beamKind(beamOf(j, beamId)?.beam);
   for (const s of j.sessions) {
     if (s.machineId !== machineId) continue;
     const b = s.beams.find((x) => x.beamId === beamId && x.summary);
     const day = dayNumber(s.date);
     if (!b || !Number.isFinite(day) || !Number.isFinite(b.summary.deviation)) continue;
     const sum = b.summary;
-    const sig = { chamberId: b.chamberId || '', electrometerId: b.electrometerId || '', ndw: Number(sum.ndw), kelec: Number(sum.kelec) };
+    // геометрия калибровки и точка номинала: при их смене меняется сам номинал и уровень отклонений
+    const geo = b.form && kind in CAL_GEO_KEYS ? `${calGeoKey(kind, b.form)}|${sum.at ?? ''}` : String(sum.at ?? '');
+    const sig = { chamberId: b.chamberId || '', electrometerId: b.electrometerId || '', ndw: Number(sum.ndw), kelec: Number(sum.kelec), geo };
     const equipment = prev && (differs(sig.chamberId, prev.chamberId) || differs(sig.electrometerId, prev.electrometerId) || differsNum(sig.ndw, prev.ndw) || differsNum(sig.kelec, prev.kelec));
+    const geometry = prev && differs(sig.geo, prev.geo);
     const base = { day, date: s.date, sessionId: s.id, mode: s.mode, tol: sum.tol };
-    let restart = equipment ? 'equipment' : s.spcRestart ? 'manual' : '';
+    let restart = equipment ? 'equipment' : geometry ? 'geometry' : s.spcRestart ? 'manual' : '';
     if (sum.source === 'recal' && Number.isFinite(sum.preDeviation)) {
       out.push({ ...base, value: sum.preDeviation, stage: 'found', restart: !!restart, reason: restart || undefined });
       restart = 'adjust';
@@ -1003,7 +1110,7 @@ function tabForm(form, kind) {
   if (f.ch_model !== 'CUSTOM') for (const k of PH_CHAMBER_KEYS) if (k.startsWith('cc_')) f[k] = FORM_DEFAULTS[k];
   return f;
 }
-const copyJournal = (j) => ({ ...j, chambers: j.chambers.map((c) => ({ ...c, form: { ...c.form } })), electrometers: j.electrometers.map((e) => ({ ...e, form: { ...e.form } })), machines: j.machines.map((m) => ({ ...m, beams: m.beams.map((b) => ({ ...b, form: { ...b.form } })) })) });
+const copyJournal = (j) => ({ ...j, chambers: j.chambers.map((c) => ({ ...c, form: { ...c.form } })), electrometers: j.electrometers.map((e) => ({ ...e, form: { ...e.form } })), machines: j.machines.map((m) => ({ ...m, calGeo: Object.fromEntries(Object.entries(m.calGeo || {}).map(([k, g]) => [k, { ...g }])), beams: m.beams.map((b) => ({ ...b, form: { ...b.form } })) })) });
 /** Камера формы вкладки: найти в журнале по модели и номеру или добавить (в копии журнала). chForm — поля записи. */
 function matchChamber(journal, chForm, kind) {
   const ch = journal.chambers.find((c) => sameChamber(c.form, chForm, kind));
@@ -1067,7 +1174,10 @@ export function beamFromTabForm(j, machineId, form, kind = 'photon') {
   } else if (kind === 'photon') beamForm.meta_fff = !!f.meta_fff || !!parseBeamName(name).fff;
   const beam = { ...BEAM_DEFAULTS, id: uid('b'), kind, name, chamberId: ch?.id ?? '', electrometerId: el?.id ?? '', form: beamForm };
   const m = journal.machines.find((x) => x.id === machineId);
-  if (m) m.beams.push(beam);
+  if (m) {
+    ownIfDiffers(m, beam);
+    m.beams.push(beam);
+  }
   return { journal, beam, addedChamber, addedElectrometer };
 }
 /** Прежнее имя (фотоны). */
@@ -1077,13 +1187,15 @@ export const beamFromPhotonsForm = (j, machineId, form) => beamFromTabForm(j, ma
  * «Сохранить настройки пучка в журнал» (вкладка дозиметрии и «Настройки пучка — во вкладке…»): в журнал попадают только
  * настройки пучка — геометрия, напряжения, полярность, МЕ, пересчёт на d_max, номинал и допуск, способ k_Q и т. п.
  * Камера и электрометр журнала не меняются: их правят в «Оборудовании» или кнопками строки «Журнал отделения» в разделе 2
- * вкладки. Название пучка — тоже только в «Оборудовании». Возвращает { journal, saved }.
+ * вкладки. Название пучка — тоже только в «Оборудовании». Возвращает { journal, saved, geoOwn } (geoOwn — пучок «как у
+ * аппарата» сохранён с другой геометрией калибровки и получил свою).
  */
 export function saveBeamSettings(j, machineId, beamId, form, kind = 'photon') {
   const K = kindOf(kind);
   const f = tabForm(form, kind);
   const journal = copyJournal(j);
-  const b = journal.machines.find((x) => x.id === machineId)?.beams.find((x) => x.id === beamId);
+  const m = journal.machines.find((x) => x.id === machineId);
+  const b = m?.beams.find((x) => x.id === beamId);
   if (!b) return { journal: j, saved: false };
   b.form = { ...pick(f, K.beamKeys) };
   // длина полости, подставленная из записи камеры вкладки, — не своя длина пучка: в пучок не записывается
@@ -1091,7 +1203,9 @@ export function saveBeamSettings(j, machineId, beamId, form, kind = 'photon') {
     const ch = tabEquipment(journal, f, kind).chamber;
     if (ch && !isBlank(ch.length) && sameValue(b.form.prof_length, ch.length)) b.form.prof_length = '';
   }
-  return { journal, saved: true };
+  // другая геометрия калибровки, чем у аппарата, — у пучка теперь своя (геометрию аппарата меняют в «Оборудовании»)
+  const geoOwn = ownIfDiffers(m, b);
+  return { journal, saved: true, geoOwn };
 }
 
 /**
@@ -1111,6 +1225,7 @@ export function applyTabFormToBeam(j, machineId, beamId, form, kind = 'photon') 
   const b = m?.beams.find((x) => x.id === beamId);
   if (!b) return { journal: j, chamber: 'none', electrometer: 'none', sharedChamber: [], sharedElectrometer: [] };
   b.form = { ...pick(f, K.beamKeys) };
+  ownIfDiffers(m, b);
   // длина полости, подставленная из записи камеры, — не своя длина пучка: в пучок не записывается
   const chamberRec = journal.chambers.find((c) => c.id === b.chamberId);
   if (kind === 'photon' && chamberRec && !isBlank(chamberRec.length) && sameValue(b.form.prof_length, chamberRec.length)) b.form.prof_length = '';

@@ -1045,6 +1045,9 @@ textarea.curve-data { min-height: 200px; height: 220px; font: 12.5px/1.45 var(--
 .jcard-head .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .jbeams { display: grid; gap: 8px; }
 .jbeam-line { padding: 10px 12px; }
+/* геометрия калибровки дозы аппарата — общая для пучков вида, над их списком */
+.jgeo { padding: 8px 12px 10px; border: 1px dashed var(--rule); border-radius: var(--radius); }
+.jcard .jgeo .sub-h { margin: 0 0 4px; }
 #js-equip { margin-bottom: 10px; }
 .jbind { margin: 0 0 12px; padding: 10px 12px; border: 1px dashed var(--rule); border-radius: var(--radius); }
 .jbind-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

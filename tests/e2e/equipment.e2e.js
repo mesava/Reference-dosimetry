@@ -37,7 +37,7 @@ test('оборудование: подразделение, производит
   await pause();
   await page.locator('[data-card^="beam:"] input[data-bind$="|name"]').fill('6 МВ');
   const beamCard = page.locator('[data-card^="beam:"]');
-  assert.equal(await beamCard.locator('select').count(), 0, 'у пучка нет выбора камеры и электрометра');
+  assert.equal(await beamCard.locator('select:not([data-bind$="|geoOwn"])').count(), 0, 'у пучка нет выбора камеры и электрометра (только геометрия калибровки)');
   assert.equal(await beamCard.locator('input[data-bind$="|form.rd_V1"]').count(), 0, 'у пучка нет напряжений');
 
   // электрометры: производитель → модель; «Другой» — своё название

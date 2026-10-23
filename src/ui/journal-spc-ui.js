@@ -15,6 +15,7 @@ const reasonText = (r) =>
     start: L('с первой записи', 'from the first record'),
     adjust: L('после подстройки ускорителя', 'after the linac adjustment'),
     equipment: L('после смены камеры, электрометра или их калибровочных коэффициентов', 'after a change of the chamber, electrometer or their calibration coefficients'),
+    geometry: L('после смены геометрии калибровки или точки номинала', 'after a change of the calibration geometry or of the nominal point'),
     manual: L('по отметке «новый отсчёт»', 'by the “new count” mark'),
     factors: L('после того как k_pol и k_s второй камеры стали известны', 'after k_pol and k_s of the second chamber became known'),
     binding: L('после новой привязки пластин к калибровке в воде', 'after a new binding of the plates to a calibration in water'),
@@ -43,7 +44,7 @@ function segmentLines(chart, xMax) {
 const segmentMarks = (chart) =>
   chart.segments.slice(1).map((seg, i) => ({
     x: chart.points[seg.from].day,
-    label: seg.reason === 'adjust' ? L('подстройка', 'adjustment') : seg.reason === 'equipment' ? L('оборудование', 'equipment') : seg.reason === 'factors' ? 'k_pol, k_s' : seg.reason === 'binding' ? L('привязка', 'binding') : L('новый отсчёт', 'new count'),
+    label: seg.reason === 'adjust' ? L('подстройка', 'adjustment') : seg.reason === 'equipment' ? L('оборудование', 'equipment') : seg.reason === 'geometry' ? L('геометрия', 'geometry') : seg.reason === 'factors' ? 'k_pol, k_s' : seg.reason === 'binding' ? L('привязка', 'binding') : L('новый отсчёт', 'new count'),
     row: i % 2,
   }));
 
