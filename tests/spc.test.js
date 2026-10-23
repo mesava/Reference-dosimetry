@@ -1,7 +1,7 @@
 // Контрольная карта выхода: I-MR, правила Western Electric, CUSUM, тренд; точки карты по сеансам журнала.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { baseline, controlChart, linearTrend, t975, D2, MIN_POINTS, BASELINE_POINTS } from '../src/core/spc.js';
+import { baseline, controlChart, linearTrend, t975, D2, MIN_POINTS, BASELINE_POINTS, TREND_MIN_POINTS, TREND_MIN_DAYS } from '../src/core/spc.js';
 import { controlPoints, upsertSession } from '../src/core/journal.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} ≠ ${b} (±${tol})`);
@@ -222,4 +222,17 @@ test('Частота ложных сигналов (моделирование):
   assert.ok(falseAny > falseSig + 0.04, `со всеми правилами чаще: ${falseAny} против ${falseSig}`);
   const detect = rate(1, 12, sig);
   assert.ok(detect > 0.6, `сдвиг 1σ за 12 сеансов замечен: ${detect}`);
+});
+
+test('Тренд — только от TREND_MIN_POINTS записей за TREND_MIN_DAYS суток: по нескольким дням наклон в %/мес не показывается', () => {
+  // 6 точек через день: тренда нет, есть ожидание
+  const few = controlChart(pts([-0.4, -0.3, -1.3, 0.2, -0.5, 0.8], 1), { tol: 2 });
+  assert.equal(few.trend, null);
+  assert.deepEqual(few.trendWait, { n: 6, days: 5 });
+  // 12 точек через день — всё ещё меньше 30 суток
+  assert.equal(controlChart(pts(Array.from({ length: 12 }, (_, i) => noise(i)), 1)).trend, null);
+  // 10 точек за 36 суток — тренд считается
+  const ok = controlChart(pts(Array.from({ length: TREND_MIN_POINTS }, (_, i) => noise(i)), 4));
+  assert.ok(ok.trend && ok.trendWait === null);
+  assert.equal(TREND_MIN_DAYS, 30);
 });

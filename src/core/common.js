@@ -2,6 +2,9 @@
 
 import { L } from './i18n.js';
 
+/** Отклонение от номинала больше этого (%) — почти наверняка ошибка ввода: замечание и подтверждение записи в журнал. */
+export const IMPLAUSIBLE_DEVIATION = 20;
+
 /** Допуск на отклонение дозы от номинального выхода по умолчанию, %: после него предлагается калибровка ускорителя. */
 export const RECAL_TOL = 2;
 
@@ -136,7 +139,7 @@ export function outputPlausibility(finals, { add, ru, muSections, zrefText, tol 
     );
   }
   const devs = finals.map(({ x }) => x?.deviation).filter(Number.isFinite);
-  if (devs.some((d) => Math.abs(d) > 20)) {
+  if (devs.some((d) => Math.abs(d) > IMPLAUSIBLE_DEVIATION)) {
     add(
       'warn',
       'common',

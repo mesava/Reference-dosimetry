@@ -298,8 +298,9 @@ function onChange(e) {
     } else draft.beamId = t.value;
     // другой пучок: привязка и показания — заново; дата, сотрудники, T и P остаются
     draft.rebind = false;
-    draft.bind = { ...BINDING_DEFAULTS, date: draft.bind.date, T: draft.bind.T, P: draft.bind.P, P_unit: draft.bind.P_unit };
-    draft.check = { ...draft.check, amount: '', M: ['', '', ''], notes: '' };
+    // другой пучок — температуру и давление измеряют заново (единица давления и дата остаются)
+    draft.bind = { ...BINDING_DEFAULTS, date: draft.bind.date, P_unit: draft.bind.P_unit };
+    draft.check = { ...draft.check, amount: '', T: '', P: '', M: ['', '', ''], notes: '' };
     persist();
     render();
     status('');

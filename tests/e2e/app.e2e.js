@@ -66,6 +66,7 @@ test('«Выход вне допуска: проверка и подстройк
   const { page, errors } = await openPage(browser);
   await page.goto(`${server.url}/index.html#photons`);
   await page.waitForSelector('#messages li');
+  await page.click('#btn-sample');
   // доза далеко от номинала — появляется раздел 9 с советом сначала проверить измерение
   await page.fill('#dd_nominal', '1,100');
   await page.waitForTimeout(400);
@@ -96,6 +97,7 @@ test('условия протокола под итогом: перечень с
   const { page, errors } = await openPage(browser);
   await page.goto(`${server.url}/index.html#photons`);
   await page.waitForSelector('#messages li');
+  await page.click('#btn-sample');
   const box = page.locator('#compliance');
   assert.match(await box.innerText(), /отступлений от условий TRS-398 Rev\.1 не найдено/);
   const summary = box.locator('details.compliance-list summary');

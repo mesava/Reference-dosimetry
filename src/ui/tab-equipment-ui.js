@@ -5,6 +5,7 @@
 import { L, getLang } from '../core/i18n.js';
 import { NDW_UNITS, unitLabel, isBlank } from '../core/units.js';
 import {
+  chamberPreferred,
   tabEquipment, applyTabEquipment, chamberTabFields, electrometerTabFields, chamberText, electrometerText,
   photonCapable, electronCapable, cobaltCapable, dueStatus,
 } from '../core/journal.js';
@@ -139,7 +140,9 @@ function makeLink(cfg) {
     const el = box();
     if (!el) return;
     const j = getJournal();
-    const chambers = j.chambers.filter((c) => CAPABLE[cfg.kind](c.form));
+    // подходящие виду пучка (для электронов — плоскопараллельные) — первыми, остальные в прежнем порядке
+    const capable = j.chambers.filter((c) => CAPABLE[cfg.kind](c.form));
+    const chambers = [...capable.filter((c) => chamberPreferred(c.form, cfg.kind)), ...capable.filter((c) => !chamberPreferred(c.form, cfg.kind))];
     syncGroup(chambers);
     if (!chambers.length && !j.electrometers.length) {
       el.hidden = true;

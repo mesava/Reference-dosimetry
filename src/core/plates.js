@@ -11,7 +11,7 @@ import { parseNumber, parseCells, isBlank, pressureToKPa } from './units.js';
 import { temperaturePressure } from './common.js';
 import { TRS_ABS0 } from './trs398.js';
 import { decayFactor } from './cobalt.js';
-import { beamOf, beamKind, machineOf, lastCalibration, dayNumber, uid, sessionEquipDefaults } from './journal.js';
+import { beamOf, beamKind, machineOf, lastCalibration, dayNumber, uid, sessionEquipDefaults, futureDateError } from './journal.js';
 
 /**
  * Пластики: коэффициент пересчёта глубины c_pl, коэффициент пересчёта флюенса h_pl и номинальная плотность ρ_pl.
@@ -88,6 +88,8 @@ export function makeBinding(j, beamId, input) {
   const kind = beamKind(found.beam);
   const f = { ...BINDING_DEFAULTS, ...input };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(f.date))) return { error: L('Укажите дату привязки.', 'Enter the binding date.') };
+  const future = futureDateError(f.date, f.today || undefined);
+  if (future) return { error: future };
   const cals = waterCalibrations(j, beamId).filter((c) => c.date <= f.date);
   const cal = (f.calSessionId && cals.find((c) => c.sessionId === f.calSessionId)) || cals[0];
   if (!cal) return { error: L('У пучка нет калибровки в воде в журнале до даты привязки: сначала откалибруйте пучок в воде (TRS-398 Rev.1).', 'The beam has no calibration in water in the journal before the binding date: first calibrate the beam in water (TRS-398 Rev.1).') };
@@ -99,7 +101,7 @@ export function makeBinding(j, beamId, input) {
   const tauMin = kind === 'cobalt' ? cal.summary.tauMin : 0;
   const r = correctedReading(f, { tauMin, kind });
   if (r.errors.length) return { error: r.errors.join(' ') };
-  const eq = sessionEquipDefaults(j, found.machine.id, kind);
+  const eq = sessionEquipDefaults(j, found.machine.id, kind, beamId);
   return {
     binding: {
       material: f.material,
@@ -155,6 +157,7 @@ export function platesResult(j, beamId, input, binding = bindingOf(j, beamId)) {
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(f.date))) out.errors.push(L('Укажите дату измерения.', 'Enter the measurement date.'));
   else if (f.date < binding.date) out.errors.push(L(`Дата измерения раньше привязки пластин (${binding.date}).`, `The measurement date is before the plate binding (${binding.date}).`));
+  else if (futureDateError(f.date, f.today || undefined)) out.errors.push(futureDateError(f.date, f.today || undefined));
   const r = correctedReading(f, { tauMin: binding.tauMin, kind });
   out.errors.push(...r.errors);
   out.kTP = r.kTP;

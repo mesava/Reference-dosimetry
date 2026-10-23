@@ -29,6 +29,12 @@ export const PROVISIONAL_BELOW = 10;
 export const CUSUM_K = 0.5;
 export const CUSUM_H = 5;
 const DAYS_PER_MONTH = 30.4375;
+/**
+ * Тренд считается, когда в отсчёте не меньше TREND_MIN_POINTS точек за TREND_MIN_DAYS суток и больше: по нескольким
+ * дням наклон в %/мес — экстраполяция разброса, а не дрейф.
+ */
+export const TREND_MIN_POINTS = PROVISIONAL_BELOW;
+export const TREND_MIN_DAYS = 30;
 
 /** Квантиль t-распределения 0,975 (двусторонний 95 %) по числу степеней свободы. */
 export function t975(df) {
@@ -109,7 +115,8 @@ export function linearTrend(xs, ys) {
  *     'cusumDown'), watch — наблюдения ('2of3', 'run8', 'trend6');
  *   segments — отсчёты: { from, to (индексы), startDay, reason, n, baselineN, excluded (точек за 3σ не в границах), cl,
  *     sigma, mrBar, limits, provisional };
- *   trend — тренд последнего отсчёта (linearTrend), forecast — { side: +1|−1, day } | { side, already: true } |
+ *   trend — тренд последнего отсчёта (linearTrend; null, пока точек меньше TREND_MIN_POINTS или они охватывают меньше
+ *   TREND_MIN_DAYS суток — тогда trendWait: { n, days }), forecast — { side: +1|−1, day } | { side, already: true } |
  *     { side, beyond: true } (дальше трёх лет) или null.
  */
 export function controlChart(input, { tol = NaN } = {}) {
@@ -158,10 +165,13 @@ export function controlChart(input, { tol = NaN } = {}) {
   }
   const current = segments.at(-1) ?? null;
   let trend = null;
+  let trendWait = null;
   let forecast = null;
   if (current) {
     const pts = points.slice(current.from, current.to + 1);
-    trend = linearTrend(
+    const days = pts.length ? pts.at(-1).day - pts[0].day : 0;
+    if (pts.length < TREND_MIN_POINTS || days < TREND_MIN_DAYS) trendWait = { n: pts.length, days };
+    else trend = linearTrend(
       pts.map((p) => p.day),
       pts.map((p) => p.value),
     );
@@ -175,7 +185,7 @@ export function controlChart(input, { tol = NaN } = {}) {
       else forecast = { side, day };
     }
   }
-  return { points, segments, current, trend, forecast };
+  return { points, segments, current, trend, trendWait, forecast };
 }
 
 /** Правила: сигналы и наблюдения. */

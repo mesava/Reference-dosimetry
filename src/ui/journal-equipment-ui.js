@@ -10,7 +10,7 @@ import { E_DEFAULTS, normalizeElectrons, parseElectronBeam } from '../core/elect
 import { E_CHAMBERS, findEChamber } from '../core/electron-chambers.js';
 import { CO_DEFAULTS, normalizeCobalt } from '../core/cobalt.js';
 import {
-  uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, saveBeamSettings, equipmentDue,
+  uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, saveBeamSettings, equipmentDue, equipmentNoDue,
   chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable, electronChamberForm, beamKind, cobaltCapable, cobaltChamberForm, myChambersToJournal, orgText, withChamberLength,
   CAL_GEO_KEYS, machineCalGeo, calGeoKey, calGeoText, syncCalGeo,
 } from '../core/journal.js';
@@ -396,6 +396,8 @@ function renderReadout() {
   for (const d of due) {
     msgs.push(`<li class="${d.status === 'overdue' ? 'warn' : 'info'}"><span class="lvl">${esc(d.status === 'overdue' ? L('Срок калибровки прошёл', 'Calibration overdue') : L('Срок калибровки подходит', 'Calibration due soon'))}</span><span>${esc(`${d.text}: ${d.status === 'overdue' ? L(`до ${fmtDate(d.dueDate)}`, `until ${fmtDate(d.dueDate)}`) : L(`до ${fmtDate(d.dueDate)}, осталось ${d.days} дн.`, `until ${fmtDate(d.dueDate)}, ${d.days} days left`)}`)}</span></li>`);
   }
+  const noDue = equipmentNoDue(j);
+  if (noDue.length) msgs.push(`<li class="info"><span class="lvl">${esc(L('Срок калибровки не задан', 'No calibration due date'))}</span><span>${esc(L(`${noDue.map((x) => x.text || (x.kind === 'chamber' ? 'камера' : 'электрометр')).join('; ')}: укажите «Действует до» в «Оборудовании», иначе напоминания о сроке калибровки не будет.`, `${noDue.map((x) => x.text || x.kind).join('; ')}: enter "Valid until" in Equipment, otherwise there will be no calibration due reminder.`))}</span></li>`);
   const missItem = (who, miss) => `<li class="info"><span class="lvl">${esc(L('Не заполнено', 'Missing'))}</span><span>${esc(`${who}: `)}${richText(miss.join(', '))}</span></li>`;
   for (const c of j.chambers) {
     // «не заполнено» — по TRS-398 Rev.1 (основной протокол); переключателя протокола в «Оборудовании» нет
@@ -406,7 +408,7 @@ function renderReadout() {
     const miss = electrometerMissing(e);
     if (miss.length) msgs.push(missItem(electrometerText(e) || L('электрометр', 'electrometer'), miss));
   }
-  $('#eq-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Сроки калибровки в порядке, у камер и электрометров заполнено всё нужное для расчёта.', 'Calibration dates are fine; chambers and electrometers have what the calculation needs.'))}</span></li>`;
+  $('#eq-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Сроки калибровки заданы и не подходят, у камер и электрометров заполнено всё нужное для расчёта.', 'Calibration due dates are set and not near; chambers and electrometers have what the calculation needs.'))}</span></li>`;
 }
 
 // ------------------------------------------------------------ связь с вкладкой «МВ фотоны» и сеансом

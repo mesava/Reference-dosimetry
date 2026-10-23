@@ -67,3 +67,13 @@ export const changeElsewhere = (page, name, patch, ahead = 60000) =>
   }, [name, patch, ahead]);
 
 export const CYR = /[А-Яа-яЁё]/;
+
+/** Показания и условия во вкладке «МВ фотоны» (как в демонстрационном примере): вкладка с пучком журнала их не берёт из примера. */
+export async function fillPhotonReadings(page, { M1 = ['12,346', '12,348', '12,345'], Mopp = ['-12,339', '-12,341', '-12,340'], M2 = ['12,302', '12,304', '12,303'], T = '21,4', P = '99,62' } = {}) {
+  await page.fill('#env_T', T);
+  await page.fill('#env_P', P);
+  for (const [s, vals] of [['rd_M1', M1], ['rd_Mopp', Mopp], ['rd_M2', M2]]) {
+    const cells = page.locator(`#sheet .cells[data-series="${s}"] input`);
+    for (let i = 0; i < vals.length; i++) await cells.nth(i).fill(vals[i]);
+  }
+}

@@ -481,6 +481,23 @@ export function dayNumber(iso) {
   const t = Date.UTC(+m[1], +m[2] - 1, +m[3]);
   return Number.isFinite(t) ? Math.round(t / 86400000) : NaN;
 }
+/** Сегодняшняя дата по часам компьютера, ГГГГ-ММ-ДД. */
+export function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+/**
+ * Дата измерения в будущем — почти наверняка ошибка ввода: такое измерение в журнал не записывается (контрольная
+ * карта и сроки считаются по датам). Возвращает текст ошибки или ''.
+ */
+export function futureDateError(date, today = localToday()) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(today)) || date <= today) return '';
+  const dmy = (x) => x.split('-').reverse().join('.');
+  return L(
+    `Дата ${dmy(date)} — в будущем (сегодня ${dmy(today)}): проверьте дату. Измерение с датой в будущем в журнал не записывается.`,
+    `The date ${dmy(date)} is in the future (today is ${dmy(today)}): check the date. A measurement dated in the future is not recorded to the journal.`,
+  );
+}
 /** Срок следующей калибровки: 'none' — не задан, 'ok', 'soon' — осталось не больше 30 дней, 'overdue' — прошёл. */
 export function dueStatus(dueDate, today, soonDays = 30) {
   const d = dayNumber(dueDate);
@@ -501,6 +518,13 @@ export function equipmentDue(j, today) {
     if (s.status === 'overdue' || s.status === 'soon') out.push({ kind: 'electrometer', id: e.id, text: electrometerText(e), ...s, dueDate: e.dueDate });
   }
   return out.sort((a, b) => a.days - b.days);
+}
+/** Камеры и электрометры без срока калибровки («Действует до»): о них напоминание о сроке не появится. */
+export function equipmentNoDue(j) {
+  return [
+    ...j.chambers.filter((c) => dueStatus(c.dueDate, '2000-01-01').status === 'none').map((c) => ({ kind: 'chamber', id: c.id, text: chamberText(c) })),
+    ...j.electrometers.filter((e) => dueStatus(e.dueDate, '2000-01-01').status === 'none').map((e) => ({ kind: 'electrometer', id: e.id, text: electrometerText(e) })),
+  ];
 }
 
 // ---------------------------------------------------------------- виды пучков
@@ -860,33 +884,48 @@ export function beamSummary(r, kind = 'photon') {
 export const photonSummary = (r) => beamSummary(r, 'photon');
 
 /**
- * Камера и электрометр сеанса по умолчанию для пучков данного вида на аппарате: те, которыми мерили в последнем записанном
- * сеансе этого аппарата; иначе — выбранные раньше у пучков (журналы до 0.21.0); иначе — первая подходящая камера и первый
- * электрометр. Возвращает { chamberId, electrometerId } (пустые строки, если выбрать не из чего).
+ * Камера подходит виду пучка в первую очередь: для электронов — плоскопараллельная (TRS-398 Rev.1, разд. 7.2.1: при
+ * R50 < 4 г/см² — только она, при больших — рекомендуется), для фотонов и ⁶⁰Co — цилиндрическая.
  */
-export function sessionEquipDefaults(j, machineId, kind) {
+export function chamberPreferred(cf, kind) {
+  const m = cf?.ch_model;
+  const pp = findEChamber(m)?.type === 'pp' || (m === 'OTHER' && cf?.e_other_type === 'pp');
+  if (kind === 'electron') return pp;
+  return !pp && photonCapable(cf);
+}
+
+/**
+ * Камера и электрометр по умолчанию для пучка журнала. Камера: которой мерили этот пучок последний раз; иначе прежний
+ * выбор у пучка (журналы до 0.21.0); иначе первая из «Оборудования», подходящая виду пучка (chamberPreferred); иначе
+ * которой мерили пучки этого вида на аппарате; иначе первая годная. Электрометр: этого пучка, затем аппарата, затем
+ * первый. beamId можно не указывать — тогда только по аппарату.
+ */
+export function sessionEquipDefaults(j, machineId, kind, beamId = '') {
   const can = { photon: photonCapable, electron: electronCapable, cobalt: cobaltCapable }[kind] ?? photonCapable;
   const okCh = (id) => !!id && j.chambers.some((c) => c.id === id && can(c.form));
   const okEl = (id) => !!id && j.electrometers.some((e) => e.id === id);
-  let chamberId = '';
-  let electrometerId = '';
   const sessions = (j.sessions || []).filter((s) => s.machineId === machineId).sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  for (const s of sessions) {
-    for (const b of s.beams || []) {
-      if (beamKind(b) !== kind) continue;
-      if (!chamberId && okCh(b.chamberId)) chamberId = b.chamberId;
-      if (!electrometerId && okEl(b.electrometerId)) electrometerId = b.electrometerId;
+  /** Последние камера и электрометр в записях, где пучок подходит test. */
+  const lastUsed = (test) => {
+    let ch = '';
+    let el = '';
+    for (const s of sessions) {
+      for (const b of s.beams || []) {
+        if (!test(b)) continue;
+        if (!ch && okCh(b.chamberId)) ch = b.chamberId;
+        if (!el && okEl(b.electrometerId)) el = b.electrometerId;
+      }
+      if (ch && el) break;
     }
-    if (chamberId && electrometerId) break;
-  }
+    return { ch, el };
+  };
+  const own = beamId ? lastUsed((b) => b.beamId === beamId && beamKind(b) === kind) : { ch: '', el: '' };
+  const ofKind = lastUsed((b) => beamKind(b) === kind);
   const m = machineOf(j, machineId);
-  for (const b of m?.beams || []) {
-    if (beamKind(b) !== kind) continue;
-    if (!chamberId && okCh(b.chamberId)) chamberId = b.chamberId;
-    if (!electrometerId && okEl(b.electrometerId)) electrometerId = b.electrometerId;
-  }
-  if (!chamberId) chamberId = j.chambers.find((c) => can(c.form))?.id ?? '';
-  if (!electrometerId) electrometerId = j.electrometers[0]?.id ?? '';
+  const beam = beamId ? m?.beams.find((b) => b.id === beamId) : null;
+  const legacy = (key) => [beam, ...(m?.beams || [])].find((b) => b && beamKind(b) === kind && (key === 'chamberId' ? okCh(b.chamberId) : okEl(b.electrometerId)))?.[key] ?? '';
+  const chamberId = own.ch || legacy('chamberId') || (j.chambers.find((c) => can(c.form) && chamberPreferred(c.form, kind))?.id ?? '') || ofKind.ch || (j.chambers.find((c) => can(c.form))?.id ?? '');
+  const electrometerId = own.el || ofKind.el || legacy('electrometerId') || (j.electrometers[0]?.id ?? '');
   return { chamberId, electrometerId };
 }
 
@@ -1428,7 +1467,7 @@ export function tabBeamPatch(j, machineId, beamId, tab = {}, equip = null) {
   const K = kindOf(kind);
   const k = K.k;
   const check = fixedOf(tab, kind);
-  const eq = equip || sessionEquipDefaults(j, machine.id, kind);
+  const eq = equip || sessionEquipDefaults(j, machine.id, kind, found.beam.id);
   const date = String(tab[k.date] || '') || '9999-12-31';
   const session = { ...SESSION_DEFAULTS, id: '', machineId: machine.id, date, mode: check ? 'check' : 'cal', protocol: tab.protocol === 'tg51' ? 'tg51' : 'trs' };
   const { form, last } = beamForm(j, session, machine, found.beam, { chamberId: eq.chamberId, electrometerId: eq.electrometerId });
@@ -1467,10 +1506,10 @@ export function tabRecordOf(j, { machineId, beamId, form, kind = 'photon' }) {
 
 /**
  * Записать измерение вкладки в журнал. form — форма вкладки (как её считает вкладка), kind — вид пучка.
- * Дата — из вкладки (без даты не записывается), режим — «Проверка выхода» вкладки, протокол — из формы.
+ * Дата — из вкладки (без даты и с датой позже today не записывается), режим — «Проверка выхода» вкладки, протокол — из формы.
  * Возвращает { journal, session, replaced, chamberFound, electrometerFound } или { error }.
  */
-export function recordTabBeam(j, { machineId, beamId, form, kind = 'photon' }) {
+export function recordTabBeam(j, { machineId, beamId, form, kind = 'photon', today = localToday() }) {
   const found = beamOf(j, beamId);
   const machine = machineOf(j, machineId);
   if (!found || !machine || found.machine.id !== machine.id) return { error: L('Пучок не найден в журнале: выберите аппарат и пучок заново.', 'The beam was not found in the journal: select the machine and beam again.') };
@@ -1480,6 +1519,8 @@ export function recordTabBeam(j, { machineId, beamId, form, kind = 'photon' }) {
   const f = K.normalize({ ...K.defaults, ...form });
   const date = String(f[k.date] || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: L('Укажите дату измерения в разделе 1: по ней измерение ложится в журнал.', 'Enter the measurement date in section 1: the measurement is filed in the journal by it.') };
+  const future = futureDateError(date, today);
+  if (future) return { error: future };
   const result = K.compute(f);
   const summary = beamSummary(result, kind);
   if (!summary.ok) return { error: L('Есть ошибки в расчёте (см. «Замечания»): исправьте их, затем запишите в журнал.', 'The calculation has errors (see Messages): fix them, then record to the journal.') };

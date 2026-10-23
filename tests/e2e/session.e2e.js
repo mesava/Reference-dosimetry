@@ -2,7 +2,7 @@
 // «Записать и далее», итог сеанса по записям журнала.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer, launch, openPage, CYR } from './helpers.js';
+import { startServer, launch, openPage, CYR, fillPhotonReadings } from './helpers.js';
 
 let server;
 let browser;
@@ -85,7 +85,10 @@ test('сеанс: два пучка фотонов подряд записыва
   const bar = page.locator('#ph-sbar');
   assert.ok(await bar.isVisible());
   assert.match(await bar.innerText(), /Сеанс · Versa HD · 22\.10\.2026 · калибровка в воде · пучок 1 из 2/);
+  // показания примера при выборе пучка журнала очищаются — вводятся во вкладке
+  assert.equal(await page.locator('#sheet .cells[data-series="rd_M1"] input').first().inputValue(), '');
   const measure = async () => {
+    await fillPhotonReadings(page);
     await page.fill('#qtrs_v20', '39,16');
     await page.fill('#qtrs_v10', '67,22');
     await page.fill('#dd_zmax', '1,5');

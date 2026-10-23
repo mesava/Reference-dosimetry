@@ -1,4 +1,4 @@
 // Версия калькулятора: записывается в сохранённые файлы и в протокол (PDF).
 // При выпуске новой версии меняйте оба значения и "version" в package.json (их совпадение проверяет тест).
-export const APP_VERSION = '0.29.0';
-export const APP_DATE = '2026-10-22';
+export const APP_VERSION = '0.30.0';
+export const APP_DATE = '2026-10-23';

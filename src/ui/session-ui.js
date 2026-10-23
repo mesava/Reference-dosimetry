@@ -4,6 +4,7 @@
 // журнала (core/session.js); план хранится в этом браузере.
 import { L } from '../core/i18n.js';
 import { PLAN_DEFAULTS, machineBeams, sessionMachines, normalizePlan, planProgress, nextPending } from '../core/session.js';
+import { futureDateError } from '../core/journal.js';
 import { $, esc, richText, today, fmtSigned } from './common.js';
 import { getJournal, onJournal } from './journal-store.js';
 import { fmtDate, countWord } from './journal-common.js';
@@ -71,6 +72,7 @@ function setupHtml(j) {
       <label class="check"><input type="checkbox" data-sb="${esc(it.beamId)}"${chosen.includes(it.beamId) ? ' checked' : ''}> <span><b>${esc(it.name || L('пучок без названия', 'unnamed beam'))}</b> · ${esc(KIND_TEXT[it.kind]())} · ${esc(it.lastCal ? L(`последняя калибровка ${fmtDate(it.lastCal)}`, `last calibration ${fmtDate(it.lastCal)}`) : L('калибровок в журнале нет', 'no calibrations in the journal'))}</span></label>
       <span class="session-move"><button type="button" class="icon-btn" data-up="${i}"${i ? '' : ' disabled'} aria-label="${esc(L('Выше', 'Up'))}" title="${esc(L('Выше', 'Up'))}">↑</button><button type="button" class="icon-btn" data-down="${i}"${i < order.length - 1 ? '' : ' disabled'} aria-label="${esc(L('Ниже', 'Down'))}" title="${esc(L('Ниже', 'Down'))}">↓</button></span></li>`).join('');
   const n = chosen.filter((id) => order.includes(id)).length;
+  const future = futureDateError(date, today());
   return `<section class="start-card session-card"><h2>${esc(L('Новый сеанс', 'New session'))}</h2>
     <p class="start-when">${esc(L(
       'Калибровка нескольких пучков одного аппарата подряд в воде, в референсных условиях TRS-398 Rev.1. Каждый пучок измеряется в своей вкладке («⁶⁰Co», «МВ фотоны», «Электроны») так же, как одиночный, и записывается в журнал; после записи открывается следующий.',
@@ -80,6 +82,7 @@ function setupHtml(j) {
       <div class="field span-2"><label for="ss_machine">${esc(L('Аппарат', 'Machine'))}</label><select id="ss_machine">${ms.map((m) => opt(m.id, [m.name || L('аппарат без названия', 'unnamed machine'), m.serial ? `№ ${m.serial}` : ''].filter(Boolean).join(', '), machineId)).join('')}</select></div>
       <div class="field"><label for="ss_date">${esc(L('Дата измерения', 'Measurement date'))}</label><input type="date" id="ss_date" value="${esc(date)}"></div>
     </div>
+    ${future ? `<p class="jlink-st warn">${esc(future)}</p>` : ''}
     <fieldset class="plain session-mode"><legend class="label">${esc(L('Режим', 'Mode'))}</legend>
       <label class="check"><input type="radio" name="ss_mode" value="cal"${p.mode === 'check' ? '' : ' checked'}> <span>${esc(L('Калибровка: k_pol, k_s и качество пучка измеряются', 'Calibration: k_pol, k_s and beam quality are measured')).replace(/k_(pol|s)/g, 'k<sub>$1</sub>')}</span></label>
       <label class="check"><input type="radio" name="ss_mode" value="check"${p.mode === 'check' ? ' checked' : ''}> <span>${esc(L('Проверка выхода в воде: k_pol, k_s и качество пучка — из последней калибровки', 'Output check in water: k_pol, k_s and beam quality from the last calibration')).replace(/k_(pol|s)/g, 'k<sub>$1</sub>')}</span></label>
@@ -87,7 +90,7 @@ function setupHtml(j) {
     <h3>${esc(L('Пучки сеанса', 'Session beams'))}</h3>
     <ol class="session-beams">${rows}</ol>
     <p class="start-note">${esc(L('Камера, электрометр и настройки каждого пучка подставляются из журнала, как при выборе пучка в разделе 1 вкладки. Сотрудники, температура, давление и показания вводятся во вкладке.', 'The chamber, electrometer and settings of each beam are filled in from the journal, as when a beam is selected in section 1 of the tab. Staff, temperature, pressure and readings are entered in the tab.'))}</p>
-    <div class="actions"><button type="button" class="primary" data-ss="start"${n ? '' : ' disabled'}>${esc(n ? `${L('Начать сеанс', 'Start the session')}: ${n} ${countWord(n, [L('пучок', 'beam'), L('пучка', 'beams'), L('пучков', 'beams')], ['beam', 'beams'])}` : L('Отметьте пучки', 'Select beams'))}</button></div>
+    <div class="actions"><button type="button" class="primary" data-ss="start"${n && !future ? '' : ' disabled'}>${esc(n ? `${L('Начать сеанс', 'Start the session')}: ${n} ${countWord(n, [L('пучок', 'beam'), L('пучка', 'beams'), L('пучков', 'beams')], ['beam', 'beams'])}` : L('Отметьте пучки', 'Select beams'))}</button></div>
   </section>`;
 }
 
@@ -238,6 +241,11 @@ export function initSession(b) {
       const next = normalizePlan(j, { active: true, machineId: s.machineId, date: s.date, mode: s.mode, beamIds: s.order.filter((id) => s.chosen.includes(id)), index: 0 });
       if (!next.date) {
         status(L('Укажите дату измерения: по ней пучки ложатся в одну запись журнала.', 'Enter the measurement date: the beams are filed in one journal record by it.'));
+        return;
+      }
+      const future = futureDateError(next.date, today());
+      if (future) {
+        status(future);
         return;
       }
       plan = next;

@@ -2,7 +2,7 @@
 import { L, refText } from '../core/i18n.js';
 import { beamChart, sessionCommon, BEAM_Z } from '../core/journal-spc.js';
 import { checkPairs, checkChart, stabilityNote, CHECK_REF } from '../core/journal-check.js';
-import { BASELINE_POINTS, PROVISIONAL_BELOW, MIN_POINTS, controlChart } from '../core/spc.js';
+import { BASELINE_POINTS, PROVISIONAL_BELOW, MIN_POINTS, TREND_MIN_POINTS, TREND_MIN_DAYS, controlChart } from '../core/spc.js';
 import { signalText } from '../core/spc-text.js';
 
 export { signalText };
@@ -112,8 +112,15 @@ function segmentLine(chart, unit = '%') {
 
 function trendLine(chart, tol) {
   const t = chart.trend;
+  const w = chart.trendWait;
+  if (!t && w) {
+    return esc(L(
+      `Тренд появится, когда в отсчёте будет не меньше ${TREND_MIN_POINTS} записей за ${TREND_MIN_DAYS} дней и больше (сейчас ${w.n} за ${Math.round(w.days)} дн.): по нескольким дням наклон отражает разброс, а не дрейф.`,
+      `The trend appears once the count has at least ${TREND_MIN_POINTS} records over ${TREND_MIN_DAYS} days or more (now ${w.n} over ${Math.round(w.days)} d): over a few days the slope reflects the scatter, not a drift.`,
+    ));
+  }
   if (!t) return '';
-  const head = L(`Тренд текущего отсчёта: ${fmtSigned(t.perMonth, 3)} ± ${fmt(t.sePerMonth, 3)} %/мес`, `Trend of the current count: ${fmtSigned(t.perMonth, 3)} ± ${fmt(t.sePerMonth, 3)} %/month`);
+  const head = L(`Тренд текущего отсчёта: ${fmtSigned(t.perMonth, 2)} ± ${fmt(t.sePerMonth, 2)} %/мес`, `Trend of the current count: ${fmtSigned(t.perMonth, 2)} ± ${fmt(t.sePerMonth, 2)} %/month`);
   if (!t.significant) return esc(`${head} — ${L('незначим (в пределах разброса).', 'not significant (within the scatter).')}`);
   const f = chart.forecast;
   const sideTxt = (s) => (s > 0 ? `+${fmt(tol, tol % 1 ? 1 : 0)} %` : `−${fmt(tol, tol % 1 ? 1 : 0)} %`);
@@ -189,7 +196,7 @@ export function renderSpc(j, machineId, beams, beamId, { cobalt = false } = {}) 
     [{ line: true, cls: 'lim3', dashed: true }, '±3σ'],
     [{ line: true, cls: 'aux', dashed: true }, L('допуск', 'tolerance')],
   ]);
-  summary.innerHTML = `<p>${segmentLine(chart)}</p>${chart.trend ? `<p>${trendLine(chart, tol)}</p>` : ''}${signalsHtml(chart)}${helpHtml()}`;
+  summary.innerHTML = `<p>${segmentLine(chart)}</p>${chart.trend || chart.trendWait ? `<p>${trendLine(chart, tol)}</p>` : ''}${signalsHtml(chart)}${helpHtml()}`;
   return chosen.beam.id;
 }
 
@@ -220,7 +227,7 @@ export function renderPlatesSpc({ box, legend, summary }, points, { tol, name, c
     [{ line: true, cls: 'lim3', dashed: true }, '±3σ'],
     [{ line: true, cls: 'aux', dashed: true }, L('допуск', 'tolerance')],
   ]);
-  summary.innerHTML = `<p>${segmentLine(chart)}</p>${chart.trend ? `<p>${trendLine(chart, tol)}</p>` : ''}${signalsHtml(chart)}${helpHtml()}`;
+  summary.innerHTML = `<p>${segmentLine(chart)}</p>${chart.trend || chart.trendWait ? `<p>${trendLine(chart, tol)}</p>` : ''}${signalsHtml(chart)}${helpHtml()}`;
   return true;
 }
 
@@ -326,8 +333,19 @@ const checkHelpHtml = () => `<details class="jsb-more"><summary>${esc(L('Как 
  */
 export function renderChecks(j, machineId, key) {
   const pairs = checkPairs(j, machineId);
+  // раздел виден всегда (номера разделов не скачут); без проверок — одна строка вместо списка, карты и кнопок
   const sec = $('#hs-check-sec');
-  sec.hidden = !pairs.length;
+  sec.hidden = false;
+  let none = sec.querySelector('.hs-none');
+  if (!none) {
+    none = document.createElement('p');
+    none.className = 'chart-empty hs-none';
+    none.setAttribute('data-i18n-skip', '');
+    sec.querySelector('header').after(none);
+  }
+  none.textContent = L('Проверок второй камерой у этого аппарата пока нет: они записываются из вкладки дозиметрии, раздел «Проверка дозиметра второй камерой».', 'There are no second-chamber checks for this machine yet: they are recorded from a dosimetry tab, section "Dosimeter check with a second chamber".');
+  none.hidden = !!pairs.length;
+  for (const el of sec.querySelectorAll(':scope > :not(header):not(.hs-none)')) el.hidden = !pairs.length;
   if (!pairs.length) return null;
   const pair = pairs.find((p) => p.key === key) ?? pairs[0];
   const sel = $('#hs_check');

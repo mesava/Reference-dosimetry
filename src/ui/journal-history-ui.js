@@ -1,7 +1,7 @@
 // Вкладка «Журнал и тренды»: записи аппарата, тренд отклонения выхода от номинала по пучкам, контрольная карта
 // пучка и общая часть сеансов (journal-spc-ui.js), k_pol и k_s по калибровкам, сроки калибровки, выгрузка в CSV.
 import { L } from '../core/i18n.js';
-import { trendSeries, machineOf, equipmentDue, dayNumber, beamKind } from '../core/journal.js';
+import { trendSeries, machineOf, equipmentDue, equipmentNoDue, dayNumber, beamKind } from '../core/journal.js';
 import { $, esc, fmt, fmtSigned, today, makeStatus, armButton, notifyUpdate, richText, downloadText, copyText, printToPdf } from './common.js';
 import { sessionReportText } from './journal-report.js';
 import { scatterChart, legendSwatch } from './chart.js';
@@ -165,13 +165,14 @@ function renderTables(j, series) {
   }
 }
 
-/** Проверки аппарата в пластинах (не референсные условия): таблица по датам; раздел скрыт, если проверок нет. */
+/** Проверки аппарата в пластинах (не референсные условия): таблица по датам; без проверок — одна строка. */
 function renderPlates(j) {
   const m = machineOf(j, machineId);
   const rows = (j.plateChecks || []).filter((x) => x.machineId === machineId).slice().reverse();
-  $('#hs-plates-sec').hidden = !rows.length;
+  // раздел виден всегда: номера разделов не скачут
+  $('#hs-plates-sec').hidden = false;
   if (!rows.length) {
-    $('#hs-plates').innerHTML = '';
+    $('#hs-plates').innerHTML = `<p class="chart-empty">${esc(L('Проверок этого аппарата в пластинах пока нет: «Дозиметрия» → «В пластинах».', 'There are no checks of this machine in plates yet: Dosimetry → In plates.'))}</p>`;
     return;
   }
   const name = (id) => m?.beams.find((b) => b.id === id)?.name || '—';
@@ -215,9 +216,11 @@ function renderReadout(j, series) {
     <div class="dose-big">${sessions.length}<small>${esc(countWord(sessions.length, [L('запись', 'record'), L('записи', 'records'), L('записей', 'records')], ['record', 'records']))}</small></div>
     <div class="secondary">${esc(L(`последний: ${last ? fmtDate(last.date) : '—'}; последняя калибровка: ${lastCal ? fmtDate(lastCal.date) : '—'}`, `last: ${last ? fmtDate(last.date) : '—'}; last calibration: ${lastCal ? fmtDate(lastCal.date) : '—'}`))}</div></div>`;
   const msgs = equipmentDue(j, today()).map((d) => `<li class="${d.status === 'overdue' ? 'warn' : 'info'}"><span class="lvl">${esc(d.status === 'overdue' ? L('Срок калибровки прошёл', 'Calibration overdue') : L('Срок калибровки подходит', 'Calibration due soon'))}</span><span>${esc(`${d.text}: ${fmtDate(d.dueDate)}`)}</span></li>`);
+  const noDue = equipmentNoDue(j);
+  if (noDue.length) msgs.push(`<li class="info"><span class="lvl">${esc(L('Срок калибровки не задан', 'No calibration due date'))}</span><span>${esc(L(`${noDue.map((x) => x.text || (x.kind === 'chamber' ? 'камера' : 'электрометр')).join('; ')}: укажите «Действует до» в «Оборудовании», иначе напоминания о сроке калибровки не будет.`, `${noDue.map((x) => x.text || x.kind).join('; ')}: enter "Valid until" in Equipment, otherwise there will be no calibration due reminder.`))}</span></li>`);
   for (const x of [...spcMessages(j, machineId, series.map((s) => s.beam), commonRes), ...checkSignalMessages(j, machineId)]) msgs.push(`<li class="${x.level}"><span class="lvl">${esc(x.head)}</span><span>${esc(x.text)}</span></li>`);
   if (lastCal && dayNumber(today()) - dayNumber(lastCal.date) > 365) msgs.push(`<li class="info"><span class="lvl">${esc(L('Калибровка', 'Calibration'))}</span><span>${esc(L(`Последняя калибровка аппарата — больше года назад (${fmtDate(lastCal.date)}).`, `The machine's last calibration was more than a year ago (${fmtDate(lastCal.date)}).`))}</span></li>`);
-  $('#hs-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Сроки калибровки камер и электрометров в порядке.', 'Chamber and electrometer calibrations are within their dates.'))}</span></li>`;
+  $('#hs-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Сроки калибровки камер и электрометров заданы и не подходят.', 'Chamber and electrometer calibrations are within their dates.'))}</span></li>`;
   $('#hs-mobile-value').textContent = `${m?.name || '—'}: ${sessions.length}`;
 }
 

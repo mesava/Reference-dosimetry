@@ -3,7 +3,10 @@ import { TERMS } from './terms.js';
 import { TERMS_EN } from './terms-en.js';
 import { L, setLang, getLang } from '../core/i18n.js';
 import { initialLang, saveLang, applyLang, translateStatic, localizeDecimal } from './i18n.js';
-import { $, $$, setActiveModule, getActiveModule, PROTOCOL_KEY, applyProtocol, currentProtocol } from './common.js';
+import { $, $$, setActiveModule, getActiveModule, PROTOCOL_KEY, applyProtocol, currentProtocol, today } from './common.js';
+import { FORM_DEFAULTS } from '../core/photons.js';
+import { E_DEFAULTS } from '../core/electrons.js';
+import { CO_DEFAULTS } from '../core/cobalt.js';
 import { initCobalt, importCobalt, cobaltStatus, applyCobaltPatch, cobaltUncSource, cobaltCurrentForm, showInCobalt, setCobaltJournalSave } from './cobalt-ui.js';
 import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch, photonsUncSource, photonsCurrentForm, showInPhotons, setPhotonsJournalSave } from './photons-ui.js';
 import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch, electronsUncSource, electronsCurrentForm, showInElectrons, setElectronsJournalSave } from './electrons-ui.js';
@@ -362,14 +365,14 @@ function init() {
   initStart();
   // камеры и электрометры журнала на вкладках дозиметрии (раздел 2 «Камера и электрометр»)
   initTabEquipment([
-    { kind: 'cobalt', module: 'co60', box: '#co-jlink', select: '#co_ch_model', read: cobaltCurrentForm, patch: applyCobaltPatch, status: cobaltStatus, demo: () => !$('#co-demo-flag').hidden },
-    { kind: 'photon', module: 'photons', box: '#ph-jlink', select: '#ch_model', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden },
-    { kind: 'electron', module: 'electrons', box: '#e-jlink', select: '#e_ch_model', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden },
+    { kind: 'cobalt', module: 'co60', box: '#co-jlink', select: '#co_ch_model', read: cobaltCurrentForm, patch: applyCobaltPatch, status: cobaltStatus, demo: () => !$('#co-demo-flag').hidden, blank: () => ({ ...CO_DEFAULTS, co_date: today() }) },
+    { kind: 'photon', module: 'photons', box: '#ph-jlink', select: '#ch_model', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden, blank: () => ({ ...FORM_DEFAULTS, meta_date: today() }) },
+    { kind: 'electron', module: 'electrons', box: '#e-jlink', select: '#e_ch_model', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden, blank: () => ({ ...E_DEFAULTS, e_date: today() }) },
   ]);
   const tabJournals = initTabJournal([
-    { kind: 'cobalt', module: 'co60', bind: '#co-jbind', rec: '#co-jrec', check: '#co-jcheck', read: cobaltCurrentForm, patch: applyCobaltPatch, status: cobaltStatus, demo: () => !$('#co-demo-flag').hidden },
-    { kind: 'photon', module: 'photons', bind: '#ph-jbind', rec: '#ph-jrec', check: '#ph-jcheck', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden },
-    { kind: 'electron', module: 'electrons', bind: '#e-jbind', rec: '#e-jrec', check: '#e-jcheck', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden },
+    { kind: 'cobalt', module: 'co60', bind: '#co-jbind', rec: '#co-jrec', check: '#co-jcheck', read: cobaltCurrentForm, patch: applyCobaltPatch, status: cobaltStatus, demo: () => !$('#co-demo-flag').hidden, blank: () => ({ ...CO_DEFAULTS, co_date: today() }) },
+    { kind: 'photon', module: 'photons', bind: '#ph-jbind', rec: '#ph-jrec', check: '#ph-jcheck', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden, blank: () => ({ ...FORM_DEFAULTS, meta_date: today() }) },
+    { kind: 'electron', module: 'electrons', bind: '#e-jbind', rec: '#e-jrec', check: '#e-jcheck', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden, blank: () => ({ ...E_DEFAULTS, e_date: today() }) },
   ]);
   // сеанс: пучок журнала открывается в своей вкладке, «Записать и далее» — запись вкладки в журнал
   initSession({

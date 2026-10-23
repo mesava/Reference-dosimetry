@@ -88,8 +88,8 @@ test('Выход в пластинах: D = D_кал · M_pl / M_pl,0; откл�
   // раньше привязки — ошибка
   assert.ok(platesResult(j, 'b6', { date: '2026-10-13', amount: '100', M: ['12,58'], T: '20', P: '101,325' }).errors.some((e) => /раньше привязки/.test(e)));
   // новая калибровка в воде после привязки — предупреждение
-  const j2 = recordTabBeam(j, { machineId: 'm1', beamId: 'b6', form: { ...SAMPLE_FORM, meta_date: '2026-11-14' }, kind: 'photon' }).journal;
-  assert.ok(platesResult(j2, 'b6', { date: '2026-11-20', amount: '100', M: ['12,58'], T: '20', P: '101,325' }).warnings.some((w) => /повторите привязку/.test(w.text)));
+  const j2 = recordTabBeam(j, { machineId: 'm1', beamId: 'b6', form: { ...SAMPLE_FORM, meta_date: '2026-11-14' }, kind: 'photon', today: '2026-12-31' }).journal;
+  assert.ok(platesResult(j2, 'b6', { today: '2026-12-31', date: '2026-11-20', amount: '100', M: ['12,58'], T: '20', P: '101,325' }).warnings.some((w) => /повторите привязку/.test(w.text)));
 });
 
 test('⁶⁰Co в пластинах: отклонение — от ожидаемой по распаду от даты привязки', () => {
@@ -97,7 +97,7 @@ test('⁶⁰Co в пластинах: отклонение — от ожидае
   const binding = { date: '2026-01-01', calDate: '2026-01-01', calValue: 100, calDeviation: 0, tol: 2, tauMin: 0, M0: 30 };
   const half = new Date(Date.parse('2026-01-01') + CO60_HALF_LIFE_DAYS * 86400000).toISOString().slice(0, 10);
   // через период полураспада показание вдвое меньше — отклонения нет, мощность дозы — вдвое меньше
-  const r = platesResult(j, 'co', { date: half, amount: '1', M: ['15'], T: '20', P: '101,325' }, binding);
+  const r = platesResult(j, 'co', { date: half, today: '2040-01-01', amount: '1', M: ['15'], T: '20', P: '101,325' }, binding);
   assert.ok(r.ok, r.errors.join(' '));
   close(r.deviation, 0, 0.05);
   close(r.value, 50, 0.03);
@@ -128,4 +128,14 @@ test('Запись в журнал: тот же пучок за ту же дат
   assert.equal(back.plateChecks.length, 3);
   assert.equal(back.machines[0].beams[0].plates.date, '2026-10-17');
   assert.deepEqual(normalizeJournal({ ...newJournal() }).plateChecks, []);
+});
+
+test('Дата в будущем: проверка в пластинах и привязка не записываются', () => {
+  let j = journal();
+  j = setBinding(j, 'b6', makeBinding(j, 'b6', BIND).binding);
+  const inp = { date: '2026-10-25', today: '2026-10-23', amount: '100', M: ['12,58'], T: '20', P: '101,325' };
+  assert.ok(platesResult(j, 'b6', inp).errors.some((e) => /25\.10\.2026 — в будущем \(сегодня 23\.10\.2026\)/.test(e)));
+  assert.match(recordPlates(j, { machineId: 'm1', beamId: 'b6', input: inp }).error, /в будущем/);
+  assert.ok(platesResult(j, 'b6', { ...inp, today: '2026-10-25' }).ok, 'сегодняшняя дата — можно');
+  assert.match(makeBinding(j, 'b6', { ...BIND, date: '2026-10-25', today: '2026-10-23' }).error, /в будущем/);
 });

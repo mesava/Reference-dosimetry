@@ -814,13 +814,15 @@ export function initPhotons() {
   $$('#sheet > section .combo').forEach((c) => makeCombo(c));
 
   const draft = loadDraft();
-  writeForm(draft ? draft : sampleData());
+  // без черновика вкладка открывается пустой: пример — только по кнопке «Загрузить пример», чтобы его показания
+  // не попали в журнал вместе с выбранным пучком
+  writeForm(draft ? draft : { ...FORM_DEFAULTS, meta_date: today() });
   localizeDemo(SAMPLE_FORM, SAMPLE_FORM_EN);
   lastBeamFff = parseBeamName($('#meta_beam').value).fff;
   // во вкладке был пучок журнала (страницу перезагрузили): плашка с возвратом прежних данных остаётся
   journalView.load();
   update();
-  if (!draft) setStatus(L('Загружен демонстрационный пример. Нажмите «Очистить», чтобы ввести свои данные.', 'Demo example loaded. Click "Clear" to enter your own data.'));
+  if (!draft) setStatus(L('Введите свои данные или нажмите «Загрузить пример» (раздел «Данные»), чтобы посмотреть расчёт на вымышленных значениях.', 'Enter your own data or click "Load example" (the Data panel) to see the calculation on fictitious values.'));
 
   const sheet = $('#sheet');
   sheet.addEventListener('input', (e) => {

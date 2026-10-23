@@ -4,8 +4,9 @@
 // recordTabBeam). Пучки одного аппарата за день в одном режиме — одна запись журнала.
 import { L } from '../core/i18n.js';
 import { beamKind, machineOf, tabBeamPatch, recordTabBeam, tabRecordOf, tabSessionOf, tabWork, calibrationChecks, tabEquipment, lastCalibration, chamberText, electrometerText, chamberOf, electrometerOf, saveBeamSettings, SESSION_DEFAULTS, CAL_GEO_KEYS, calGeoText, sameCalGeo } from '../core/journal.js';
+import { IMPLAUSIBLE_DEVIATION } from '../core/common.js';
 import { newCheck, withTabChecks, CHECK_REF } from '../core/journal-check.js';
-import { $, esc, richText, currentProtocol, fmt, fmtSigned } from './common.js';
+import { $, esc, richText, currentProtocol, fmt, fmtSigned, today } from './common.js';
 import { refText } from '../core/i18n.js';
 import { secondChambers, checksHtml, setupCheckCells, readChecks, computeChecks, renderCheckResults } from './journal-check-ui.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
@@ -18,6 +19,7 @@ const TAB = { photon: () => L('«МВ фотоны»', 'MV photons'), electron: 
 /**
  * cfg: { kind, module, bind — селектор блока в разделе 1, rec — селектор блока под результатом, read() — форма вкладки,
  * patch(поля) — подставить поля, status(текст) — строка состояния вкладки, demo() — открыт ли демонстрационный пример,
+ * blank() — пустая форма вкладки (как после «Очистить»),
  * check — селектор раздела «Проверка дозиметра второй камерой» (по желанию; записывается вместе с измерением) }.
  */
 function makeTabJournal(cfg) {
@@ -27,6 +29,8 @@ function makeTabJournal(cfg) {
   let lastBind = '';
   let lastRec = '';
   let note = '';
+  // запись с неправдоподобным отклонением ждёт подтверждения: ключ — пучок, дата, режим и отклонение
+  let armed = '';
   // проверки второй камерой пучка журнала: { beamId, list } — черновик, записывается вместе с измерением
   let checks = { beamId: '', list: [] };
   let lastCheck = '';
@@ -112,7 +116,7 @@ function makeTabJournal(cfg) {
     const check = !!form[FIXED[cfg.kind]];
     const date = form[DATE[cfg.kind]];
     const demo = cfg.demo?.();
-    const dry = demo ? null : recordTabBeam(j, { machineId: m.id, beamId: b.id, form, kind: cfg.kind });
+    const dry = demo ? null : recordTabBeam(j, { machineId: m.id, beamId: b.id, form, kind: cfg.kind, today: today() });
     const old = tabRecordOf(j, { machineId: m.id, beamId: b.id, form, kind: cfg.kind });
     const why = demo ? L('Открыт демонстрационный пример: в журнал он не записывается.', 'A demonstration example is open: it is not recorded to the journal.') : dry?.error ?? '';
     // согласие с калибровкой камеры журнала: электрометр, напряжение и полярность калибровки
@@ -129,6 +133,15 @@ function makeTabJournal(cfg) {
       )
       : '';
     // калибровка: k_pol и k_s сравниваются с прошлой калибровкой пучка (изменение k_pol больше 0,2 % — выяснить причину)
+    const dev = dry && !dry.error ? dry.session.beams.find((x) => x.beamId === b.id)?.summary?.deviation : NaN;
+    const big = Math.abs(dev) > IMPLAUSIBLE_DEVIATION;
+    const isArmed = big && armed === armKey(b, form, dev);
+    const bigWarn = big
+      ? L(
+        `Отклонение от номинала ${fmtSigned(dev, 1)} % — больше ${IMPLAUSIBLE_DEVIATION} %: почти наверняка ошибка ввода (число МЕ, глубина номинала, камера и N_D,w). В журнал такая запись попадает только после подтверждения.`,
+        `The deviation from the nominal is ${fmtSigned(dev, 1)}%, above ${IMPLAUSIBLE_DEVIATION}%: almost certainly an input error (number of MU, depth of the nominal, chamber and N_D,w). Such a record goes to the journal only after confirmation.`,
+      )
+      : '';
     const sum = !check && dry && !dry.error ? dry.session.beams.find((x) => x.beamId === b.id)?.summary : null;
     const prev = sum && Number.isFinite(sum.kpolRaw) && Number.isFinite(sum.ksRaw) ? lastCalibration(j, b.id, { before: String(date || ''), exceptId: tabSessionOf(j, { machineId: m.id, form, kind: cfg.kind })?.id || '' }) : null;
     let prevHtml = '';
@@ -145,10 +158,10 @@ function makeTabJournal(cfg) {
     const html = `<h2>${esc(L('Журнал', 'Journal'))}</h2>
       <p>${richText(`${m.name || '—'} — ${b.name || '—'} · ${check ? L('проверка выхода', 'output check') : L('калибровка', 'calibration')} · ${fmtDate(date)}`)}</p>
       ${old ? `<p class="sub-hint">${esc(L('Этот пучок за эту дату в этом режиме уже есть в журнале: запись будет заменена.', 'This beam for this date and mode is already in the journal: the record will be replaced.'))}</p>` : ''}
-      ${why ? `<p class="jlink-st warn">${richText(why)}</p>` : ''}${warn ? `<p class="jlink-st warn">${richText(warn)}</p>` : ''}${geoWarn ? `<p class="jlink-st warn">${richText(geoWarn)}</p>` : ''}
+      ${why ? `<p class="jlink-st warn">${richText(why)}</p>` : ''}${warn ? `<p class="jlink-st warn">${richText(warn)}</p>` : ''}${geoWarn ? `<p class="jlink-st warn">${richText(geoWarn)}</p>` : ''}${bigWarn ? `<p class="jlink-st warn">${richText(bigWarn)}</p>` : ''}
       ${prevHtml}
       ${cal.length ? `<ul class="messages jrec-cal">${cal.map((n) => `<li class="${n.level}"><span>${richText(n.text)}</span></li>`).join('')}</ul>` : ''}
-      <div class="actions"><button type="button" class="primary" data-jr="record"${why ? ' disabled' : ''}>${esc(old ? L('Заменить запись в журнале', 'Replace the journal record') : L('Записать в журнал', 'Record to journal'))}</button><button type="button" data-jr="settings" title="${esc(L('Геометрия, напряжения, МЕ, пересчёт на d_max, номинал, способ k_Q и т. п. — значения по умолчанию для этого пучка', 'Geometry, voltages, MU, transfer to d_max, nominal, k_Q method, etc.: the defaults for this beam'))}">${esc(L('Сохранить настройки пучка в журнал', 'Save the beam settings to the journal'))}</button><button type="button" data-jr="unbind">${esc(L('Отвязать пучок', 'Unlink the beam'))}</button></div>`;
+      <div class="actions"><button type="button" class="primary" data-jr="record"${why ? ' disabled' : ''}>${esc(isArmed ? L(`Подтвердить запись: ${fmtSigned(dev, 1)} % от номинала`, `Confirm the record: ${fmtSigned(dev, 1)}% from the nominal`) : old ? L('Заменить запись в журнале', 'Replace the journal record') : L('Записать в журнал', 'Record to journal'))}</button><button type="button" data-jr="settings" title="${esc(L('Геометрия, напряжения, МЕ, пересчёт на d_max, номинал, способ k_Q и т. п. — значения по умолчанию для этого пучка', 'Geometry, voltages, MU, transfer to d_max, nominal, k_Q method, etc.: the defaults for this beam'))}">${esc(L('Сохранить настройки пучка в журнал', 'Save the beam settings to the journal'))}</button><button type="button" data-jr="unbind">${esc(L('Отвязать пучок', 'Unlink the beam'))}</button></div>`;
     el.hidden = false;
     if (html !== lastRec) {
       lastRec = html;
@@ -222,15 +235,27 @@ function makeTabJournal(cfg) {
     renderCheck();
   }
 
+  /**
+   * Во вкладке открыт демонстрационный пример — очистить её (extra — поля поверх пустой формы): показания, условия и
+   * примечания примера не должны попасть в журнал вместе с пучком. true — очищено.
+   */
+  function undemo(extra = {}) {
+    if (!cfg.demo?.() || !cfg.blank) return false;
+    cfg.patch({ ...cfg.blank(), ...extra });
+    return true;
+  }
+
   /** Подставить пучок журнала во вкладку. only — только эти поля (например, при включении «Проверки выхода»). */
-  function apply(only = null) {
+  function apply(only = null, cleared = false) {
     const j = getJournal();
     const { m, b } = current(j);
     if (!b) return;
+    if (!only && undemo()) cleared = true;
     const r = tabBeamPatch(j, m.id, b.id, cfg.read());
     if (!r) return;
     const patch = only ? Object.fromEntries(Object.entries(r.patch).filter(([k]) => only.includes(k))) : r.patch;
     cfg.patch(patch);
+    const demoText = cleared ? L(' Данные демонстрационного примера очищены: введите свои показания и условия.', ' The demonstration example data have been cleared: enter your own readings and conditions.') : '';
     const ch = chamberOf(j, r.chamberId);
     const el = electrometerOf(j, r.electrometerId);
     note = ch ? '' : L('В журнале нет камеры, годной для этих пучков: камера вкладки не изменена — добавьте камеру в «Оборудовании».', 'The journal has no chamber suitable for these beams: the tab chamber was not changed; add a chamber in Equipment.');
@@ -238,14 +263,17 @@ function makeTabJournal(cfg) {
       only
         ? L(`Подставлены k_pol и k_s (и качество пучка) из последней калибровки «${b.name}» в журнале${r.last ? ` (${fmtDate(r.last.date)})` : ': калибровок нет, введите их'}.`, `k_pol and k_s (and the beam quality) taken from the last calibration of "${b.name}" in the journal${r.last ? ` (${fmtDate(r.last.date)})` : ': there are none, enter them'}.`)
         : L(
-          `Подставлен пучок журнала «${m.name} — ${b.name}»: настройки пучка${ch ? `, камера ${chamberText(ch)}` : ''}${el ? `, электрометр ${electrometerText(el)}` : ''}. Подсвечены изменённые поля; показания и условия не тронуты.`,
-          `Journal beam "${m.name} — ${b.name}" filled in: the beam settings${ch ? `, chamber ${chamberText(ch)}` : ''}${el ? `, electrometer ${electrometerText(el)}` : ''}. The changed fields are highlighted; readings and conditions are untouched.`,
+          `Подставлен пучок журнала «${m.name} — ${b.name}»: настройки пучка${ch ? `, камера ${chamberText(ch)}` : ''}${el ? `, электрометр ${electrometerText(el)}` : ''}. Подсвечены изменённые поля${cleared ? '' : '; показания и условия не тронуты'}.${demoText}`,
+          `Journal beam "${m.name} — ${b.name}" filled in: the beam settings${ch ? `, chamber ${chamberText(ch)}` : ''}${el ? `, electrometer ${electrometerText(el)}` : ''}. The changed fields are highlighted${cleared ? '' : '; readings and conditions are untouched'}.${demoText}`,
         ),
     );
     render();
   }
 
-  /** Записать измерение вкладки в журнал; true — записано. */
+  /** Ключ подтверждения записи: тот же пучок, дата, режим и отклонение. */
+  const armKey = (b, form, dev) => [b.id, form[DATE[cfg.kind]], !!form[FIXED[cfg.kind]], fmt(dev, 2)].join('|');
+
+  /** Записать измерение вкладки в журнал; true — записано. Неправдоподобное отклонение — сначала подтверждение. */
   function record() {
     const j = getJournal();
     const { m, b } = current(j);
@@ -253,8 +281,21 @@ function makeTabJournal(cfg) {
     let res = null;
     let chk = null;
     const form = cfg.read();
+    const dry = recordTabBeam(j, { machineId: m.id, beamId: b.id, form, kind: cfg.kind, today: today() });
+    const dev = dry.error ? NaN : dry.session.beams.find((x) => x.beamId === b.id)?.summary?.deviation;
+    if (Math.abs(dev) > IMPLAUSIBLE_DEVIATION && armed !== armKey(b, form, dev)) {
+      armed = armKey(b, form, dev);
+      cfg.status(L(
+        `Не записано: отклонение от номинала ${fmtSigned(dev, 1)} % — больше ${IMPLAUSIBLE_DEVIATION} %. Проверьте число МЕ, глубину номинала, камеру и N_D,w; если всё верно, нажмите кнопку записи ещё раз.`,
+        `Not recorded: the deviation from the nominal is ${fmtSigned(dev, 1)}%, above ${IMPLAUSIBLE_DEVIATION}%. Check the number of MU, the depth of the nominal, the chamber and N_D,w; if everything is correct, click the record button again.`,
+      ));
+      lastRec = '';
+      render();
+      return false;
+    }
+    armed = '';
     updateJournal((jj) => {
-      res = recordTabBeam(jj, { machineId: m.id, beamId: b.id, form, kind: cfg.kind });
+      res = recordTabBeam(jj, { machineId: m.id, beamId: b.id, form, kind: cfg.kind, today: today() });
       if (res.error) return jj;
       // проверки второй камерой этого пучка — в ту же запись (заменяют прежние проверки пучка в ней)
       const list = checkList().filter((c) => (c.M || []).some((x) => String(x ?? '').trim()));
@@ -408,9 +449,11 @@ function makeTabJournal(cfg) {
     bind = { machineId, beamId };
     persist();
     note = '';
-    cfg.patch({ [DATE[cfg.kind]]: date, [FIXED[cfg.kind]]: check });
+    const extra = { [DATE[cfg.kind]]: date, [FIXED[cfg.kind]]: check };
+    const cleared = undemo(extra);
+    if (!cleared) cfg.patch(extra);
     lastFixed = check;
-    apply();
+    apply(null, cleared);
   }
 
   return { init, render, select, record, bound: () => ({ ...bind }) };

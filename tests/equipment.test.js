@@ -1,7 +1,8 @@
 // Оборудование журнала: подразделение, список электрометров, длина полости камеры, сведения о калибровке камеры.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeJournal, newJournal, orgText, certText, calibrationChecks, withChamberLength, beamForm, computeSessionBeam, applyTabFormToBeam, SESSION_DEFAULTS, sessionEquipDefaults } from '../src/core/journal.js';
+import { normalizeJournal, newJournal, orgText, certText, calibrationChecks, withChamberLength, beamForm, computeSessionBeam, applyTabFormToBeam, SESSION_DEFAULTS, sessionEquipDefaults, chamberPreferred, equipmentNoDue, futureDateError, recordTabBeam } from '../src/core/journal.js';
+import { SAMPLE_FORM } from '../src/core/sample.js';
 import { parseElectrometer, ELECTROMETERS, electrometerName } from '../src/core/electrometers.js';
 
 const base = () => {
@@ -107,4 +108,36 @@ test('Сеанс: напряжения, полярность, МЕ и геоме
   assert.equal(over.el_model, 'IBA Dose 1', 'электрометр — выбранный в сеансе');
   // пустое значение в сеансе — из настроек пучка
   assert.equal(beamForm(j, s, j.machines[0], b, { rd_V1: '' }).form.rd_V1, '300');
+});
+
+test('Камера пучка по умолчанию: которой мерили этот пучок; иначе подходящая виду пучка (электроны — плоскопараллельная)', () => {
+  const j = base();
+  j.machines[0].beams[0].chamberId = '';
+  j.machines[0].beams.push({ id: 'b2', kind: 'electron', name: '12 МэВ', active: true, form: {} });
+  j.chambers.push({ id: 'c2', form: { ch_model: 'ROOS', ch_serial: '2', ch_ndw: '0,0815', ch_ndw_unit: 'Gy/nC' } });
+  assert.equal(chamberPreferred(j.chambers[0].form, 'electron'), false);
+  assert.equal(chamberPreferred(j.chambers[1].form, 'electron'), true);
+  assert.equal(chamberPreferred(j.chambers[0].form, 'photon'), true);
+  assert.equal(chamberPreferred({ ch_model: 'OTHER', e_other_type: 'pp' }, 'electron'), true);
+  // без записей: для электронов — Roos, хотя Farmer первый в списке и годится; для фотонов — Farmer
+  assert.equal(sessionEquipDefaults(j, 'm1', 'electron', 'b2').chamberId, 'c2');
+  assert.equal(sessionEquipDefaults(j, 'm1', 'photon', 'b1').chamberId, 'c1');
+  // пучок мерили Farmer'ом — он и предлагается
+  j.sessions = [{ id: 's1', machineId: 'm1', date: '2026-10-01', beams: [{ beamId: 'b2', kind: 'electron', chamberId: 'c1', electrometerId: 'e2' }] }];
+  assert.deepEqual(sessionEquipDefaults(j, 'm1', 'electron', 'b2'), { chamberId: 'c1', electrometerId: 'e2' });
+});
+
+test('Сроки калибровки не заданы — камеры и электрометры перечисляются', () => {
+  const j = base();
+  j.electrometers[0].dueDate = '2027-03-01';
+  assert.deepEqual(equipmentNoDue(j).map((x) => x.id), ['c1', 'e2']);
+});
+
+test('Дата в будущем: измерение вкладки в журнал не записывается', () => {
+  assert.equal(futureDateError('2026-10-23', '2026-10-23'), '');
+  assert.match(futureDateError('2026-10-24', '2026-10-23'), /24\.10\.2026 — в будущем \(сегодня 23\.10\.2026\)/);
+  const j = base();
+  const rec = (date, today) => recordTabBeam(j, { machineId: 'm1', beamId: 'b1', form: { ...SAMPLE_FORM, meta_date: date }, kind: 'photon', today });
+  assert.match(rec('2026-10-24', '2026-10-23').error, /в будущем/);
+  assert.ok(!rec('2026-10-23', '2026-10-23').error);
 });

@@ -2,7 +2,7 @@
 // проверка выхода с k_pol и k_s из записанной калибровки.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer, launch, openPage } from './helpers.js';
+import { startServer, launch, openPage, fillPhotonReadings } from './helpers.js';
 
 let server;
 let browser;
@@ -62,6 +62,10 @@ test('вкладка «МВ фотоны»: пучок журнала, запи�
   assert.equal(await page.inputValue('#ch_serial'), '47364', 'камера журнала подставлена');
   assert.equal(await page.inputValue('#meta_beam'), '6 МВ');
   assert.match(await page.inputValue('#meta_institution'), /ООО Пример/);
+  // данные примера очищены: показания и условия — свои
+  assert.match(await page.locator('#status').innerText(), /Данные демонстрационного примера очищены/);
+  assert.equal(await page.inputValue('#meta_notes'), '');
+  await fillPhotonReadings(page);
   // качество пучка при калибровке измеряют: вводим и дату
   await page.fill('#meta_date', '2026-10-19');
   await page.fill('#qtrs_v20', '39,16');
