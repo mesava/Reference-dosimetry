@@ -73,6 +73,8 @@ test('в пластинах: привязка к калибровке в вод�
   const res = await root.locator('#plc-result').innerText();
   assert.match(res, /M\s*pl\s*\/\s*M\s*pl,0\s*=\s*1,0215/);
   assert.match(res, /0,8213 сГр\/МЕ/);
+  // точка — как у калибровки в воде (здесь номинал на d_max; при калибровке на z_ref — z_ref)
+  assert.match(res, /на глубине номинала калибровки \(dmax\)/);
   assert.match(res, /\+2,66 % от номинала/);
   assert.match(res, /вне допуска[\s\S]*проверьте выход в воде/);
   await root.locator('[data-pl=record]').click();

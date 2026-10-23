@@ -262,7 +262,7 @@ function live() {
       `M_pl / M_pl,0 = ${fmt(res.ratio, 4)} (${fmtSigned(res.devFromCal, 2)} % ${L('от калибровки', 'from the calibration')})`,
       c.kind === 'cobalt' ? L(`распад от привязки: ${fmt(res.decay, 4)}`, `decay since the binding: ${fmt(res.decay, 4)}`) : '',
     ].filter(Boolean);
-    out.innerHTML = `<div class="plates-dose"><span>${sub(c.kind === 'cobalt' ? L(`Мощность дозы в воде (${at}), по пластинам`, `Dose rate in water (${at}), from plates`) : L(`Доза в воде на 1 МЕ (${at}), по пластинам`, `Dose in water per MU (${at}), from plates`))}</span>
+    out.innerHTML = `<div class="plates-dose"><span>${sub(c.kind === 'cobalt' ? L(`Мощность дозы в воде на глубине номинала калибровки (${at}), по пластинам`, `Dose rate in water at the depth of the calibration nominal (${at}), from plates`) : L(`Доза в воде на 1 МЕ на глубине номинала калибровки (${at}), по пластинам`, `Dose in water per MU at the depth of the calibration nominal (${at}), from plates`))}</span>
         <b>${esc(fmt(res.value, c.kind === 'cobalt' ? 2 : 4))} ${esc(valueUnit(c.kind))}</b>
         <span class="chip ${cls}">${esc(fmtSigned(res.deviation, 2))} % ${esc(c.kind === 'cobalt' ? L('от ожидаемой', 'from expected') : L('от номинала', 'from nominal'))}${Number.isFinite(res.tol) ? ` · ${esc(L('допуск', 'tolerance'))} ±${esc(fmt(res.tol, 1))} %` : ''}</span></div>
       <p class="sub-hint">${lines.map(sub).join('; ')}.</p>
