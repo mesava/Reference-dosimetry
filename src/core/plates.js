@@ -5,13 +5,17 @@
 // Поэтому калибровки в пластинах нет: выход считается относительно калибровки этого пучка в воде, к которой привязан
 // набор пластин. Сразу после калибровки в воде (тот же дозиметр, та же установка) снимают показание в пластинах M_pl,0;
 // при проверке D = D_кал · M_pl / M_pl,0. Показания приводятся к одним T и P (k_TP, TRS-398 Rev.1, ур. 10); k_elec, k_pol и
-// k_s одного дозиметра в одном пучке в отношении сокращаются, k_Q и h_pl не нужны.
+// k_s одного дозиметра в одном пучке в отношении сокращаются, k_Q и h_pl не нужны. Если k_s и k_pol в пластинах перемеряли,
+// их можно ввести: показание умножается на (k_s · k_pol) / (k_s,кал · k_pol,кал).
+// Справочно показывается и «доза в пластинах без перевода в воду»: то же показание, посчитанное по формуле для воды
+// (TRS-398 Rev.1, ур. 4 и 9: D = M_Q · N_D,w · k_Q с поправками калибровки в воде), — доза в точке камеры в пластинах, как её
+// считают в рабочих таблицах отделений, — и отношение показаний в пластинах и в воде (разд. 4.2.3).
 import { L } from './i18n.js';
 import { parseNumber, parseCells, isBlank, pressureToKPa } from './units.js';
 import { temperaturePressure } from './common.js';
 import { TRS_ABS0 } from './trs398.js';
 import { decayFactor } from './cobalt.js';
-import { beamOf, beamKind, machineOf, lastCalibration, dayNumber, uid, sessionEquipDefaults, futureDateError } from './journal.js';
+import { beamOf, beamKind, beamKeys, machineOf, lastCalibration, dayNumber, uid, sessionEquipDefaults, futureDateError, computeStored } from './journal.js';
 
 /**
  * Пластики: коэффициент пересчёта глубины c_pl, коэффициент пересчёта флюенса h_pl и номинальная плотность ρ_pl.
@@ -38,9 +42,9 @@ export function waterDepth(depthCm, rho, cpl) {
 }
 
 /** Набор пластин и показание привязки (вводятся в «В пластинах», хранятся у пучка журнала: beam.plates). */
-export const BINDING_DEFAULTS = { material: 'whiteps', materialName: '', rho: '', depth: '', below: '', notes: '', date: '', calSessionId: '', amount: '', M: ['', '', ''], T: '', P: '', P_unit: 'kPa' };
-/** Измерение в пластинах (форма проверки). */
-export const CHECK_DEFAULTS = { date: '', staff: '', amount: '', M: ['', '', ''], T: '', P: '', P_unit: 'kPa', notes: '' };
+export const BINDING_DEFAULTS = { material: 'whiteps', materialName: '', rho: '', depth: '', below: '', notes: '', date: '', calSessionId: '', amount: '', M: ['', '', ''], T: '', P: '', P_unit: 'kPa', ks: '', kpol: '' };
+/** Измерение в пластинах (форма проверки). k_s и k_pol — если их перемеряли в пластинах; пусто — как при привязке. */
+export const CHECK_DEFAULTS = { date: '', staff: '', amount: '', M: ['', '', ''], T: '', P: '', P_unit: 'kPa', ks: '', kpol: '', notes: '' };
 
 /** Единица облучения: МЕ у ускорителя, минуты у ⁶⁰Co. */
 export const amountUnit = (kind) => (kind === 'cobalt' ? 'min' : 'MU');
@@ -65,6 +69,63 @@ export function correctedReading({ M, amount, T, P, P_unit = 'kPa' }, { tauMin =
   const kTP = temperaturePressure({ T: t, P: pressureToKPa(p, P_unit), T0: 20, P0: 101.325, abs0: TRS_ABS0 });
   const tau = kind === 'cobalt' && Number.isFinite(tauMin) ? tauMin : 0;
   return { mean: Math.abs(r.mean), n: r.n, relSd: r.relSd, kTP, perUnit: (Math.abs(r.mean) * kTP) / (a + tau), errors };
+}
+
+/**
+ * Показание в воде из калибровки (sessionId) пучка, приведённое так же, как M_pl,0: M_w = |M| · k_TP / МЕ (у ⁶⁰Co — на
+ * t + τ), k_TP к 20 °C и 101,325 кПа; M — серия, по которой посчитан итог калибровки (после подстройки, контрольные
+ * измерения или M₁). F = D_w(z_ref) / M_w — доза в сГр на (нКл · k_TP) с поправками калибровки (k_elec, k_pol, k_s, k_vol,
+ * k_Q, N_D,w): по нему показание в пластинах пересчитывается в дозу по формуле для воды. ks, kpol — калибровки (у TG-51 —
+ * P_ion, P_pol). Возвращает { Mw, F, valueRef, ks, kpol } или null (калибровку не пересчитать).
+ */
+export function waterReading(j, sessionId, beamId) {
+  const s = j.sessions.find((x) => x.id === sessionId);
+  const e = s?.beams.find((x) => x.beamId === beamId && x.include !== false);
+  const found = beamOf(j, beamId);
+  if (!e?.form || !e.summary?.ok || !found) return null;
+  const kind = beamKind(found.beam);
+  const k = beamKeys(kind);
+  let r;
+  try {
+    r = computeStored(e.form, kind);
+  } catch {
+    return null;
+  }
+  const tg = r?.protocol === 'tg51';
+  const x = tg ? r.tg51 : r?.trs;
+  if (!x || x.blocked) return null;
+  const src = e.summary.source;
+  const p = src === 'recal' ? x.recal : src === 'ctrl' ? x.ctrl : x;
+  const key = src === 'recal' ? k.recal : src === 'ctrl' ? k.ctrl : k.M1;
+  if (!p || !key) return null;
+  const units = kind === 'cobalt' ? p.D / p.rateGy : p.units;
+  const valueRef = kind === 'cobalt' ? p.rate : p.DperMU;
+  const m = parseCells(e.form[key]);
+  const T = parseNumber(e.form[k.T]);
+  const P = parseNumber(e.form[k.P]);
+  if (m.error || !m.n || !(units > 0) || !Number.isFinite(T) || !(P > 0) || !(valueRef > 0)) return null;
+  const kTP = temperaturePressure({ T, P: pressureToKPa(P, e.form[k.PUnit] || 'kPa'), T0: 20, P0: 101.325, abs0: TRS_ABS0 });
+  const Mw = (Math.abs(m.mean) * kTP) / units;
+  const ks = tg ? x.Pion : x.ks;
+  const kpol = tg ? x.Ppol : x.kpol;
+  return { Mw, F: valueRef / Mw, valueRef, ks, kpol };
+}
+
+/**
+ * k_s и k_pol, перемеренные в пластинах (пусто — как при калибровке): множитель к показанию (k_s · k_pol) / (k_s,кал · k_pol,кал).
+ * Возвращает { factor, errors }.
+ */
+export function kspolFactor({ ks, kpol }, cal) {
+  const errors = [];
+  let factor = 1;
+  for (const [v, c, name] of [[ks, cal?.ks, 'k_s'], [kpol, cal?.kpol, 'k_pol']]) {
+    if (isBlank(v)) continue;
+    const x = parseNumber(v);
+    if (!(x >= 0.9 && x <= 1.1)) errors.push(L(`${name} в пластинах: введите число от 0,9 до 1,1 или оставьте пустым.`, `${name} in plates: enter a number from 0.9 to 1.1 or leave it blank.`));
+    else if (!(c > 0)) errors.push(L(`${name} калибровки в воде неизвестен: ${name} в пластинах учесть нельзя, оставьте поле пустым.`, `${name} of the calibration in water is unknown: ${name} in plates cannot be applied, leave the field blank.`));
+    else factor *= x / c;
+  }
+  return { factor, errors };
 }
 
 /** Калибровки пучка в воде, к которым можно привязать пластины (новые первыми): { sessionId, date, summary }. */
@@ -101,6 +162,13 @@ export function makeBinding(j, beamId, input) {
   const tauMin = kind === 'cobalt' ? cal.summary.tauMin : 0;
   const r = correctedReading(f, { tauMin, kind });
   if (r.errors.length) return { error: r.errors.join(' ') };
+  const wr = waterReading(j, cal.sessionId, beamId);
+  const kf = kspolFactor(f, wr);
+  if (kf.errors.length) return { error: kf.errors.join(' ') };
+  // доза в пластинах без перевода в воду и отношение пластины/вода (у ⁶⁰Co — с поправкой на распад от калибровки до привязки)
+  const decayToBind = kind === 'cobalt' ? decayFactor(cal.date, f.date).factor ?? 1 : 1;
+  const Dpl0 = wr ? wr.F * r.perUnit * kf.factor : NaN;
+  const plw = wr ? (r.perUnit * kf.factor) / (wr.Mw * decayToBind) : NaN;
   const eq = sessionEquipDefaults(j, found.machine.id, kind, beamId);
   return {
     binding: {
@@ -118,6 +186,15 @@ export function makeBinding(j, beamId, input) {
       P_unit: f.P_unit || 'kPa',
       M0: r.perUnit,
       kTP0: r.kTP,
+      ks: String(f.ks ?? ''),
+      kpol: String(f.kpol ?? ''),
+      f0: kf.factor,
+      ksCal: wr?.ks ?? NaN,
+      kpolCal: wr?.kpol ?? NaN,
+      Fpl: wr?.F ?? NaN,
+      Mw: wr?.Mw ?? NaN,
+      Dpl0,
+      plw,
       calSessionId: cal.sessionId,
       calDate: cal.date,
       calProtocol: cal.protocol,
@@ -140,13 +217,15 @@ export const bindingOf = (j, beamId) => beamOf(j, beamId)?.beam.plates ?? null;
  * Проверка выхода в пластинах: input — CHECK_DEFAULTS, binding — привязка пучка.
  * Ускоритель: D = D_кал · M_pl / M_pl,0 (Гр на 100 МЕ в точке номинала калибровки), отклонение — от номинала калибровки
  * (если номинал не задан — от D_кал). ⁶⁰Co: мощность дозы, отклонение — от ожидаемой по распаду от даты привязки.
- * Возвращает { ok, errors, warnings, kind, kTP, perUnit, ratio, value, deviation, devFromCal, decay, tol, status, at }.
+ * Справочно: Dpl — доза в пластинах без перевода в воду (сГр/МЕ, у ⁶⁰Co — сГр/мин), Dpl0 — она же при привязке, plw —
+ * отношение показаний пластины/вода при привязке.
+ * Возвращает { ok, errors, warnings, kind, kTP, perUnit, ratio, value, deviation, devFromCal, decay, Dpl, Dpl0, plw, tol, status, at }.
  */
 export function platesResult(j, beamId, input, binding = bindingOf(j, beamId)) {
   const found = beamOf(j, beamId);
   const kind = beamKind(found?.beam);
   const f = { ...CHECK_DEFAULTS, ...input };
-  const out = { ok: false, errors: [], warnings: [], kind, kTP: NaN, perUnit: NaN, ratio: NaN, value: NaN, deviation: NaN, devFromCal: NaN, decay: NaN, tol: binding?.tol ?? NaN, status: 'error', at: binding?.calAt ?? '' };
+  const out = { ok: false, errors: [], warnings: [], kind, kTP: NaN, perUnit: NaN, ratio: NaN, value: NaN, deviation: NaN, devFromCal: NaN, decay: NaN, Dpl: NaN, Dpl0: NaN, plw: NaN, tol: binding?.tol ?? NaN, status: 'error', at: binding?.calAt ?? '' };
   if (!found) {
     out.errors.push(L('Пучок не найден в журнале.', 'The beam was not found in the journal.'));
     return out;
@@ -162,8 +241,19 @@ export function platesResult(j, beamId, input, binding = bindingOf(j, beamId)) {
   out.errors.push(...r.errors);
   out.kTP = r.kTP;
   out.perUnit = r.perUnit;
+  // привязки до 0.33.0 не хранят показание в воде: оно берётся из калибровки
+  const wr = Number.isFinite(binding.Fpl) ? { F: binding.Fpl, Mw: binding.Mw, ks: binding.ksCal, kpol: binding.kpolCal } : waterReading(j, binding.calSessionId, beamId);
+  // k_s и k_pol не перемеряли — как при привязке
+  const kf = kspolFactor({ ks: isBlank(f.ks) ? binding.ks : f.ks, kpol: isBlank(f.kpol) ? binding.kpol : f.kpol }, wr);
+  out.errors.push(...kf.errors);
   if (out.errors.length) return out;
-  out.ratio = r.perUnit / binding.M0;
+  const f0 = Number.isFinite(binding.f0) ? binding.f0 : 1;
+  out.ratio = (r.perUnit * kf.factor) / (binding.M0 * f0);
+  if (wr && Number.isFinite(wr.F)) {
+    out.Dpl = wr.F * r.perUnit * kf.factor;
+    out.Dpl0 = wr.F * binding.M0 * f0;
+    out.plw = Number.isFinite(binding.plw) ? binding.plw : (binding.M0 * f0) / (wr.Mw * (kind === 'cobalt' ? decayFactor(binding.calDate, binding.date).factor ?? 1 : 1));
+  }
   out.devFromCal = (out.ratio - 1) * 100;
   if (kind === 'cobalt') {
     // ⁶⁰Co: отношение включает распад от привязки до измерения; ожидаемое отношение — множитель распада
@@ -220,8 +310,10 @@ export function recordPlates(j, { machineId, beamId, input }) {
     P: String(f.P),
     P_unit: f.P_unit || 'kPa',
     notes: String(f.notes ?? ''),
-    binding: { date: binding.date, calDate: binding.calDate, calValue: binding.calValue, M0: binding.M0, material: binding.material, materialName: binding.materialName, rho: binding.rho, depth: binding.depth, chamberId: binding.chamberId, electrometerId: binding.electrometerId },
-    summary: { value: res.value, ratio: res.ratio, deviation: res.deviation, devFromCal: res.devFromCal, decay: res.decay, tol: res.tol, status: res.status, at: res.at, kTP: res.kTP, perUnit: res.perUnit },
+    binding: { date: binding.date, calDate: binding.calDate, calValue: binding.calValue, M0: binding.M0, f0: binding.f0, material: binding.material, materialName: binding.materialName, rho: binding.rho, depth: binding.depth, chamberId: binding.chamberId, electrometerId: binding.electrometerId },
+    ks: String(f.ks ?? ''),
+    kpol: String(f.kpol ?? ''),
+    summary: { value: res.value, ratio: res.ratio, deviation: res.deviation, devFromCal: res.devFromCal, decay: res.decay, tol: res.tol, status: res.status, at: res.at, kTP: res.kTP, perUnit: res.perUnit, Dpl: res.Dpl, Dpl0: res.Dpl0, plw: res.plw },
     saved: new Date().toISOString(),
   };
   const plateChecks = (j.plateChecks || []).filter((x) => x.id !== record.id).concat([record]).sort((a, b) => String(a.date).localeCompare(String(b.date)));

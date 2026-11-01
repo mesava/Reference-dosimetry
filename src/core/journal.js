@@ -600,6 +600,11 @@ const KINDS = {
 const kindOf = (kind) => KINDS[kind] ?? KINDS.photon;
 /** Имена полей сеанса для пучка данного вида: показания, проверка выхода, качество пучка, ошибка таймера (⁶⁰Co). */
 export const beamKeys = (kind) => ({ ...kindOf(kind).k, quality: kindOf(kind).qualityKeys, timer: kindOf(kind).timerKeys ?? [] });
+/** Пересчитать пучок записи журнала по сохранённой форме (form записи сеанса или вкладки). */
+export function computeStored(form, kind = 'photon') {
+  const K = kindOf(kind);
+  return K.compute(K.normalize({ ...K.defaults, ...form }));
+}
 /** Вид пучка по записи ('photon' | 'electron' | 'cobalt'). */
 export const beamKind = (beam) => (beam?.kind === 'electron' || beam?.kind === 'cobalt' ? beam.kind : 'photon');
 

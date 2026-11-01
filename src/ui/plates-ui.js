@@ -7,7 +7,7 @@ import { PRESSURE_UNITS, unitLabel, parseNumber } from '../core/units.js';
 import { machineOf, beamKind, chamberOf, electrometerOf, chamberText, electrometerText } from '../core/journal.js';
 import {
   PLASTICS, plasticOf, plasticName, waterDepth, BINDING_DEFAULTS, CHECK_DEFAULTS, amountUnit, correctedReading,
-  waterCalibrations, makeBinding, bindingOf, platesResult, recordPlates, setBinding, platesPoints,
+  waterCalibrations, makeBinding, bindingOf, platesResult, recordPlates, setBinding, platesPoints, waterReading, kspolFactor,
 } from '../core/plates.js';
 import { $, esc, fmt, fmtSigned, richText, today, armButton } from './common.js';
 import { renderCells, readCells, setupCells } from './widgets.js';
@@ -63,6 +63,11 @@ const valueUnit = (kind) => (kind === 'cobalt' ? L('сГр/мин', 'cGy/min') :
 const amountLabel = (kind) => (kind === 'cobalt' ? L('Время облучения, мин', 'Irradiation time, min') : L('Число МЕ', 'Number of MU'));
 const protoText = (p) => (p === 'tg51' ? 'TG-51' : 'TRS-398 Rev.1');
 const sub = (s) => richText(s);
+// k_s, k_pol калибровки — подсказка в поле «перемерили в пластинах»
+const kHint = (v) => (Number.isFinite(v) ? fmt(v, 4) : '');
+/** Справка: доза в пластинах без перевода в воду (по формуле для воды) — та же величина, что в рабочих таблицах отделений. */
+const dplText = (kind, v) => L(`доза в пластинах без перевода в воду (по формуле для воды): ${fmt(v, kind === 'cobalt' ? 2 : 4)} ${kind === 'cobalt' ? 'сГр/мин' : 'сГр/МЕ'}`, `dose in plates without conversion to water (by the water formula): ${fmt(v, kind === 'cobalt' ? 2 : 4)} ${kind === 'cobalt' ? 'cGy/min' : 'cGy/MU'}`);
+const plwText = (v) => L(`отношение показаний пластины/вода ${fmt(v, 4)}`, `plates/water reading ratio ${fmt(v, 4)}`);
 
 // ------------------------------------------------------------ разметка
 function bannerHtml() {
@@ -97,6 +102,8 @@ function bindingSummaryHtml(j, c, b) {
     [L('Дозиметр', 'Dosimeter'), [ch ? chamberText(ch) : '', el ? electrometerText(el) : ''].filter(Boolean).join('; ') || '—'],
     ['M_pl,0', `${fmt(b.M0, 5)} ${c.kind === 'cobalt' ? L('нКл/мин', 'nC/min') : L('нКл/МЕ', 'nC/MU')} (k_TP = ${fmt(b.kTP0, 4)})`],
   ];
+  if (b.ks || b.kpol) rows.push([L('Перемерены в пластинах', 'Remeasured in plates'), [b.ks ? `k_s = ${b.ks}` : '', b.kpol ? `k_pol = ${b.kpol}` : ''].filter(Boolean).join(', ')]);
+  if (Number.isFinite(b.Dpl0)) rows.push([L('Доза в пластинах без перевода в воду', 'Dose in plates without conversion to water'), `${fmt(b.Dpl0, c.kind === 'cobalt' ? 2 : 4)} ${valueUnit(c.kind)} · ${plwText(b.plw)}`]);
   return `<table class="factors plates-sum"><tbody>${rows.map(([k, v]) => `<tr><th>${sub(k)}</th><td>${sub(v)}</td></tr>`).join('')}</tbody></table>
     ${b.notes ? `<p class="start-note">${esc(b.notes)}</p>` : ''}
     <div class="actions"><button type="button" data-pl="rebind">${esc(L('Новая привязка', 'New binding'))}</button></div>`;
@@ -132,11 +139,19 @@ function bindingFormHtml(j, c, cals) {
       <div class="field"><label for="plb_amount">${esc(amountLabel(c.kind))}</label><input type="text" class="num" inputmode="decimal" id="plb_amount" data-b="amount" value="${esc(f.amount)}"></div>
       <div class="field"><label for="plb_T">${esc(L('Температура в пластинах, °C', 'Temperature in the plates, °C'))}</label><input type="text" class="num" inputmode="decimal" id="plb_T" data-b="T" value="${esc(f.T)}"></div>
       <div class="field"><label for="plb_P">${esc(L('Давление', 'Pressure'))}</label><div class="inline"><input type="text" class="num" inputmode="decimal" id="plb_P" data-b="P" value="${esc(f.P)}"><select id="plb_P_unit" data-b="P_unit" aria-label="${esc(L('Единица давления', 'Pressure unit'))}">${unitOpts(f.P_unit)}</select></div></div>
+      ${kspolFieldsHtml('plb', 'data-b', f, waterReading(j, calId, c.beam.id))}
     </div>
     <div class="series">${cellsHtml('plb-M', L('Показания в пластинах при привязке', 'Readings in plates at the binding'), f.M)}</div>
     <div class="field"><label for="plb_notes">${esc(L('Примечание (укладка, номер набора)', 'Notes (set-up, set number)'))}</label><input type="text" id="plb_notes" data-b="notes" value="${esc(f.notes)}"></div>
     <p class="sub-hint" id="plb-live"></p>
     <div class="actions"><button type="button" class="primary" data-pl="bind">${esc(L('Сохранить привязку', 'Save the binding'))}</button>${bindingOf(j, c.beam.id) ? `<button type="button" data-pl="cancel">${esc(L('Отмена', 'Cancel'))}</button>` : ''}</div>`;
+}
+
+/** k_s и k_pol, если их перемеряли в пластинах (по желанию); подсказка — значения калибровки (в проверке — привязки). */
+function kspolFieldsHtml(pre, attr, f, hint) {
+  const tip = L('Пусто — как при калибровке в воде', 'Blank: as in the calibration in water');
+  return `<div class="field"><label for="${pre}_ks">${sub(L('k_s в пластинах, если перемеряли', 'k_s in plates, if remeasured'))}</label><input type="text" class="num" inputmode="decimal" id="${pre}_ks" ${attr}="ks" value="${esc(f.ks)}" placeholder="${esc(kHint(hint?.ks))}" title="${esc(tip)}"></div>
+      <div class="field"><label for="${pre}_kpol">${sub(L('k_pol в пластинах, если перемеряли', 'k_pol in plates, if remeasured'))}</label><input type="text" class="num" inputmode="decimal" id="${pre}_kpol" ${attr}="kpol" value="${esc(f.kpol)}" placeholder="${esc(kHint(hint?.kpol))}" title="${esc(tip)}"></div>`;
 }
 
 function checkFormHtml(c, b) {
@@ -148,6 +163,7 @@ function checkFormHtml(c, b) {
       <div class="field"><label for="plc_amount">${esc(amountLabel(c.kind))}</label><input type="text" class="num" inputmode="decimal" id="plc_amount" data-c="amount" value="${esc(f.amount || b.amount)}"></div>
       <div class="field"><label for="plc_T">${esc(L('Температура в пластинах, °C', 'Temperature in the plates, °C'))}</label><input type="text" class="num" inputmode="decimal" id="plc_T" data-c="T" value="${esc(f.T)}"></div>
       <div class="field"><label for="plc_P">${esc(L('Давление', 'Pressure'))}</label><div class="inline"><input type="text" class="num" inputmode="decimal" id="plc_P" data-c="P" value="${esc(f.P)}"><select id="plc_P_unit" data-c="P_unit" aria-label="${esc(L('Единица давления', 'Pressure unit'))}">${unitOpts(f.P_unit)}</select></div></div>
+      ${kspolFieldsHtml('plc', 'data-c', f, { ks: b.ks ? parseNumber(b.ks) : b.ksCal, kpol: b.kpol ? parseNumber(b.kpol) : b.kpolCal })}
     </div>
     <div class="series">${cellsHtml('plc-M', L('Показания в пластинах', 'Readings in plates'), f.M)}</div>
     <div class="field"><label for="plc_notes">${esc(L('Примечание', 'Notes'))}</label><input type="text" id="plc_notes" data-c="notes" value="${esc(f.notes)}"></div>
@@ -159,8 +175,8 @@ function checkFormHtml(c, b) {
 function historyHtml(j, c) {
   const rows = (j.plateChecks || []).filter((x) => x.beamId === c.beam.id).slice().reverse();
   const table = rows.length
-    ? `<div class="table-wrap"><table class="factors"><thead><tr><th>${esc(L('Дата', 'Date'))}</th><th class="v">${sub('M_pl / M_pl,0')}</th><th class="v">${esc(L('Доза', 'Dose'))}, ${esc(valueUnit(c.kind))}</th><th class="v">${esc(c.kind === 'cobalt' ? L('От ожидаемой', 'From expected') : L('От номинала', 'From nominal'))}</th><th>${esc(L('Сотрудники', 'Staff'))}</th><th></th></tr></thead><tbody>${rows
-        .map((r) => `<tr class="${r.summary?.status === 'out' ? 'st-out' : ''}"><td>${esc(fmtDate(r.date))}</td><td class="v">${esc(fmt(r.summary?.ratio, 4))}</td><td class="v">${esc(fmt(r.summary?.value, c.kind === 'cobalt' ? 2 : 4))}</td><td class="v">${esc(fmtSigned(r.summary?.deviation, 2))} %</td><td>${esc(r.staff || '')}</td><td><button type="button" class="link-btn danger" data-pl-del="${esc(r.id)}">${esc(L('Удалить', 'Delete'))}</button></td></tr>`)
+    ? `<div class="table-wrap"><table class="factors"><thead><tr><th>${esc(L('Дата', 'Date'))}</th><th class="v">${sub('M_pl / M_pl,0')}</th><th class="v">${esc(L('Доза', 'Dose'))}, ${esc(valueUnit(c.kind))}</th><th class="v">${esc(c.kind === 'cobalt' ? L('От ожидаемой', 'From expected') : L('От номинала', 'From nominal'))}</th><th class="v">${esc(L('В пластинах без перевода', 'In plates, not converted'))}, ${esc(valueUnit(c.kind))}</th><th>${esc(L('Сотрудники', 'Staff'))}</th><th></th></tr></thead><tbody>${rows
+        .map((r) => `<tr class="${r.summary?.status === 'out' ? 'st-out' : ''}"><td>${esc(fmtDate(r.date))}</td><td class="v">${esc(fmt(r.summary?.ratio, 4))}</td><td class="v">${esc(fmt(r.summary?.value, c.kind === 'cobalt' ? 2 : 4))}</td><td class="v">${esc(fmtSigned(r.summary?.deviation, 2))} %</td><td class="v">${Number.isFinite(r.summary?.Dpl) ? esc(fmt(r.summary.Dpl, c.kind === 'cobalt' ? 2 : 4)) : '—'}</td><td>${esc(r.staff || '')}</td><td><button type="button" class="link-btn danger" data-pl-del="${esc(r.id)}">${esc(L('Удалить', 'Delete'))}</button></td></tr>`)
         .join('')}</tbody></table></div>`
     : `<p class="sub-hint">${esc(L('Проверок этого пучка в пластинах пока нет.', 'No checks of this beam in plates yet.'))}</p>`;
   return `${table}
@@ -243,7 +259,10 @@ function live() {
     const cals = waterCalibrations(j, c.beam.id);
     const cal = cals.find((x) => x.sessionId === draft.bind.calSessionId) ?? cals[0];
     const r = correctedReading(draft.bind, { tauMin: c.kind === 'cobalt' ? cal?.summary.tauMin : 0, kind: c.kind });
-    bl.innerHTML = r.errors.length ? '' : sub(L(`k_TP = ${fmt(r.kTP, 4)}; M_pl,0 = ${fmt(r.perUnit, 5)} ${c.kind === 'cobalt' ? 'нКл/мин' : 'нКл/МЕ'}.`, `k_TP = ${fmt(r.kTP, 4)}; M_pl,0 = ${fmt(r.perUnit, 5)} ${c.kind === 'cobalt' ? 'nC/min' : 'nC/MU'}.`));
+    const wr = cal ? waterReading(j, cal.sessionId, c.beam.id) : null;
+    const kf = kspolFactor(draft.bind, wr);
+    const extra = !r.errors.length && !kf.errors.length && wr && c.kind !== 'cobalt' ? `; ${dplText(c.kind, wr.F * r.perUnit * kf.factor)}; ${plwText((r.perUnit * kf.factor) / wr.Mw)}` : '';
+    bl.innerHTML = r.errors.length ? '' : sub(L(`k_TP = ${fmt(r.kTP, 4)}; M_pl,0 = ${fmt(r.perUnit, 5)} ${c.kind === 'cobalt' ? 'нКл/мин' : 'нКл/МЕ'}`, `k_TP = ${fmt(r.kTP, 4)}; M_pl,0 = ${fmt(r.perUnit, 5)} ${c.kind === 'cobalt' ? 'nC/min' : 'nC/MU'}`) + extra + '.') + (kf.errors.length ? kf.errors.map((e) => `<p class="jlink-st warn">${esc(e)}</p>`).join('') : '');
   }
   const out = $('#plc-result', root);
   if (out) {
@@ -262,10 +281,14 @@ function live() {
       `M_pl / M_pl,0 = ${fmt(res.ratio, 4)} (${fmtSigned(res.devFromCal, 2)} % ${L('от калибровки', 'from the calibration')})`,
       c.kind === 'cobalt' ? L(`распад от привязки: ${fmt(res.decay, 4)}`, `decay since the binding: ${fmt(res.decay, 4)}`) : '',
     ].filter(Boolean);
+    const plates = Number.isFinite(res.Dpl)
+      ? `<p class="sub-hint">${sub(L('Справочно', 'For reference'))}: ${sub(dplText(c.kind, res.Dpl))}; ${sub(L(`при привязке ${fmt(res.Dpl0, c.kind === 'cobalt' ? 2 : 4)}`, `at the binding ${fmt(res.Dpl0, c.kind === 'cobalt' ? 2 : 4)}`))}; ${sub(plwText(res.plw))} ${sub(L('(TRS-398 Rev.1, разд. 4.2.3). Это не доза в воде: для сравнения с номиналом — значение выше.', '(TRS-398 Rev.1, Sec. 4.2.3). This is not the dose in water: compare the value above with the nominal.'))}</p>`
+      : '';
     out.innerHTML = `<div class="plates-dose"><span>${sub(c.kind === 'cobalt' ? L(`Мощность дозы в воде на глубине номинала калибровки (${at}), по пластинам`, `Dose rate in water at the depth of the calibration nominal (${at}), from plates`) : L(`Доза в воде на 1 МЕ на глубине номинала калибровки (${at}), по пластинам`, `Dose in water per MU at the depth of the calibration nominal (${at}), from plates`))}</span>
         <b>${esc(fmt(res.value, c.kind === 'cobalt' ? 2 : 4))} ${esc(valueUnit(c.kind))}</b>
         <span class="chip ${cls}">${esc(fmtSigned(res.deviation, 2))} % ${esc(c.kind === 'cobalt' ? L('от ожидаемой', 'from expected') : L('от номинала', 'from nominal'))}${Number.isFinite(res.tol) ? ` · ${esc(L('допуск', 'tolerance'))} ±${esc(fmt(res.tol, 1))} %` : ''}</span></div>
       <p class="sub-hint">${lines.map(sub).join('; ')}.</p>
+      ${plates}
       ${res.warnings.map((w) => `<p class="jlink-st ${w.level === 'warn' ? 'warn' : 'none'}">${esc(w.text)}</p>`).join('')}`;
   }
 }
@@ -300,7 +323,7 @@ function onChange(e) {
     draft.rebind = false;
     // другой пучок — температуру и давление измеряют заново (единица давления и дата остаются)
     draft.bind = { ...BINDING_DEFAULTS, date: draft.bind.date, P_unit: draft.bind.P_unit };
-    draft.check = { ...draft.check, amount: '', T: '', P: '', M: ['', '', ''], notes: '' };
+    draft.check = { ...draft.check, amount: '', T: '', P: '', M: ['', '', ''], ks: '', kpol: '', notes: '' };
     persist();
     render();
     status('');
@@ -343,7 +366,7 @@ function record() {
     return;
   }
   updateJournal(() => res.journal, 'plates');
-  draft.check = { ...draft.check, M: ['', '', ''], notes: '' };
+  draft.check = { ...draft.check, M: ['', '', ''], ks: '', kpol: '', notes: '' };
   persist();
   render();
   status(res.replaced
