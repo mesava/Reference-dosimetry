@@ -95,6 +95,9 @@ export const CO_DEFAULTS = {
 
 export const ACTIVITY_UNITS = { Ci: { label: 'Ки', labelEn: 'Ci', toTBq: 0.037 }, TBq: { label: 'ТБк', labelEn: 'TBq', toTBq: 1 } };
 
+/** Мощность дозы, Гр/мин, ниже которой общей рекомбинацией в непрерывном пучке можно пренебречь (TRS-398 Rev.1, разд. 4.4.3.4 b). */
+export const CO_REC_RATE_LIMIT = 2;
+
 /** Период полураспада ⁶⁰Co: 5,2711 года (оценка DDEP: Bé et al., Monographie BIPM-5, т. 3, 2006), в сутках. */
 export const CO60_HALF_LIFE_DAYS = 5.2711 * 365.25;
 
@@ -572,6 +575,16 @@ export function computeCobalt(form) {
     if (wantTRS) finish((trs.ctrl = {}), ctrl.mean * productTRS, ctrl.tEffMin);
     if (want51) finish((tg.ctrl = {}), ctrl.mean * product51, ctrl.tEffMin);
     for (const x of [trs.ctrl, tg.ctrl]) if (x) x.blocked = ctrlBlocked || !x.ok;
+  }
+  // TRS-398 Rev.1, разд. 4.4.3.4 b): ур. (13) в непрерывном пучке обосновано тем, что мощность дозы обычно меньше
+  // 2 Гр/мин и общей рекомбинацией можно пренебречь. Выше — напоминание проверить, так ли это (по мощности дозы в точке камеры).
+  trs.recRateGy = wantTRS && !fixed && recOk && f.co_rec_trs !== 'eq16' ? Math.max(...[trs.rateGy, trs.ctrl?.rateGy].filter(Number.isFinite)) : NaN;
+  if (trs.recRateGy > CO_REC_RATE_LIMIT) {
+    const rate = ru(trs.recRateGy, 2);
+    add('warn', 'trs', L(
+      `Мощность дозы в точке камеры ${rate} Гр/мин — больше 2 Гр/мин. Ур. (13) для k_s в непрерывном пучке TRS-398 Rev.1 обосновывает тем, что при мощности дозы меньше 2 Гр/мин общей рекомбинацией можно пренебречь. Проверьте, что она мала: снимите показания при нескольких напряжениях и посмотрите, от чего 1/M зависит линейно — от 1/V (начальная рекомбинация) или от 1/V² (общая) — на графике Яффе (вкладка «Камера и пучок»).`,
+      `The dose rate at the chamber is ${rate} Gy/min, above 2 Gy/min. TRS-398 Rev.1 justifies Eq. (13) for k_s in a continuous beam by general recombination being negligible below 2 Gy/min. Check that it is small: take readings at several voltages and see whether 1/M is linear in 1/V (initial recombination) or in 1/V² (general) on the Jaffé plot ("Chamber and beam" tab).`,
+    ), `${REF.trs}, разд. 4.4.3.4 b)`, 'co_rec_trs');
   }
 
   const hasError = (scope) => messages.some((m) => m.level === 'error' && (m.scope === 'common' || m.scope === scope));

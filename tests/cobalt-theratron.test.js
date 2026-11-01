@@ -83,3 +83,19 @@ test('⁶⁰Co, Theratron Equinox 100: P₀ 101,3 вместо 101,325 кПа м
     assert.ok(dPct < -0.02 && dPct > -0.09, `${d.date}: ур. (16) даёт ${dPct} %`);
   }
 });
+
+test('⁶⁰Co, Theratron Equinox 100: мощность дозы больше 2 Гр/мин при ур. (13) — предупреждение (TRS-398 Rev.1, разд. 4.4.3.4 b)', () => {
+  const warned = (r) => r.messages.some((m) => m.level === 'warn' && m.ref === 'TRS-398 Rev.1, разд. 4.4.3.4 b)' && /больше 2 Гр\/мин/.test(m.text));
+  const [d1, d2] = DATES; // 1,45 и 2,45 Гр/мин
+  assert.equal(warned(computeCobalt(formOf(d1, { co_Mc: cells(d1.fields['20×20']) }))), false, `${d1.date}: 1,6 Гр/мин`);
+  const r = computeCobalt(formOf(d2, { co_Mc: cells(d2.fields['10×10']) }));
+  assert.ok(warned(r), `${d2.date}: 2,45 Гр/мин`);
+  assert.equal(r.flags.co_rec_trs, 'warn');
+  // по основной серии без контрольных — тоже; при ур. (16), проверке выхода и по TG-51 — нет
+  assert.ok(warned(computeCobalt(formOf(d2))));
+  assert.equal(warned(computeCobalt(formOf(d2, { co_rec_trs: 'eq16' }))), false);
+  assert.equal(warned(computeCobalt(formOf(d2, { co_fixed: true, co_fixed_kpol: '1,0009', co_fixed_ks: '1,0010' }))), false);
+  assert.equal(computeCobalt(formOf(d2, { protocol: 'tg51', co_zref: '10' })).messages.some((m) => /больше 2 Гр\/мин/.test(m.text)), false);
+  // доза при этом та же, что в листе
+  near(r.trs.ctrl.rateGy, d2.xl.D['10×10'], 1e-6, `${d2.date}: доза`);
+});
