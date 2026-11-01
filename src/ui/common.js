@@ -372,7 +372,7 @@ export function renderSignBlock(el, staff, extra = true) {
   if (!el) return;
   const note = document.querySelector('.page-foot p')?.textContent?.trim() ?? '';
   const names = Array.isArray(staff) && staff.length ? staff : [''];
-  const ver = L(`Расчёт: калькулятор «Референсная дозиметрия», ${versionText()}, https://mesava.github.io/Reference-dosimetry/`, `Calculation: Reference Dosimetry calculator, ${versionText()}, https://mesava.github.io/Reference-dosimetry/`);
+  const ver = L(`Расчёт: калькулятор «Клиническая дозиметрия», ${versionText()}, https://mesava.github.io/Reference-dosimetry/`, `Calculation: Clinical Dosimetry calculator, ${versionText()}, https://mesava.github.io/Reference-dosimetry/`);
   el.innerHTML =
     (note ? `<p class="disclaimer">${esc(note)}</p>` : '') +
     `<p class="disclaimer">${esc(typeof extra === 'string' ? extra : precisionNote(extra))} ${esc(ver)}</p>` +

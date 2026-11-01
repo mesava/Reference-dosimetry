@@ -74,6 +74,6 @@ export function sessionReportText(j, s) {
   // подписи сотрудников
   const staff = (s.staff || []).filter((x) => String(x).trim());
   out.push('', ...(staff.length ? staff : ['']).map((x) => `${x || L('ФИО', 'Name')} — ______________ (${L('подпись', 'signature')})`));
-  out.push('', `${L('Калькулятор референсной дозиметрии', 'Reference dosimetry calculator')}, ${versionText()}`);
+  out.push('', `${L('Калькулятор «Клиническая дозиметрия»', 'Clinical Dosimetry calculator')}, ${versionText()}`);
   return out.join('\n');
 }

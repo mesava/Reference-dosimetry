@@ -4,7 +4,7 @@
 // чтобы вместе с этими элементами читаться по-английски.
 
 export const STATIC_EN = {
-  "Референсная дозиметрия": "Reference Dosimetry",
+  "Клиническая дозиметрия": "Clinical Dosimetry",
   "МВ фотоны": "MV photons",
   "Электроны": "Electrons",
   "Протокол": "Protocol",
