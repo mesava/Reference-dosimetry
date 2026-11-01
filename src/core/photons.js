@@ -770,6 +770,22 @@ export function computePhotons(form) {
       if (Number.isFinite(trs.kQ) && (trs.kQ < 0.9 || trs.kQ > 1.02)) {
         add('warn', 'trs', L('k_Q для МВ фотонов обычно 0,94–1,00: проверьте ввод.', 'k_Q for MV photons is usually 0.94–1.00: check the input.'), null, 'kqtrs_manual');
       }
+      // для камеры из базы — сравнение с k_Q по TRS-398 Rev.1: ручной k_Q должен быть k_Q, измеренным в лаборатории
+      // для этой камеры; k_Q из другого расчёта (старой редакции протокола, камеры-аналога) — расчёт не по Rev.1
+      trs.kQManualDiff = !cross && Number.isFinite(trs.kQ) && Number.isFinite(kf.value) && !chamber?.custom ? (trs.kQ / kf.value - 1) * 100 : NaN;
+      if (Math.abs(trs.kQManualDiff) > 0.05) {
+        const d = trs.kQManualDiff;
+        add(
+          Math.abs(d) > 0.5 ? 'warn' : 'info',
+          'trs',
+          L(
+            `k_Q введён вручную: ${ru(trs.kQ, 4)}; по TRS-398 Rev.1 (ур. 34) для ${chamberLabel(chamber)} при TPR20,10 = ${ru(tpr, 3)} — ${ru(kf.value, 4)} (разница ${d > 0 ? '+' : ''}${ru(d, 2)} %). Ручной k_Q — это k_Q, измеренный лабораторией для этой камеры; если он взят из другого расчёта (первое издание TRS-398, камера-аналог и т. п.), расчёт выполнен не по TRS-398 Rev.1.`,
+            `k_Q entered manually: ${ru(trs.kQ, 4)}; per TRS-398 Rev.1 (Eq. 34) for ${chamberLabel(chamber)} at TPR20,10 = ${ru(tpr, 3)} it is ${ru(kf.value, 4)} (difference ${d > 0 ? '+' : ''}${ru(d, 2)}%). A manual k_Q is the k_Q measured by the laboratory for this chamber; if it is taken from another calculation (the first edition of TRS-398, an analogue chamber, etc.), the calculation is not per TRS-398 Rev.1.`,
+          ),
+          `${REF.trs}, разд. 6.5.1, ур. (34)`,
+          'kqtrs_manual',
+        );
+      }
     } else {
       const k = mode === 'table' ? kt : kf;
       if (!chamber || isBlank(f.ch_model)) {
@@ -1061,6 +1077,24 @@ export function computePhotons(form) {
     if (f.prof_mode === 'manual') {
       const v = read('prof_value', 'k_vol / P_rp');
       prof = { value: v, method: L('введено вручную', 'entered manually'), active: true };
+      // сравнение с ур. (22), если для него всё есть: k_vol = 1 в пучке БВФ — поправка фактически не внесена
+      if (wantTRS && Number.isFinite(v) && Number.isFinite(tpr) && lengthMm > 0) {
+        const g = TRS.kvolGeneric({ tpr, lengthCm: lengthMm / 10, sddCm });
+        prof.formula22 = g;
+        const d = (v / g - 1) * 100;
+        if (Number.isFinite(d) && Math.abs(d) > 0.05) {
+          add(
+            'info',
+            'common',
+            L(
+              `k_vol введён вручную: ${ru(v, 4)}; по ур. (22) TRS-398 Rev.1 при L = ${ru(lengthMm, 1)} мм и РИД = ${ru(sddCm, 0)} см — ${ru(g, 4)} (разница ${d > 0 ? '+' : ''}${ru(d, 2)} %). Для пучков БВФ TRS-398 Rev.1 требует поправку на усреднение по объёму; k_vol = 1 означает, что она не внесена.`,
+              `k_vol entered manually: ${ru(v, 4)}; by TRS-398 Rev.1 Eq. (22) with L = ${ru(lengthMm, 1)} mm and SDD = ${ru(sddCm, 0)} cm it is ${ru(g, 4)} (difference ${d > 0 ? '+' : ''}${ru(d, 2)}%). For FFF beams TRS-398 Rev.1 requires the volume-averaging correction; k_vol = 1 means it has not been applied.`,
+            ),
+            `${REF.trs}, разд. 4.4.3.5, ур. (22)`,
+            'prof_value',
+          );
+        }
+      }
     } else if (f.prof_mode === 'formula22' || f.prof_mode === 'table11') {
       needTpr();
       if (!Number.isFinite(lengthMm)) noLength();
@@ -1333,7 +1367,9 @@ export function computePhotons(form) {
   const pre = { trs: wantTRS ? final(trs, 'trs') : {}, tg51: want51 ? final(tg, 'tg51') : {} };
   recal.preDeviation = [pre.trs.deviation, pre.tg51.deviation].filter(Number.isFinite);
   recal.needed = recal.preDeviation.some((d) => Math.abs(d) > tol);
-  recal.on = recal.needed && recal.answer === 'yes';
+  // подстройку может провести и физик при выходе в допуске (по своему решению): раздел 9 доступен, когда есть доза
+  recal.available = recal.preDeviation.length > 0;
+  recal.on = recal.available && recal.answer === 'yes';
   if (recal.needed && !recal.answer) {
     add('info', 'recal', L(`Доза отличается от номинального выхода больше чем на ±${tolTxt} %: сначала проверьте измерение; если ускоритель подстраивали, отметьте это в разделе 9 и введите показания после подстройки.`, `The dose differs from the nominal output by more than ±${tolTxt}%: check the measurement first; if the linac was adjusted, mark it in section 9 and enter the readings after the adjustment.`), null, 'recal_needed');
   }

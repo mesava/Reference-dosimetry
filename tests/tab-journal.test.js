@@ -1,7 +1,7 @@
 // Измерение во вкладке дозиметрии → журнал: подстановка пучка журнала во вкладку и запись результата.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newJournal, normalizeJournal, tabBeamPatch, recordTabBeam, tabRecordOf, lastCalibration, saveBeamSettings, PH_BEAM_KEYS, PH_CHAMBER_KEYS, PH_ELECTROMETER_KEYS } from '../src/core/journal.js';
+import { newJournal, normalizeJournal, tabBeamPatch, recordTabBeam, tabRecordOf, lastCalibration, saveBeamSettings, staleReadings, PH_BEAM_KEYS, PH_CHAMBER_KEYS, PH_ELECTROMETER_KEYS } from '../src/core/journal.js';
 import { SAMPLE_FORM } from '../src/core/sample.js';
 
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]]));
@@ -100,4 +100,25 @@ test('«Сохранить настройки пучка в журнал»: то
   assert.equal(r2.journal.chambers.length, 1, 'другая камера вкладки в журнал не добавляется');
   assert.equal(JSON.stringify(j.machines[0].beams[0].form), JSON.stringify(journal().machines[0].beams[0].form), 'исходный журнал не меняется');
   assert.equal(saveBeamSettings(j, 'm1', 'nope', tab(), 'photon').saved, false);
+});
+
+test('Смена даты во вкладке: показания записи за прежнюю дату очищаются, новые — нет', () => {
+  const rec = tab({ ctrl_M: ['12,345', '', ''], recal_needed: 'yes', recal_M: ['12,100', '', ''] });
+  const j = recordTabBeam(journal(), { machineId: 'm1', beamId: 'b6', form: rec, kind: 'photon', today: '2026-10-31' }).journal;
+  const moved = { ...rec, meta_date: '2026-10-20' };
+  const st = staleReadings(j, { machineId: 'm1', beamId: 'b6', form: moved, prevDate: '2026-10-19', kind: 'photon' });
+  assert.equal(st.date, '2026-10-19');
+  for (const k of ['rd_M1', 'rd_Mopp', 'rd_M2', 'ctrl_M', 'recal_M']) assert.ok(st.patch[k].every((x) => x === ''), k);
+  for (const k of ['env_T', 'env_P', 'env_H', 'recal_needed', 'ctrl_mu', 'recal_mu']) assert.equal(st.patch[k], '', k);
+  // настройки пучка, камера, сотрудники, примечания и дата не трогаются
+  for (const k of ['meta_date', 'meta_staff', 'meta_notes', 'ch_ndw', 'rd_V1', 'dd_nominal']) assert.ok(!(k in st.patch), k);
+  // новые показания (хотя бы одна серия другая) — не прошлое измерение
+  assert.equal(staleReadings(j, { machineId: 'm1', beamId: 'b6', form: { ...moved, rd_M1: ['13,000', '13,001', '13,002'] }, prevDate: '2026-10-19', kind: 'photon' }), null);
+  // за прежнюю дату записи нет, дата не менялась, пустая вкладка — ничего не очищается
+  assert.equal(staleReadings(j, { machineId: 'm1', beamId: 'b6', form: moved, prevDate: '2026-10-18', kind: 'photon' }), null);
+  assert.equal(staleReadings(j, { machineId: 'm1', beamId: 'b6', form: rec, prevDate: '2026-10-19', kind: 'photon' }), null);
+  const empty = { ...moved, rd_M1: ['', '', ''], rd_Mopp: ['', '', ''], rd_M2: ['', '', ''], ctrl_M: ['', '', ''], recal_M: ['', '', ''] };
+  assert.equal(staleReadings(j, { machineId: 'm1', beamId: 'b6', form: empty, prevDate: '2026-10-19', kind: 'photon' }), null);
+  // другой пучок той же даты — своя запись
+  assert.equal(staleReadings(j, { machineId: 'm1', beamId: 'b10', form: moved, prevDate: '2026-10-19', kind: 'photon' }), null);
 });

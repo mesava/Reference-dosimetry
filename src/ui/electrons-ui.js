@@ -143,17 +143,22 @@ const tolText = (r) => fmt(r.recal.tolerance, r.recal.tolerance % 1 ? 1 : 0);
 /** Раздел 9 «Выход вне допуска: проверка и подстройка»: появляется, если доза вне допуска (по умолчанию ±2 %) от номинала. */
 function renderRecal(data, r) {
   const rc = r.recal;
-  $('#e-recal-section').hidden = !rc.needed;
-  $('#e-notes-step-no').textContent = rc.needed ? '10' : '9';
-  if (!rc.needed) return;
+  // в допуске раздел тоже доступен: физик может подстроить ускоритель по своему решению
+  $('#e-recal-section').hidden = !rc.available;
+  $('#e-notes-step-no').textContent = rc.available ? '10' : '9';
+  if (!rc.available) return;
+  $('#e-s9r').textContent = rc.needed ? L('Выход вне допуска: проверка и подстройка', 'Output out of tolerance: check and adjustment') : L('Подстройка ускорителя (по желанию)', 'Linac adjustment (optional)');
   const x = data.protocol === 'tg51' ? r.tg51 : r.trs;
   const pre = preOf(x);
   const atMax = r.depth.nominalAt === 'zmax' && Number.isFinite(pre.DmaxPerMU);
   const preV = atMax ? pre.DmaxPerMU : pre.DperMU;
   const where = atMax ? L('на z_max', 'at z_max') : L(`на ${zTxt(r.quality.zref)} см`, `at ${zTxt(r.quality.zref)} cm`);
-  $('#e-recal-hint').innerHTML = richText(L(
+  $('#e-recal-hint').innerHTML = richText(rc.needed ? L(
     `Доза ${fmt(preV, 4)} Гр на 100 МЕ ${where} отличается от номинального выхода ${fmt(r.depth.nominal, 3)} на ${fmtSigned(pre.deviation, 2)} % — больше допуска ±${tolText(r)} %. Прежде чем подстраивать ускоритель, проверьте само измерение: установку, температуру и давление, тепловое равновесие, камеру, кабель и электрометр, N_D,w и k_elec, — и при необходимости повторите его. Если ускоритель подстраивали, выберите «Да» и введите показания после подстройки.`,
     `The dose ${fmt(preV, 4)} Gy per 100 MU ${where} differs from the nominal output ${fmt(r.depth.nominal, 3)} by ${fmtSigned(pre.deviation, 2)} %, more than the ±${tolText(r)} % tolerance. Before adjusting the linac, check the measurement itself: setup, temperature and pressure, thermal equilibrium, chamber, cable and electrometer, N_D,w and k_elec, and repeat it if needed. If the linac was adjusted, choose "Yes" and enter the readings after the adjustment.`,
+  ) : L(
+    `Доза ${fmt(preV, 4)} Гр на 100 МЕ ${where} отличается от номинального выхода на ${fmtSigned(pre.deviation, 2)} % — в пределах допуска ±${tolText(r)} %, подстройка не требуется. Если ускоритель всё же подстраивали (по решению физика), выберите «Да» и введите показания после подстройки: в журнале останутся обе дозы, до и после.`,
+    `The dose ${fmt(preV, 4)} Gy per 100 MU ${where} differs from the nominal output by ${fmtSigned(pre.deviation, 2)} %, within the ±${tolText(r)} % tolerance; no adjustment is needed. If the linac was adjusted anyway (at the physicist's discretion), choose "Yes" and enter the readings after the adjustment: the journal keeps both doses, before and after.`,
   ));
   $('#e-recal-pre').textContent = fmt(preV, 4);
   $('#e-recal-pre-sub').textContent = L(`${where}; от номинала ${fmtSigned(pre.deviation, 2)} %`, `${where}; from nominal ${fmtSigned(pre.deviation, 2)} %`);
@@ -505,7 +510,7 @@ function reportText(data, r) {
   if (r.recal.needed) {
     const ans = r.recal.answer === 'yes' ? L('да', 'yes') : r.recal.answer === 'no' ? L('нет', 'no') : L('не указано', 'not specified');
     line(L(`Выход вне допуска ±${tolText(r)} %: ускоритель подстраивали`, `Output outside the ±${tolText(r)} % tolerance: linac adjusted`), ans);
-  }
+  } else if (r.recal.on) line(L(`Выход в допуске ±${tolText(r)} %: ускоритель подстраивали по решению физика`, `Output within the ±${tolText(r)} % tolerance: linac adjusted at the physicist's discretion`), L('да', 'yes'));
   if (r.recal.on && r.recal.M?.n > 0) line(L('Показания после подстройки M(V1), нКл', 'Readings after adjustment M(V1), nC'), `${cells(data.e_recal_M)} → ${mean} ${fmt(r.recal.mean, 4)} ${L(`за ${fmt(r.recal.mu, 0)} МЕ`, `for ${fmt(r.recal.mu, 0)} MU`)}`);
   out.push('');
   const blocks = [data.protocol];

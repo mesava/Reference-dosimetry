@@ -236,10 +236,16 @@ test('Контрольные измерения: итог по ним с поп�
   assert.ok(flip.trs.ctrl.blocked && !flip.trs.blocked);
 });
 
-test('Электроны: калибровка ускорителя при отклонении больше ±2 % (раздел 9)', () => {
+test('Электроны: калибровка ускорителя при отклонении больше ±2 % (раздел 9), в допуске — по желанию', () => {
   const S = SAMPLE_ELECTRONS;
   const scale = (a, k) => a.map((v) => String(parseFloat(String(v).replace(',', '.')) * k));
-  assert.equal(computeElectrons({ ...S, protocol: 'trs', e_nominal: '1,000' }).recal.needed, false);
+  const inTol = computeElectrons({ ...S, protocol: 'trs', e_nominal: '1,000' });
+  assert.equal(inTol.recal.needed, false);
+  // в допуске подстройка по желанию: раздел 9 доступен, «да» и показания после неё — итог
+  assert.equal(inTol.recal.available, true);
+  const opt = computeElectrons({ ...S, protocol: 'trs', e_nominal: '1,000', e_recal_needed: 'yes', e_recal_M: scale(S.e_M1, 0.99) });
+  assert.equal(opt.recal.on, true);
+  near(opt.trs.recal.DperMU, opt.trs.DperMU * 0.99, 1e-9);
   for (const protocol of ['trs', 'tg51']) {
     const key = protocol === 'trs' ? 'trs' : 'tg51';
     const base = { ...S, protocol, e_nominal: '1,050', e_ctrl_M: S.e_M1 };

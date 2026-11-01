@@ -479,7 +479,7 @@ test('Versa HD 6 FFF (рабочая книга, 25.08.2026): совпадени
   assert.ok(!r.messages.some((m) => /вне обычного диапазона|больше 20 %/.test(m.text)), 'при 500 МЕ замечаний нет');
 });
 
-test('Калибровка ускорителя при отклонении больше ±2 %: раздел 9, доза после калибровки — итог', () => {
+test('Калибровка ускорителя: при отклонении больше ±2 % — раздел 9, в допуске — по желанию; доза после калибровки — итог', () => {
   const f = {
     ...FORM_DEFAULTS, protocol: 'trs', meta_beam: '6 FFF', meta_fff: true, setup_geometry: 'SAD',
     ch_model: 'PTW31010', ch_ndw: '0,297', ch_T0: '20', ch_P0: '101,325', el_kelec: '1',
@@ -489,10 +489,18 @@ test('Калибровка ускорителя при отклонении бо
     prof_mode: 'formula22', prof_length: '6,5', prof_sdd: '100', dd_on: false,
     ctrl_M: ['16,83', '16,83', '16,81'],
   };
-  // в допуске: раздел 9 не нужен, показания после калибровки не учитываются
+  // в допуске: подстройка не нужна, но доступна по решению физика (раздел 9 «по желанию»)
+  const inTol = computeP({ ...f, dd_nominal: '1,000' });
+  assert.equal(inTol.recal.needed, false);
+  assert.equal(inTol.recal.available, true);
+  assert.equal(inTol.trs.recal, undefined);
+  assert.ok(!inTol.messages.some((m) => m.scope === 'recal'), 'в допуске — без напоминания о разделе 9');
   const ok = computeP({ ...f, dd_nominal: '1,000', recal_needed: 'yes', recal_M: ['17', '17', '17'] });
-  assert.equal(ok.recal.needed, false);
-  assert.equal(ok.trs.recal, undefined);
+  assert.equal(ok.recal.on, true);
+  near(ok.trs.recal.DperMU, ok.trs.ctrl.DperMU * (17 / mean([16.83, 16.83, 16.81])), 1e-12, 'подстройка в допуске: итог по показаниям после неё');
+  near(ok.trs.recal.pre.deviation, ok.trs.ctrl.deviation, 1e-12);
+  // без дозы (ошибка ввода) раздел недоступен
+  assert.equal(computeP({ ...f, rd_M1: ['', '', ''], ctrl_M: ['', '', ''] }).recal.available, false);
   // вне допуска (номинал 1,03 → −3,1 %)
   const out = computeP({ ...f, dd_nominal: '1,030' });
   assert.equal(out.recal.needed, true);
@@ -541,4 +549,33 @@ test('Поправка на рекомбинацию по глубине для 
   assert.equal(none.trs.recDepth, undefined);
   assert.ok(none.messages.some((m) => /по глубине не внесена/.test(m.text)));
   assert.ok(base.trs.tpr > 0);
+});
+
+test('SNC600c: длина полости 22,7 мм из паспорта (в табл. 4 TRS-398 Rev.1 её нет), k_vol по ур. (22)', () => {
+  const c = findChamber('SNC600c');
+  assert.equal(c.lengthMm, 22.7);
+  assert.equal(c.lengthSrc, 'datasheet');
+  // ур. (22): 1 + (0,0062·0,629 − 0,0036)·2,27²·(100/110)² = 1,001277; пучок 6 МВ БВФ, РИП 100 см
+  const f = { ...FORM_DEFAULTS, protocol: 'trs', meta_beam: '6 МВ БВФ', meta_fff: true, ch_model: 'SNC600c', ch_ndw: '0,0520', ch_T0: '22',
+    env_T: '22', env_P: '101,325', rd_V1: '300', rd_V2: '100', rd_M1: ['10,00'], rd_Mopp: ['10,00'], rd_M2: ['9,90'],
+    qtrs_method: 'known', qtrs_tpr: '0,629', prof_mode: 'formula22', dd_on: false };
+  const r = computeP(f);
+  assert.deepEqual(errorsOf(r), []);
+  near(r.profile.value, 1 + (0.0062 * 0.629 - 0.0036) * 2.27 ** 2 * (100 / 110) ** 2, 1e-12);
+  near(r.profile.value, 1.001277, 5e-7);
+  // k_Q по ур. (34) с a = 1,068, b = −0,08485 (табл. 45): 0,9972 — как интерполяция табл. 16 (0,9978…0,9957)
+  near(r.trs.kQ, 0.99718, 5e-5);
+  // k_vol = 1 вручную в пучке БВФ: справка — по ур. (22) было бы 1,0013
+  const m = computeP({ ...f, prof_mode: 'manual', prof_value: '1,000' });
+  near(m.profile.formula22, r.profile.value, 1e-12);
+  assert.ok(m.messages.some((x) => x.level === 'info' && /k_vol введён вручную: 1,0000; по ур\. \(22\)[^]*1,0013/.test(x.text)));
+  // k_Q вручную, отличный от Rev.1: справка до 0,5 %, предупреждение больше 0,5 %
+  const k1 = computeP({ ...f, kqtrs_mode: 'manual', kqtrs_manual: '0,9999', kqtrs_src: 'другой расчёт' });
+  near(k1.trs.kQManualDiff, (0.9999 / r.trs.kQ - 1) * 100, 1e-9);
+  const n1 = k1.messages.find((x) => /k_Q введён вручную/.test(x.text));
+  assert.equal(n1.level, 'info');
+  assert.match(n1.text, /0,9972 \(разница \+0,27 %\)[^]*не по TRS-398 Rev\.1/);
+  assert.equal(computeP({ ...f, kqtrs_mode: 'manual', kqtrs_manual: '0,990', kqtrs_src: 'x' }).messages.find((x) => /k_Q введён вручную/.test(x.text)).level, 'warn');
+  // совпадает с Rev.1 — без замечания
+  assert.ok(!computeP({ ...f, kqtrs_mode: 'manual', kqtrs_manual: '0,9972', kqtrs_src: 'x' }).messages.some((x) => /k_Q введён вручную/.test(x.text)));
 });

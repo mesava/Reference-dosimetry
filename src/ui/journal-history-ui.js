@@ -53,7 +53,10 @@ function renderChart(series) {
   }
   const cls = (i) => `t${(i % 8) + 1}`;
   const all = withData.flatMap((s) => s.points.filter((p) => Number.isFinite(p.deviation)));
-  const tol = Math.max(...all.map((p) => p.tol).filter(Number.isFinite), 2);
+  // линия допуска — по допуску пучков (наибольший из записанных), ось — не уже ±2 %
+  const tols = all.map((p) => p.tol).filter(Number.isFinite);
+  const tol = tols.length ? Math.max(...tols) : 2;
+  const yr = Math.max(tol, 2);
   const days = all.map((p) => p.day);
   const x0 = Math.min(...days);
   const x1 = Math.max(...days);
@@ -66,7 +69,7 @@ function renderChart(series) {
     xFmt: monthLabel,
     xTicks: monthTicks,
     xInclude: x0 === x1 ? [x0 - 15, x1 + 15] : [],
-    yInclude: [-tol, tol],
+    yInclude: [-yr, yr],
     aspect: 0.5,
     series: [
       ...withData.map((s, i) => ({ cls: cls(i), line: true, points: s.points.filter((p) => Number.isFinite(p.deviation)).map((p) => ({ x: p.day, y: p.deviation })) })),

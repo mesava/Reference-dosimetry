@@ -1555,6 +1555,33 @@ export function recordTabBeam(j, { machineId, beamId, form, kind = 'photon', tod
 }
 
 /**
+ * Показания измерения, которые остаются во вкладке после смены даты. Если во вкладке пучка журнала сменили дату, а
+ * показания (основные серии, контрольные измерения, показания после подстройки, у ⁶⁰Co — облучения для ошибки
+ * таймера) те же, что в записи журнала этого пучка за прежнюю дату prevDate, — это прошлое измерение, а не новое:
+ * такие поля нужно очистить, иначе они попадут в расчёт новой даты. Очищаются и условия (T, P, влажность) и ответ
+ * раздела 9; настройки пучка, камера, электрометр, сотрудники и примечания не меняются.
+ * Возвращает { date: prevDate, patch } или null (запись за прежнюю дату не найдена, показания другие или пусты).
+ */
+export function staleReadings(j, { machineId, beamId, form, prevDate, kind = 'photon' }) {
+  const K = kindOf(kind);
+  const k = K.k;
+  const date = String(form?.[k.date] || '');
+  if (!prevDate || prevDate === date) return null;
+  const rec = tabRecordOf(j, { machineId, beamId, form: { ...form, [k.date]: prevDate }, kind });
+  if (!rec) return null;
+  const series = [k.M1, k.Mopp, k.M2, k.ctrl, k.recal, ...(K.timerKeys ?? [])].filter(Boolean);
+  const norm = (v) => (Array.isArray(v) ? v : [v]).map((x) => String(x ?? '').trim().replace(',', '.')).filter((x) => x !== '');
+  const same = (key) => JSON.stringify(norm(form?.[key])) === JSON.stringify(norm(rec.beam.form?.[key]));
+  // хотя бы одно показание есть, и все серии совпадают с записанными
+  if (!series.some((key) => norm(form?.[key]).length) || !series.every(same)) return null;
+  const blank = (key) => (Array.isArray(K.defaults[key]) ? K.defaults[key].map(() => '') : K.defaults[key] ?? '');
+  const keys = [...series, k.T, k.P, k.H, k.recalNeeded].filter(Boolean);
+  if (k.ctrl && `${k.ctrl.replace(/_M$/, '')}_mu` in K.defaults) keys.push(`${k.ctrl.replace(/_M$/, '')}_mu`);
+  if (k.recal && `${k.recal.replace(/_M$/, '')}_mu` in K.defaults) keys.push(`${k.recal.replace(/_M$/, '')}_mu`);
+  return { date: prevDate, patch: Object.fromEntries(keys.map((key) => [key, blank(key)])) };
+}
+
+/**
  * Расчёт вкладки как рабочей камеры пучка журнала — для проверки дозиметра второй камерой (core/journal-check.js):
  * { kind, form, result, summary, beam, machine, chamber, electrometer } (камера и электрометр — записи журнала,
  * найденные по модели и №; null, если их там нет).

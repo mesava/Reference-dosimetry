@@ -803,7 +803,9 @@ export function computeElectrons(form) {
   const pre = { trs: wantTRS ? final(trs, 'trs') : {}, tg51: want51 ? final(tg, 'tg51') : {} };
   recal.preDeviation = [pre.trs.deviation, pre.tg51.deviation].filter(Number.isFinite);
   recal.needed = recal.preDeviation.some((d) => Math.abs(d) > tol);
-  recal.on = recal.needed && recal.answer === 'yes';
+  // подстройку может провести и физик при выходе в допуске (по своему решению): раздел 9 доступен, когда есть доза
+  recal.available = recal.preDeviation.length > 0;
+  recal.on = recal.available && recal.answer === 'yes';
   if (recal.needed && !recal.answer) {
     add('info', 'recal', L(`Доза отличается от номинального выхода больше чем на ±${tolTxt} %: сначала проверьте измерение; если ускоритель подстраивали, отметьте это в разделе 9 и введите показания после подстройки.`, `The dose differs from the nominal output by more than ±${tolTxt}%: check the measurement first; if the linac was adjusted, mark it in section 9 and enter the readings after the adjustment.`), null, 'e_recal_needed');
   }

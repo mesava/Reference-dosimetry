@@ -2,7 +2,7 @@
 // камеры. Всё хранится в журнале. У пучка здесь — только название (и признак БВФ); мерят во вкладке дозиметрии (пучок
 // журнала выбирается в её разделе 1, tab-journal-ui.js), настройки пучка редактируются там же и возвращаются в журнал.
 import { L } from '../core/i18n.js';
-import { CHAMBERS, chamberNote, findChamber } from '../core/chambers.js';
+import { CHAMBERS, chamberNote, findChamber, lengthSourceText } from '../core/chambers.js';
 import { ELECTROMETERS, OTHER as EL_OTHER, parseElectrometer, electrometerName } from '../core/electrometers.js';
 import { NDW_UNITS, unitLabel, isBlank } from '../core/units.js';
 import { FORM_DEFAULTS, normalizeForm } from '../core/photons.js';
@@ -116,7 +116,7 @@ function chamberCard(c, j = getJournal()) {
       ${field(L('Производитель', 'Manufacturer'), `<select ${bind(k, c.id, 'maker')}>${makerOptions(chamberMakers(), maker, L('Другая или своя камера', 'Other or custom chamber'))}</select>`, { forId: fieldId(k, c.id, 'maker') })}
       ${maker ? field(L('Модель', 'Model'), `<select ${bind(k, c.id, 'form.ch_model')}>${chamberModelOptions(maker, f.ch_model)}</select>`, { forId: fieldId(k, c.id, 'form.ch_model'), sub: [custom ? esc([f.cc_maker, f.cc_model].filter(Boolean).join(' ')) : '', ph && el ? esc(L('для фотонов, электронов и ⁶⁰Co', 'for photons, electrons and ⁶⁰Co')) : el ? esc(L('для электронов и ⁶⁰Co', 'for electrons and ⁶⁰Co')) : ph ? esc(L('для фотонов и ⁶⁰Co', 'for photons and ⁶⁰Co')) : '', esc(chamberDims(f))].filter(Boolean).join(' · ') }) : ''}
       ${field(L('Заводской №', 'Serial No.'), input(k, c.id, 'form.ch_serial', f.ch_serial), { forId: fieldId(k, c.id, 'form.ch_serial') })}
-      ${ph && !custom ? field(L('Длина полости, мм', 'Cavity length, mm'), input(k, c.id, 'length', c.length, { num: true, placeholder: Number.isFinite(findChamber(f.ch_model)?.lengthMm) ? fmt(findChamber(f.ch_model).lengthMm, 1) : '' }), { forId: fieldId(k, c.id, 'length'), sub: Number.isFinite(findChamber(f.ch_model)?.lengthMm) ? L('для k<sub>vol</sub> в пучках БВФ; пусто — из базы (TRS-398 Rev.1, табл. 4)', 'for k<sub>vol</sub> in FFF beams; blank: from the database (TRS-398 Rev.1, Table 4)') : L('для k<sub>vol</sub> в пучках БВФ: в базе длины нет — возьмите из паспорта камеры', 'for k<sub>vol</sub> in FFF beams: the database has no length; take it from the chamber datasheet') }) : ''}
+      ${ph && !custom ? field(L('Длина полости, мм', 'Cavity length, mm'), input(k, c.id, 'length', c.length, { num: true, placeholder: Number.isFinite(findChamber(f.ch_model)?.lengthMm) ? fmt(findChamber(f.ch_model).lengthMm, 1) : '' }), { forId: fieldId(k, c.id, 'length'), sub: Number.isFinite(findChamber(f.ch_model)?.lengthMm) ? L(`для k<sub>vol</sub> в пучках БВФ; пусто — из базы (${lengthSourceText(findChamber(f.ch_model))})`, `for k<sub>vol</sub> in FFF beams; blank: from the database (${lengthSourceText(findChamber(f.ch_model))})`) : L('для k<sub>vol</sub> в пучках БВФ: в базе длины нет — возьмите из паспорта камеры', 'for k<sub>vol</sub> in FFF beams: the database has no length; take it from the chamber datasheet') }) : ''}
       ${other
         ? `${field(L('Название', 'Name'), input(k, c.id, 'form.e_other_name', f.e_other_name), { forId: fieldId(k, c.id, 'form.e_other_name') })}
           ${field(L('Тип', 'Type'), select(k, c.id, 'form.e_other_type', f.e_other_type || 'pp', [['pp', L('плоскопараллельная', 'plane-parallel')], ['cyl', L('цилиндрическая', 'cylindrical')]]), { forId: fieldId(k, c.id, 'form.e_other_type') })}

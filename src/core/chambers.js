@@ -11,7 +11,8 @@
 // trsTable — TRS-398 Rev.1, табл. 16: k_Q в узлах TPR20,10 = TRS_TABLE16_TPR (см. trs398.js).
 // rCavMm — радиус полости, мм: WGTG51 Report 374, табл. 1; для старых камер — TG-51, табл. III;
 //          для PTW 31021 — TRS-398 Rev.1, табл. 4.
-// lengthMm — длина полости, мм: TRS-398 Rev.1, табл. 4 (только там, где она указана).
+// lengthMm — длина полости, мм: TRS-398 Rev.1, табл. 4 (только там, где она указана); lengthSrc: 'datasheet' — длины
+//          в табл. 4 нет, она взята из паспорта производителя (Sun Nuclear SNC600c: 22,7 мм, радиус полости 3,05 мм).
 // sleeve — камера не водонепроницаема, нужен чехол (ПММА ≤ 1 мм); TRS-398 Rev.1, табл. 4 (столбец «Водонепроницаемость»),
 //          для камер вне табл. 4 — по данным производителя. Остальные камеры базы водонепроницаемы.
 // note — тип и объём; для камер табл. 4 TRS-398 Rev.1 — объём и материал стенки оттуда (у IBA FC65-P стенка — POM,
@@ -144,13 +145,16 @@ export const CHAMBERS = [
   // ---- Sun Nuclear
   { id: 'SNC125c', maker: 'Sun Nuclear', model: 'SNC125c', trs: { a: 1.097, b: -0.09749 },
     trsTable: [1.0005, 0.9991, 0.9971, 0.9944, 0.9908, 0.9878, 0.9840, 0.9794, 0.9739, 0.9671, 0.9590, 0.9492] },
-  { id: 'SNC600c', maker: 'Sun Nuclear', model: 'SNC600c', note: 'Фармер', noteEn: 'Farmer', trs: { a: 1.068, b: -0.08485 },
+  { id: 'SNC600c', maker: 'Sun Nuclear', model: 'SNC600c', note: 'Фармер', noteEn: 'Farmer', lengthMm: 22.7, lengthSrc: 'datasheet', trs: { a: 1.068, b: -0.08485 },
     trsTable: [1.0004, 0.9993, 0.9978, 0.9957, 0.9926, 0.9899, 0.9866, 0.9823, 0.9770, 0.9703, 0.9620, 0.9517] },
 ];
 
 export function findChamber(id) {
   return CHAMBERS.find((c) => c.id === id) || null;
 }
+
+/** Откуда длина полости камеры из базы: «табл. 4 TRS-398 Rev.1» или «паспорт производителя». */
+export const lengthSourceText = (c) => (c?.lengthSrc === 'datasheet' ? L('паспорт производителя', 'manufacturer datasheet') : L('TRS-398 Rev.1, табл. 4', 'TRS-398 Rev.1, Table 4'));
 
 export function chamberLabel(c) {
   return `${c.maker} ${c.model}`;

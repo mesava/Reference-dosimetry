@@ -3,7 +3,7 @@
 // журнал». Измерение идёт во вкладке со всеми поправками; в журнал попадает форма вкладки и итог (core/journal.js:
 // recordTabBeam). Пучки одного аппарата за день в одном режиме — одна запись журнала.
 import { L } from '../core/i18n.js';
-import { beamKind, machineOf, tabBeamPatch, recordTabBeam, tabRecordOf, tabSessionOf, tabWork, calibrationChecks, tabEquipment, lastCalibration, chamberText, electrometerText, chamberOf, electrometerOf, saveBeamSettings, SESSION_DEFAULTS, CAL_GEO_KEYS, calGeoText, sameCalGeo } from '../core/journal.js';
+import { beamKind, machineOf, tabBeamPatch, recordTabBeam, tabRecordOf, tabSessionOf, tabWork, calibrationChecks, tabEquipment, lastCalibration, chamberText, electrometerText, chamberOf, electrometerOf, saveBeamSettings, staleReadings, SESSION_DEFAULTS, CAL_GEO_KEYS, calGeoText, sameCalGeo } from '../core/journal.js';
 import { IMPLAUSIBLE_DEVIATION } from '../core/common.js';
 import { newCheck, withTabChecks, CHECK_REF } from '../core/journal-check.js';
 import { $, esc, richText, currentProtocol, fmt, fmtSigned, today } from './common.js';
@@ -26,6 +26,8 @@ function makeTabJournal(cfg) {
   const key = `reference-dosimetry.tabjournal.${cfg.kind}`;
   let bind = { machineId: '', beamId: '' };
   let lastFixed = null;
+  // дата вкладки при прошлом обновлении: при её смене показания прошлой записи журнала очищаются (staleReadings)
+  let lastDate = null;
   let lastBind = '';
   let lastRec = '';
   let note = '';
@@ -341,6 +343,29 @@ function makeTabJournal(cfg) {
     );
   }
 
+  /**
+   * Сменили дату, а во вкладке — показания записи журнала за прежнюю дату: это прошлое измерение. Показания, условия и
+   * раздел 9 очищаются, чтобы они не попали в расчёт новой даты. true — очищено (вкладка пересчитается заново).
+   */
+  function clearStale() {
+    const form = cfg.read();
+    const date = String(form[DATE[cfg.kind]] || '');
+    const prev = lastDate;
+    lastDate = date;
+    if (prev === null || prev === date) return false;
+    const j = getJournal();
+    const { m, b } = current(j);
+    if (!b) return false;
+    const st = staleReadings(j, { machineId: m.id, beamId: b.id, form, prevDate: prev, kind: cfg.kind });
+    if (!st) return false;
+    cfg.patch(st.patch);
+    cfg.status(L(
+      `Новая дата: показания, температура и давление измерения ${fmtDate(st.date)} (оно уже в журнале) очищены — введите показания нового измерения. Прежнее измерение открывается из «Журнала и трендов».`,
+      `New date: the readings, temperature and pressure of the ${fmtDate(st.date)} measurement (already in the journal) have been cleared; enter the readings of the new measurement. The previous measurement opens from Journal and trends.`,
+    ));
+    return true;
+  }
+
   function init() {
     const bEl = $(cfg.bind);
     const rEl = $(cfg.rec);
@@ -427,6 +452,7 @@ function makeTabJournal(cfg) {
         }
       }
       lastFixed = fixed;
+      clearStale();
       renderRec();
       renderCheck();
     });
@@ -439,6 +465,7 @@ function makeTabJournal(cfg) {
       render();
     });
     lastFixed = !!cfg.read()[FIXED[cfg.kind]];
+    lastDate = String(cfg.read()[DATE[cfg.kind]] || '');
     render();
   }
   /**

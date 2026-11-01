@@ -117,6 +117,11 @@ test('сквозной прогон: оборудование → фотоны �
   await pause(500);
   for (const [k, m] of [[-4, '13,530'], [-3, '13,498'], [-2, '13,541'], [-1, '13,505']]) {
     await page.fill('#meta_date', day(k));
+    await pause(300);
+    // новая дата — показания, температура и давление прошлой проверки очищены: вводятся заново
+    if (k > -4) assert.equal(await page.inputValue('#env_T'), '');
+    await page.fill('#env_T', '21,0');
+    await page.fill('#env_P', '100,2');
     await cells('rd_M1', [m, m, m]);
     await pause(400);
     await rec.locator('[data-jr=record]').click();

@@ -88,6 +88,11 @@ test('вкладка «МВ фотоны»: пучок журнала, запи�
 
   // проверка выхода на следующий день: k_pol и k_s подставляются из записанной калибровки
   await page.fill('#meta_date', '2026-10-20');
+  await pause(500);
+  // новая дата: показания, T и P калибровки 19.10 (она уже в журнале) очищены — вводятся показания нового измерения
+  assert.match(await page.locator('#status').innerText(), /Новая дата: показания, температура и давление измерения 19\.10\.2026 \(оно уже в журнале\) очищены/);
+  assert.equal(await page.locator('.cells[data-series="rd_M1"] input').first().inputValue(), '');
+  await fillPhotonReadings(page);
   await page.locator('#rd_fixed').check();
   await pause(600);
   assert.match(await page.inputValue('#rd_fixed_kpol'), /^[01][,.]\d+/);
