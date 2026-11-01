@@ -38,7 +38,7 @@ test('в пластинах: привязка к калибровке в вод�
   await page.goto(`${server.url}/index.html#plates`);
   await pause();
   assert.match(await page.locator('#plates-root').innerText(), /нужны аппарат и его пучки в журнале/);
-  assert.deepEqual((await page.locator('#module-plates .subtools a').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()), ['⁶⁰Co', 'МВ фотоны', 'Электроны', 'kV-рентген в разработке', 'Брахитерапия в разработке', 'Сеанс', 'В пластинах']);
+  assert.deepEqual((await page.locator('#module-plates .subtools a').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()), ['Сеанс', '⁶⁰Co', 'МВ фотоны', 'Электроны', 'kV-рентген в разработке', 'Брахитерапия в разработке', 'В пластинах']);
 
   await page.evaluate((j) => localStorage.setItem('reference-dosimetry.journal.v1', JSON.stringify({ journal: j })), JOURNAL);
   await page.reload();
