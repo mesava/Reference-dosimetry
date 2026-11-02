@@ -324,6 +324,18 @@ test('Нестандартный k_Q по Report 385 при калибровке
   assert.ok(r.compliance.reasons.some((x) => /Report 385/.test(x.text)));
   // нестандартный способ подсвечивает калибровку предупреждением, а не ошибкой
   assert.equal(r.flags.e_cal_route, 'warn');
+  // с k_Q по Report 385 камеру ставят по Report 385 (табл. 3: наружная поверхность окна на 1,5 мм выше z_ref), а не по табл. 19 Rev.1
+  near(r.positions.trs.front, r.quality.zref - 0.15, 1e-12, 'Markus: окно по табл. 3 Report 385');
+  assert.match(r.positions.trs.text, /как в Report 385/);
+  assert.ok(r.messages.some((m) => m.level === 'info' && /камеру ставят по Report 385/.test(m.text)));
+  // цилиндрическая камера без данных Rev.1 (Exradin A18): центр на d_ref без сдвига 0,5·r_cyl
+  const a18 = computeElectrons({ ...f, e_ch_model: 'A18', e_r50_method: 'r50', e_r50: '5' });
+  assert.equal(a18.trs.kQMode, 'r385');
+  near(a18.positions.trs.depth, a18.quality.zref, 1e-12, 'A18: центр на d_ref');
+  near(positions(findEChamber('A18'), 2.9).trs.depth, 2.9 + 0.05 * 2.45, 1e-12, 'без Report 385 — по табл. 19 Rev.1');
+  // с k_Q из табл. 20 положение по-прежнему по табл. 19 Rev.1
+  const roosPos = computeElectrons({ ...f, e_ch_model: 'ROOS' });
+  assert.doesNotMatch(roosPos.positions.trs.text, /Report 385/);
   // камере с данными табл. 20 и при перекрёстной калибровке способ не предлагается: форма приводится к табл. 20/21
   const roos = computeElectrons({ ...f, e_ch_model: 'ROOS', e_kqtrs_mode: 'r385' });
   assert.equal(roos.trs.kQMode, 'table');

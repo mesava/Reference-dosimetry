@@ -563,6 +563,25 @@ export function computeElectrons(form) {
         trs.kQecal385 = chamber.r385.kQecal;
         trs.kQ = trs.kQprime385 * trs.kQecal385;
         trs.kQNonstandard = 'r385';
+        // k_Qecal и k′_Q Report 385 рассчитаны для его положения камеры (цилиндрическая — центр на d_ref без сдвига,
+        // табл. 4–5; плоскопараллельная — точка измерения по табл. 3 за наружной поверхностью окна, табл. 6–7), а не для
+        // положения по табл. 19 Rev.1 (центр на 0,5·r_cyl глубже; внутренняя поверхность окна на z_ref): с этим k_Q камеру
+        // ставят так, как в Report 385
+        if (pos?.tg51) {
+          pos.trs = {
+            ...pos.tg51,
+            text: L(`как в Report 385, по которому взят k_Q: ${pos.tg51.text}`, `as in Report 385, from which k_Q is taken: ${pos.tg51.text}`),
+          };
+          add('info', 'trs', chamber.type === 'cyl'
+            ? L(
+                'k_Q по Report 385 рассчитан для центра цилиндрической камеры на d_ref без сдвига (поправка на градиент входит в k_Qecal), а не на 0,5·r_cyl глубже z_ref, как в табл. 19 TRS-398 Rev.1: камеру ставят по Report 385.',
+                'The Report 385 k_Q was calculated for the center of the cylindrical chamber at d_ref without a shift (the gradient correction is included in k_Qecal), not 0.5·r_cyl deeper than z_ref as in TRS-398 Rev.1 Table 19: position the chamber per Report 385.',
+              )
+            : L(
+                'k_Q по Report 385 рассчитан для точки измерения плоскопараллельной камеры по его табл. 3 (сдвиг от наружной поверхности окна), а не для внутренней поверхности окна на z_ref, как в табл. 19 TRS-398 Rev.1: камеру ставят по Report 385.',
+                'The Report 385 k_Q was calculated for the plane-parallel chamber point of measurement from its Table 3 (shift from the outer window surface), not for the inner window surface at z_ref as in TRS-398 Rev.1 Table 19: position the chamber per Report 385.',
+              ), `${REF.r385}, разд. 4, 6.5, табл. ${chamber.type === 'cyl' ? '4' : '3, 6'}; ${REF.trs}, табл. 19`);
+        }
         const fit = chamber.type === 'cyl'
           ? `${ru(chamber.r385.a, 3)} + ${ru(chamber.r385.b, 3)}·R50^(−${ru(chamber.r385.c, 3)})`
           : `${ru(chamber.r385.a, 3)} + ${ru(chamber.r385.b, 3)}·exp(−R50/${ru(chamber.r385.c, 3)})`;
