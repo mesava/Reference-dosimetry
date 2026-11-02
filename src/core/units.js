@@ -54,7 +54,7 @@ export const PRESSURE_UNITS = {
 export const unitLabel = (u) => (u ? L(u.label, u.labelEn) : '');
 
 export function pressureToKPa(value, unit) {
-  const u = PRESSURE_UNITS[unit];
+  const u = Object.hasOwn(PRESSURE_UNITS, unit) ? PRESSURE_UNITS[unit] : null;
   if (!u) throw new Error(L(`Неизвестная единица давления: ${unit}`, `Unknown pressure unit: ${unit}`));
   return u.toKPa(value);
 }
@@ -68,9 +68,32 @@ export const NDW_UNITS = {
 };
 
 export function ndwToGyPerNC(value, unit) {
-  const u = NDW_UNITS[unit];
+  const u = Object.hasOwn(NDW_UNITS, unit) ? NDW_UNITS[unit] : null;
   if (!u) throw new Error(L(`Неизвестная единица N_D,w: ${unit}`, `Unknown N_D,w unit: ${unit}`));
   return u.toGyPerNC(value);
+}
+
+/**
+ * Пересчёт N_D,w и давления внутри расчёта: единица не из списка (файл или черновик из другой версии, правленный вручную
+ * файл — в списке выбора она становится пустой) даёт ошибку в замечаниях расчёта и NaN, а не исключение, которое
+ * останавливало бы всю вкладку. add — функция замечаний модуля: add(уровень, раздел, текст, ссылка, поле).
+ */
+export function unitConverters(add) {
+  const seen = new Set();
+  const bad = (what, unit) => {
+    const u = String(unit ?? '').trim();
+    if (!seen.has(`${what}|${u}`)) {
+      seen.add(`${what}|${u}`);
+      add('error', 'common', u
+        ? L(`Единица ${what} «${u}» неизвестна калькулятору: выберите единицу из списка.`, `The ${what} unit "${u}" is unknown to the calculator: select a unit from the list.`)
+        : L(`Не выбрана единица ${what}: выберите её из списка.`, `No ${what} unit is selected: select one from the list.`));
+    }
+    return NaN;
+  };
+  return {
+    ndw: (v, unit) => (Object.hasOwn(NDW_UNITS, unit) ? NDW_UNITS[unit].toGyPerNC(v) : bad('N_D,w', unit)),
+    pressure: (v, unit) => (Object.hasOwn(PRESSURE_UNITS, unit) ? PRESSURE_UNITS[unit].toKPa(v) : bad(L('давления', 'pressure'), unit)),
+  };
 }
 
 /** Число для текста сообщений: десятичная запятая (по-английски — точка) и знак «−». */

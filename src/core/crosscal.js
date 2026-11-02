@@ -18,7 +18,7 @@
 // Показания исправляются на температуру и давление, электрометр, полярность и рекомбинацию
 // (TRS-398, разд. 4.4.3). По желанию — нормировка на внешний монитор (TRS-398, разд. 6.6).
 
-import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
+import { parseNumber, parseCells, isBlank, unitConverters, ru, dec } from './units.js';
 import { L } from './i18n.js';
 import { temperaturePressure, polarity, environmentChecks, manualSource } from './common.js';
 import * as TG51 from './tg51.js';
@@ -216,6 +216,7 @@ export function computeCrossCal(form) {
     messages.push({ level, scope, text, ref });
     if (field) [].concat(field).forEach((k) => flag(k, level));
   };
+  const conv = unitConverters(add);
   const read = (key, label, scope = 'common') => {
     const v = parseNumber(f[key]);
     if (!Number.isFinite(v)) {
@@ -387,7 +388,7 @@ export function computeCrossCal(form) {
   const pos = { ref: positionsFor(type, ref, zref), fld: positionsFor(type, fld, zref) };
 
   const ndwRaw = read('cc_ref_ndw', L('N_D,w опорной камеры', 'N_D,w of the reference chamber'));
-  const ndwCert = Number.isFinite(ndwRaw) ? ndwToGyPerNC(ndwRaw, f.cc_ref_ndw_unit) : NaN;
+  const ndwCert = Number.isFinite(ndwRaw) ? conv.ndw(ndwRaw, f.cc_ref_ndw_unit) : NaN;
   if (Number.isFinite(ndwCert) && (ndwCert < 1e-3 || ndwCert > 5)) {
     add('warn', 'common', L(`N_D,w = ${dec(ndwCert.toPrecision(4))} Гр/нКл выглядит неправдоподобно: проверьте единицы.`, `N_D,w = ${dec(ndwCert.toPrecision(4))} Gy/nC looks implausible: check the units.`), null, 'cc_ref_ndw');
   }
@@ -416,7 +417,7 @@ export function computeCrossCal(form) {
   // ---------------------------------------------------------- 4. температура и давление
   const T = read('cc_T', L('Температура воды', 'Water temperature'));
   const Pin = read('cc_P', L('Давление', 'Pressure'));
-  const P = Number.isFinite(Pin) ? pressureToKPa(Pin, f.cc_P_unit) : NaN;
+  const P = Number.isFinite(Pin) ? conv.pressure(Pin, f.cc_P_unit) : NaN;
   if (Number.isFinite(P) && (P < 50 || P > 110)) add('error', 'common', L(`Давление ${ru(P, 2)} кПа вне правдоподобного диапазона: проверьте единицы.`, `Pressure ${ru(P, 2)} kPa is outside the plausible range: check the units.`), null, 'cc_P');
   const env = environmentChecks({ T, Hraw: f.cc_H, keyT: 'cc_T', keyH: 'cc_H', parseNumber, isBlank, ru });
   env.items.forEach(([level, text, r, key]) => add(level, 'common', text, r, key));
@@ -428,7 +429,7 @@ export function computeCrossCal(form) {
   }
   if (!isBlank(f.cc_P2)) {
     const v = read('cc_P2', L('Давление при измерении рабочей камерой', 'Pressure during the field chamber measurement'));
-    P2 = Number.isFinite(v) ? pressureToKPa(v, f.cc_P_unit) : NaN;
+    P2 = Number.isFinite(v) ? conv.pressure(v, f.cc_P_unit) : NaN;
     if (Number.isFinite(P2) && (P2 < 50 || P2 > 110)) add('error', 'common', L(`Давление ${ru(P2, 2)} кПа вне правдоподобного диапазона: проверьте единицы.`, `Pressure ${ru(P2, 2)} kPa is outside the plausible range: check the units.`), null, 'cc_P2');
   }
   const separateTP = !isBlank(f.cc_T2) || !isBlank(f.cc_P2);

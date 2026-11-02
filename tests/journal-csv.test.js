@@ -83,3 +83,22 @@ test('Итог пучка хранит N_D,w и k_elec — для нового �
   assert.ok(Number.isFinite(s.ndw) && s.ndw > 0, `N_D,w: ${s.ndw}`);
   assert.ok(Number.isFinite(s.kelec), `k_elec: ${s.kelec}`);
 });
+
+test('CSV: текст, похожий на формулу, не выполняется в Excel; отрицательные числа остаются числами', () => {
+  setLang('ru');
+  const j = journal();
+  j.machines[0].name = '=HYPERLINK("http://example.org","x")';
+  j.machines[0].beams[0].name = '+6 МВ';
+  j.sessions[1].notes = '@SUM(A1)';
+  j.sessions[2].notes = '-2+3';
+  j.sessions[3].notes = '\tтабуляция';
+  const text = journalCsv(j);
+  assert.ok(!/(^|;)"?[=+@\t]/m.test(text.replace(/""/g, '')), 'ни одна ячейка не начинается с =, +, @, табуляции');
+  assert.match(text, /\n"'=HYPERLINK\(""http:\/\/example\.org"",""x""\)";151;/);
+  assert.match(text, /;'\+6 МВ;/);
+  assert.match(text, /;'@SUM\(A1\)\r\n/);
+  assert.match(text, /;'-2\+3\r\n/);
+  // отклонение −0,1 % — число, без апострофа
+  assert.match(text, /;-0,\d{3};/);
+  assert.doesNotMatch(text, /;'-\d[\d,]*;/);
+});

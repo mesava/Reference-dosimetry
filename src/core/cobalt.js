@@ -4,7 +4,7 @@
 // Непрерывный пучок: рекомбинация — TRS-398 разд. 4.4.3.4 b) (ур. 13 или 16), TG-51 ур. (11).
 // Ошибка таймера — TRS-398 разд. 5.4.2; TG-51 разд. VII («shutter timing error»).
 
-import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
+import { parseNumber, parseCells, isBlank, unitConverters, ru, dec } from './units.js';
 import { L } from './i18n.js';
 import { temperaturePressure, polarity, environmentChecks, readTolerance } from './common.js';
 import { resolveCoChamber, matchCoChamberByName } from './co60-chambers.js';
@@ -203,6 +203,7 @@ export function computeCobalt(form) {
     messages.push({ level, scope, text, ref });
     if (field) [].concat(field).forEach((k) => flag(k, level));
   };
+  const conv = unitConverters(add);
   const read = (key, label, scope = 'common') => {
     const v = parseNumber(f[key]);
     if (!Number.isFinite(v)) add('error', scope, isBlank(f[key]) ? L(`Не заполнено поле «${label}».`, `Field "${label}" is empty.`) : L(`Не удалось прочитать число в поле «${label}».`, `Could not read the number in field "${label}".`), null, key);
@@ -249,7 +250,7 @@ export function computeCobalt(form) {
   if (chamber?.sleeve) add('info', 'common', L('Камера не водонепроницаема: используйте тот же чехол (ПММА ≤ 1 мм), что и при калибровке.', 'The chamber is not waterproof: use the same waterproofing sleeve (PMMA ≤ 1 mm) as at calibration.'), `${REF.trs}, разд. 4.2.4; ${REF.tg51}, разд. V.A`);
   if (chamber?.notReferenceClass) add('info', 'common', L('По TRS-398 Rev.1 (табл. 4) камера не отвечает спецификации эталонного класса: для калибровки пучка лучше использовать камеру эталонного класса.', 'According to TRS-398 Rev.1 (Table 4), this chamber does not meet the reference-class specification: a reference-class chamber is preferable for beam calibration.'), `${REF.trs}, табл. 4`, null);
   const ndwRaw = read('co_ndw', 'N_D,w');
-  const ndwCert = Number.isFinite(ndwRaw) ? ndwToGyPerNC(ndwRaw, f.co_ndw_unit) : NaN;
+  const ndwCert = Number.isFinite(ndwRaw) ? conv.ndw(ndwRaw, f.co_ndw_unit) : NaN;
   if (Number.isFinite(ndwCert) && (ndwCert < 1e-3 || ndwCert > 5)) {
     add('warn', 'common', L(`N_D,w = ${dec(ndwCert.toPrecision(4))} Гр/нКл выглядит неправдоподобно: проверьте единицы.`, `N_D,w = ${dec(ndwCert.toPrecision(4))} Gy/nC looks implausible: check the units.`), null, 'co_ndw');
   }
@@ -270,7 +271,7 @@ export function computeCobalt(form) {
   // ------------------------------------------------------------ окружающая среда
   const T = read('co_env_T', L('Температура воды', 'Water temperature'));
   const Pin = read('co_env_P', L('Давление', 'Pressure'));
-  const P = Number.isFinite(Pin) ? pressureToKPa(Pin, f.co_env_P_unit) : NaN;
+  const P = Number.isFinite(Pin) ? conv.pressure(Pin, f.co_env_P_unit) : NaN;
   if (Number.isFinite(P) && (P < 50 || P > 110)) add('error', 'common', L(`Давление ${ru(P, 2)} кПа вне правдоподобного диапазона: проверьте единицы.`, `Pressure ${ru(P, 2)} kPa is outside the plausible range: check the units.`), null, 'co_env_P');
   const env = environmentChecks({ T, Hraw: f.co_env_H, keyT: 'co_env_T', keyH: 'co_env_H', parseNumber, isBlank, ru });
   env.items.forEach(([level, text, ref, key]) => add(level, 'common', text, ref, key));

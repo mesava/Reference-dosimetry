@@ -21,7 +21,7 @@
 // Материал фантома (KV_PHANTOMS в kv-tables.js) в расчёт не входит, но проверяется по условиям: низкие энергии — ПММА
 // или водоэквивалентный пластик, тот же, что при калибровке (табл. 27, разд. 8.2.2); средние — только вода (табл. 31).
 
-import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
+import { parseNumber, parseCells, isBlank, unitConverters, ru, dec } from './units.js';
 import { L } from './i18n.js';
 import { temperaturePressure, polarity, environmentChecks, readTolerance } from './common.js';
 import { timerError, timerErrorMultiple } from './cobalt.js';
@@ -239,6 +239,7 @@ export function computeKv(form) {
     messages.push({ level, scope, text, ref });
     if (field) [].concat(field).forEach((k) => flag(k, level));
   };
+  const conv = unitConverters(add);
   const read = (key, label, scope = 'common') => {
     const v = parseNumber(f[key]);
     if (!Number.isFinite(v)) add('error', scope, isBlank(f[key]) ? L(`Не заполнено поле «${label}».`, `Field "${label}" is empty.`) : L(`Не удалось прочитать число в поле «${label}».`, `Could not read the number in field "${label}".`), null, key);
@@ -375,7 +376,7 @@ export function computeKv(form) {
   const nUnitOk = (v) => v >= 1e-3 && v <= 20;
   if (certForm !== 'n') {
     const raw = read('kv_n', certForm === 'k' ? L('N_Д из сертификата', 'N_D from the certificate') : certForm === 'co' ? L('N_D,w в ⁶⁰Co из сертификата', 'N_D,w in ⁶⁰Co from the certificate') : L(`${nName} при Qo из сертификата`, `${nName} at Qo from the certificate`));
-    cert.base = Number.isFinite(raw) ? ndwToGyPerNC(raw, f.kv_n_unit) : NaN;
+    cert.base = Number.isFinite(raw) ? conv.ndw(raw, f.kv_n_unit) : NaN;
     if (Number.isFinite(cert.base) && !nUnitOk(cert.base)) add('warn', 'common', L(`${nName} = ${dec(cert.base.toPrecision(4))} Гр/нКл выглядит неправдоподобно: проверьте единицы.`, `${nName} = ${dec(cert.base.toPrecision(4))} Gy/nC looks implausible: check the units.`), null, 'kv_n');
   }
   // форма 'co': таблицы качеств нет — k_Q = 1
@@ -424,9 +425,9 @@ export function computeKv(form) {
       ), `${REF.trs}, разд. 8.4.1, 9.4.4`, 'kv_cert');
     }
     if (certForm === 'n') {
-      cert.NQ = ndwToGyPerNC(cert.value, f.kv_n_unit);
+      cert.NQ = conv.ndw(cert.value, f.kv_n_unit);
       table.rows.forEach((x) => {
-        const v = ndwToGyPerNC(x.val, f.kv_n_unit);
+        const v = conv.ndw(x.val, f.kv_n_unit);
         if (!nUnitOk(v)) add('warn', 'common', L(`${nName} в строке ${x.row} = ${dec(v.toPrecision(4))} Гр/нКл выглядит неправдоподобно: проверьте единицы.`, `${nName} in row ${x.row} = ${dec(v.toPrecision(4))} Gy/nC looks implausible: check the units.`), null, 'kv_cert');
       });
     } else {
@@ -462,7 +463,7 @@ export function computeKv(form) {
   if (Number.isFinite(kelec) && Math.abs(kelec - 1) > 0.02) add('warn', 'common', L('k_elec отличается от 1 больше чем на 2 %: проверьте сертификат электрометра.', 'k_elec differs from 1 by more than 2 %: check the electrometer calibration certificate.'), null, 'kv_kelec');
   const T = read('kv_env_T', L('Температура у камеры', 'Temperature at the chamber'));
   const Pin = read('kv_env_P', L('Давление', 'Pressure'));
-  const P = Number.isFinite(Pin) ? pressureToKPa(Pin, f.kv_env_P_unit) : NaN;
+  const P = Number.isFinite(Pin) ? conv.pressure(Pin, f.kv_env_P_unit) : NaN;
   if (Number.isFinite(P) && (P < 50 || P > 110)) add('error', 'common', L(`Давление ${ru(P, 2)} кПа вне правдоподобного диапазона: проверьте единицы.`, `Pressure ${ru(P, 2)} kPa is outside the plausible range: check the units.`), null, 'kv_env_P');
   const env = environmentChecks({ T, Hraw: f.kv_env_H, keyT: 'kv_env_T', keyH: 'kv_env_H', parseNumber, isBlank, ru });
   env.items.forEach(([level, text, ref, key]) => add(level, 'common', text, ref, key));

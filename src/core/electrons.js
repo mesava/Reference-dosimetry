@@ -4,7 +4,7 @@
 // TG-51 с аддендумом WGTG51 Report 385 (2024): D_w = M · k′_Q · k_Qecal · N_D,w⁶⁰Co (ур. 4),
 //   d_ref = 0,6·R50 − 0,1 см (ур. 2), k′_Q и k_Qecal — табл. 4–7, перекрёстная калибровка — ур. (5)–(6).
 
-import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
+import { parseNumber, parseCells, isBlank, unitConverters, ru, dec } from './units.js';
 import { L } from './i18n.js';
 import { temperaturePressure, polarity, environmentChecks, outputPlausibility, readTolerance, manualSource } from './common.js';
 import * as TG51 from './tg51.js';
@@ -240,6 +240,7 @@ export function computeElectrons(form) {
     messages.push({ level, scope, text, ref });
     if (field) [].concat(field).forEach((k) => flag(k, level));
   };
+  const conv = unitConverters(add);
   const read = (key, label, scope = 'common') => {
     const v = parseNumber(f[key]);
     if (!Number.isFinite(v)) {
@@ -355,7 +356,7 @@ export function computeElectrons(form) {
   let klab = 1;
   if (!cross) {
     ndwRaw = read('e_ndw', 'N_D,w');
-    ndw = Number.isFinite(ndwRaw) ? ndwToGyPerNC(ndwRaw, f.e_ndw_unit) : NaN;
+    ndw = Number.isFinite(ndwRaw) ? conv.ndw(ndwRaw, f.e_ndw_unit) : NaN;
     if (Number.isFinite(ndw) && (ndw < 1e-3 || ndw > 5)) {
       add('warn', 'common', L(
         `N_D,w = ${dec(ndw.toPrecision(4))} Гр/нКл выглядит неправдоподобно: проверьте единицы.`,
@@ -370,7 +371,7 @@ export function computeElectrons(form) {
   } else {
     if (wantTRS) {
       const v = read('e_cross_ndw', 'N_D,w,Qcross', 'trs');
-      crossNdw = Number.isFinite(v) ? ndwToGyPerNC(v, f.e_cross_ndw_unit) : NaN;
+      crossNdw = Number.isFinite(v) ? conv.ndw(v, f.e_cross_ndw_unit) : NaN;
       crossR50 = read('e_cross_r50', L('R50 пучка перекрёстной калибровки', 'R50 of the cross-calibration beam'), 'trs');
       if (Number.isFinite(crossR50) && crossR50 < 7) add('info', 'trs', L('TRS-398 рекомендует перекрёстную калибровку в пучке с R50 > 7 г/см² (E₀ > 16 МэВ).', 'TRS-398 recommends cross-calibration in a beam with R50 > 7 g/cm² (E₀ > 16 MeV).'), `${REF.trs}, разд. 7.6.1`, 'e_cross_r50');
     }
@@ -382,7 +383,7 @@ export function computeElectrons(form) {
         ), `${REF.r385}, разд. 5.3.2`, 'e_cal_route');
       }
       const v = read('e_cross_kn', '(k_Qecal·N_D,w)_pp', 'tg51');
-      crossKN = Number.isFinite(v) ? ndwToGyPerNC(v, f.e_cross_kn_unit) : NaN;
+      crossKN = Number.isFinite(v) ? conv.ndw(v, f.e_cross_kn_unit) : NaN;
     }
   }
   const T0 = read('e_T0', L('T₀ из сертификата', 'T₀ from the certificate'));
@@ -395,7 +396,7 @@ export function computeElectrons(form) {
   // ------------------------------------------------------ окружающая среда
   const T = read('e_env_T', L('Температура воды', 'Water temperature'));
   const Pin = read('e_env_P', L('Давление', 'Pressure'));
-  const P = Number.isFinite(Pin) ? pressureToKPa(Pin, f.e_env_P_unit) : NaN;
+  const P = Number.isFinite(Pin) ? conv.pressure(Pin, f.e_env_P_unit) : NaN;
   if (Number.isFinite(P) && (P < 50 || P > 110)) add('error', 'common', L(`Давление ${ru(P, 2)} кПа вне правдоподобного диапазона: проверьте единицы.`, `Pressure ${ru(P, 2)} kPa is outside the plausible range: check the units.`), null, 'e_env_P');
   const env = environmentChecks({ T, Hraw: f.e_env_H, keyT: 'e_env_T', keyH: 'e_env_H', parseNumber, isBlank, ru });
   env.items.forEach(([level, text, ref, key]) => add(level, 'common', text, ref, key));

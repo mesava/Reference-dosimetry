@@ -28,7 +28,8 @@ export const setEquipmentBridge = (b) => (tabBridge = { ...tabBridge, ...b });
 const ROOT = () => $('#module-equipment');
 const val = (v) => esc(v ?? '');
 const fieldId = (kind, id, path) => `eq-${kind}-${id}-${path.replace(/\./g, '-')}`;
-const bind = (kind, id, path) => `id="${fieldId(kind, id, path)}" data-bind="${kind}|${id}|${path}"`;
+// id записей приходит из файла журнала: в атрибут — только экранированным (иначе разметка из файла попадёт на страницу)
+const bind = (kind, id, path) => `id="${val(fieldId(kind, id, path))}" data-bind="${val(`${kind}|${id}|${path}`)}"`;
 
 /** Поле ввода. */
 function input(kind, id, path, value, { num = false, type = 'text', placeholder = '' } = {}) {
@@ -41,7 +42,7 @@ function check(kind, id, path, value, label) {
   return `<label class="check"><input type="checkbox" ${bind(kind, id, path)}${value ? ' checked' : ''}> <span>${label}</span></label>`;
 }
 const field = (label, control, { forId = '', sub = '', cls = '' } = {}) =>
-  `<div class="field ${cls}"><label${forId ? ` for="${forId}"` : ''}>${label}</label>${control}${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;
+  `<div class="field ${cls}"><label${forId ? ` for="${val(forId)}"` : ''}>${label}</label>${control}${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;
 
 /** Отметка «не заполнено: …» в заголовке карточки. */
 const missChip = (miss) => (miss.length ? `<span class="chip warn">${richText(L(`не заполнено: ${miss.join(', ')}`, `missing: ${miss.join(', ')}`))}</span>` : '');
@@ -219,7 +220,7 @@ function calGeoBlock(m, kind) {
   let body;
   if (kind === 'photon') {
     const manual = g.setup_geometry === 'manual';
-    body = `${field(L('Геометрия измерения дозы', 'Dose measurement geometry'), select(k, m.id, p('setup_geometry'), g.setup_geometry, [['SSD', L('РИП 100 см — поле на поверхности воды', 'SSD 100 cm: field at the water surface')], ['SAD', L('РИО 100 см — поле в плоскости камеры', 'SAD 100 cm: field at the chamber plane')], ['manual', L('Ручной ввод: РИП, поле, глубина', 'Manual: SSD, field, depth')]]), { forId: fid('setup_geometry'), cls: 'span-2', sub: whom })}
+    body = `${field(L('Геометрия измерения дозы', 'Dose measurement geometry'), select(k, m.id, p('setup_geometry'), g.setup_geometry, [['SSD', L('РИП 100 см — поле на поверхности воды', 'SSD 100 cm: field at the water surface')], ['SAD', L('РИО 100 см — поле в плоскости камеры', 'SAD 100 cm: field at the chamber plane')], ['manual', L('Ручной ввод: РИП, поле, глубина', 'Manual: SSD, field, depth')]]), { forId: fid('setup_geometry'), cls: 'span-2', sub: esc(whom) })}
       ${manual ? `${field(L('РИП, см', 'SSD, cm'), input(k, m.id, p('setup_ssd'), g.setup_ssd, { num: true }), { forId: fid('setup_ssd') })}
       ${field(L('Размер поля, см', 'Field size, cm'), input(k, m.id, p('setup_field'), g.setup_field, { num: true }), { forId: fid('setup_field') })}
       ${field(L('Глубина камеры, см', 'Chamber depth, cm'), input(k, m.id, p('setup_depth'), g.setup_depth, { num: true }), { forId: fid('setup_depth') })}` : ''}
@@ -227,7 +228,7 @@ function calGeoBlock(m, kind) {
       ${g.dd_on && g.setup_geometry === 'SAD' ? field(L('Пересчёт при установке по РИО', 'Transfer for the SAD set-up'), select(k, m.id, p('dd_sad'), g.dd_sad, [['tmr', L('через TMR — на d_max в изоцентре', 'via TMR: to d_max at the isocentre')], ['pdd', L('через PDD при РИП 90 см', 'via PDD at SSD 90 cm')]]), { forId: fid('dd_sad'), cls: 'span-2' }) : ''}
       ${g.dd_on ? field(L('Номинальный выход задан', 'The nominal output is given'), select(k, m.id, p('dd_nominal_at'), g.dd_nominal_at, [['dmax', L('на d_max (после пересчёта)', 'at d_max (after the transfer)')], ['zref', L('на опорной глубине — аппарат калибруют на 10 см', 'at the reference depth: the linac is calibrated at 10 cm')]]), { forId: fid('dd_nominal_at'), cls: 'span-2' }) : ''}`;
   } else {
-    body = `${field(L('РИП, см', 'SSD, cm'), input(k, m.id, p('e_ssd'), g.e_ssd, { num: true }), { forId: fid('e_ssd'), sub: whom })}
+    body = `${field(L('РИП, см', 'SSD, cm'), input(k, m.id, p('e_ssd'), g.e_ssd, { num: true }), { forId: fid('e_ssd'), sub: esc(whom) })}
       <div class="field">${check(k, m.id, p('e_dd_on'), g.e_dd_on, L('Пересчитать дозу на глубину максимума z<sub>max</sub>', 'Transfer the dose to the depth of maximum z<sub>max</sub>'))}</div>
       ${g.e_dd_on ? field(L('Номинальный выход задан', 'The nominal output is given'), select(k, m.id, p('e_nominal_at'), g.e_nominal_at, [['zmax', L('на z_max (после пересчёта)', 'at z_max (after the transfer)')], ['zref', L('на опорной глубине z_ref', 'at the reference depth z_ref')]]), { forId: fid('e_nominal_at') }) : ''}`;
   }
@@ -472,7 +473,9 @@ function updateHead(el) {
 function onInput(e) {
   const el = e.target.closest('[data-bind]');
   if (!el) return;
-  const [kind, id, path] = el.dataset.bind.split('|');
+  // «вид|id|путь»: id из файла журнала может содержать «|» — вид до первой черты, путь после последней
+  const b = el.dataset.bind;
+  const [kind, id, path] = [b.slice(0, b.indexOf('|')), b.slice(b.indexOf('|') + 1, b.lastIndexOf('|')), b.slice(b.lastIndexOf('|') + 1)];
   const value = el.type === 'checkbox' ? el.checked : kind === 'beam' && path === 'geoOwn' ? el.value === 'own' : el.value;
   updateJournal((j) => {
     const list = kind === 'chamber' ? j.chambers : kind === 'electrometer' ? j.electrometers : kind === 'machine' ? j.machines : j.machines.flatMap((m) => m.beams);

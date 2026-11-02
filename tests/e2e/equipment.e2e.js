@@ -176,3 +176,38 @@ test('телефон: поля ввода не мельче 16 px — iOS не �
   }
   assert.deepEqual(errors, []);
 });
+
+test('оборудование: разметка из файла журнала (id записей, названия пучков) не выполняется на странице', async () => {
+  const { ctx, page, errors } = await openPage(browser);
+  const X = `"'><img src=x onerror="window.__xss=(window.__xss||0)+1">`;
+  const journal = {
+    app: 'reference-dosimetry', module: 'journal', version: 2,
+    chambers: [{ id: `ch${X}`, kind: 'photon', form: { ch_model: 'PTW30013', ch_serial: '1' } }],
+    electrometers: [{ id: `el${X}`, form: { el_model: 'PTW UNIDOS webline', el_serial: '2' } }],
+    machines: [{ id: `m${X}`, name: `Аппарат${X}`, kind: 'linac', calGeo: {}, beams: [
+      { id: `b${X}`, kind: 'photon', name: `6 МВ${X}`, geoOwn: true, form: {} },
+      { id: 'b2', kind: 'photon', name: '10 МВ', form: {} },
+    ] }],
+    sessions: [],
+  };
+  await ctx.addInitScript((d) => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.setItem('reference-dosimetry.journal.v1', d);
+      sessionStorage.setItem('seeded', '1');
+    }
+  }, JSON.stringify({ journal }));
+  await page.goto(`${server.url}/index.html#equipment`);
+  await page.waitForSelector('[data-card^="machine:"]');
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => window.__xss), undefined, 'обработчик из файла не выполнен');
+  assert.equal(await page.locator('#module-equipment img[src="x"]').count(), 0, 'в разметке нет элементов из файла');
+  // название пучка со своей геометрией показано как текст
+  const subs = await page.locator('#module-equipment .field .sub').allTextContents();
+  assert.ok(subs.some((t) => t.includes(`своя у: 6 МВ${X}`)), subs.join(' | '));
+  // поля по-прежнему связаны с записями: ввод меняет журнал
+  await page.locator(`[data-card^="beam:"] input[data-bind$="|name"]`).first().fill('6 МВ БВФ');
+  await page.waitForTimeout(300);
+  const names = await page.evaluate(() => JSON.parse(localStorage.getItem('reference-dosimetry.journal.v1')).journal.machines[0].beams.map((b) => [b.id, b.name]));
+  assert.deepEqual(names, [[`b${X}`, '6 МВ БВФ'], ['b2', '10 МВ']]);
+  assert.deepEqual(errors, []);
+});

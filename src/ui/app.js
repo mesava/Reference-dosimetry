@@ -280,7 +280,8 @@ function initProtocol() {
       saved = null;
     }
   }
-  if (saved && $(`#protocol_${saved}`)) applyProtocol(saved);
+  // значение — из хранилища или старого черновика: по id, а не селектором (строка с кавычками ломала querySelector)
+  if (typeof saved === 'string' && document.getElementById(`protocol_${saved}`)?.name === 'protocol') applyProtocol(saved);
   // TG-51 — только справочное сравнение: при его выборе в шапке видна пометка
   const note = $('#protocol-note');
   const showNote = () => note && (note.hidden = currentProtocol() !== 'tg51');

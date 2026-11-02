@@ -2,7 +2,7 @@
 // Принимает значения полей формы (строки и массивы строк, как их ввёл пользователь) и возвращает
 // все промежуточные поправки, итоговую дозу, замечания с источниками и флаги для подсветки полей.
 
-import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec, parseBeamName } from './units.js';
+import { parseNumber, parseCells, isBlank, unitConverters, ru, dec, parseBeamName } from './units.js';
 import { L } from './i18n.js';
 import { temperaturePressure, polarity, environmentChecks, outputPlausibility, readTolerance, manualSource } from './common.js';
 import * as TG51 from './tg51.js';
@@ -247,6 +247,7 @@ export function computePhotons(form) {
     messages.push({ level, scope, text, ref });
     if (field) [].concat(field).forEach((k) => flag(k, level));
   };
+  const conv = unitConverters(add);
   /** Параметры поправки на рекомбинацию по глубине для показателя качества; null — поправка не вносится. */
   const recDepth = (ksTab, scope) => {
     if (!f.q_rec_on) return null;
@@ -373,7 +374,7 @@ export function computePhotons(form) {
   const cross = f.ch_cal_route === 'cross';
   const ndwKey = cross ? 'ch_cross_ndw' : 'ch_ndw';
   const ndwRaw = read(ndwKey, cross ? 'N_D,w,Qcross' : 'N_D,w');
-  const ndw = Number.isFinite(ndwRaw) ? ndwToGyPerNC(ndwRaw, cross ? f.ch_cross_ndw_unit : f.ch_ndw_unit) : NaN;
+  const ndw = Number.isFinite(ndwRaw) ? conv.ndw(ndwRaw, cross ? f.ch_cross_ndw_unit : f.ch_ndw_unit) : NaN;
   if (Number.isFinite(ndw) && (ndw < 1e-3 || ndw > 5)) {
     const v = dec(ndw.toPrecision(4));
     add('warn', 'common', L(`N_D,w = ${v} Гр/нКл выглядит неправдоподобно: проверьте единицы.`, `N_D,w = ${v} Gy/nC looks implausible: check the units.`), null, ndwKey);
@@ -430,7 +431,7 @@ export function computePhotons(form) {
   // ------------------------------------------------------------ окружающая среда
   const T = read('env_T', L('Температура воды', 'Water temperature'));
   const Pin = read('env_P', L('Давление', 'Pressure'));
-  const P = Number.isFinite(Pin) ? pressureToKPa(Pin, f.env_P_unit) : NaN;
+  const P = Number.isFinite(Pin) ? conv.pressure(Pin, f.env_P_unit) : NaN;
   if (Number.isFinite(P) && (P < 50 || P > 110)) {
     add('error', 'common', L(`Давление ${ru(P, 2)} кПа вне правдоподобного диапазона: проверьте единицы.`, `Pressure ${ru(P, 2)} kPa is outside the plausible range: check the units.`), null, 'env_P');
   }
