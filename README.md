@@ -231,6 +231,9 @@ src/core/               расчётное ядро без зависимост�
   photons.js            полный расчёт и проверки для МВ фотонов
   electron-chambers.js  камеры для электронов: табл. 20–21 TRS-398 Rev.1, табл. 18 TRS-398 первого издания, табл. 2–7 Report 385
   electrons.js          полный расчёт и проверки для электронов, доступные способы k_Q для камеры и калибровки
+  kvx.js                kV-рентген: B_w и [μen/ρ]w,air по данным Andreo (2019), интерполяция как в веб-приложении МАГАТЭ kvx-rays.iaea.org
+  kv-data.js            kV-рентген: подключение данных Andreo и калькулятора B_w и [μen/ρ]w,air, ссылка на источник
+  kv-nist.js            коэффициенты ослабления Al и Cu (NIST) — только для проверки, что СПО достижим при данном kV
   crosscal.js           перекрёстная калибровка рабочей камеры: ⁶⁰Co, МВ фотоны, электроны (TRS-398 разд. 4.5, Report 385 ур. 5)
   uncertainty.js        бюджет неопределённости: типовые бюджеты TRS-398 табл. 13, 17, 24, аддендума TG-51 табл. II, Report 385 табл. 8, 9
   unc-ki.js             раскрытие строк k_i и «установка стандартных условий» бюджета TRS-398
@@ -285,6 +288,7 @@ src/ui/                 интерфейс
 tests/                  автотесты (node:test): таблицы протоколов для сверки (tests/data), опубликованные примеры,
                         независимые расчёты реальных калибровок (workbook.test.js — Versa HD, truebeam.test.js — TrueBeam, unc-budget.test.js — бюджет неопределённости)
 tests/e2e/              сквозные проверки в браузере (Playwright, Chromium): файл журнала, проверка дозиметра, приложение, разделы
+data/andreo-kv/         данные P. Andreo для kV-рентгена (B_w, [μen/ρ]w,air) — на условиях автора, не под AGPL (см. README в папке)
 manifest.webmanifest, sw.js, icons/  установка как приложение (только у страницы на сервере; в dist/index.html их нет)
 CITATION.cff            сведения для цитирования (GitHub «Cite this repository», Zenodo)
 scripts/build.mjs       сборка автономного файла dist/index.html
@@ -363,13 +367,14 @@ docs/journal.md         журнал: файл, оборудование, изм
 2. **Проверка на независимых данных** того, что ещё не проверено: у ⁶⁰Co — ошибка таймера, пересчёт на z<sub>max</sub> и распад; перекрёстная калибровка, электроны с цилиндрической камерой, TG-51 целиком, журнал в режиме проверки выхода и с несколькими пучками аппарата (нужны протоколы с независимым расчётом).
 3. **Из отзыва коллег — в следующую очередь:** проверить «В пластинах» на ежедневных измерениях отделения (ряд проверок после привязки; привязка и первая проверка уже сверены с таблицами отделения); выбор разделов для печати — после уточнения у коллег. Камеры для малых полей (CC01, Razor) — не в TRS-398 Rev.1, это TRS-483: пока — как «своя камера» с ручным k<sub>Q</sub>.
 4. **Новые модули**, по важности и объёму (оба подраздела уже есть во вкладке «Дозиметрия» с пометкой «в разработке», адреса `#kv` и `#brachy`):
-   - **kV-рентген по TRS-398 Rev.1** — отдельный большой модуль (воспроизводимость, линейность, СПО и др.);
+   - **kV-рентген по TRS-398 Rev.1** — отдельный большой модуль (воспроизводимость, линейность, СПО и др.); данные Andreo (2019) для B<sub>w</sub> и [μ<sub>en</sub>/ρ]<sub>w,air</sub> и их калькулятор уже в репозитории и совпадают с веб-приложением МАГАТЭ во всех 117 контрольных точках до 4-го знака (`tests/kv-data.test.js`), во вкладку пока не подключены;
    - **брахитерапия:** источники ⁶⁰Co и ¹⁹²Ir, колодезная камера и фантом PTW 9193.
 
 ## Литература / References
 
 - Andreo P, Burns D T, Kapsch R-P, McEwen M and Vatnitsky S 2024 Absorbed dose determination in external beam radiotherapy: an international code of practice for dosimetry based on standards of absorbed dose to water. IAEA Technical Reports Series no. 398 (Rev. 1) (Vienna: International Atomic Energy Agency)
 - Andreo P, Burns D T, Hohlfeld K, Huq M S, Kanai T, Laitano F, Smyth V and Vynckier S 2000 Absorbed dose determination in external beam radiotherapy: an international code of practice for dosimetry based on standards of absorbed dose to water. IAEA Technical Reports Series no. 398 (Vienna: International Atomic Energy Agency); рус. изд.: Определение поглощенной дозы при дистанционной лучевой терапии: Международные практические рекомендации по дозиметрии, основанные на эталонах единицы поглощенной дозы в воде. Серия технических докладов № 398 (Вена: МАГАТЭ, 2004) — первое издание; из него только табл. 18 (k<sub>Q</sub> для PTW 23343 Markus и Exradin P11 при калибровке в ⁶⁰Co) как нестандартный способ для электронов
+- Andreo P 2019 Data for the dosimetry of low- and medium-energy kV x rays. Phys. Med. Biol. 64 205019. doi:[10.1088/1361-6560/ab421d](https://doi.org/10.1088/1361-6560/ab421d) — B<sub>w</sub> и [μ<sub>en</sub>/ρ]<sub>w,air</sub> для kV-рентгена; файлы данных веб-приложения МАГАТЭ kvx-rays.iaea.org используются с разрешения автора ([data/andreo-kv/](data/andreo-kv/README.md))
 - Almond P R, Biggs P J, Coursey B M, Hanson W F, Huq M S, Nath R and Rogers D W O 1999 AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon and electron beams. Med. Phys. 26 1847–70. doi:[10.1118/1.598691](https://doi.org/10.1118/1.598691)
 - McEwen M, DeWerd L, Ibbott G, Followill D, Rogers D W O, Seltzer S and Seuntjens J 2014 Addendum to the AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon beams. Med. Phys. 41 041501. doi:[10.1118/1.4866223](https://doi.org/10.1118/1.4866223)
 - Muir B, Culberson W, Davis S, Kim G G, Lee S-W, Lowenstein J, Renaud J, Sarfehnia A, Siebers J, Tantôt L and Tolani N 2022 AAPM WGTG51 Report 374: Guidance for TG-51 reference dosimetry. Med. Phys. 49 6739–64. doi:[10.1002/mp.15949](https://doi.org/10.1002/mp.15949)
@@ -405,6 +410,8 @@ Copyright © 2026 Мелентьев Александр Валериевич (Al
 Версии до 0.15.1 включительно были выпущены под лицензией MIT; для этих версий она сохраняется.
 
 Лицензия распространяется на код калькулятора. Числовые данные протоколов, которые используются в расчёте, взяты из опубликованных источников со ссылками на таблицы и принадлежат их авторам и издателям (МАГАТЭ, AAPM, BIPM). Это k<sub>Q</sub> и параметры аппроксимаций, коэффициенты табл. 10 и 11 TRS-398 Rev.1, данные камер из TG-51, аддендума и Reports 374 и 385, период полураспада ⁶⁰Co. Лицензия на эти данные не распространяется: чтобы использовать их вне калькулятора, обращайтесь к первоисточникам (список — в разделе [«Литература / References»](#литература--references)). Тексты протоколов в репозиторий не входят.
+
+Отдельно — данные P. Andreo для kV-рентгена в папке [`data/andreo-kv/`](data/andreo-kv/README.md): B<sub>w</sub> и [μ<sub>en</sub>/ρ]<sub>w,air</sub>, файлы веб-приложения МАГАТЭ kvx-rays.iaea.org. Они используются с разрешения автора на его условиях: только некоммерческое использование (ни напрямую, ни через передачу файлов для коммерческих целей) и обязательная ссылка на источник — Andreo P 2019 Phys. Med. Biol. 64 205019. Лицензия AGPL на эти данные не распространяется, в том числе когда они встроены в собранный `dist/index.html`. Условия действуют для любого, кто использует калькулятор или эти файлы.
 
 ## Ограничение ответственности
 

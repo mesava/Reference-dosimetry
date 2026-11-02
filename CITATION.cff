@@ -37,3 +37,19 @@ keywords:
   - ionization chamber
   - uncertainty budget
   - statistical process control
+references:
+  - type: article
+    authors:
+      - family-names: Andreo
+        given-names: Pedro
+    title: Data for the dosimetry of low- and medium-energy kV x rays
+    journal: Physics in Medicine and Biology
+    volume: 64
+    issue: 20
+    start: 205019
+    year: 2019
+    doi: 10.1088/1361-6560/ab421d
+    notes: >-
+      Data files of the IAEA web app kvx-rays.iaea.org (backscatter factors and water/air mass energy-absorption
+      coefficient ratios for kV x rays), used in data/andreo-kv/ with the author's permission: non-commercial use only,
+      citation required. Not covered by the AGPL license of the software.
