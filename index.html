@@ -2644,8 +2644,8 @@
   <form id="unc-sheet" class="sheet" autocomplete="off" novalidate>
     <p class="intro">Бюджет <button type="button" class="term" data-term="unc">неопределённости</button> поглощённой дозы в воде на опорной глубине — для протокола калибровки.</p>
     <ul class="purpose">
-      <li><b>Когда:</b> после расчёта дозы на вкладке «Дозиметрия» (⁶⁰Co, МВ фотоны или электроны): кнопка в разделе 1 переносит оттуда пучок, способ калибровки камеры, показания и результат дозиметрии.</li>
-      <li><b>Что делать:</b> введите расширенную неопределённость U из свидетельства о калибровке камеры (раздел 2) и, если есть, свои оценки строк (раздел 4). Строки без своих значений берутся из типового бюджета протокола: TRS-398 Rev.1, табл. 13, 17, 24; аддендум TG-51, табл. II; Report 385, табл. 8, 9.</li>
+      <li><b>Когда:</b> после расчёта дозы на вкладке «Дозиметрия» (⁶⁰Co, МВ фотоны или электроны) или «kV-рентген»: кнопка в разделе 1 переносит оттуда пучок, способ калибровки камеры, показания и результат дозиметрии.</li>
+      <li><b>Что делать:</b> введите расширенную неопределённость U из свидетельства о калибровке камеры (раздел 2) и, если есть, свои оценки строк (раздел 4). Строки без своих значений берутся из типового бюджета протокола: TRS-398 Rev.1, табл. 13, 17, 24, 30, 33; аддендум TG-51, табл. II; Report 385, табл. 8, 9.</li>
       <li><b>Результат:</b> суммарная стандартная u<sub>c</sub> и расширенная U (k = 2) неопределённость — в процентах и в единицах дозы. В другие вкладки не переносится.</li>
     </ul>
     <details class="howto" data-howto="uncertainty" open>
@@ -2653,7 +2653,7 @@
       <div class="howto-body">
         <h3>Что откуда берётся</h3>
       <ul>
-        <li><b>Типовой бюджет</b> — пример из протокола: по TRS-398 — табл. 13 (⁶⁰Co), 17 (МВ фотоны), 24 (электроны); по TG-51 — аддендум 2014, табл. II (фотоны), Report 385, табл. 8 и 9 (электроны). Выбирается сам по пучку, протоколу в шапке, типу камеры и способу её калибровки (раздел 1).</li>
+        <li><b>Типовой бюджет</b> — пример из протокола: по TRS-398 — табл. 13 (⁶⁰Co), 17 (МВ фотоны), 24 (электроны), 30 и 33 (kV-рентген низких и средних энергий, калибровка N<sub>D,w</sub> или N<sub>K</sub>); по TG-51 — аддендум 2014, табл. II (фотоны), Report 385, табл. 8 и 9 (электроны). Выбирается сам по пучку, протоколу в шапке, типу камеры и способу её калибровки (раздел 1). Для kV-рентгена — всегда TRS-398 Rev.1: TG-51 его не охватывает.</li>
         <li><b>Свидетельство о калибровке</b> (раздел 2): расширенная неопределённость U и коэффициент охвата k из свидетельства камеры; для перекрёстно откалиброванной камеры — из свидетельства опорной. В бюджет идёт U/k вместо лабораторной части типового бюджета.</li>
         <li><b>Показания и результат</b> (раздел 3): серия показаний, по которой посчитана доза, и сама доза. С вкладки дозиметрии их переносит кнопка в разделе 1.</li>
         <li><b>Свои значения строк</b> (раздел 4): из своих проверок (стабильность камеры по контрольному источнику, разброс k<sub>pol</sub> и k<sub>s</sub> между калибровками), свидетельств (электрометр, термометр, барометр), оценок чувствительности (ошибка установки РИП, глубины, поля, пересчитанная в изменение показания) и литературы. Под каждой строкой — подсказка, откуда взять значение.</li>
@@ -2681,6 +2681,7 @@
           <button type="button" data-pull="co60">⁶⁰Co</button>
           <button type="button" data-pull="photons">МВ фотоны</button>
           <button type="button" data-pull="electrons">Электроны</button>
+          <button type="button" data-pull="kv">kV-рентген</button>
         </div>
         <span class="sub">пучок, тип камеры, способ калибровки, R<sub>50</sub>, показания, результат дозиметрии и сведения об аппарате; свидетельство и свои значения бюджета не меняются</span>
       </div>
@@ -2690,10 +2691,11 @@
           <label><input type="radio" name="unc_beam_type" id="unc_beam_type_co60" value="co60"><span>⁶⁰Co</span></label>
           <label><input type="radio" name="unc_beam_type" id="unc_beam_type_photons" value="photons" checked><span>МВ фотоны</span></label>
           <label><input type="radio" name="unc_beam_type" id="unc_beam_type_electrons" value="electrons"><span>Электроны</span></label>
+          <label><input type="radio" name="unc_beam_type" id="unc_beam_type_kv" value="kv"><span>kV-рентген</span></label>
         </div>
       </div>
       <div class="grid">
-        <div class="field span-2">
+        <div class="field span-2" data-show="unc_beam_type:co60,photons,electrons">
           <label for="unc_route">Калибровка камеры</label>
           <select id="unc_route"></select>
           <span class="sub" id="unc-route-sub"></span>
@@ -2707,6 +2709,36 @@
           <label for="unc_sit">Пример TG-51</label>
           <select id="unc_sit"><option value="i">(i) всё оценено, оборудование эталонного класса</option><option value="ii">(ii) типичные допущения, оборудование не проверялось</option></select>
           <span class="sub">меняет только столбец «Типовое»</span>
+        </div>
+        <div class="field span-2" data-show="unc_beam_type:kv">
+          <label for="unc_kv_range">Диапазон энергий</label>
+          <select id="unc_kv_range">
+            <option value="low">низкие: 10–100 кВ, СПО в мм Al (TRS-398, разд. 8)</option>
+            <option value="medium">средние: 80–300 кВ, СПО в мм Cu (TRS-398, разд. 9)</option>
+          </select>
+        </div>
+        <div class="field" data-show="unc_beam_type:kv">
+          <label for="unc_kv_cal">Калибровочный коэффициент</label>
+          <select id="unc_kv_cal">
+            <option value="ndw">N_D,w — поглощённая доза в воде</option>
+            <option value="nk">N_K — воздушная керма в свободном воздухе</option>
+          </select>
+        </div>
+        <div class="field" data-show="unc_beam_type:kv;unc_kv_range:medium;unc_kv_cal:ndw">
+          <label for="unc_kv_qo">Опорное качество Q<sub>o</sub></label>
+          <select id="unc_kv_qo">
+            <option value="kv">рентгеновское, на глубине 2 см</option>
+            <option value="co60">⁶⁰Co на 5 см (DIN 6809-4, не по TRS-398 Rev.1)</option>
+          </select>
+        </div>
+        <div class="field span-2" data-show="unc_beam_type:kv;unc_kv_cal:ndw">
+          <label for="unc_kv_kg">k<sub>g</sub> — поправка на поле и РИП</label>
+          <select id="unc_kv_kg">
+            <option value="calc">рассчитан или от лаборатории (поле или РИП не как в лаборатории)</option>
+            <option value="same">поле и РИП как в лаборатории: k_g = 1 без поправки</option>
+            <option value="one">k_g = 1 (DIN 6809-4, SSRMP; не по TRS-398 Rev.1)</option>
+          </select>
+          <span class="sub">от него зависит строка k<sub>g</sub> бюджета</span>
         </div>
       </div>
       <div class="grid subgrid">
@@ -2725,7 +2757,7 @@
     <!-- 2 -->
     <section class="step" aria-labelledby="unc-s2">
       <header><span class="step-no">2</span><h2 id="unc-s2">Свидетельство о калибровке</h2>
-        <p class="hint">Расширенная неопределённость N<sub>D,w</sub> из свидетельства о калибровке (поверке) камеры заменяет лабораторную часть типового бюджета: этап 1 TRS-398 или строку N<sub>D,w</sub> TG-51. Для перекрёстно откалиброванной камеры — из свидетельства опорной камеры.</p></header>
+        <p class="hint">Расширенная неопределённость N<sub>D,w</sub> (для kV-рентгена — N<sub>D,w</sub> или N<sub>K</sub>) из свидетельства о калибровке (поверке) камеры заменяет лабораторную часть типового бюджета: этап 1 TRS-398 или строку N<sub>D,w</sub> TG-51. Для перекрёстно откалиброванной камеры — из свидетельства опорной камеры.</p></header>
       <div class="grid">
         <div class="field"><label for="unc_cert_U">U из свидетельства, %</label><input type="text" id="unc_cert_U" class="num" inputmode="decimal"><span class="sub">пусто — типовые значения</span></div>
         <div class="field"><label for="unc_cert_k">Коэффициент охвата k</label><input type="text" id="unc_cert_k" class="num" inputmode="decimal"><span class="sub">как в свидетельстве, обычно 2</span></div>
@@ -2756,7 +2788,7 @@
         <div class="field"><label for="unc_res">Разрешение прибора, нКл</label><input type="text" id="unc_res" class="num" inputmode="decimal"><span class="sub" id="unc-res-sub"></span></div>
         <div class="field"><label for="unc_value">Результат дозиметрии</label><input type="text" id="unc_value" class="num" inputmode="decimal"><span class="sub">по желанию, для U в единицах дозы. С вкладки берётся доза на z<sub>ref</sub>: бюджет протокола составлен для неё</span></div>
         <div class="field"><label for="unc_unit">Единицы</label><select id="unc_unit"></select></div>
-        <div class="field"><label for="unc_value_at">Глубина результата</label><select id="unc_value_at"><option value="zref">опорная глубина</option><option value="max">максимум дозы</option></select></div>
+        <div class="field" data-show="unc_beam_type:co60,photons,electrons"><label for="unc_value_at">Глубина результата</label><select id="unc_value_at"><option value="zref">опорная глубина</option><option value="max">максимум дозы</option></select></div>
         <div class="field" data-show="unc_value_at:max"><label for="unc_transfer_u">u пересчёта на d<sub>max</sub>, % (k = 1)</label><input type="text" id="unc_transfer_u" class="num" inputmode="decimal"><span class="sub">своя оценка неопределённости PDD или TMR на опорной глубине; без неё U для дозы на d<sub>max</sub> неполон</span></div>
       </div>
     </section>

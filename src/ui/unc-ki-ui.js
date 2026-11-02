@@ -61,6 +61,13 @@ function seriesLine(o, b) {
   return L(`Серии с вкладки «${src}»: ${parts.join(', ')}.${missing}`, `Series from the ${src} tab: ${parts.join(', ')}.${missing}`);
 }
 
+/** kV-рентген: раскрытие строк по типовым значениям МВ-пучков не подходит — своя оценка вводится в строке бюджета. */
+const kvNote = () =>
+  `<p class="sub-hint">${richText(L(
+    'Для kV-рентгена раскрытия нет: типовые значения составляющих здесь — для МВ-пучков. Свою оценку введите в поле «Своё» строки бюджета и укажите в «как получено», из чего она сложена.',
+    'There is no breakdown for kV x-rays: the typical component values here are for MV beams. Enter your own estimate in the Yours field of the budget row and state in “how obtained” what it is made up of.',
+  ))}</p>`;
+
 /**
  * Отрисовка. r — результат computeUncertaintyTool. Таблица пересоздаётся при смене состава (язык, пучок, включено ли
  * раскрытие); иначе обновляются значения, и поле, в котором сейчас вводят, не теряет фокус.
@@ -70,11 +77,15 @@ export function renderKi(box, r, hidden, notes = {}) {
   const o = parseKi(hidden.value);
   const trs = r.budget.template.stages;
   const b = r.budget.ki;
-  const on = !!o.on && trs;
+  const on = !!o.on && trs && r.beam !== 'kv';
   box.dataset.on = on ? '1' : '';
   const sig = [getLang(), r.beam, trs ? 'trs' : 'tg', on ? 'on' : 'off'].join('|');
   if (box.dataset.sig !== sig) {
     box.dataset.sig = sig;
+    if (r.beam === 'kv') {
+      box.innerHTML = kvNote();
+      return;
+    }
     if (!trs) {
       box.innerHTML = `<p class="sub-hint">${esc(L('В TG-51 поправки уже разложены в бюджете отдельными строками (P_TP, влажность, P_pol, P_ion, утечка и т. д.); раскрытие k_i — для TRS-398.', 'In TG-51 the corrections are already separate rows of the budget (P_TP, humidity, P_pol, P_ion, leakage, etc.); the k_i breakdown is for TRS-398.')).replace(/P_(TP|pol|ion)/g, 'P<sub>$1</sub>')}</p>`;
       return;
@@ -151,11 +162,15 @@ export function renderSetup(box, r, hidden, notes = {}) {
   const o = parseKi(hidden.value);
   const trs = r.budget.template.stages;
   const b = r.budget.setup;
-  const on = !!o.on && trs;
+  const on = !!o.on && trs && r.beam !== 'kv';
   box.dataset.on = on ? '1' : '';
   const sig = [getLang(), r.beam, trs ? 'trs' : 'tg', on ? 'on' : 'off'].join('|');
   if (box.dataset.sig !== sig) {
     box.dataset.sig = sig;
+    if (r.beam === 'kv') {
+      box.innerHTML = kvNote();
+      return;
+    }
     if (!trs) {
       box.innerHTML = `<p class="sub-hint">${esc(L('В TG-51 установка уже разложена в бюджете отдельными строками (РИП, глубина, поле); раскрытие — для TRS-398.', 'In TG-51 the setup is already split into separate rows of the budget (SSD, depth, field); the breakdown is for TRS-398.'))}</p>`;
       return;

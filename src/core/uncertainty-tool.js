@@ -1,6 +1,6 @@
 // Вкладка «Неопределённость»: бюджет неопределённости поглощённой дозы в воде
 // на опорной глубине для выбранного пучка, протокола, типа камеры и способа её калибровки.
-// Сам бюджет — uncertainty.js (образцы TRS-398 табл. 13, 17, 24; аддендум TG-51 табл. II; Report 385 табл. 8, 9);
+// Сам бюджет — uncertainty.js (образцы TRS-398 табл. 13, 17, 24, 30, 33; аддендум TG-51 табл. II; Report 385 табл. 8, 9);
 // здесь — форма инструмента, проверка ввода, повторяемость серии показаний и U в единицах итога.
 
 import { parseNumber, parseCells, isBlank, ru } from './units.js';
@@ -19,13 +19,18 @@ export const UT_DEFAULTS = {
   unc_staff: [''],
   unc_notes: '',
 
-  unc_beam_type: 'photons', // 'co60' | 'photons' | 'electrons'
+  unc_beam_type: 'photons', // 'co60' | 'photons' | 'electrons' | 'kv'
   unc_ch_type: 'cyl', // электроны: 'cyl' | 'pp'
   // калибровка камеры: 'lab' — N_D,w в ⁶⁰Co из лаборатории; 'crossCo' — перекрёстная калибровка в ⁶⁰Co по опорной камере;
   // 'crossQ' — перекрёстная калибровка в клиническом пучке (фотоны: Q_cross, TRS-398 разд. 4.5.2; электроны: пучок электронов)
   unc_route: 'lab',
   unc_r50: '', // электроны, г/см²: для плоскопараллельной камеры при R50 < 2 г/см² k_Q — 0,8 % (табл. 24, прим. c)
   unc_sit: 'i', // пример TG-51: (i) или (ii)
+  // kV-рентген (TRS-398 Rev.1, табл. 30 и 33): диапазон энергий, калибровка камеры, опорное качество, как получен k_g
+  unc_kv_range: 'low', // 'low' | 'medium'
+  unc_kv_cal: 'ndw', // 'ndw' | 'nk'
+  unc_kv_qo: 'kv', // средние энергии, N_D,w: 'kv' | 'co60' (DIN 6809-4)
+  unc_kv_kg: 'calc', // N_D,w: 'calc' — рассчитан или от лаборатории; 'same' — геометрия как в лаборатории; 'one' — k_g = 1 (DIN)
 
   unc_cert_U: '', // расширенная неопределённость N_D,w из свидетельства, %
   unc_cert_k: '2',
@@ -54,6 +59,7 @@ export const UT_UNITS = {
   Gymin: { ru: 'Гр/мин', en: 'Gy/min' },
   Gy: { ru: 'Гр', en: 'Gy' },
   cGy: { ru: 'сГр', en: 'cGy' },
+  GyGy: { ru: 'Гр/Гр', en: 'Gy/Gy' },
 };
 export const unitText = (key) => {
   const u = UT_UNITS[key] ?? UT_UNITS.Gy100MU;
@@ -61,9 +67,12 @@ export const unitText = (key) => {
 };
 
 /** Способы калибровки камеры, допустимые для пучка. */
-export const ROUTES = { co60: ['lab', 'crossCo'], photons: ['lab', 'crossCo', 'crossQ'], electrons: ['lab', 'crossCo', 'crossQ'] };
+export const ROUTES = { co60: ['lab', 'crossCo'], photons: ['lab', 'crossCo', 'crossQ'], electrons: ['lab', 'crossCo', 'crossQ'], kv: ['lab'] };
 
-const BEAMS = ['co60', 'photons', 'electrons'];
+/** Единицы итога по умолчанию для пучка. */
+export const defaultUnit = (beam) => ({ co60: 'cGymin', kv: 'Gymin' })[beam] ?? 'Gy100MU';
+
+const BEAMS = ['co60', 'photons', 'electrons', 'kv'];
 const REF = { trs: 'TRS-398 Rev.1' };
 
 export function normalizeUncTool(input) {
@@ -73,8 +82,13 @@ export function normalizeUncTool(input) {
   if (f.unc_ch_type !== 'pp') f.unc_ch_type = 'cyl';
   if (!ROUTES[f.unc_beam_type].includes(f.unc_route)) f.unc_route = 'lab';
   if (f.unc_sit !== 'ii') f.unc_sit = 'i';
-  if (!UT_UNITS[f.unc_unit]) f.unc_unit = f.unc_beam_type === 'co60' ? 'cGymin' : 'Gy100MU';
-  if (f.unc_value_at !== 'max') f.unc_value_at = 'zref';
+  if (f.unc_kv_range !== 'medium') f.unc_kv_range = 'low';
+  if (f.unc_kv_cal !== 'nk') f.unc_kv_cal = 'ndw';
+  if (f.unc_kv_qo !== 'co60') f.unc_kv_qo = 'kv';
+  if (!['calc', 'same', 'one'].includes(f.unc_kv_kg)) f.unc_kv_kg = 'calc';
+  if (!UT_UNITS[f.unc_unit]) f.unc_unit = defaultUnit(f.unc_beam_type);
+  // kV-рентген: бюджет — для дозы на опорной глубине (поверхность или 2 г/см²); пересчёта на d_max нет
+  if (f.unc_value_at !== 'max' || f.unc_beam_type === 'kv') f.unc_value_at = 'zref';
   if (!Array.isArray(f.unc_M)) f.unc_M = isBlank(f.unc_M) ? ['', '', ''] : String(f.unc_M).trim().split(/[\s;]+/);
   if (!Array.isArray(f.unc_staff) || f.unc_staff.length === 0) f.unc_staff = [''];
   for (const k of ['unc_over', 'unc_row_notes', 'unc_ki', 'unc_setup']) if (f[k] && typeof f[k] === 'object') f[k] = JSON.stringify(f[k]);
@@ -95,7 +109,11 @@ export function computeUncertaintyTool(form) {
   const route = f.unc_route;
   const tg = f.protocol === 'tg51';
   const electrons = beam === 'electrons';
+  const kv = beam === 'kv';
   const chamberType = electrons ? f.unc_ch_type : 'cyl';
+  // kV-рентген: Qo = ⁶⁰Co — только средние энергии с N_D,w; k_g — только для N_D,w
+  const kvQo = kv && f.unc_kv_range === 'medium' && f.unc_kv_cal === 'ndw' ? f.unc_kv_qo : 'kv';
+  const kvKg = kv && f.unc_kv_cal === 'ndw' ? f.unc_kv_kg : 'calc';
 
   // качество пучка электронов: нужно только для плоскопараллельной камеры по TRS-398 (R50 < 2 г/см²)
   let r50 = NaN;
@@ -197,12 +215,17 @@ export function computeUncertaintyTool(form) {
     crossCo: route === 'crossCo',
     r50,
     situation: f.unc_sit,
+    kvRange: f.unc_kv_range,
+    kvCal: f.unc_kv_cal,
+    kvQo,
+    kvKg,
     certU: f.unc_cert_U,
     certK: f.unc_cert_k,
     over: f.unc_over,
     rowNotes: f.unc_row_notes,
-    ki: kiBreakdown(beam, kiSpec, { res: resUsed, notes: parseOverrides(f.unc_row_notes) }),
-    setup: setupBreakdown(beam, f.unc_setup, { notes: parseOverrides(f.unc_row_notes) }),
+    // раскрытие k_i и установки — по типовым значениям МВ-пучков; для kV-рентгена его нет
+    ki: kv ? null : kiBreakdown(beam, kiSpec, { res: resUsed, notes: parseOverrides(f.unc_row_notes) }),
+    setup: kv ? null : setupBreakdown(beam, f.unc_setup, { notes: parseOverrides(f.unc_row_notes) }),
     typeA,
     prefix: '',
   });

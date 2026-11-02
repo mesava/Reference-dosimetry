@@ -716,6 +716,39 @@ export function importKv(obj) {
   update();
 }
 
+/**
+ * Данные вкладки для инструмента «Неопределённость» (кнопка «Взять данные с вкладки»): диапазон энергий, калибровка
+ * камеры, опорное качество, как получен k_g, серия показаний итога, доза на опорной глубине и сведения об аппарате.
+ * Сама вкладка бюджет не показывает.
+ */
+export function kvUncSource() {
+  const { data, result } = current;
+  if (!result) return null;
+  const x = result.trs;
+  const none = x.blocked || ctrlFailed(x);
+  const p = primaryOf(x);
+  const i = result.inputs;
+  const src = x.kg?.source;
+  const beam = [
+    Number.isFinite(i.kv) ? L(`${fmt(i.kv, i.kv % 1 ? 1 : 0)} кВ`, `${fmt(i.kv, i.kv % 1 ? 1 : 0)} kV`) : '',
+    Number.isFinite(i.hvl) ? L(`СПО ${fmt(i.hvl, 3)} мм ${result.material}`, `HVL ${fmt(i.hvl, 3)} mm ${result.material}`) : '',
+  ].filter(Boolean).join(', ');
+  return {
+    beam: 'kv',
+    route: 'lab',
+    kvRange: result.range,
+    kvCal: result.cal,
+    kvQo: result.qo === 'co60' ? 'co60' : 'kv',
+    kvKg: src === 'same' || src === 'one' ? src : 'calc',
+    M: p === x.ctrl ? data.kv_Mc : data.kv_M1,
+    // доза на опорной глубине (поверхность или 2 г/см²): бюджет Rev.1 составлен для неё
+    value: none ? NaN : p.perUnit,
+    unit: { min: 'Gymin', s: 'Gymin', Gy: 'GyGy', MU: 'cGyMU' }[i.unit] ?? 'Gymin',
+    ki: null,
+    meta: { institution: data.kv_institution, machine: data.kv_machine, beam, date: data.kv_date, staff: data.kv_staff },
+  };
+}
+
 // ------------------------------------------------------------ цикл
 let current = { data: null, result: null };
 

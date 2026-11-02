@@ -115,7 +115,8 @@ export function renderBudget(box, b, { hidden, notesHidden, doseText = '' }) {
   if (!box || !b) return;
   const over = parseOverrides(hidden?.value);
   const notes = parseOverrides(notesHidden?.value);
-  const sig = [getLang(), b.template.id, b.template.situation, b.rows.map((r) => `${r.key}${r.replaced ? '*' : ''}`).join(',')].join('|');
+  // ссылка строки — в неизменяемой части таблицы: у k_g kV-рентгена она зависит от выбора k_g при том же образце
+  const sig = [getLang(), b.template.id, b.template.situation, b.rows.map((r) => `${r.key}${r.replaced ? '*' : ''}@${r.ref}`).join(',')].join('|');
   if (box.dataset.sig !== sig) {
     box.innerHTML = fullHtml(b, L('Бюджет неопределённости', 'Uncertainty budget'));
     box.dataset.sig = sig;

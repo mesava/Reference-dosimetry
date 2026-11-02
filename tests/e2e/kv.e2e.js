@@ -195,3 +195,80 @@ test('kV-рентген: пример, ветки расчёта, пометка
   assert.match(await page.locator('#kv-dose-rows').innerText(), /1,0012\s*Гр\/мин/);
   assert.deepEqual(errors, []);
 });
+
+test('kV-рентген → «Неопределённость»: перенос с вкладки, табл. 33 и 30, k_g = 1 — пометка «не по Rev.1»; по-английски', async () => {
+  const { page, errors } = await openPage(browser);
+  const pause = (ms = 400) => page.waitForTimeout(ms);
+  await page.goto(`${server.url}/index.html#kv`);
+  await page.waitForSelector('#kv-messages li');
+  await page.click('#kv-btn-sample');
+  await pause();
+  // точность в протоколе вкладки отсылает к бюджету на вкладке «Неопределённость»
+  assert.match(await page.locator('#kv-sign').textContent(), /бюджет неопределённости составляется на вкладке «Неопределённость»/);
+
+  await page.evaluate(() => (location.hash = '#uncertainty'));
+  await page.waitForSelector('#unc-result .dose-big');
+  await page.locator('[data-pull="kv"]').click();
+  await pause();
+  assert.ok(await page.locator('#unc_beam_type_kv').isChecked());
+  assert.equal(await page.inputValue('#unc_kv_range'), 'medium');
+  assert.equal(await page.inputValue('#unc_kv_cal'), 'ndw');
+  assert.equal(await page.inputValue('#unc_kv_qo'), 'kv');
+  assert.equal(await page.inputValue('#unc_kv_kg'), 'calc');
+  assert.equal(await page.inputValue('#unc_value'), '1,0012');
+  assert.equal(await page.inputValue('#unc_unit'), 'Gymin');
+  assert.match(await page.inputValue('#unc_beam'), /200 кВ, СПО 1,000 мм Cu/);
+  assert.ok(await page.locator('#unc_route').isHidden());
+  assert.ok(await page.locator('#unc_value_at').isHidden());
+  const res = await page.locator('#unc-result').innerText();
+  assert.match(res, /kV-рентген · TRS-398 Rev\.1/);
+  assert.match(res, /табл\. 33 — kV-рентген средних энергий, калибровка N_D,w/);
+  assert.match(await page.locator('#unc-budget').innerText(), /Поправочный коэффициент на геометрию kg/);
+  assert.match(await page.locator('#unc-ki').innerText(), /Для kV-рентгена раскрытия нет/);
+  assert.match(await page.locator('#unc-status').innerText(), /Данные взяты с вкладки «kV-рентген»/);
+  // свидетельство демонстрационного примера перенос не трогает; без него — типовой бюджет табл. 33
+  assert.match(res, /с U из свидетельства/);
+  await page.fill('#unc_cert_U', '');
+  await pause();
+  assert.match(await page.locator('#unc-result').innerText(), /uc = 1,81 %[\s\S]*типовой бюджет|типовой бюджет[\s\S]*uc = 1,81 %/);
+
+  // низкие энергии, k_g = 1 при другом поле — оценка DIN 6809-4, предупреждение «не TRS-398 Rev.1»
+  await page.selectOption('#unc_kv_range', 'low');
+  await page.selectOption('#unc_kv_kg', 'one');
+  await pause();
+  assert.ok(await page.locator('#unc_kv_qo').isHidden());
+  assert.match(await page.locator('#unc-result').innerText(), /табл\. 30 — kV-рентген низких энергий/);
+  assert.match(await page.locator('#unc-messages').innerText(), /kg = 1 при другом поле или РИП — подход DIN 6809-4/);
+  assert.match(await page.locator('#unc-budget').innerText(), /Поправочный коэффициент на геометрию kg[\s\S]*?DIN 6809-4:2020, разд\. 6\.3, 6\.4[\s\S]*?2,00/);
+  // N_K: строки μen/ρ и B_w вместо k_g, поле k_g скрыто
+  await page.selectOption('#unc_kv_cal', 'nk');
+  await pause();
+  assert.ok(await page.locator('#unc_kv_kg').isHidden());
+  assert.match(await page.locator('#unc-budget').innerText(), /Коэффициент обратного рассеяния Bw/);
+  assert.match(await page.locator('#unc-result').innerText(), /uc = 1,94 %/);
+
+  // протокол текстом
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.click('#unc-btn-copy-report');
+  await pause(300);
+  const report = await page.evaluate(() => navigator.clipboard.readText());
+  assert.match(report, /— KV-РЕНТГЕН/);
+  assert.match(report, /Калибровка камеры: N_K — воздушная керма в свободном воздухе/);
+  assert.match(report, /TRS-398 Rev\.1, табл\. 30/);
+
+  // по-английски — без кириллицы в форме и итоге (кроме данных, введённых пользователем)
+  await page.locator('#lang_en').check();
+  await pause(600);
+  const status = (await page.locator('#unc-status').innerText()).trim();
+  const cyr = (await page.locator('#unc-sheet, #unc-readout').evaluateAll((els) => els.map((e) => e.innerText).join('\n')))
+    .split('\n')
+    .filter((l) => CYR.test(l))
+    // строка состояния остаётся на языке, на котором её написали
+    .filter((l) => l.trim() !== status);
+  assert.deepEqual(cyr, []);
+  assert.match(await page.locator('#unc-result').innerText(), /kV x-rays · TRS-398 Rev\.1/);
+  assert.match(await page.locator('#unc-result').innerText(), /Table 30 — low-energy kV x-rays, N_K calibration/);
+  await page.locator('#lang_ru').check();
+  await pause(300);
+  assert.deepEqual(errors, []);
+});

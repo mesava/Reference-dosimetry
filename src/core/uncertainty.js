@@ -1,7 +1,8 @@
 // Бюджет неопределённости поглощённой дозы в воде на опорной глубине.
 //
 // Образцы — примеры бюджетов из самих протоколов:
-//   TRS-398 Rev.1: табл. 13 (⁶⁰Co), табл. 17 (МВ фотоны), табл. 24 (электроны, камера откалибрована в ⁶⁰Co);
+//   TRS-398 Rev.1: табл. 13 (⁶⁰Co), табл. 17 (МВ фотоны), табл. 24 (электроны, камера откалибрована в ⁶⁰Co),
+//   табл. 30 и 33 (kV-рентген низких и средних энергий, калибровка N_D,w или N_K);
 //   аддендум TG-51 (2014): табл. II (МВ фотоны), примеры (i) и (ii);
 //   WGTG51 Report 385 (2024): табл. 8 (электроны, камера откалибрована в ⁶⁰Co) и табл. 9 (плоскопараллельная
 //   камера после перекрёстной калибровки), примеры (i) и (ii).
@@ -26,6 +27,7 @@ const REF = {
   trs: 'TRS-398 Rev.1',
   add: 'аддендум TG-51 (2014)',
   r385: 'Report 385',
+  din: 'DIN 6809-4:2020',
 };
 const T = REF;
 
@@ -229,6 +231,127 @@ const crossRow = () => ({
   cross: true,
 });
 
+// ------------------------------------------------------------------ строки kV-рентгена (TRS-398 Rev.1, табл. 30 и 33)
+// Типовые значения — по столбцам «На основе N_D,w» и «На основе N_K»: [N_D,w, N_K]; null — строки в этом столбце нет.
+const KV_T30 = {
+  lab_psdl: [1.4, 0.5], lab_stab: [0.1, 0.1], lab_user: [0.5, 0.5],
+  st_interp: [0.5, 0.5], st_muen: [null, 0.5], st_bw: [null, 1.0], st_kg: [1.0, null],
+  st_stab: [0.3, 0.3], st_read: [0.1, 0.1], st_setup: [1.0, 1.0], st_ki: [0.8, 0.8],
+};
+const KV_T33 = {
+  lab_psdl: [1.0, 0.5], lab_stab: [0.1, 0.1], lab_user: [0.5, 0.5],
+  st_interp: [0.5, 0.5], st_pch: [null, 1.0], st_pchfs: [null, 0.5], st_muen: [null, 0.5], st_kg: [0.2, null],
+  st_stab: [0.3, 0.3], st_read: [0.1, 0.1], st_setup: [1.0, 1.0], st_ki: [0.8, 0.8],
+};
+/** u_c при калибровке дозиметра пользователя прямо в ДЛПЭ (прим. c к табл. 30 и 33), %. */
+const KV_DIRECT = { t30ndw: 2.2, t30nk: 1.9, t33ndw: 1.7, t33nk: 1.9 };
+/** k_g = 1 при другом поле или РИП: оценка DIN 6809-4 и SSRMP No 9 (разд. 6.3, 6.4), % — низкие и средние энергии. */
+const KV_KG_ONE = { low: 2.0, medium: 1.3 };
+/** u_c по DIN 6809-4, табл. 7: средние энергии, камера откалибрована в ⁶⁰Co, %. */
+const DIN_T7_UC = 1.8;
+/** k_z = 1 — пересчёт с глубины калибровки 5 см на 2 см (DIN 6809-4), %. */
+const DIN_KZ = 0.5;
+
+function kvRows(ctx) {
+  const low = ctx.kvRange !== 'medium';
+  const nk = ctx.kvCal === 'nk';
+  const n = nk ? 'N_K' : 'N_D,w';
+  const sec = low ? 'разд. 8.6' : 'разд. 9.6';
+  const secEn = low ? 'Sec. 8.6' : 'Sec. 9.6';
+  return {
+    lab_psdl: {
+      label: L(`Калибровка вторичного эталона в ДЛПЭ (${n})`, `Calibration of the secondary standard at the PSDL (${n})`),
+      how: L(
+        `Три строки этапа 1 — то, что входит в неопределённость ${n} из свидетельства о калибровке камеры. Введите её выше — она заменит эти строки.`,
+        `The three rows of step 1 make up the ${n} uncertainty stated in the chamber calibration certificate. Enter it above and it will replace these rows.`,
+      ),
+      lab: true,
+    },
+    lab_stab: { label: L('Долговременная стабильность вторичного эталона', 'Long-term stability of the secondary standard'), lab: true },
+    lab_user: { label: L(`Калибровка дозиметра пользователя в поверочной лаборатории (${n})`, `Calibration of the user's dosimeter at the standards laboratory (${n})`), lab: true },
+    st_interp: low
+      ? {
+          label: L('Интерполяция калибровочного коэффициента на пучок пользователя', "Interpolation of the calibration coefficient to the user's beam"),
+          how: L('Значение сертификата для СПО вашего пучка — интерполяция между качествами лаборатории по ln(СПО).', "The certificate value for the HVL of your beam: interpolation between the laboratory qualities in ln(HVL)."),
+        }
+      : {
+          label: L('Процедура получения калибровочного коэффициента в пучке пользователя', "Procedure for obtaining the calibration coefficient in the user's beam"),
+          how: L('Интерполяция значения сертификата на СПО вашего пучка по ln(СПО).', "Interpolation of the certificate value to the HVL of your beam in ln(HVL)."),
+        },
+    st_muen: {
+      label: L('Отношение средних массовых коэффициентов поглощения энергии вода/воздух', 'Ratio of mean mass energy-absorption coefficients, water/air'),
+      how: low
+        ? L('[μen/ρ]w,air в свободном воздухе (данные Andreo).', '[μen/ρ]w,air free in air (Andreo data).')
+        : L('[μen/ρ]w,air на глубине 2 см (данные Andreo).', '[μen/ρ]w,air at a depth of 2 cm (Andreo data).'),
+    },
+    st_bw: { label: L('Коэффициент обратного рассеяния B_w', 'Backscatter factor B_w'), how: L('B_w для СПО, поля и РИП пучка (данные Andreo).', 'B_w for the HVL, field and SSD of the beam (Andreo data).') },
+    st_pch: { label: L('Поправка на возмущение камеры p_ch', 'Chamber perturbation correction p_ch'), how: L('Среднее по измерениям и расчётам (табл. 32).', 'Mean of measured and calculated values (Table 32).') },
+    st_pchfs: {
+      label: L('Зависимость p_ch от размера поля', 'Field-size dependence of p_ch'),
+      how: L('Добавляется, если зависимостью p_ch от поля пренебрегают (разд. 9.6).', 'Added when the field-size dependence of p_ch is neglected (Sec. 9.6).'),
+    },
+    st_kg: { label: L('Поправочный коэффициент на геометрию k_g', 'Geometry correction factor k_g'), how: '' },
+    st_kz: {
+      label: L('Пересчёт с глубины 5 см на 2 см, k_z = 1 (Qo = ⁶⁰Co)', 'Transfer from 5 cm to 2 cm depth, k_z = 1 (Qo = ⁶⁰Co)'),
+      how: L(
+        'N_D,w и k_Q,M получены на 5 см, доза определяется на 2 см; DIN 6809-4 принимает k_z = 1 с неопределённостью 0,5 %. В табл. 33 Rev.1 этой строки нет.',
+        'N_D,w and k_Q,M are obtained at 5 cm, while the dose is determined at 2 cm; DIN 6809-4 takes k_z = 1 with an uncertainty of 0.5%. Rev.1 Table 33 has no such row.',
+      ),
+    },
+    st_stab: {
+      label: L('Долговременная стабильность дозиметра пользователя', "Long-term stability of the user's dosimeter"),
+      how: L('Изменение отклика камеры с электрометром между калибровками: по контрольному источнику или сравнению с другими камерами.', 'Change in the response of the chamber and electrometer between calibrations: from a check source or a comparison with other chambers.'),
+    },
+    st_read: {
+      label: L('Показания дозиметра M_Q относительно таймера или монитора пучка', 'Dosimeter reading M_Q relative to the timer or beam monitor'),
+      how: L(
+        `Колебания выхода аппарата в типовое значение не входят: у аппаратов без камеры-монитора в серии одинаковых облучений они достигают 5 %. Оцените их по стандартному отклонению не меньше пяти облучений типичной длительности (${sec}) и введите своё значение.`,
+        `Variations of the machine output are not included in the typical value: without a monitor chamber they reach 5% within a series of identical exposures. Estimate them from the standard deviation of at least five exposures of typical duration (${secEn}) and enter your own value.`,
+      ),
+      typeA: true,
+    },
+    st_setup: {
+      label: L('Установление стандартных условий', 'Establishment of reference conditions'),
+      how: low
+        ? L('Воспроизводимость установки при коротком РИП и разница между опорной точкой и эффективной точкой измерения камеры (прим. b к табл. 30).', 'Reproducibility of positioning at a short SSD and the difference between the reference point and the effective point of measurement of the chamber (Table 30, note b).')
+        : L('Градиент дозы в нижней части диапазона — до 1 %/мм: воспроизводимость установки глубины лучше 1 % обеспечить трудно (разд. 9.6).', 'The dose gradient at the lower end of the range reaches 1%/mm, so a depth reproducibility better than 1% is hard to achieve (Sec. 9.6).'),
+    },
+    st_ki: {
+      label: L('Поправка на влияющие величины k_i', 'Correction for influence quantities k_i'),
+      how: L(
+        `k_TP, k_pol, k_s, k_elec, k_leak. Температура камеры может отличаться от измеренной не меньше чем на ±1 °C из-за нагрева от трубки (${sec}).`,
+        `k_TP, k_pol, k_s, k_elec, k_leak. The chamber temperature may differ from the measured one by at least ±1 °C because of heating by the tube (${secEn}).`,
+      ),
+    },
+  };
+}
+
+/** Строка k_g по тому, как он получен на вкладке: рассчитан, не нужен (геометрия как в лаборатории) или принят равным 1. */
+function kvKgRow(R, ctx, def) {
+  const low = ctx.kvRange !== 'medium';
+  if (ctx.kvKg === 'same') {
+    return { ...R.st_kg, def: 0, how: L('Поле и РИП — как в лаборатории: k_g = 1 без поправки, неопределённости от неё нет.', 'Field and SSD as at the laboratory: k_g = 1 with no correction, so it adds no uncertainty.') };
+  }
+  if (ctx.kvKg === 'one') {
+    return {
+      ...R.st_kg,
+      def: KV_KG_ONE[low ? 'low' : 'medium'],
+      ref: `${T.din}, разд. 6.3, 6.4`,
+      how: L(
+        `k_g принят равным 1, хотя поле или РИП отличаются от лабораторных (DIN 6809-4, SSRMP No 9; не TRS-398 Rev.1): их оценка неопределённости — ${pct(KV_KG_ONE.low, 1)} % для низких и ${pct(KV_KG_ONE.medium, 1)} % для средних энергий.`,
+        `k_g is taken as 1 although the field or SSD differ from the laboratory (DIN 6809-4, SSRMP No 9; not TRS-398 Rev.1): their uncertainty estimate is ${pct(KV_KG_ONE.low, 1)}% for low and ${pct(KV_KG_ONE.medium, 1)}% for medium energies.`,
+      ),
+    };
+  }
+  return {
+    ...R.st_kg,
+    def,
+    how: low
+      ? L('k_g по табл. 28–29, ур. (85) или от лаборатории. При k_g по табл. 28–29 в эту строку входит и расхождение значений по кВ и по СПО, показанное на вкладке «kV-рентген».', 'k_g from Tables 28–29, Eq. (85) or the laboratory. With k_g from Tables 28–29 this row also covers the difference between the values by kV and by HVL shown on the kV x-rays tab.')
+      : L('k_g по ур. (90) (данные Andreo) или от лаборатории.', 'k_g from Eq. (90) (Andreo data) or from the laboratory.'),
+  };
+}
+
 // ------------------------------------------------------------------ шаблоны
 // Значения строк: число (одинаково в обоих примерах TG-51) или [пример (i), пример (ii)].
 
@@ -238,8 +361,10 @@ const TG_385_MEAS = { ssd: [0.1, 0.4], depth: [0.04, 0.3], field: [0.1, 0.5], ch
 const TG_385_INFL = { ppol: [0.05, 0.5], pion: [0.1, 0.5], preirr: [0.1, 1.0], leak: [0.05, 0.3], linac: [0.05, 0.2], pelec: [0.07, 0.25], prp: [0.05, 0.4] };
 
 /** Выбор образца по пучку, протоколу и способу калибровки камеры. */
-export function pickTemplate({ beam, protocol, chamberType, crossE }) {
+export function pickTemplate({ beam, protocol, chamberType, crossE, kvRange, kvCal }) {
   const tg = protocol === 'tg51';
+  // kV-рентген: TG-51 его не охватывает — всегда TRS-398 Rev.1, табл. 30 (низкие) или 33 (средние энергии)
+  if (beam === 'kv') return `${kvRange === 'medium' ? 't33' : 't30'}${kvCal === 'nk' ? 'nk' : 'ndw'}`;
   if (beam === 'co60') return 't13';
   if (beam === 'photons') return tg ? 'add2' : 't17';
   if (crossE) return tg ? 'r385t9' : 't24x';
@@ -252,7 +377,22 @@ function buildTemplate(id, ctx) {
   const groups = [];
   const g = (title, rows, subtotal = false) => groups.push({ title, rows, subtotal });
   const stage1 = L('Этап 1. Поверочная лаборатория', 'Step 1. Standards laboratory');
-  if (['t13', 't17', 't24cyl', 't24pp', 't24x'].includes(id)) {
+  if (/^t3[03]/.test(id)) {
+    const R = kvRows(ctx);
+    const tbl = id.startsWith('t30') ? KV_T30 : KV_T33;
+    const col = id.endsWith('nk') ? 1 : 0;
+    const ref = `${T.trs}, табл. ${id.slice(1, 3)}`;
+    const rows = Object.entries(tbl)
+      .filter(([, d]) => d[col] !== null)
+      .map(([key, d]) => ({ key, ...(key === 'st_kg' ? kvKgRow(R, ctx, d[col]) : { ...R[key], def: d[col] }), ...(key === 'st_kg' && ctx.kvKg === 'one' ? {} : { ref }) }));
+    const st2 = rows.filter((r) => !r.lab);
+    // Qo = ⁶⁰Co (DIN 6809-4): к табл. 33 добавляется k_z = 1 — пересчёт с 5 см на 2 см
+    if (id === 't33ndw' && ctx.kvQo === 'co60') st2.splice(st2.findIndex((r) => r.key === 'st_kg') + 1, 0, { key: 'st_kz', ...R.st_kz, def: DIN_KZ, ref: `${T.din}, разд. 6.4` });
+    g(stage1, rows.filter((r) => r.lab), true);
+    g(L('Этап 2. Пучок рентгеновского излучения пользователя', "Step 2. User's x-ray beam"), st2, true);
+    return { family: id, groups, stages: true };
+  }
+  if (['t13','t17', 't24cyl', 't24pp', 't24x'].includes(id)) {
     const R = trsRows(ctx);
     const table = { t13: 'табл. 13', t17: 'табл. 17', t24cyl: 'табл. 24', t24pp: 'табл. 24', t24x: 'табл. 24' }[id];
     const ref = `${T.trs}, ${table}`;
@@ -311,6 +451,37 @@ function buildTemplate(id, ctx) {
 
 function templateInfo(id, ctx) {
   const sitTxt = ctx.situation === 'ii' ? L('пример (ii): типичные допущения', 'example (ii): “typical” assumptions') : L('пример (i): всё оценено, оборудование эталонного класса', 'example (i): all components evaluated, reference-class equipment');
+  if (/^t3[03]/.test(id)) {
+    const low = id.startsWith('t30');
+    const nk = id.endsWith('nk');
+    const n = nk ? 'N_K' : 'N_D,w';
+    const tbl = low ? '30' : '33';
+    const co60 = !low && !nk && ctx.kvQo === 'co60';
+    const notes = [
+      L(
+        `Если дозиметр откалиброван прямо в ДЛПЭ, по табл. ${tbl} u_c = ${pct(KV_DIRECT[id], 1)} %: введите U из свидетельства — она заменит этап 1.`,
+        `If the dosimeter was calibrated directly at a PSDL, Table ${tbl} gives u_c = ${pct(KV_DIRECT[id], 1)}%: enter U from the certificate and it will replace step 1.`,
+      ),
+      L(
+        'Колебания выхода аппарата в таблицу не входят: оцените их сами (строка «Показания дозиметра…»).',
+        'Variations of the machine output are not included in the table: estimate them yourself (the “Dosimeter reading…” row).',
+      ),
+    ];
+    if (co60) {
+      notes.push(L(
+        `Qo = ⁶⁰Co (DIN 6809-4, не TRS-398 Rev.1): для этого случая в Rev.1 бюджета нет, показана табл. 33 (N_D,w) со строкой k_z = 1 (DIN, ${pct(DIN_KZ, 1)} %). По DIN 6809-4, табл. 7, при калибровке в ⁶⁰Co u_c = ${pct(DIN_T7_UC, 2)} %.`,
+        `Qo = ⁶⁰Co (DIN 6809-4, not TRS-398 Rev.1): Rev.1 gives no budget for this case, so Table 33 (N_D,w) is shown with a k_z = 1 row (DIN, ${pct(DIN_KZ, 1)}%). DIN 6809-4, Table 7, gives u_c = ${pct(DIN_T7_UC, 2)}% for a calibration in ⁶⁰Co.`,
+      ));
+    }
+    if (ctx.protocol === 'tg51') notes.push(L('TG-51 не охватывает kV-рентген: показан бюджет TRS-398 Rev.1.', 'TG-51 does not cover kV x-rays: the TRS-398 Rev.1 budget is shown.'));
+    return {
+      ref: `${T.trs}, табл. ${tbl}`,
+      title: low
+        ? L(`TRS-398 Rev.1, табл. 30 — kV-рентген низких энергий, калибровка ${n}`, `TRS-398 Rev.1, Table 30 — low-energy kV x-rays, ${n} calibration`)
+        : L(`TRS-398 Rev.1, табл. 33 — kV-рентген средних энергий, калибровка ${n}${co60 ? ' (Qo = ⁶⁰Co)' : ''}`, `TRS-398 Rev.1, Table 33 — medium-energy kV x-rays, ${n} calibration${co60 ? ' (Qo = ⁶⁰Co)' : ''}`),
+      note: notes.join(' '),
+    };
+  }
   switch (id) {
     case 't13':
       return {
@@ -350,7 +521,11 @@ function templateInfo(id, ctx) {
 /**
  * Бюджет неопределённости.
  * @param {object} o
- * @param {'photons'|'electrons'|'co60'} o.beam
+ * @param {'photons'|'electrons'|'co60'|'kv'} o.beam
+ * @param {'low'|'medium'} [o.kvRange]  kV-рентген: низкие (табл. 30) или средние (табл. 33) энергии
+ * @param {'ndw'|'nk'} [o.kvCal]        kV-рентген: калибровка N_D,w или N_K
+ * @param {'kv'|'co60'} [o.kvQo]        kV-рентген, средние энергии, N_D,w: опорное качество (⁶⁰Co — DIN 6809-4)
+ * @param {'calc'|'same'|'one'} [o.kvKg] kV-рентген, N_D,w: k_g рассчитан; не нужен (геометрия как в лаборатории); принят 1
  * @param {'trs'|'tg51'} o.protocol
  * @param {'cyl'|'pp'} [o.chamberType]   тип камеры (электроны)
  * @param {boolean} [o.crossQ]   фотоны: рабочая камера откалибрована в клиническом пучке Q_cross (TRS-398, разд. 4.5.2)
@@ -372,6 +547,15 @@ export function uncertaintyBudget(o) {
   const tpl = buildTemplate(id, ctx);
   const messages = [];
   const add = (level, text, field = null, ref = null) => messages.push({ level, scope: 'unc', text, ref, field });
+  // калибровочный коэффициент, неопределённость которого даёт свидетельство
+  const nName = o.beam === 'kv' && o.kvCal === 'nk' ? 'N_K' : 'N_D,w';
+  // kV-рентген: расчёт не по TRS-398 Rev.1 помечается всегда
+  if (o.beam === 'kv' && id === 't33ndw' && o.kvQo === 'co60') {
+    add('warn', L('Qo = ⁶⁰Co — расчёт по DIN 6809-4, не по TRS-398 Rev.1: типовой бюджет — табл. 33 Rev.1 (N_D,w) по аналогии, со строкой k_z = 1 по DIN.', 'Qo = ⁶⁰Co: the calculation follows DIN 6809-4, not TRS-398 Rev.1; the typical budget is Rev.1 Table 33 (N_D,w) by analogy, with a k_z = 1 row per DIN.'), `${prefix}unc_kv_qo`, `${T.din}, табл. 7`);
+  }
+  if (o.beam === 'kv' && o.kvCal !== 'nk' && o.kvKg === 'one') {
+    add('warn', L('k_g = 1 при другом поле или РИП — подход DIN 6809-4 и SSRMP No 9, не TRS-398 Rev.1: строка k_g — их оценка неопределённости.', 'k_g = 1 with a different field or SSD is the DIN 6809-4 and SSRMP No 9 approach, not TRS-398 Rev.1: the k_g row is their uncertainty estimate.'), `${prefix}unc_kv_kg`, `${T.din}, разд. 6.3, 6.4`);
+  }
 
   // свидетельство о калибровке
   let cert = null;
@@ -387,7 +571,7 @@ export function uncertaintyBudget(o) {
     if (!Number.isFinite(U)) {
       add('warn', L('Не удалось прочитать U из свидетельства: лабораторная часть бюджета взята из типового.', 'Could not read U from the certificate: the laboratory part of the budget is taken from the typical budget.'), `${prefix}unc_cert_U`);
     } else if (U <= 0 || U > 10) {
-      add('warn', L(`U = ${ru(U, 2)} % из свидетельства неправдоподобно: введите расширенную неопределённость N_D,w в процентах. Лабораторная часть бюджета взята из типового.`, `U = ${ru(U, 2)}% from the certificate is implausible: enter the expanded uncertainty of N_D,w in percent. The laboratory part of the budget is taken from the example.`), `${prefix}unc_cert_U`);
+      add('warn', L(`U = ${ru(U, 2)} % из свидетельства неправдоподобно: введите расширенную неопределённость ${nName} в процентах. Лабораторная часть бюджета взята из типового.`, `U = ${ru(U, 2)}% from the certificate is implausible: enter the expanded uncertainty of ${nName} in percent. The laboratory part of the budget is taken from the example.`), `${prefix}unc_cert_U`);
     } else {
       cert = { U, k, u: U / k };
     }
@@ -420,8 +604,8 @@ export function uncertaintyBudget(o) {
         row.value = NaN;
         row.how = spec.key === 'lab_psdl'
           ? L(
-              'Три строки этапа 1 — то, что входит в неопределённость N_D,w из свидетельства. Вы ввели U из свидетельства (раздел 2), поэтому вместо них в расчёт идёт строка «N_D,w из свидетельства о калибровке (U/k)» ниже. Типовые значения оставлены для сравнения; чтобы вернуть их в расчёт, очистите поле «U из свидетельства».',
-              'The three rows of step 1 make up the N_D,w uncertainty stated in the certificate. You entered U from the certificate (section 2), so the “N_D,w from the calibration certificate (U/k)” row below is used instead. The typical values are kept for comparison; to use them again, clear the “U from the certificate” field.',
+              `Три строки этапа 1 — то, что входит в неопределённость ${nName} из свидетельства. Вы ввели U из свидетельства (раздел 2), поэтому вместо них в расчёт идёт строка «${nName} из свидетельства о калибровке (U/k)» ниже. Типовые значения оставлены для сравнения; чтобы вернуть их в расчёт, очистите поле «U из свидетельства».`,
+              `The three rows of step 1 make up the ${nName} uncertainty stated in the certificate. You entered U from the certificate (section 2), so the “${nName} from the calibration certificate (U/k)” row below is used instead. The typical values are kept for comparison; to use them again, clear the “U from the certificate” field.`,
             )
           : '';
       } else {
@@ -494,7 +678,7 @@ export function uncertaintyBudget(o) {
       const row = {
         key: `${tpl.family}.lab_cert`,
         id: null,
-        label: L('N_D,w из свидетельства о калибровке (U/k)', 'N_D,w from the calibration certificate (U/k)'),
+        label: L(`${nName} из свидетельства о калибровке (U/k)`, `${nName} from the calibration certificate (U/k)`),
         how: L(`U = ${pct(cert.U)} % при k = ${ru(cert.k, cert.k % 1 ? 2 : 0)}, приведённая к k = 1.`, `U = ${pct(cert.U)}% at k = ${ru(cert.k, cert.k % 1 ? 2 : 0)}, converted to k = 1.`),
         ref: L('свидетельство о калибровке', 'calibration certificate'),
         def: NaN,

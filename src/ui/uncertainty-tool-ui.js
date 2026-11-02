@@ -1,6 +1,6 @@
 // Вкладка «Неопределённость»: бюджет неопределённости поглощённой дозы (ядро — core/uncertainty-tool.js,
 // образцы — core/uncertainty.js). Данные можно взять с вкладки дозиметрии; сами вкладки дозиметрии бюджет не показывают.
-import { computeUncertaintyTool, UT_DEFAULTS, UT_UNITS, ROUTES, normalizeUncTool, unitText } from '../core/uncertainty-tool.js';
+import { computeUncertaintyTool, UT_DEFAULTS, UT_UNITS, ROUTES, normalizeUncTool, unitText, defaultUnit } from '../core/uncertainty-tool.js';
 import { SAMPLE_UNC, SAMPLE_UNC_EN } from '../core/sample-uncertainty.js';
 import { L, getLang, refText } from '../core/i18n.js';
 import { localizeDecimals } from './i18n.js';
@@ -27,12 +27,14 @@ export const setUncSources = (s) => {
 };
 
 const PROTO = { trs: { name: 'TRS-398 Rev.1' }, tg51: { name: 'TG-51' } };
-const BEAM_NAME = { co60: () => '⁶⁰Co', photons: () => L('МВ фотоны', 'MV photons'), electrons: () => L('Электроны', 'Electrons') };
+const BEAM_NAME = { co60: () => '⁶⁰Co', photons: () => L('МВ фотоны', 'MV photons'), electrons: () => L('Электроны', 'Electrons'), kv: () => L('kV-рентген', 'kV x-rays') };
 
 // ------------------------------------------------------------ списки
 const routeText = (beam, r) =>
   ({
-    lab: L('В лаборатории: N_D,w в ⁶⁰Co по свидетельству', 'At the laboratory: N_D,w in ⁶⁰Co from the certificate'),
+    lab: beam === 'kv'
+      ? L('В лаборатории: по качествам рентгеновского излучения, по свидетельству', 'At the laboratory: in x-ray qualities, from the certificate')
+      : L('В лаборатории: N_D,w в ⁶⁰Co по свидетельству', 'At the laboratory: N_D,w in ⁶⁰Co from the certificate'),
     crossCo: L('Перекрёстно в ⁶⁰Co по опорной камере', 'Cross-calibrated in ⁶⁰Co against the reference chamber'),
     crossQ:
       beam === 'electrons'
@@ -197,7 +199,15 @@ function reportText(data, r) {
   line(L('Дата', 'Date'), data.unc_date || '—');
   line(L('Составил', 'Prepared by'), data.unc_staff.filter((s) => s.trim()).join(', ') || '—');
   if (r.beam === 'electrons') line(L('Камера', 'Chamber'), r.chamberType === 'pp' ? L('плоскопараллельная', 'plane-parallel') : L('цилиндрическая', 'cylindrical'));
-  line(L('Калибровка камеры', 'Chamber calibration'), routeText(r.beam, r.route));
+  if (r.beam === 'kv') {
+    const f = r.form;
+    line(L('Диапазон энергий', 'Energy range'), f.unc_kv_range === 'medium' ? L('средние: 80–300 кВ (TRS-398 Rev.1, разд. 9)', 'medium: 80–300 kV (TRS-398 Rev.1, Sec. 9)') : L('низкие: 10–100 кВ (TRS-398 Rev.1, разд. 8)', 'low: 10–100 kV (TRS-398 Rev.1, Sec. 8)'));
+    line(L('Калибровка камеры', 'Chamber calibration'), f.unc_kv_cal === 'nk' ? L('N_K — воздушная керма в свободном воздухе', 'N_K: air kerma free in air') : L('N_D,w — поглощённая доза в воде', 'N_D,w: absorbed dose to water'));
+    if (f.unc_kv_cal === 'ndw') {
+      if (f.unc_kv_range === 'medium') line(L('Опорное качество Qo', 'Reference quality Qo'), f.unc_kv_qo === 'co60' ? L('⁶⁰Co на 5 см (DIN 6809-4, не по TRS-398 Rev.1)', '⁶⁰Co at 5 cm (DIN 6809-4, not TRS-398 Rev.1)') : L('рентгеновское, на глубине 2 см', 'x-ray, at a depth of 2 cm'));
+      line('k_g', kvKgText(f.unc_kv_kg));
+    }
+  } else line(L('Калибровка камеры', 'Chamber calibration'), routeText(r.beam, r.route));
   if (r.beam === 'electrons' && Number.isFinite(r.r50)) line('R50', L(`${fmt(r.r50, 2)} г/см²`, `${fmt(r.r50, 2)} g/cm²`));
   line(L('Свидетельство о калибровке', 'Calibration certificate'), b.cert ? L(`U = ${fmt(b.cert.U, 2)} % при k = ${fmt(b.cert.k, b.cert.k % 1 ? 2 : 0)}`, `U = ${fmt(b.cert.U, 2)}% at k = ${fmt(b.cert.k, b.cert.k % 1 ? 2 : 0)}`) : L('не введено — лабораторная часть типового бюджета', 'not entered — laboratory part from the example'));
   const cells = r.series.values?.length ? r.series.values.map((x) => fmt(x, 4)).join('; ') : '—';
@@ -225,6 +235,13 @@ function reportText(data, r) {
   out.push('', closingNote());
   return out.join('\n');
 }
+
+const kvKgText = (k) =>
+  ({
+    calc: L('рассчитан или от лаборатории (поле или РИП не как в лаборатории)', 'calculated or from the laboratory (field or SSD differ from the laboratory)'),
+    same: L('поле и РИП как в лаборатории: k_g = 1 без поправки', 'field and SSD as at the laboratory: k_g = 1 with no correction'),
+    one: L('k_g = 1 (DIN 6809-4, SSRMP; не по TRS-398 Rev.1)', 'k_g = 1 (DIN 6809-4, SSRMP; not TRS-398 Rev.1)'),
+  })[k];
 
 const closingNote = () =>
   L(
@@ -284,6 +301,12 @@ function pull(target) {
   if (s.beam === 'electrons') {
     patch.unc_ch_type = s.chamberType;
     patch.unc_r50 = Number.isFinite(s.r50) ? fmt(s.r50, 2) : '';
+  }
+  if (s.beam === 'kv') {
+    patch.unc_kv_range = s.kvRange;
+    patch.unc_kv_cal = s.kvCal;
+    patch.unc_kv_qo = s.kvQo;
+    patch.unc_kv_kg = s.kvKg;
   }
   // серии для раскрытия k_i: заменяются данными вкладки; свои оценки, u(T) и u(P) остаются
   const ki = parseKi(cur.unc_ki);
@@ -412,7 +435,7 @@ export function initUncTool() {
       const beam = currentBeam();
       fillRoutes(beam);
       // единицы итога по умолчанию для пучка, если итог ещё не введён
-      if (!$('#unc_value').value.trim()) $('#unc_unit').value = beam === 'co60' ? 'cGymin' : 'Gy100MU';
+      if (!$('#unc_value').value.trim()) $('#unc_unit').value = defaultUnit(beam);
     }
     update();
   });
@@ -440,7 +463,7 @@ export function initUncTool() {
     setStatus(L('Загружен демонстрационный пример (вымышленные данные).', 'Demo example loaded (fictitious data).'));
   });
   armButton($('#unc-btn-clear'), () => L('Очистить', 'Clear'), () => L('Точно очистить?', 'Clear everything?'), () => {
-    writeForm({ ...UT_DEFAULTS, unc_beam_type: currentBeam(), unc_unit: currentBeam() === 'co60' ? 'cGymin' : 'Gy100MU', unc_date: today() });
+    writeForm({ ...UT_DEFAULTS, unc_beam_type: currentBeam(), unc_unit: defaultUnit(currentBeam()), unc_date: today() });
     openedFile = null;
     update();
     setStatus(L('Форма очищена.', 'Form cleared.'));

@@ -10,7 +10,7 @@ import { CO_DEFAULTS } from '../core/cobalt.js';
 import { initCobalt, importCobalt, cobaltStatus, applyCobaltPatch, cobaltUncSource, cobaltCurrentForm, showInCobalt, setCobaltJournalSave } from './cobalt-ui.js';
 import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch, photonsUncSource, photonsCurrentForm, showInPhotons, setPhotonsJournalSave } from './photons-ui.js';
 import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch, electronsUncSource, electronsCurrentForm, showInElectrons, setElectronsJournalSave } from './electrons-ui.js';
-import { initKv, importKv, kvStatus } from './kv-ui.js';
+import { initKv, importKv, kvStatus, kvUncSource } from './kv-ui.js';
 import { initCrossCal, importCrossCal, crossCalStatus, setCrossCalTransfer } from './crosscal-ui.js';
 import { initUncTool, importUncTool, uncToolStatus, setUncSources, applyStability } from './uncertainty-tool-ui.js';
 import { initJaffe, importJaffe, jaffeStatus } from './jaffe-ui.js';
@@ -389,7 +389,7 @@ function init() {
     go: (name) => goTo(name),
   });
   initPlates();
-  setUncSources({ co60: cobaltUncSource, photons: photonsUncSource, electrons: electronsUncSource });
+  setUncSources({ co60: cobaltUncSource, photons: photonsUncSource, electrons: electronsUncSource, kv: kvUncSource });
   initTransfer();
   initPaste();
   initDecimals();
