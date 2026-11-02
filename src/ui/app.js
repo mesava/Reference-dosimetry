@@ -10,6 +10,7 @@ import { CO_DEFAULTS } from '../core/cobalt.js';
 import { initCobalt, importCobalt, cobaltStatus, applyCobaltPatch, cobaltUncSource, cobaltCurrentForm, showInCobalt, setCobaltJournalSave } from './cobalt-ui.js';
 import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch, photonsUncSource, photonsCurrentForm, showInPhotons, setPhotonsJournalSave } from './photons-ui.js';
 import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch, electronsUncSource, electronsCurrentForm, showInElectrons, setElectronsJournalSave } from './electrons-ui.js';
+import { initKv, importKv, kvStatus } from './kv-ui.js';
 import { initCrossCal, importCrossCal, crossCalStatus, setCrossCalTransfer } from './crosscal-ui.js';
 import { initUncTool, importUncTool, uncToolStatus, setUncSources, applyStability } from './uncertainty-tool-ui.js';
 import { initJaffe, importJaffe, jaffeStatus } from './jaffe-ui.js';
@@ -38,8 +39,9 @@ const MODULES = {
   co60: { title: () => L('⁶⁰Co — референсная дозиметрия', '⁶⁰Co — reference dosimetry'), file: 'cobalt', importData: importCobalt, status: cobaltStatus, tab: 'dosimetry' },
   photons: { title: () => L('МВ фотоны — референсная дозиметрия', 'MV photons — reference dosimetry'), file: 'photons', importData: importPhotons, status: photonsStatus, tab: 'dosimetry' },
   electrons: { title: () => L('Электроны — референсная дозиметрия', 'Electrons — reference dosimetry'), file: 'electrons', importData: importElectrons, status: electronsStatus, tab: 'dosimetry' },
+  // kV-рентген — только TRS-398 Rev.1: переключатель протокола в шапке скрыт
+  kv: { title: () => L('kV-рентген — референсная дозиметрия', 'kV x-rays — reference dosimetry'), file: 'kv', importData: importKv, status: kvStatus, tab: 'dosimetry', proto: false },
   // в разработке: страница с планом, без расчёта; transient — не запоминается местом работы (последним подразделом)
-  kv: { title: () => L('kV-рентген — в разработке', 'kV x-rays — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', transient: true, proto: false },
   brachy: { title: () => L('Брахитерапия — в разработке', 'Brachytherapy — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', transient: true, proto: false },
   // сеанс: несколько пучков аппарата подряд, каждый — в своей вкладке дозиметрии (протокол — во вкладке)
   session: { title: () => L('Сеанс — пучки аппарата подряд', 'Session — machine beams in a row'), file: '-', importData: () => {}, status: (t) => sessionStatus(t), tab: 'dosimetry', proto: false },
@@ -353,6 +355,7 @@ function init() {
   initCobalt();
   initPhotons();
   initElectrons();
+  initKv();
   initCrossCal();
   initUncTool();
   initJaffe();

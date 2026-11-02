@@ -357,4 +357,61 @@ export const TERMS_EN = {
 <p>The budget is the user's responsibility and should be re-evaluated whenever the procedure or equipment changes significantly (TG-51 addendum, Sec. 5).</p>
 <p class="src">TRS-398 Rev.1, Sec. 1.4.3, 5.7, 6.8, 7.10, App. IV, Tables 13, 17, 24; TG-51 addendum (2014), Sec. 5, Table II; Report 385, Sec. 8, Tables 8, 9.</p>`,
   },
+
+  hvl: {
+    title: 'HVL — half-value layer',
+    html: `
+<p>The thickness of an aluminium or copper filter that halves the air kerma under narrow-beam conditions. Together with the tube voltage, the HVL specifies the x-ray beam quality: the chamber certificate coefficients are interpolated by it, and B<sub>w</sub> and [μ<sub>en</sub>/ρ]<sub>w,air</sub> are taken by kV and HVL.</p>
+<ul>
+<li><b>Low energies</b> (10–100 kV): HVL in mm Al, 0.03–5 mm Al.</li>
+<li><b>Medium energies</b> (80–300 kV): HVL in mm Cu; in the 80–100 kV range either section may be used.</li>
+</ul>
+<p>It is measured in a narrow beam: an aperture roughly midway between the tube focus and the chamber, a total beam size of at most 4 cm; for low energies, preferably at the same distance as at the laboratory (the HVL increases with distance because of absorption in air). The calculator checks whether the entered HVL can be reached at the given kV: the HVL cannot exceed that of monoenergetic photons with an energy equal to the voltage.</p>
+<p class="src">TRS-398 Rev.1, Secs 8.1, 8.3.2, 9.1, 9.3; DIN 6809-4, Table 2.</p>`,
+  },
+
+  kg: {
+    title: 'k<sub>g</sub> — field and SSD correction',
+    html: `
+<p>The coefficient N<sub>D,w</sub> is valid for the field and SSD at which the chamber was calibrated. If the clinical applicator or SSD differ, a correction k<sub>g</sub> is applied: D<sub>w</sub> = M<sub>Q</sub> · N<sub>D,w,Q</sub> · k<sub>g</sub>. With the same field and SSD, k<sub>g</sub> = 1.</p>
+<ul>
+<li><b>Low energies</b>: for PTW 23342 and 23344 chambers, TRS-398 Rev.1 Tables 28 and 29 (PTB data at 30 cm SSD, normalized to a 3 cm field). The beam quality is placed between the TW columns by ln(HVL), the field linearly between rows; the value by kV is shown alongside, and their difference is part of the uncertainty. Another route is Eq. (85): the N<sub>K</sub> ratio of the chamber on a PMMA phantom from the laboratory, multiplied by the B<sub>w</sub> ratio.</li>
+<li><b>Medium energies</b>: Eq. (90), the ratio of [μ<sub>en</sub>/ρ]<sub>w,air</sub> at a depth of 2 cm for the clinical and laboratory field and SSD (Andreo data); the p<sub>ch</sub> ratios cancel.</li>
+</ul>
+<p>DIN 6809-4 and SSRMP No 9 take k<sub>g</sub> = 1 with an increased uncertainty; the calculator allows this, but the result is flagged as not conforming to TRS-398 Rev.1.</p>
+<p class="src">TRS-398 Rev.1, Secs 8.4.2, 9.4.1, App. I, Eqs (52), (58), (84)–(90), Tables 28, 29.</p>`,
+  },
+
+  bw: {
+    title: 'B<sub>w</sub> and [μ<sub>en</sub>/ρ]<sub>w,air</sub> — from air kerma to dose to water',
+    html: `
+<p>When the chamber is calibrated in air kerma (N<sub>K</sub>), the dose to water is obtained through the water-to-air ratio of mass energy-absorption coefficients:</p>
+<ul>
+<li><b>Low energies</b>, chamber free in air (Eqs 50–51): D<sub>w,z=0</sub> = M<sub>Q</sub> · N<sub>K,Q</sub> · B<sub>w</sub> · [μ<sub>en</sub>/ρ]<sub>w,air</sub><sup>FIA</sup>. B<sub>w</sub> is the backscatter factor: it depends on the kV, HVL, field diameter and SSD. [μ<sub>en</sub>/ρ]<sub>w,air</sub> free in air depends only on the HVL.</li>
+<li><b>Medium energies</b>, chamber in water at 2 cm (Eq. 57): D<sub>w,z=2</sub> = M<sub>Q</sub> · N<sub>K,Q</sub> · [μ<sub>en</sub>/ρ]<sub>w,air</sub><sup>z=2</sup> · p<sub>ch</sub>; the ratio at depth depends on the kV, HVL, field and SSD.</li>
+</ul>
+<p>The values come from the data of P. Andreo (2019), the same as in the IAEA web app kvx-rays.iaea.org, with the same interpolation; at 117 control points the calculator agrees with the web app to the 4th digit. The data are used with the author's permission for non-commercial purposes only and with a citation of the source.</p>
+<p class="src">TRS-398 Rev.1, Secs 8.4.1, 9.4.3, Tables 30, 33; Andreo P 2019 Phys. Med. Biol. 64 205019.</p>`,
+  },
+
+  pch: {
+    title: 'p<sub>ch</sub> — chamber-in-phantom correction',
+    html: `
+<p>Medium energies, air-kerma calibration: a chamber in water at a depth of 2 cm responds differently than free in air, where it was calibrated, because of the displacement of water by the chamber, its wall and stem. p<sub>ch</sub> accounts for this difference.</p>
+<p>TRS-398 Rev.1 (Table 32) gives p<sub>ch</sub> for five cylindrical chambers (IBA FC65-P and FC65-G, PTW 30013, NE 2571, Exradin A12) at a 10 cm field and 100 cm SSD, for qualities of 70–300 kV; between qualities the value is interpolated in ln(HVL). For another field without a field correction, 0.5 % is added to the p<sub>ch</sub> uncertainty. For chambers not in the table the value is entered manually with its source, and the result is flagged as not conforming to TRS-398 Rev.1.</p>
+<p class="src">TRS-398 Rev.1, Sec. 9.4.3, Eq. (57), Tables 32, 33.</p>`,
+  },
+
+  kvtimer: {
+    title: 'Timer error of an x-ray unit',
+    html: `
+<p>The tube does not reach its operating output or switch off instantly, so the actual exposure differs from the set one (by time, monitor dose or MU) by a constant amount τ — the timer error, or end effect. It is not a multiplicative correction: the dose refers to X + τ, where X is the set value.</p>
+<p class="formula">M = Ṁ · (X + τ)</p>
+<ul>
+<li>Several exposures with different settings, e.g. 0.5, 1 and 2 min: straight line M = a·X + b, τ = b/a.</li>
+<li>One exposure X vs. n exposures of X/n: τ = X·(Mₙ − M₁)/(n·M₁ − Mₙ).</li>
+<li>If the charge is collected by the electrometer over an interval when the tube is already at its operating output, the timer error does not enter the result; it must still be known for calculating patient treatment times.</li>
+</ul>
+<p class="src">TRS-398 Rev.1, Sec. 9.4.2.</p>`,
+  },
 };

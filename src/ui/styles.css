@@ -680,6 +680,9 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; }
 .pairs .eq { margin: 0; }
 .pairs.flag-warn .pair-row input { border-color: var(--warn); background: var(--warn-soft); }
 .pairs.flag-error .pair-row input { border-color: var(--err); background: var(--err-soft); }
+/* kV-рентген: таблица качеств сертификата (кВ, СПО, значение) */
+.cert-table { max-width: 560px; }
+.cert-table .pairs-head, .cert-table .pair-row { grid-template-columns: 28px repeat(3, minmax(0, 1fr)); }
 
 /* ------------------------------------------------------------ положение камеры (электроны) */
 .positions { margin: 12px 0; padding: 10px 12px; border: 1px dashed var(--accent); border-radius: var(--radius); font-size: 13px; background: var(--accent-soft); }

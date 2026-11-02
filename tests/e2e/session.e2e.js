@@ -29,7 +29,7 @@ test('сеанс: два пучка фотонов подряд записыва
   await pause();
   assert.match(await page.locator('#session-root').innerText(), /нужны аппарат и его пучки в журнале/);
   // подвкладки «Дозиметрии»: «Сеанс» и «В пластинах» — в конце
-  assert.deepEqual((await page.locator('#module-session .subtools a').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()), ['Сеанс', '⁶⁰Co', 'МВ фотоны', 'Электроны', 'kV-рентген в разработке', 'Брахитерапия в разработке', 'В пластинах']);
+  assert.deepEqual((await page.locator('#module-session .subtools a').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()), ['Сеанс', '⁶⁰Co', 'МВ фотоны', 'Электроны', 'kV-рентген', 'Брахитерапия в разработке', 'В пластинах']);
 
   // оборудование: аппарат с двумя пучками, электрометр, камера
   await page.goto(`${server.url}/index.html#equipment`);
