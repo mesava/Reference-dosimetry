@@ -566,8 +566,15 @@ export function computeKv(form) {
         if (r.error) add('error', 'common', r.error[0].toUpperCase() + r.error.slice(1) + '.', `${REF.trs}, табл. 10`, 'ks');
         r.notes.forEach((n) => add('warn', 'common', n[0].toUpperCase() + n.slice(1) + '.', `${REF.trs}, разд. 4.4.3.4`, 'ks'));
       }
-      if (ratio12 < 1) add('error', 'common', L('k_s не может быть меньше 1: при пониженном напряжении собирается меньше заряда. Проверьте показания и напряжения.', 'k_s cannot be less than 1: less charge is collected at the reduced voltage. Check the readings and voltages.'), `${REF.trs}, разд. 4.4.3.4`, ['ks', 'kv_M2']);
-      else if (ksRaw > 1.05) add('error', 'common', L(`k_s = ${ru(ksRaw, 4)} > 1,05: метод двух напряжений неприменим.`, `k_s = ${ru(ksRaw, 4)} > 1.05: the two-voltage method is not applicable.`), `${REF.trs}, табл. 3`, 'ks');
+      if (ratio12 < 1) {
+        // M(V₂) > M(V₁): по формуле k_s < 1, чего не бывает — при пониженном напряжении заряда собирается меньше.
+        // Обычно это разброс показаний при пренебрежимой рекомбинации: k_s принимается равным 1, измерение надо повторить.
+        add('warn', 'common', L(
+          `Показание при V₂ больше, чем при V₁: по формуле k_s = ${ru(ksRaw, 4)} < 1, а k_s не может быть меньше 1 (при пониженном напряжении собирается меньше заряда). Принято k_s = 1; k_s следует перемерить, проверив показания и напряжения.`,
+          `The reading at V₂ is higher than at V₁: the formula gives k_s = ${ru(ksRaw, 4)} < 1, but k_s cannot be less than 1 (less charge is collected at the reduced voltage). k_s = 1 is used; k_s should be re-measured, checking the readings and voltages.`,
+        ), `${REF.trs}, разд. 4.4.3.4`, ['ks', 'kv_M2']);
+        ksRaw = 1;
+      } else if (ksRaw > 1.05) add('error', 'common', L(`k_s = ${ru(ksRaw, 4)} > 1,05: метод двух напряжений неприменим.`, `k_s = ${ru(ksRaw, 4)} > 1.05: the two-voltage method is not applicable.`), `${REF.trs}, табл. 3`, 'ks');
     } else ksRaw = NaN;
   } else {
     add('info', 'common', L('k_s = 1: рекомбинация ионов пренебрежимо мала, когда мощность дозы меньше нескольких Гр/мин. При большей мощности дозы включите метод двух напряжений.', 'k_s = 1: ion recombination is negligible when the dose rate is below a few Gy/min. At higher dose rates, enable the two-voltage method.'), `${REF.trs}, разд. 9.4.2`, 'kv_ks_on');
