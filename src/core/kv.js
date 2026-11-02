@@ -525,6 +525,9 @@ export function computeKv(form) {
   const M1 = readCells('kv_M1', L('M при V₁, обычная полярность', 'M at V₁, normal polarity'));
   spread(M1, L('при V₁', 'at V₁'), 'kv_M1');
   const MoppRaw = parseCells(f.kv_Mopp);
+  // строка таблицы аппликаторов без своей серии при обратной полярности: k_pol снят с другим аппликатором того же
+  // режима (kv-session.js передаёт, откуда — kv_pol_from, и значение — kv_kpol_fix)
+  const polFrom = MoppRaw.n === 0 && !MoppRaw.error && !isBlank(f.kv_pol_from) ? String(f.kv_pol_from) : '';
   const Mopp = MoppRaw.n > 0 || MoppRaw.error ? readCells('kv_Mopp', L('M при V₁, обратная полярность', 'M at V₁, opposite polarity')) : MoppRaw;
   spread(Mopp, L('обратной полярности', 'at opposite polarity'), 'kv_Mopp');
   const kleak = read('kv_kleak', L('Поправка на утечку', 'Leakage correction'));
@@ -536,6 +539,16 @@ export function computeKv(form) {
   if (readingsOk && Mopp.n > 0 && !Mopp.error && Mopp.mean !== 0) {
     kpolRaw = polarity(M1.mean, Mopp.mean);
     if (Math.abs(kpolRaw - 1) > 0.004) add('warn', 'common', L(`k_pol = ${ru(kpolRaw, 4)} выходит за пределы 1 ± 0,004: для камеры эталонного класса эффект полярности должен быть меньше 0,4 %.`, `k_pol = ${ru(kpolRaw, 4)} is outside 1 ± 0.004: for a reference-class chamber the polarity effect should be below 0.4 %.`), `${REF.trs}, табл. 3`, 'kpol');
+  } else if (polFrom) {
+    kpolRaw = parseNumber(f.kv_kpol_fix);
+    if (Number.isFinite(kpolRaw)) {
+      add('info', 'common', L(
+        `k_pol = ${ru(kpolRaw, 4)} взят из ${polFrom}: серия при обратной полярности снята там, с другим аппликатором того же режима.`,
+        `k_pol = ${ru(kpolRaw, 4)} is taken from ${polFrom}: the opposite-polarity series was measured there, with another applicator of the same beam.`,
+      ), `${REF.trs}, разд. 4.4.3.3`, 'kv_Mopp');
+    } else {
+      add('error', 'common', L(`k_pol из ${polFrom} не вычислен: проверьте там показания при обратной полярности.`, `k_pol from ${polFrom} could not be calculated: check the opposite-polarity readings there.`), null, 'kv_Mopp');
+    }
   } else if (Mopp.n === 0) {
     add('warn', 'common', L('Показания при обратной полярности не введены: k_pol принят равным 1. Эффект полярности нужно проверить, особенно у плоскопараллельных камер в пучках низких энергий.', 'No readings at opposite polarity: k_pol is taken as 1. The polarity effect must be checked, especially for plane-parallel chambers in low-energy beams.'), `${REF.trs}, разд. 4.4.3.3`, 'kv_Mopp');
   }
@@ -547,7 +560,24 @@ export function computeKv(form) {
   let ksEquation = L('k_s = 1: рекомбинация ионов пренебрежимо мала при мощности дозы меньше нескольких Гр/мин', 'k_s = 1: ion recombination is negligible at dose rates below a few Gy/min');
   let M2 = parseCells([]);
   let V2 = NaN;
+  let ksFrom = '';
   if (f.kv_ks_on) {
+    // строка таблицы аппликаторов без своей серии при V₂: k_s снят с другим аппликатором того же режима
+    const M2Raw = parseCells(f.kv_M2);
+    ksFrom = M2Raw.n === 0 && !M2Raw.error && !isBlank(f.kv_ks_from) ? String(f.kv_ks_from) : '';
+  }
+  if (f.kv_ks_on && ksFrom) {
+    ksRaw = parseNumber(f.kv_ks_fix);
+    if (Number.isFinite(ksRaw)) {
+      ksEquation = L(`взят из ${ksFrom}`, `taken from ${ksFrom}`);
+      add('info', 'common', L(
+        `k_s = ${ru(ksRaw, 4)} взят из ${ksFrom}: серия при пониженном напряжении V₂ снята там, с другим аппликатором того же режима.`,
+        `k_s = ${ru(ksRaw, 4)} is taken from ${ksFrom}: the series at the reduced voltage V₂ was measured there, with another applicator of the same beam.`,
+      ), `${REF.trs}, разд. 4.4.3.4`, 'kv_M2');
+    } else {
+      add('error', 'common', L(`k_s из ${ksFrom} не вычислен: проверьте там показания при V₂.`, `k_s from ${ksFrom} could not be calculated: check the readings at V₂ there.`), null, 'kv_M2');
+    }
+  } else if (f.kv_ks_on) {
     V2 = read('kv_V2', L('Пониженное напряжение V₂', 'Reduced voltage V₂'));
     M2 = readCells('kv_M2', L('M при V₂', 'M at V₂'));
     spread(M2, L('при V₂', 'at V₂'), 'kv_M2');
@@ -762,7 +792,7 @@ export function computeKv(form) {
   // ------------------------------------------------------------- доза
   const kTP = temperaturePressure({ T, P, T0, P0, abs0: TRS.TRS_ABS0 });
   const product = kTP * kelec * kpol * ks * kleak;
-  const trs = { enabled: true, equation: eqText, kTP, kelec, kpol, kpolRaw, kpolQ0, ks, ksRaw, ksQ0, ksEquation, kleak, NQ: cert.NQ, phys, kg };
+  const trs = { enabled: true, equation: eqText, kTP, kelec, kpol, kpolRaw, kpolQ0, kpolFrom: polFrom || null, ks, ksRaw, ksQ0, ksEquation, ksFrom: ksFrom || null, kleak, NQ: cert.NQ, phys, kg };
   const depth = { on: range === 'medium' && !isBlank(f.kv_pdd2), zref: range === 'medium' ? 2 : 0 };
   if (depth.on) {
     depth.pdd = read('kv_pdd2', L('PDD(2 см)', 'PDD(2 cm)'), 'depth');

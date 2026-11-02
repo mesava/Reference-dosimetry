@@ -71,3 +71,33 @@ export const SAMPLE_KV_EN = {
   kv_el_model: 'Electrometer (demo)',
   kv_notes: 'Demo data, not results of real measurements.',
 };
+
+// Ещё два аппликатора того же пучка (строки 2 и 3 таблицы раздела 4): свои РИП, T, P, показания, PDD и значение для
+// сравнения; серии при обратной полярности сняты только с первым тубусом — k_pol берётся из строки 1. Значения вымышлены.
+export const SAMPLE_KV_ROWS = [
+  {
+    kv_cone_shape: 'rect',
+    kv_cone: '6',
+    kv_cone_b: '8',
+    kv_ssd: '50',
+    kv_set: '1,00',
+    kv_env_T: '21,4',
+    kv_env_H: '45',
+    kv_env_P: '100,5',
+    kv_M1: ['20,61', '20,62', '20,61'],
+    kv_pdd2: '86,9',
+    kv_ref: '0,9370',
+  },
+  {
+    kv_cone_shape: 'circle',
+    kv_cone: '15',
+    kv_ssd: '50',
+    kv_set: '1,00',
+    kv_env_T: '21,8',
+    kv_env_H: '44',
+    kv_env_P: '100,4',
+    kv_M1: ['22,93', '22,94', '22,94'],
+    kv_pdd2: '90,1',
+    kv_ref: '1,0420',
+  },
+];

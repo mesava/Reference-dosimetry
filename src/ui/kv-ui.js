@@ -1,8 +1,9 @@
 // Модуль «kV-рентген»: связывает форму с расчётным ядром kv.js (TRS-398 Rev.1, разд. 8 и 9).
-import { computeKv, KV_DEFAULTS, normalizeKv } from '../core/kv.js';
+import { KV_DEFAULTS, normalizeKv } from '../core/kv.js';
+import { emptyKvRow, kvRowForm, normalizeKvSession, kvRowLabel, computeKvSession, kvRowEmpty, splitKvForm, KV_ROW_KEYS } from '../core/kv-session.js';
 import { KV_CHAMBERS, kvChamberLabel, KV_PHANTOMS, resolveKvPhantom, kvPhantomStatus } from '../core/kv-tables.js';
 import { TG61_T8_CHAMBER } from '../core/kv-tg61.js';
-import { SAMPLE_KV, SAMPLE_KV_EN } from '../core/sample-kv.js';
+import { SAMPLE_KV, SAMPLE_KV_EN, SAMPLE_KV_ROWS } from '../core/sample-kv.js';
 import { L, getLang, refText } from '../core/i18n.js';
 import { localizeDecimals } from './i18n.js';
 import { PRESSURE_UNITS, NDW_UNITS, unitLabel, dec } from '../core/units.js';
@@ -14,8 +15,10 @@ import {
   fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote, notifyUpdate, richText,
   inlineResultHtml, setInlineResult } from './common.js';
 
+// черновик: { form, rows, active } (до 0.36.0 — плоская форма одного расчёта, читается как одна строка)
 const DRAFT_KEY = 'reference-dosimetry.kv.v1';
-const FILE_TAG = { app: 'reference-dosimetry', module: 'kv', version: 1 };
+// формат 2 (0.36.0): строки аппликаторов rows и выбранная строка active; form — плоская форма выбранной строки
+const FILE_TAG = { app: 'reference-dosimetry', module: 'kv', version: 2 };
 const SERIES_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_Mc'];
 const PAIR_KEYS = ['kv_tt', 'kv_tm'];
 const CERT_KEYS = ['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_val'];
@@ -151,13 +154,241 @@ function writeForm(values) {
   localizeDecimals(ROOT());
 }
 
+// ------------------------------------------------------------ таблица аппликаторов (раздел 4)
+/** Строки аппликаторов: общие поля, строки и выбранная строка. Поля выбранной строки показаны в разделах формы. */
+let sess = normalizeKvSession(null);
+const rowsBody = () => $('#kv-rows-body');
+const rowWord = (i) => L(`строка ${i + 1}`, `row ${i + 1}`);
+/** Ячеек показаний M₁ в строке таблицы: не меньше трёх и не меньше введённых (больше — кнопкой «+» в разделе 5). */
+const mCount = (row) => Math.max(3, Array.isArray(row.kv_M1) ? row.kv_M1.length : 0);
+const coneLabel = (shape) => (shape === 'square' ? L('Сторона поля, см', 'Field side, cm') : shape === 'rect' ? L('Сторона a, см', 'Side a, cm') : L('Диаметр поля, см', 'Field diameter, cm'));
+
+function rowInput(i, key, value, label, j = null) {
+  const id = j === null ? `kvr${i}_${key}` : `kvr${i}_${key}_${j}`;
+  return `<input type="text" class="num" inputmode="decimal" id="${id}" data-k="${key}"${j === null ? '' : ` data-j="${j}"`} aria-label="${esc(`${label}, ${rowWord(i)}`)}" value="${esc(value ?? '')}">`;
+}
+
+/** Подписи колонок с единицами: задание, давление, мощность дозы. */
+function rowCaps(data, result) {
+  const u = result.inputs.unitLabel;
+  const pu = unitLabel(PRESSURE_UNITS[data.kv_env_P_unit]);
+  return {
+    set: data.kv_timer_mode === 'window' ? L(`Время, ${u}`, `Time, ${u}`) : L(`Задание, ${u}`, `Setting, ${u}`),
+    p: `P, ${pu}`,
+    pLabel: L(`Давление, ${pu}`, `Pressure, ${pu}`),
+    d: `D, ${result.trs.rateLabel}`,
+  };
+}
+
+function rowHtml(row, i, n, caps) {
+  const shape = row.kv_cone_shape;
+  const rect = shape === 'rect';
+  const opt = (v, t, title) => `<option value="${v}" title="${esc(title)}"${shape === v ? ' selected' : ''}>${t}</option>`;
+  const m = Array.from({ length: mCount(row) }, (_, j) => rowInput(i, 'kv_M1', row.kv_M1?.[j], L(`Показание M₁ № ${j + 1}, нКл`, `Reading M₁ no. ${j + 1}, nC`), j)).join('');
+  const active = i === sess.active;
+  const cap = (s) => ` data-cap="${esc(s)}"`;
+  return `<tr data-i="${i}"${active ? ' class="active"' : ''}>
+    <td class="no"><button type="button" class="kv-row-pick" aria-pressed="${active}" aria-label="${esc(L(`Строка ${i + 1}: показать подробно в разделах ниже`, `Row ${i + 1}: show in detail in the sections below`))}" title="${esc(L('Показать строку подробно в разделах ниже', 'Show the row in detail in the sections below'))}">${i + 1}</button></td>
+    <td class="cone"${cap(L('Аппликатор, см', 'Applicator, cm'))}><span class="cone-in"><select data-k="kv_cone_shape" id="kvr${i}_kv_cone_shape" aria-label="${esc(`${L('Тубус', 'Applicator')}, ${rowWord(i)}`)}">${opt('circle', 'Ø', L('круглый', 'circular'))}${opt('square', '□', L('квадратный', 'square'))}${opt('rect', '▭', L('прямоугольный', 'rectangular'))}</select>${rowInput(i, 'kv_cone', row.kv_cone, coneLabel(shape))}<span class="x"${rect ? '' : ' hidden'}>×</span>${rowInput(i, 'kv_cone_b', row.kv_cone_b, L('Сторона b, см', 'Side b, cm')).replace('<input ', `<input${rect ? '' : ' hidden'} `)}</span></td>
+    <td${cap(L('РИП, см', 'SSD, cm'))}>${rowInput(i, 'kv_ssd', row.kv_ssd, L('РИП, см', 'SSD, cm'))}</td>
+    <td${cap(caps.set)}>${rowInput(i, 'kv_set', row.kv_set, caps.set)}</td>
+    <td${cap('T, °C')}>${rowInput(i, 'kv_env_T', row.kv_env_T, L('Температура, °C', 'Temperature, °C'))}</td>
+    <td${cap(caps.p)}>${rowInput(i, 'kv_env_P', row.kv_env_P, caps.pLabel)}</td>
+    <td class="m"${cap(L('M₁, нКл', 'M₁, nC'))}><span class="m-in">${m}</span></td>
+    <td data-show="kv_range:medium"${cap(L('PDD(2 см), %', 'PDD(2 cm), %'))}>${rowInput(i, 'kv_pdd2', row.kv_pdd2, L('PDD(2 см), %', 'PDD(2 cm), %'))}</td>
+    <td${cap(L('Сравнить с', 'Compare with'))}>${rowInput(i, 'kv_ref', row.kv_ref, L('Значение для сравнения', 'Comparison value'))}</td>
+    <td class="v" data-o="ktp"${cap('k_TP')}></td>
+    <td class="v" data-o="kg" data-show="kv_cal:ndw"${cap('k_g')}></td>
+    <td class="v fix fix-d" data-o="d"${cap(caps.d)}></td>
+    <td class="v fix fix-dev" data-o="dev"${cap(L('откл., %', 'dev., %'))}></td>
+    <td class="act fix fix-act"><span class="st" role="img"></span><button type="button" class="kv-row-del" aria-label="${esc(L(`Удалить строку ${i + 1}`, `Delete row ${i + 1}`))}" title="${esc(L('Удалить строку', 'Delete the row'))}"${n <= 1 ? ' disabled' : ''}>×</button></td>
+  </tr>`;
+}
+
+function renderRows(data, result) {
+  const caps = rowCaps(data, result);
+  const n = sess.rows.length;
+  rowsBody().innerHTML = sess.rows.map((row, i) => rowHtml(row, i, n, caps)).join('');
+  $('#kv-rows-h-set').textContent = caps.set;
+  $('#kv-rows-h-p').textContent = caps.p;
+  $('#kv-rows-h-d').textContent = caps.d;
+  localizeDecimals(rowsBody());
+}
+
+/** Поле выбранной строки в разделах формы — то же значение, что в таблице. */
+function writeDetail(key, value) {
+  if (SERIES_KEYS.includes(key)) return renderCells(seriesBox(key), value);
+  const el = document.getElementById(key);
+  if (!el) return;
+  if (el.type === 'checkbox') el.checked = !!value;
+  else el.value = value ?? '';
+}
+
+/** Ввод в таблице: значение — в строку; у выбранной строки — и в поле раздела формы. */
+function onRowInput(el) {
+  const tr = el.closest('tr[data-i]');
+  const i = Number(tr?.dataset.i);
+  const key = el.dataset.k;
+  const row = sess.rows[i];
+  if (!row || !key) return;
+  if (el.dataset.j !== undefined) {
+    const j = Number(el.dataset.j);
+    const a = Array.isArray(row[key]) ? [...row[key]] : [];
+    while (a.length <= j) a.push('');
+    a[j] = el.value;
+    row[key] = a;
+  } else row[key] = el.value;
+  if (key === 'kv_cone_shape') {
+    const rect = el.value === 'rect';
+    tr.querySelector('.cone-in .x').hidden = !rect;
+    tr.querySelector('[data-k="kv_cone_b"]').hidden = !rect;
+    tr.querySelector('[data-k="kv_cone"]').setAttribute('aria-label', `${coneLabel(el.value)}, ${rowWord(i)}`);
+  }
+  if (i === sess.active) writeDetail(key, row[key]);
+  openedFile = null;
+  update({ fromTable: true });
+}
+
+/** Выбор строки: её поля — в разделы формы, итог и замечания — по ней. Таблица не перерисовывается (фокус остаётся). */
+function selectRow(i) {
+  if (i === sess.active || !sess.rows[i]) return;
+  sess.active = i;
+  writeForm(kvRowForm(sess, i));
+  update({ fromTable: true });
+}
+
+function addRow() {
+  sess.rows.push(emptyKvRow(sess.rows.at(-1)));
+  sess.active = sess.rows.length - 1;
+  writeForm(kvRowForm(sess, sess.active));
+  openedFile = null;
+  update();
+  $(`#kvr${sess.active}_kv_cone`)?.focus();
+}
+
+function deleteRow(i) {
+  if (sess.rows.length <= 1 || !sess.rows[i]) return;
+  const wasActive = sess.active === i;
+  sess.rows.splice(i, 1);
+  if (sess.active > i) sess.active--;
+  else if (wasActive) sess.active = Math.min(i, sess.rows.length - 1);
+  // поля выбранной строки в разделах формы: та же строка (с новым номером) или соседняя, если удалили выбранную
+  writeForm(kvRowForm(sess, sess.active));
+  openedFile = null;
+  update();
+}
+
+/** Удаление строки с данными — вторым нажатием в течение 4 с; пустая строка удаляется сразу. */
+function onDeleteClick(btn) {
+  const i = Number(btn.closest('tr[data-i]')?.dataset.i);
+  if (!sess.rows[i]) return;
+  if (kvRowEmpty(sess.rows[i]) || btn.classList.contains('armed')) {
+    deleteRow(i);
+    setStatus(L(`Строка ${i + 1} удалена.`, `Row ${i + 1} deleted.`));
+    return;
+  }
+  const label = btn.getAttribute('aria-label');
+  btn.classList.add('armed');
+  btn.setAttribute('aria-label', L(`Нажмите ещё раз, чтобы удалить строку ${i + 1}`, `Click again to delete row ${i + 1}`));
+  setStatus(L(`В строке ${i + 1} есть данные: нажмите × ещё раз, чтобы удалить её.`, `Row ${i + 1} contains data: click × again to delete it.`));
+  setTimeout(() => {
+    if (!btn.isConnected) return;
+    btn.classList.remove('armed');
+    btn.setAttribute('aria-label', label);
+  }, 4000);
+}
+
+/** Итоги строк в таблице, подсветка полей, состояние строк, источники k_pol и k_s, номер строки у полей разделов. */
+function renderRowsState(all) {
+  const n = sess.rows.length;
+  all.results.forEach((r, i) => {
+    const tr = rowsBody().querySelector(`tr[data-i="${i}"]`);
+    if (!tr) return;
+    const x = r.trs;
+    const p = primaryOf(x);
+    const none = x.blocked || ctrlFailed(x);
+    const set = (k, s) => {
+      const td = tr.querySelector(`[data-o="${k}"]`);
+      if (td && td.textContent !== s) td.textContent = s;
+      return td;
+    };
+    set('ktp', fmt(x.kTP, 4));
+    set('kg', fmt(x.kg?.value, 4));
+    set('d', none ? '—' : fmt(valueAt(p, r), 4));
+    const dev = none ? NaN : p.deviation;
+    const tol = r.cmp.tolerance;
+    const devTd = set('dev', fmtSigned(dev, 2));
+    devTd.classList.toggle('good', Number.isFinite(dev) && Math.abs(dev) <= tol / 2);
+    devTd.classList.toggle('bad', Number.isFinite(dev) && Math.abs(dev) > tol);
+
+    const empty = kvRowEmpty(sess.rows[i]);
+    const errs = r.messages.filter((m) => m.level === 'error');
+    const warns = r.messages.filter((m) => m.level === 'warn');
+    const lvl = empty ? 'empty' : errs.length ? 'error' : warns.length ? 'warn' : 'ok';
+    const tip = empty
+      ? L('Строка не заполнена', 'The row is empty')
+      : errs.length
+        ? L(`Ошибок: ${errs.length}. ${errs[0].text}`, `Errors: ${errs.length}. ${errs[0].text}`)
+        : warns.length
+          ? L(`Предупреждений: ${warns.length}. ${warns[0].text}`, `Warnings: ${warns.length}. ${warns[0].text}`)
+          : L('Замечаний нет', 'No issues');
+    const st = tr.querySelector('.st');
+    st.className = `st ${lvl}`;
+    st.title = tip;
+    st.setAttribute('aria-label', tip);
+    // подсветка полей строки — по её расчёту (у пустой строки не подсвечиваем: её ещё не начали заполнять)
+    for (const el of tr.querySelectorAll('[data-k]')) {
+      const f = empty ? null : r.flags[el.dataset.k];
+      el.classList.toggle('flag-error', f === 'error');
+      el.classList.toggle('flag-warn', f === 'warn');
+    }
+    const active = i === sess.active;
+    tr.classList.toggle('active', active);
+    tr.querySelector('.kv-row-pick').setAttribute('aria-pressed', String(active));
+  });
+
+  // откуда k_pol и k_s у строк без своих серий
+  const from = (j) => {
+    const lab = kvRowLabel(sess.rows[j]);
+    return L(`строки ${j + 1}${lab ? ` (${lab})` : ''}`, `row ${j + 1}${lab ? ` (${lab})` : ''}`);
+  };
+  const notes = [];
+  if (n > 1 && all.results.some((r) => r.trs.kpolFrom)) notes.push(L(`k_pol строк без серии при обратной полярности — из ${from(all.polSrc)}.`, `k_pol of the rows without an opposite-polarity series is taken from ${from(all.polSrc)}.`));
+  if (n > 1 && all.results.some((r) => r.trs.ksFrom)) notes.push(L(`k_s строк без серии при V₂ — из ${from(all.ksSrc)}.`, `k_s of the rows without a V₂ series is taken from ${from(all.ksSrc)}.`));
+  const note = $('#kv-rows-note');
+  note.hidden = !notes.length;
+  html(note, richText(notes.join(' ')));
+
+  // номер выбранной строки у её полей в разделах формы и в окне результата
+  const tag = n > 1 ? L(` · строка ${sess.active + 1}`, ` · row ${sess.active + 1}`) : '';
+  for (const key of KV_ROW_KEYS) {
+    const els = [document.querySelector(`#kv-sheet label[for="${key}"]`), seriesBox(key)?.querySelector('.label'), key === 'kv_cone_largest' ? document.getElementById(key)?.nextElementSibling : null];
+    for (const el of els) {
+      if (!el) continue;
+      if (tag) el.dataset.row = tag;
+      else el.removeAttribute('data-row');
+    }
+  }
+  const of = $('#kv-row-of');
+  of.hidden = n <= 1;
+  if (n > 1) {
+    const row = sess.rows[sess.active];
+    const lab = kvRowLabel(row);
+    const ssd = String(row.kv_ssd ?? '').trim();
+    of.textContent = L(
+      `Строка ${sess.active + 1} из ${n}${lab ? ` · ${lab}` : ''}${ssd ? ` · РИП ${ssd} см` : ''}`,
+      `Row ${sess.active + 1} of ${n}${lab ? ` · ${lab}` : ''}${ssd ? ` · SSD ${ssd} cm` : ''}`,
+    );
+  }
+}
+
 // ------------------------------------------------------------ подписи по ветке расчёта
 const nSym = (cal) => (cal === 'nk' ? 'K' : 'D,w');
 const html = (el, s) => {
   if (el && el.innerHTML !== s) el.innerHTML = s;
 };
 
-/** Уравнение ветки: подсказка раздела 7. */
+/** Уравнение ветки: подсказка раздела 8. */
 function eqHint(r) {
   const key = `${r.range}-${r.cal}`;
   const co = r.qo === 'co60';
@@ -193,7 +424,7 @@ function readingsHint(r) {
       : r.cal === 'nk'
         ? L('Камера в свободном воздухе, опорная точка — на РИП, без фантома и других рассеивателей рядом.', 'Chamber free in air, the reference point at the SSD, with no phantom or other scattering material nearby.')
         : L('Плоскопараллельная камера на поверхности фантома (ПММА или водоэквивалентного), опорная точка — на РИП.', 'Plane-parallel chamber at the surface of a PMMA or water-equivalent phantom, the reference point at the SSD.');
-  return `${where} ${L('Все серии — при одном задании из раздела 3; значения можно вводить со знаком или без. Кнопка «+» добавляет ячейку.', 'All series at the same setting from section 3; values may be entered with or without a sign. The "+" button adds a cell.')}`;
+  return `${where} ${L('Все серии — при одном задании строки (раздел 3 и таблица раздела 4); значения можно вводить со знаком или без. Кнопка «+» добавляет ячейку.', 'All series at the same setting of the row (section 3 and the table in section 4); values may be entered with or without a sign. The "+" button adds a cell.')}`;
 }
 
 function kgSourceText(kg) {
@@ -304,14 +535,14 @@ function applyVisibility(data, result) {
     $('#kv-lab-hint'),
     richText(
       co
-        ? L('Поле и РИП, при которых измерены k_Q,M рентгеновских качеств (DIN 6809-4): по ним считается k_g (раздел 7).', 'The field and SSD at which the x-ray k_Q,M were measured (DIN 6809-4): k_g is calculated from them (section 7).')
-        : L('Поле и РИП, при которых получены коэффициенты сертификата: если клинические другие, нужна поправка k_g (раздел 7).', 'The field and SSD at which the certificate coefficients were obtained: if the clinical ones differ, a k_g correction is needed (section 7).'),
+        ? L('Поле и РИП, при которых измерены k_Q,M рентгеновских качеств (DIN 6809-4): по ним считается k_g (раздел 8).', 'The field and SSD at which the x-ray k_Q,M were measured (DIN 6809-4): k_g is calculated from them (section 8).')
+        : L('Поле и РИП, при которых получены коэффициенты сертификата: если клинические другие, нужна поправка k_g (раздел 8).', 'The field and SSD at which the certificate coefficients were obtained: if the clinical ones differ, a k_g correction is needed (section 8).'),
     ),
   );
 
   // задание облучения и таймер
   $('#kv-lbl-set').textContent = windowMode ? L('Время накопления заряда', 'Charge collection time') : L('Задание облучения', 'Exposure setting');
-  $('#kv-set-sub').textContent = windowMode ? L('интервал, на котором электрометр накапливал заряд', 'the interval over which the electrometer collected charge') : L('одно и то же для всех серий показаний в разделе 4', 'the same for all reading series in section 4');
+  $('#kv-set-sub').textContent = windowMode ? L('интервал, на котором электрометр накапливал заряд', 'the interval over which the electrometer collected charge') : L('одно и то же для всех серий показаний строки в разделе 5', 'the same for all reading series of the row in section 5');
   $('#kv-lbl-timer-mode').textContent = timeSet ? L('Ошибка таймера τ', 'Timer error τ') : L('Концевой эффект τ', 'End effect τ');
   $('#kv-lbl-tau').textContent = `τ, ${unit}`;
   $('#kv-lbl-tt').textContent = L(`Задание, ${unit}`, `Setting, ${unit}`);
@@ -323,7 +554,7 @@ function applyVisibility(data, result) {
   // показания
   $('#kv-readings-hint').textContent = readingsHint(result);
 
-  // раздел 7
+  // раздел 8
   html($('#kv-eq-hint'), richText(eqHint(result)));
   const autoOpt = $('#kv_kg_src option[value="auto"]');
   autoOpt.textContent = low ? L('по табл. 28–29 TRS-398 Rev.1 (PTW 23342, 23344)', 'by TRS-398 Rev.1 Tables 28–29 (PTW 23342, 23344)') : L('по ур. (90) TRS-398 Rev.1 (данные Andreo)', 'by TRS-398 Rev.1 Eq. (90) (Andreo data)');
@@ -377,7 +608,7 @@ function pcHint(r) {
   );
 }
 
-/** Таблица пар множителей «протокол — Rev.1» в разделе 7. */
+/** Таблица пар множителей «протокол — Rev.1» в разделе 8. */
 function renderPcTable(r) {
   const table = $('#kv-pc-table');
   const cmp = r.compare;
@@ -411,7 +642,7 @@ function protoCmpRow(result) {
   const chip = `<span class="chip" title="${L('Отличие от итога по TRS-398 Rev.1', 'Difference from the TRS-398 Rev.1 result')}">${fmtSigned(cmp.diffPct, 2)} %</span>`;
   return `<div class="proto"><span>${richText(head)}</span>${chip}</div>
     <div class="ref-value">${fmt(p.perUnit * cmp.ratio, 4)}<small>${x.rateLabel} ${zTxt}</small></div>
-    <div class="secondary">${L('отличие от Rev.1 — в разделе 7; на итог не влияет', 'the difference from Rev.1 is broken down in section 7; does not affect the result')}</div>`;
+    <div class="secondary">${L('отличие от Rev.1 — в разделе 8; на итог не влияет', 'the difference from Rev.1 is broken down in section 8; does not affect the result')}</div>`;
 }
 
 // ------------------------------------------------------------ вывод
@@ -476,12 +707,12 @@ function doseRow(result) {
         ? L(`На 2 г/см²: ${fmt(p.perUnit, 4)} ${unit}`, `At 2 g/cm²: ${fmt(p.perUnit, 4)} ${unit}`)
         : L(`На поверхности (через PDD): ${fmt(p.perUnitSurf, 4)} ${unit}`, `At the surface (via PDD): ${fmt(p.perUnitSurf, 4)} ${unit}`)
       : null,
-    fromCtrl ? null : L('Контрольные измерения не введены — по показанию M₁ раздела 4', 'No check measurements entered — from reading M₁ of section 4'),
+    fromCtrl ? null : L('Контрольные измерения не введены — по показанию M₁ раздела 5', 'No check measurements entered — from reading M₁ of section 5'),
   ].filter(Boolean).join('<br>');
   return `<div class="dose-row ${none ? 'blocked' : ''}">
     <div class="proto"><span>${esc(methodText(result))}${fromCtrl || failed ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
     <div class="dose-big">${none || !Number.isFinite(main) ? '—' : fmt(main, 4)}<small>${unit} ${where}</small></div>
-    <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : failed ? ctrlErrorText(6, 4) : secondary}</div>
+    <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : failed ? ctrlErrorText(7, 5) : secondary}</div>
   </div>`;
 }
 
@@ -511,7 +742,7 @@ function renderReadout(result, data) {
     mv.textContent = n ? L(`Ошибок: ${n}`, `Errors: ${n}`) : '—';
   }
 
-  // строка итога в разделах 4 и 6 — те же числа, что в окне результата
+  // строка итога в разделах 5 и 7 — те же числа, что в окне результата
   setInlineResult(ROOT(), inlineResultHtml({
     value: none ? NaN : valueAt(p, result),
     digits: 4,
@@ -521,10 +752,10 @@ function renderReadout(result, data) {
     tol: result.cmp.tolerance,
     devLabel: L('от значения для сравнения', 'from the comparison value'),
     source: p !== x
-      ? L('по контрольным измерениям (раздел 6)', 'from the check measurements (section 6)')
-      : L('по показанию M₁ раздела 4 (контрольные измерения не введены)', 'from reading M₁ of section 4 (no check measurements entered)'),
+      ? L('по контрольным измерениям (раздел 7)', 'from the check measurements (section 7)')
+      : L('по показанию M₁ раздела 5 (контрольные измерения не введены)', 'from reading M₁ of section 5 (no check measurements entered)'),
     errors: result.messages.filter((m) => m.level === 'error').length,
-    failedText: ctrlFailed(x) ? L('не посчитан — ошибки в контрольных измерениях (раздел 6)', 'not calculated: errors in the check measurements (section 6)') : '',
+    failedText: ctrlFailed(x) ? L('не посчитан — ошибки в контрольных измерениях (раздел 7)', 'not calculated: errors in the check measurements (section 7)') : '',
   }));
 
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
@@ -575,7 +806,7 @@ function renderReadout(result, data) {
   const bC = x.blocked || !!tc.blocked;
   const ctrlFinal = ctrlOn && x.ctrl && !bC;
   const i = result.inputs;
-  const title = doseGroupTitle({ ctrlOn, ctrlFinal, mainSec: 4, ctrlSec: 6, mainAmount: setText(result, i.X), ctrlAmount: setText(result, result.ctrl.X) });
+  const title = doseGroupTitle({ ctrlOn, ctrlFinal, mainSec: 5, ctrlSec: 7, mainAmount: setText(result, i.X), ctrlAmount: setText(result, result.ctrl.X) });
   rows.push([title, '', NaN, 0, 'group']);
   const y = ctrlOn ? tc : x;
   const blocked = ctrlOn ? bC : x.blocked;
@@ -603,7 +834,7 @@ function renderReadout(result, data) {
 }
 
 // ------------------------------------------------------------ протокол текстом
-function reportText(data, r) {
+function reportText(data, r, all = null) {
   const out = [];
   const line = (k, v) => out.push(`${k}: ${v}`);
   const cells = (a) => (Array.isArray(a) ? a.filter((s) => String(s).trim() !== '').join('; ') : a);
@@ -621,6 +852,31 @@ function reportText(data, r) {
   line(L('Дата', 'Date'), data.kv_date || '—');
   line(L('Измерения выполнили', 'Measured by'), data.kv_staff.filter((s) => s.trim()).join(', ') || '—');
   line(L('Пучок', 'Beam'), L(`${data.kv_kv || '—'} кВ, СПО ${data.kv_hvl || '—'} мм ${mat}${data.kv_filter ? `, фильтр ${data.kv_filter}` : ''}`, `${data.kv_kv || '—'} kV, HVL ${data.kv_hvl || '—'} mm ${mat}${data.kv_filter ? `, filter ${data.kv_filter}` : ''}`));
+  // строки аппликаторов: коротко все, подробно ниже — выбранная
+  if (all && sess.rows.length > 1) {
+    out.push('');
+    out.push(L(`Аппликаторы (${sess.rows.length}); подробно ниже — строка ${sess.active + 1}:`, `Applicators (${sess.rows.length}); row ${sess.active + 1} is detailed below:`));
+    sess.rows.forEach((row, k) => {
+      const y = all.results[k];
+      const t = y.trs;
+      const p = primaryOf(t);
+      const none = t.blocked || ctrlFailed(t);
+      const at = whereText(y, atSurfOf(p, y));
+      const lab = kvRowLabel(row) || '—';
+      const ssd = String(row.kv_ssd ?? '').trim() || '—';
+      const env = `T = ${String(row.kv_env_T ?? '').trim() || '—'} °C, P = ${String(row.kv_env_P ?? '').trim() || '—'} ${unitLabel(PRESSURE_UNITS[data.kv_env_P_unit])}`;
+      const dose = none ? L('не вычислена (см. замечания строки)', 'not calculated (see the row messages)') : `${fmt(valueAt(p, y), 4)} ${t.rateLabel} ${at}`;
+      const dev = !none && Number.isFinite(p.deviation) ? L(`, отклонение ${fmtSigned(p.deviation, 2)} %`, `, deviation ${fmtSigned(p.deviation, 2)} %`) : '';
+      const from = [t.kpolFrom ? L(`k_pol из ${t.kpolFrom}`, `k_pol from ${t.kpolFrom}`) : '', t.ksFrom ? L(`k_s из ${t.ksFrom}`, `k_s from ${t.ksFrom}`) : ''].filter(Boolean).join(', ');
+      out.push(
+        L(
+          `  ${k + 1}. ${lab}, РИП ${ssd} см; ${env}; M₁ ${cells(row.kv_M1) || '—'} нКл; k_TP = ${fmt(t.kTP)}; D = ${dose}${dev}${from ? ` (${from})` : ''}`,
+          `  ${k + 1}. ${lab}, SSD ${ssd} cm; ${env}; M₁ ${cells(row.kv_M1) || '—'} nC; k_TP = ${fmt(t.kTP)}; D = ${dose}${dev}${from ? ` (${from})` : ''}`,
+        ),
+      );
+    });
+    out.push('');
+  }
   const coneTxt =
     data.kv_cone_shape === 'square'
       ? L(`квадратный тубус ${data.kv_cone || '—'} см (круг той же площади Ø ${fmt(i.fClin, 2)} см)`, `square applicator ${data.kv_cone || '—'} cm (circle of equal area, ${fmt(i.fClin, 2)} cm diameter)`)
@@ -682,8 +938,10 @@ function reportText(data, r) {
   const mean = L('среднее', 'mean');
   line(L('M(V1, обычная), нКл', 'M(V1, normal), nC'), `${cells(data.kv_M1)} → ${mean} ${fmt(Math.abs(i.M1.mean), 4)}`);
   if (i.Mopp.n > 0) line(L('M(V1, обратная), нКл', 'M(V1, opposite), nC'), `${cells(data.kv_Mopp)} → ${mean} ${fmt(Math.abs(i.Mopp.mean), 4)}`);
+  else if (x.kpolFrom) line(L('M(V1, обратная)', 'M(V1, opposite)'), L(`в этой строке не измерялось; k_pol из ${x.kpolFrom}`, `not measured in this row; k_pol from ${x.kpolFrom}`));
   else line(L('M(V1, обратная)', 'M(V1, opposite)'), L('не измерялось (k_pol = 1)', 'not measured (k_pol = 1)'));
-  if (data.kv_ks_on) line(L('M(V2), нКл', 'M(V2), nC'), `${cells(data.kv_M2)} → ${mean} ${fmt(Math.abs(i.M2.mean), 4)}`);
+  if (data.kv_ks_on && x.ksFrom) line(L('M(V2)', 'M(V2)'), L(`в этой строке не измерялось; k_s из ${x.ksFrom}`, `not measured in this row; k_s from ${x.ksFrom}`));
+  else if (data.kv_ks_on) line(L('M(V2), нКл', 'M(V2), nC'), `${cells(data.kv_M2)} → ${mean} ${fmt(Math.abs(i.M2.mean), 4)}`);
   if (r.ctrl.on) line(L('Контрольные измерения M(V1), нКл', 'Check measurements M(V1), nC'), `${cells(data.kv_Mc)} → ${mean} ${fmt(r.ctrl.mean, 4)} ${L('за', 'for')} ${setText(r, r.ctrl.X)}`);
   out.push('');
   out.push(`— ${PROTO_NAME} —`);
@@ -720,9 +978,9 @@ function reportText(data, r) {
         out.push(L(`  PDD(2 см) = ${fmt(r.depth.pdd, 1)} %${pp}; на поверхности ${fmt(y.perUnitSurf, 4)} ${x.rateLabel}`, `  PDD(2 cm) = ${fmt(r.depth.pdd, 1)} %${pp}; at the surface ${fmt(y.perUnitSurf, 4)} ${x.rateLabel}`));
       }
     };
-    if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (раздел 6)', 'From check measurements (section 6)'));
-    else if (r.ctrl.on) out.push(L('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: в контрольных измерениях (раздел 6) ошибки (см. замечания).', 'RESULT NOT CALCULATED: the check measurements (section 6) contain errors (see Messages).'));
-    else describe(x, L('По показанию M₁ раздела 4 (контрольные измерения не введены)', 'From reading M₁ of section 4 (no check measurements entered)'));
+    if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (раздел 7)', 'From check measurements (section 7)'));
+    else if (r.ctrl.on) out.push(L('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: в контрольных измерениях (раздел 7) ошибки (см. замечания).', 'RESULT NOT CALCULATED: the check measurements (section 7) contain errors (see Messages).'));
+    else describe(x, L('По показанию M₁ раздела 5 (контрольные измерения не введены)', 'From reading M₁ of section 5 (no check measurements entered)'));
     const cl = complianceLine(r.compliance, PROTO_NAME);
     if (cl) out.push(cl);
   }
@@ -787,7 +1045,8 @@ export function importKv(obj) {
       ),
     );
   }
-  writeForm(obj.form);
+  sess = normalizeKvSession(obj);
+  writeForm(kvRowForm(sess, sess.active));
   openedFile = obj;
   update();
 }
@@ -828,21 +1087,41 @@ export function kvUncSource() {
 }
 
 // ------------------------------------------------------------ цикл
-let current = { data: null, result: null };
+let current = { data: null, result: null, all: null };
 
-function update() {
-  const data = readForm();
-  const result = computeKv(data);
-  current = { data: result.form, result };
-  applyVisibility(result.form, result);
+/** Сверка с открытым файлом: итог выбранной строки с её итогом в файле (у файлов до 0.36.0 — одна строка). */
+function fileNote(result) {
+  if (!openedFile) return null;
+  const saved = Array.isArray(openedFile.rowResults) ? openedFile.rowResults[sess.active] : (Number(openedFile.active) || 0) === sess.active ? openedFile.result : null;
+  return saved ? compareWithFile({ ...openedFile, result: saved }, snapshot(result), snapCmp(result)) : null;
+}
+
+/**
+ * Пересчёт. opts.fromTable — ввод пришёл из таблицы аппликаторов или выбрана строка: поля формы уже совпадают
+ * со строкой, таблица не перерисовывается (фокус остаётся в ней). Иначе поля формы читаются в выбранную строку и
+ * таблица строится заново.
+ */
+function update(opts = {}) {
+  if (!opts.fromTable) {
+    const { shared, row } = splitKvForm(readForm());
+    sess.shared = shared;
+    sess.rows[sess.active] = row;
+  }
+  const all = computeKvSession(sess);
+  const result = all.results[sess.active];
+  const data = normalizeKv(kvRowForm(sess, sess.active));
+  current = { data, result, all };
+  if (!opts.fromTable) renderRows(data, result);
+  applyVisibility(data, result);
   renderOutputs(ROOT(), result);
   renderFlags(ROOT(), result.flags, seriesBox);
-  renderReadout(result, result.form);
+  renderReadout(result, data);
+  renderRowsState(all);
   $('#kv-demo-flag').hidden = !isDemo(data);
   renderNotesFlag($('#kv-notes-flag'), data.kv_notes, [SAMPLE_KV.kv_notes, SAMPLE_KV_EN.kv_notes], isDemo(data));
-  renderFileNote($('#kv-file-note'), openedFile ? compareWithFile(openedFile, snapshot(result), snapCmp(result)) : null);
-  saveDraft(result.form);
-  renderSignBlock($('#kv-sign'), result.form.kv_staff);
+  renderFileNote($('#kv-file-note'), fileNote(result));
+  saveDraft({ form: data, rows: sess.rows, active: sess.active });
+  renderSignBlock($('#kv-sign'), data.kv_staff);
   notifyUpdate(ROOT());
 }
 
@@ -879,17 +1158,22 @@ export function initKv() {
 
   const draft = loadDraft();
   // без черновика вкладка открывается пустой: пример — только по кнопке «Загрузить пример»
-  writeForm(draft ? draft : { ...KV_DEFAULTS, kv_date: today() });
+  sess = normalizeKvSession(draft && typeof draft === 'object' ? draft : { ...KV_DEFAULTS, kv_date: today() });
+  writeForm(kvRowForm(sess, sess.active));
   localizeDemo(SAMPLE_KV, SAMPLE_KV_EN);
   update();
   if (!draft) setStatus(L('Введите свои данные или нажмите «Загрузить пример» (раздел «Данные»), чтобы посмотреть расчёт на вымышленных значениях.', 'Enter your own data or click "Load example" (the Data panel) to see the calculation on fictitious values.'));
 
   const sheet = $('#kv-sheet');
-  sheet.addEventListener('input', () => {
+  const inTable = (el) => !!el?.closest?.('#kv-rows-body');
+  sheet.addEventListener('input', (e) => {
+    if (inTable(e.target)) return onRowInput(e.target);
     openedFile = null;
     update();
   });
   sheet.addEventListener('change', (e) => {
+    // список формы тубуса в таблице уже обработан по событию input
+    if (inTable(e.target)) return;
     openedFile = null;
     if (e.target.id === 'kv_ch_model') {
       const id = e.target.value;
@@ -898,6 +1182,19 @@ export function initKv() {
     }
     update();
   });
+
+  // таблица аппликаторов: ввод в строку выбирает её, номер строки — тоже; × удаляет строку
+  rowsBody().addEventListener('focusin', (e) => {
+    if (!e.target.dataset?.k) return;
+    selectRow(Number(e.target.closest('tr[data-i]')?.dataset.i));
+  });
+  rowsBody().addEventListener('click', (e) => {
+    const pick = e.target.closest('.kv-row-pick');
+    if (pick) return selectRow(Number(pick.closest('tr[data-i]').dataset.i));
+    const del = e.target.closest('.kv-row-del');
+    if (del) onDeleteClick(del);
+  });
+  $('#kv-btn-add-row').addEventListener('click', addRow);
 
   $('#kv-cert-add').addEventListener('click', () => {
     const c = readCert();
@@ -963,18 +1260,27 @@ export function initKv() {
 
   $('#kv-btn-sample').addEventListener('click', () => {
     openedFile = null;
-    writeForm(sampleData());
+    const s = sampleData();
+    sess = normalizeKvSession({ form: s, rows: [s, ...SAMPLE_KV_ROWS], active: 0 });
+    writeForm(kvRowForm(sess, 0));
     update();
     setStatus(L('Загружен демонстрационный пример (вымышленные данные).', 'Demo example loaded (fictitious data).'));
   });
   armButton($('#kv-btn-clear'), () => L('Очистить', 'Clear'), () => L('Точно очистить?', 'Clear everything?'), () => {
-    writeForm({ ...KV_DEFAULTS, kv_date: today() });
+    sess = normalizeKvSession({ ...KV_DEFAULTS, kv_date: today() });
+    writeForm(kvRowForm(sess, 0));
     openedFile = null;
     update();
     setStatus(L('Форма очищена.', 'The form has been cleared.'));
   });
 
-  const payload = () => JSON.stringify({ ...FILE_TAG, ...fileStamp(snapshot(current.result)), savedAt: new Date().toISOString(), form: current.data }, null, 2);
+  // result — итог выбранной строки (как в файлах до 0.36.0), rowResults — итоги всех строк для сверки при открытии
+  const payload = () =>
+    JSON.stringify(
+      { ...FILE_TAG, ...fileStamp(snapshot(current.result)), rowResults: current.all.results.map(snapshot), savedAt: new Date().toISOString(), form: current.data, rows: sess.rows, active: sess.active },
+      null,
+      2,
+    );
   $('#kv-btn-save').addEventListener('click', () => {
     const name = ['kV', current.data.kv_machine, current.data.kv_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-');
     downloadText(payload(), `dosimetry_${name}.json`);
@@ -995,7 +1301,7 @@ export function initKv() {
   $('#kv-btn-copy-json').addEventListener('click', () =>
     copyText(payload(), L('Данные скопированы. Чтобы вставить их обратно, нажмите Ctrl+V на странице вне полей ввода.', 'Data copied. To paste them back, press Ctrl+V on the page outside the input fields.'), setStatus),
   );
-  $('#kv-btn-copy-report').addEventListener('click', () => copyText(reportText(current.data, current.result), L('Протокол скопирован в буфер обмена.', 'Report copied to the clipboard.'), setStatus));
+  $('#kv-btn-copy-report').addEventListener('click', () => copyText(reportText(current.data, current.result, current.all), L('Протокол скопирован в буфер обмена.', 'Report copied to the clipboard.'), setStatus));
   $('#kv-btn-pdf').addEventListener('click', () => printToPdf([L('Дозиметрия', 'Dosimetry'), 'kV', current.data.kv_machine, current.data.kv_date].filter(Boolean).join('_'), setStatus));
   $('#kv-btn-print').addEventListener('click', () => window.print());
 }

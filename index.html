@@ -1558,7 +1558,7 @@
     <!-- 1 -->
     <section class="step" aria-labelledby="kv-s1">
       <header><span class="step-no">1</span><h2 id="kv-s1">Аппарат и пучок</h2>
-        <p class="hint">Качество пучка задают напряжение на трубке и <button type="button" class="term" data-term="hvl">СПО</button>: для низких энергий — в мм Al, для средних — в мм Cu. Тубус и РИП — те, для которых определяется доза; квадратный и прямоугольный тубус заменяются кругом той же площади.</p></header>
+        <p class="hint">Качество пучка задают напряжение на трубке и <button type="button" class="term" data-term="hvl">СПО</button>: для низких энергий — в мм Al, для средних — в мм Cu. Тубус и РИП — выбранной строки раздела 4, у каждого аппликатора свои; квадратный и прямоугольный тубус заменяются кругом той же площади.</p></header>
       <div class="grid">
         <div class="field"><label for="kv_institution">Учреждение</label><div class="combo" data-list="institutions"><input type="text" id="kv_institution"></div></div>
         <div class="field"><label for="kv_machine">Аппарат</label><div class="combo" data-list="machines-kv"><input type="text" id="kv_machine" placeholder="Модель, № трубки"></div></div>
@@ -1768,7 +1768,7 @@
             <input type="text" id="kv_set" class="num" inputmode="decimal">
             <select id="kv_set_unit" aria-label="Единица задания"><option value="min">мин</option><option value="s">с</option><option value="Gy">Гр</option><option value="MU">МЕ</option></select>
           </div>
-          <span class="sub" id="kv-set-sub">одно и то же для всех серий показаний в разделе 4</span>
+          <span class="sub" id="kv-set-sub">одно и то же для всех серий показаний строки в разделе 5</span>
         </div>
         <div class="field span-2">
           <label for="kv_timer_mode" id="kv-lbl-timer-mode">Ошибка таймера τ</label>
@@ -1835,7 +1835,38 @@
 
     <!-- 4 -->
     <section class="step" aria-labelledby="kv-s4">
-      <header><span class="step-no">4</span><h2 id="kv-s4">Показания электрометра</h2>
+      <header><span class="step-no">4</span><h2 id="kv-s4">Аппликаторы</h2>
+        <p class="hint">По строке на каждый аппликатор этого пучка: у строки свои РИП, задание, температура и давление (измерения долгие, условия меняются), показания и значение для сравнения. Пучок, камера, сертификат и ошибка таймера — общие для всех строк. Выбранная строка подробно считается в разделах ниже, её поля отмечены там номером строки. Серии при обратной полярности и пониженном напряжении (раздел 5) обычно снимают с одним аппликатором: строка без своих серий берёт k<sub>pol</sub> и k<sub>s</sub> из первой строки, где они есть.</p></header>
+      <div class="table-wrap kv-rows-wrap">
+        <table class="factors jf-table kv-rows" id="kv-rows">
+          <thead><tr>
+            <th class="no">№</th>
+            <th class="cone">Аппликатор, см</th>
+            <th>РИП, см</th>
+            <th id="kv-rows-h-set">Задание, мин</th>
+            <th>T, °C</th>
+            <th id="kv-rows-h-p">P, кПа</th>
+            <th class="m">M, нКл</th>
+            <th data-show="kv_range:medium">PDD(2 см), %</th>
+            <th id="kv-rows-h-ref">Сравнить с</th>
+            <th class="v">k<sub>TP</sub></th>
+            <th class="v" data-show="kv_cal:ndw">k<sub>g</sub></th>
+            <th class="v fix fix-d" id="kv-rows-h-d">D, Гр/мин</th>
+            <th class="v fix fix-dev">Откл., %</th>
+            <th class="act fix fix-act"><span class="visually-hidden">Состояние и удаление строки</span></th>
+          </tr></thead>
+          <tbody id="kv-rows-body" data-i18n-skip></tbody>
+        </table>
+      </div>
+      <div class="row-tools">
+        <button type="button" class="link-btn" id="kv-btn-add-row"><span aria-hidden="true">+</span> Добавить аппликатор</button>
+      </div>
+      <p class="sub-hint" id="kv-rows-note"></p>
+    </section>
+
+    <!-- 5 -->
+    <section class="step" aria-labelledby="kv-s5">
+      <header><span class="step-no">5</span><h2 id="kv-s5">Показания электрометра</h2>
         <p class="hint" id="kv-readings-hint"></p></header>
       <div class="grid">
         <div class="field">
@@ -1917,9 +1948,9 @@
       <p class="inline-result" data-inline-result aria-live="polite"></p>
     </section>
 
-    <!-- 5 -->
-    <section class="step" aria-labelledby="kv-s5">
-      <header><span class="step-no">5</span><h2 id="kv-s5">Температура и давление</h2>
+    <!-- 6 -->
+    <section class="step" aria-labelledby="kv-s6">
+      <header><span class="step-no">6</span><h2 id="kv-s6">Температура и давление</h2>
         <p class="hint">Температура у камеры: воздуха — для камеры в воздухе или на поверхности фантома, воды — для камеры в воде. Давление — по поверенному барометру в помещении, без приведения к уровню моря. Влажность в расчёт не входит и записывается для протокола.</p></header>
       <div class="grid">
         <div class="field"><label for="kv_env_T">Температура у камеры, °C</label><input type="text" id="kv_env_T" class="num" inputmode="decimal"><span class="sub">обычный диапазон 15–25 °C</span></div>
@@ -1935,10 +1966,10 @@
       </div>
     </section>
 
-    <!-- 6 -->
-    <section class="step" aria-labelledby="kv-s6">
-      <header><span class="step-no">6</span><h2 id="kv-s6">Контрольные измерения</h2>
-        <p class="hint">По желанию: показания, по которым считается итоговая доза, — обычная полярность, рабочее напряжение V₁, та же геометрия (например, повтор после прогрева трубки). Поправки берутся из разделов 4 и 5; повторно их не измеряют. Если раздел пуст, итог считается по показанию M₁ раздела 4.</p></header>
+    <!-- 7 -->
+    <section class="step" aria-labelledby="kv-s7">
+      <header><span class="step-no">7</span><h2 id="kv-s7">Контрольные измерения</h2>
+        <p class="hint">По желанию: показания, по которым считается итоговая доза, — обычная полярность, рабочее напряжение V₁, та же геометрия (например, повтор после прогрева трубки). Поправки берутся из разделов 5 и 6; повторно их не измеряют. Если раздел пуст, итог считается по показанию M₁ раздела 5.</p></header>
       <div class="series">
         <div class="cells" data-series="kv_Mc" data-label="M при V₁, обычная полярность">
           <span class="label">M при V₁, обычная полярность, нКл</span>
@@ -1954,14 +1985,14 @@
       </div>
       <div class="grid">
         <div class="field"><label for="kv_ctrl_set" id="kv-lbl-ctrl-set">Задание облучения, мин</label><input type="text" id="kv_ctrl_set" class="num" inputmode="decimal"><span class="sub">если пусто — как в разделе 3</span></div>
-        <div class="field out-cell"><span class="label">Отличие от M₁ раздела 4</span><output data-out="ctrl.changePct" data-digits="2" data-signed="1" data-suffix=" %"></output><span class="sub">по показанию на единицу задания</span></div>
+        <div class="field out-cell"><span class="label">Отличие от M₁ раздела 5</span><output data-out="ctrl.changePct" data-digits="2" data-signed="1" data-suffix=" %"></output><span class="sub">по показанию на единицу задания</span></div>
       </div>
       <p class="inline-result" data-inline-result aria-live="polite"></p>
     </section>
 
-    <!-- 7 -->
-    <section class="step" aria-labelledby="kv-s7" data-nav="Доза в воде и сравнение">
-      <header><span class="step-no">7</span><h2 id="kv-s7">Переход к дозе в воде и сравнение</h2>
+    <!-- 8 -->
+    <section class="step" aria-labelledby="kv-s8" data-nav="Доза в воде и сравнение">
+      <header><span class="step-no">8</span><h2 id="kv-s8">Переход к дозе в воде и сравнение</h2>
         <p class="hint" id="kv-eq-hint"></p></header>
       <div data-show="kv_cal:ndw">
         <div class="grid">
@@ -2040,9 +2071,9 @@
       <p class="sub-hint">Справочное сравнение на итог не влияет. Показание и N<sub>Q</sub> в нём те же, что в расчёте по TRS-398 Rev.1, поэтому разница идёт только от данных и формализма протоколов.</p>
     </section>
 
-    <!-- 8 -->
-    <section class="step" aria-labelledby="kv-s8" data-optional>
-      <header><span class="step-no">8</span><h2 id="kv-s8">Примечания</h2></header>
+    <!-- 9 -->
+    <section class="step" aria-labelledby="kv-s9" data-optional>
+      <header><span class="step-no">9</span><h2 id="kv-s9">Примечания</h2></header>
       <div class="field"><label for="kv_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="kv_notes"></textarea></div>
     </section>
   </form>
@@ -2050,6 +2081,7 @@
   <aside class="readout" id="kv-readout" aria-label="Результат расчёта kV-рентгена">
     <section class="display" aria-live="polite">
       <h2>Поглощённая доза в воде</h2>
+      <p class="kv-row-of" id="kv-row-of" hidden></p>
       <p class="demo-flag" id="kv-demo-flag" hidden>Сейчас загружен демонстрационный пример: значения вымышленные.</p>
       <p class="demo-flag" id="kv-notes-flag" hidden></p>
       <p class="demo-flag" id="kv-notrev1-flag" hidden></p>
