@@ -223,18 +223,19 @@ test('Терад 200, 2025, 50–100 кВ: k_g протокола — тольк
   assert.ok(Math.abs(r85.trs.kg.value - 1.1165) < 1e-3);
 });
 
-test('Терад 200, 06.10.2024, 120–200 кВ: k_Q = 1, k_pol и k_s на каждое кВ; k_s < 1 — предупреждение «перемерить» и k_s = 1', () => {
+test('Терад 200, 06.10.2024, 120–200 кВ: k_Q = 1, k_pol и k_s на каждое кВ; k_s < 1 — ошибка «перемерить k_s»', () => {
   for (const row of MED_2024) {
     const kv = row[0];
-    const r = med(2024, row, { kv_qo: 'co60', kv_cert_form: 'co' });
+    const ks0 = ksProt(2024, kv) < 1;
+    const r = med(2024, row, { kv_qo: 'co60', kv_cert_form: 'co', kv_ks_on: !ks0 });
     const x = r.trs.ctrl;
     assert.equal(x.blocked, false, `${kv} кВ ${row[1]}`);
     const ks = ksProt(2024, kv);
     if (ks < 1) {
-      // в протоколе k_s = 0,9985–0,9995 применён; калькулятор берёт 1 и просит перемерить
-      assert.equal(r.trs.ks, 1);
-      assert.ok(r.messages.some((m) => m.level === 'warn' && /k_s следует перемерить/.test(m.text)), `${kv} кВ`);
-      assert.ok(!r.messages.some((m) => m.level === 'error'), `${kv} кВ`);
+      // в протоколе k_s = 0,9985–0,9995 применён; калькулятор останавливает расчёт и просит перемерить k_s
+      const r1 = med(2024, row, { kv_qo: 'co60', kv_cert_form: 'co', kv_ks_on: true });
+      assert.equal(r1.trs.ctrl.blocked, true, `${kv} кВ`);
+      assert.ok(r1.messages.some((m) => m.level === 'error' && /k_s нужно перемерить/.test(m.text)), `${kv} кВ`);
     } else assert.ok(Math.abs(r.trs.ks - ks) < 1e-12);
     const d = pct(row[9], x.perUnit * Math.min(ks, 1));
     assert.ok(Math.abs(d - P0) < 0.002, `${kv} кВ ${row[1]}: ${d}`);
@@ -243,7 +244,7 @@ test('Терад 200, 06.10.2024, 120–200 кВ: k_Q = 1, k_pol и k_s на к�
   // k_pol своё на каждое кВ
   const kpol = { 120: 1.004999, 140: 1.004723, 150: 1.003917, 200: 1.00328 };
   for (const [kv, v] of Object.entries(kpol)) {
-    const r = med(2024, MED_2024.find((x) => x[0] === Number(kv)), { kv_qo: 'co60', kv_cert_form: 'co' });
+    const r = med(2024, MED_2024.find((x) => x[0] === Number(kv)), { kv_qo: 'co60', kv_cert_form: 'co', kv_ks_on: false });
     assert.ok(Math.abs(r.trs.kpol - v) < 1e-6, `${kv} кВ: k_pol ${r.trs.kpol}`);
   }
 });
@@ -251,7 +252,7 @@ test('Терад 200, 06.10.2024, 120–200 кВ: k_Q = 1, k_pol и k_s на к�
 test('Терад 200, 23.04.2025, 120–200 кВ: в формуле протокола k_Q от 120 кВ на всех напряжениях; k_g по ур. (90) совпадает', () => {
   for (const row of MED_2025) {
     const kv = row[0];
-    const r = med(2025, row, { ...TH, ...oneKq(kv, KQ[2025][kv]), kv_kg_src: 'lab', kv_kg_lab: c(row[11]) });
+    const r = med(2025, row, { ...TH, ...oneKq(kv, KQ[2025][kv]), kv_kg_src: 'lab', kv_kg_lab: c(row[11]), kv_ks_on: ksProt(2025, kv) >= 1 });
     const x = r.trs.ctrl;
     assert.equal(x.blocked, false, `${kv} кВ ${row[1]}`);
     const ks = ksProt(2025, kv);
@@ -261,14 +262,14 @@ test('Терад 200, 23.04.2025, 120–200 кВ: в формуле проток
     const d = pct(row[9], x.perUnit * Math.min(ks, 1));
     assert.ok(Math.abs(d - P0 - bug) < 0.002, `${kv} кВ ${row[1]}: ${d}, ошибка формулы ${bug}`);
     // k_g протокола — ур. (90): отношение [μen/ρ] на 2 см (Andreo), как в калькуляторе
-    const auto = med(2025, row, { ...TH, kv_kg_src: 'auto' });
+    const auto = med(2025, row, { ...TH, kv_kg_src: 'auto', kv_ks_on: ksProt(2025, kv) >= 1 });
     assert.equal(auto.trs.kg.source, 'eq90');
     assert.ok(Math.abs(auto.trs.kg.value - row[11]) < 1e-4, `${kv} кВ ${row[1]}: k_g ${auto.trs.kg.value}`);
   }
   // k_Q по ln(СПО) из таблицы TH100–TH280 и k_Q протокола (снятые с графика)
   const kq = { 120: 0.96409, 140: 0.97654, 150: 0.98634, 200: 0.99797 };
   for (const [kv, v] of Object.entries(kq)) {
-    const r = med(2025, MED_2025.find((x) => x[0] === Number(kv)), { ...TH, kv_kg_src: 'auto' });
+    const r = med(2025, MED_2025.find((x) => x[0] === Number(kv)), { ...TH, kv_kg_src: 'auto', kv_ks_on: false });
     assert.ok(Math.abs(r.cert.kQ - v) < 5e-5, `${kv} кВ: k_Q ${r.cert.kQ}`);
   }
 });

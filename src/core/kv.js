@@ -568,12 +568,11 @@ export function computeKv(form) {
       }
       if (ratio12 < 1) {
         // M(V₂) > M(V₁): по формуле k_s < 1, чего не бывает — при пониженном напряжении заряда собирается меньше.
-        // Обычно это разброс показаний при пренебрежимой рекомбинации: k_s принимается равным 1, измерение надо повторить.
-        add('warn', 'common', L(
-          `Показание при V₂ больше, чем при V₁: по формуле k_s = ${ru(ksRaw, 4)} < 1, а k_s не может быть меньше 1 (при пониженном напряжении собирается меньше заряда). Принято k_s = 1; k_s следует перемерить, проверив показания и напряжения.`,
-          `The reading at V₂ is higher than at V₁: the formula gives k_s = ${ru(ksRaw, 4)} < 1, but k_s cannot be less than 1 (less charge is collected at the reduced voltage). k_s = 1 is used; k_s should be re-measured, checking the readings and voltages.`,
+        // Расчёт останавливается: k_s нужно перемерить.
+        add('error', 'common', L(
+          `Показание при V₂ больше, чем при V₁: по формуле k_s = ${ru(ksRaw, 4)} < 1, а k_s не может быть меньше 1 (при пониженном напряжении собирается меньше заряда). k_s нужно перемерить, проверив показания и напряжения.`,
+          `The reading at V₂ is higher than at V₁: the formula gives k_s = ${ru(ksRaw, 4)} < 1, but k_s cannot be less than 1 (less charge is collected at the reduced voltage). k_s must be re-measured, checking the readings and voltages.`,
         ), `${REF.trs}, разд. 4.4.3.4`, ['ks', 'kv_M2']);
-        ksRaw = 1;
       } else if (ksRaw > 1.05) add('error', 'common', L(`k_s = ${ru(ksRaw, 4)} > 1,05: метод двух напряжений неприменим.`, `k_s = ${ru(ksRaw, 4)} > 1.05: the two-voltage method is not applicable.`), `${REF.trs}, табл. 3`, 'ks');
     } else ksRaw = NaN;
   } else {
