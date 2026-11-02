@@ -38,6 +38,12 @@ export function compareKv(f, s) {
 
   if (cal === 'nk' && range === 'low') return tg61Air(f, s, out('tg61-air', 'TG-61', L('TG-61, метод в воздухе', 'TG-61, in-air method'), `${TG61}, ур. (3), табл. IV, V`));
   if (cal === 'nk') return tg61Phantom(f, s, out('tg61-phantom', 'TG-61', L('TG-61, метод в фантоме на 2 см', 'TG-61, in-phantom method at 2 cm'), `${TG61}, ур. (4), табл. VII–IX`));
+  if (s.kq1) {
+    // без калибровки в рентгене DIN 6809-4 тоже не применим: сравнивать не с чем
+    const r = out('din', 'DIN 6809-4', L('DIN 6809-4', 'DIN 6809-4'), `${DIN}, разд. 6.4.2`);
+    r.reason = L('камера откалибрована только в ⁶⁰Co: DIN 6809-4, как и Rev.1, требует k_Q,M из калибровки в рентгене — сравнивать не с чем', 'the chamber is calibrated in ⁶⁰Co only: DIN 6809-4, like Rev.1, requires k_Q,M from an x-ray calibration, so there is nothing to compare');
+    return r;
+  }
   if (s.qo === 'co60') return dinSsrmp(s, out('din', 'DIN 6809-4', L('DIN 6809-4, k_g = 1', 'DIN 6809-4, k_g = 1'), `${DIN}, разд. 6.4`));
   return dinSsrmp(s, out('din', 'DIN / SSRMP', L('DIN 6809-4 и SSRMP No 9, k_g = 1', 'DIN 6809-4 and SSRMP No 9, k_g = 1'), `${DIN}, разд. 6.3, 6.4; ${SSRMP}, разд. 5.3.5`));
 }
@@ -184,6 +190,7 @@ function kgSourceName(src) {
     same: L('поле и РИП как в лаборатории', 'field and SSD as at the laboratory'),
     lab: L('значение лаборатории', 'laboratory value'),
     one: L('k_g = 1 (не по Rev.1)', 'k_g = 1 (not Rev.1)'),
+    nocal: L('калибровки в рентгене нет, k_g = 1', 'no x-ray calibration, k_g = 1'),
     eq90: L('ур. (90), данные Andreo', 'Eq. (90), Andreo data'),
     eq85: L('ур. (85)', 'Eq. (85)'),
     table: L('табл. 28–29', 'Tables 28–29'),

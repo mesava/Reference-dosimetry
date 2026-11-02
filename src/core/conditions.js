@@ -302,8 +302,11 @@ export const KV_CONDITIONS = [
     scope: 'trs',
     label: () => L('поле и РИП как при калибровке или поправка k_g по TRS-398 Rev.1', 'field and SSD as at calibration, or a k_g correction according to TRS-398 Rev.1'),
     ref: `${TRS}, табл. 27, ур. (52), (58)`,
-    check: (c) => (c.cal !== 'ndw' ? 'na' : c.sameGeometry ? true : c.kgSource ? c.kgSource !== 'one' : null),
-    reason: () => L('поле или РИП не как в лаборатории, а k_g принят равным 1 (как DIN 6809-4 и SSRMP No 9)', 'field or SSD different from the laboratory, with k_g taken as 1 (as in DIN 6809-4 and SSRMP No 9)'),
+    check: (c) => (c.cal !== 'ndw' ? 'na' : c.sameGeometry ? true : c.kgSource ? !['one', 'nocal'].includes(c.kgSource) : null),
+    reason: (c) =>
+      c.kgSource === 'nocal'
+        ? L('калибровки в рентгене нет: k_g не к чему отнести, принят равным 1', 'no x-ray calibration: k_g has nothing to refer to and is taken as 1')
+        : L('поле или РИП не как в лаборатории, а k_g принят равным 1 (как DIN 6809-4 и SSRMP No 9)', 'field or SSD different from the laboratory, with k_g taken as 1 (as in DIN 6809-4 and SSRMP No 9)'),
   },
   {
     id: 'kvMedChamber',
@@ -330,7 +333,10 @@ export const KV_CONDITIONS = [
     label: () => L('калибровка камеры в рентгеновских качествах (Qo — kV-качество)', 'chamber calibrated in x-ray qualities (Qo is a kV quality)'),
     ref: `${TRS}, разд. 9.2.1; ${DIN}, разд. 6.4.2`,
     check: (c) => (c.range === 'medium' && c.cal === 'ndw' ? c.qo !== 'co60' : 'na'),
-    reason: () => L('Qo = ⁶⁰Co с k_Q,M рентгеновских качеств — способ DIN 6809-4, не TRS-398 Rev.1', 'Qo = ⁶⁰Co with x-ray k_Q,M is the DIN 6809-4 method, not TRS-398 Rev.1'),
+    reason: (c) =>
+      c.kq1
+        ? L('камера откалибрована только в ⁶⁰Co, k_Q = 1 — ни TRS-398 Rev.1, ни DIN 6809-4', 'the chamber is calibrated in ⁶⁰Co only, k_Q = 1: neither TRS-398 Rev.1 nor DIN 6809-4')
+        : L('Qo = ⁶⁰Co с k_Q,M рентгеновских качеств — способ DIN 6809-4, не TRS-398 Rev.1', 'Qo = ⁶⁰Co with x-ray k_Q,M is the DIN 6809-4 method, not TRS-398 Rev.1'),
   },
   {
     id: 'kvPch',

@@ -205,6 +205,7 @@ function reportText(data, r) {
     line(L('Калибровка камеры', 'Chamber calibration'), f.unc_kv_cal === 'nk' ? L('N_K — воздушная керма в свободном воздухе', 'N_K: air kerma free in air') : L('N_D,w — поглощённая доза в воде', 'N_D,w: absorbed dose to water'));
     if (f.unc_kv_cal === 'ndw') {
       if (f.unc_kv_range === 'medium') line(L('Опорное качество Qo', 'Reference quality Qo'), f.unc_kv_qo === 'co60' ? L('⁶⁰Co на 5 см (DIN 6809-4, не по TRS-398 Rev.1)', '⁶⁰Co at 5 cm (DIN 6809-4, not TRS-398 Rev.1)') : L('рентгеновское, на глубине 2 см', 'x-ray, at a depth of 2 cm'));
+      if (f.unc_kv_range === 'medium' && f.unc_kv_qo === 'co60') line('k_Q,M', f.unc_kv_kq === 'one' ? L('калибровки в рентгене нет: k_Q = 1 (не по TRS-398 Rev.1 и не по DIN 6809-4)', 'no x-ray calibration: k_Q = 1 (neither TRS-398 Rev.1 nor DIN 6809-4)') : L('из калибровки камеры в рентгене (DIN 6809-4)', 'from an x-ray calibration of the chamber (DIN 6809-4)'));
       line('k_g', kvKgText(f.unc_kv_kg));
     }
   } else line(L('Калибровка камеры', 'Chamber calibration'), routeText(r.beam, r.route));
@@ -307,6 +308,7 @@ function pull(target) {
     patch.unc_kv_cal = s.kvCal;
     patch.unc_kv_qo = s.kvQo;
     patch.unc_kv_kg = s.kvKg;
+    patch.unc_kv_kq = s.kvKq ?? 'cert';
   }
   // серии для раскрытия k_i: заменяются данными вкладки; свои оценки, u(T) и u(P) остаются
   const ki = parseKi(cur.unc_ki);

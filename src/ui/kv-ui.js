@@ -182,6 +182,7 @@ function kgSourceText(kg) {
     case 'eq85': return L('ур. (85): отношение N_K^PMMA × отношение B_w', 'Eq. (85): N_K^PMMA ratio × B_w ratio');
     case 'lab': return L('значение лаборатории', 'laboratory value');
     case 'one': return L('принят равным 1 — не по TRS-398 Rev.1', 'taken as 1, not TRS-398 Rev.1');
+    case 'nocal': return L('калибровки в рентгене нет: k_g не к чему отнести, принят равным 1 (не по Rev.1 и DIN)', 'no x-ray calibration: k_g has nothing to refer to and is taken as 1 (neither Rev.1 nor DIN)');
     default: return '';
   }
 }
@@ -220,13 +221,18 @@ function applyVisibility(data, result) {
   // сертификат
   const ns = nSym(result.cal);
   const form = data.kv_cert_form;
+  const coOpt = $('#kv_cert_form option[value="co"]');
+  coOpt.hidden = !co && form !== 'co';
+  coOpt.disabled = !co && form !== 'co';
   html($('#kv-lbl-n'), form === 'k' ? L('N<sub>Д</sub>', 'N<sub>D</sub>') : `N<sub>${ns},Qo</sub>`);
   html(
     $('#kv-n-sub'),
     richText(
       form === 'k'
         ? L('из протокола поверки; N_Q = N_Д · K(СПО)', 'from the calibration report; N_Q = N_D · K(HVL)')
-        : co
+        : form === 'co'
+          ? L('в пучке ⁶⁰Co на глубине 5 см; калибровки в рентгене нет — k_Q = 1', 'in the ⁶⁰Co beam at a depth of 5 cm; no x-ray calibration, so k_Q = 1')
+          : co
           ? L('в пучке ⁶⁰Co на глубине 5 см', 'in the ⁶⁰Co beam at a depth of 5 cm')
           : L('при опорном качестве Qo; N_Q = N_Qo · k_Q(СПО)', 'at the reference quality Qo; N_Q = N_Qo · k_Q(HVL)'),
     ),
@@ -277,6 +283,7 @@ function applyVisibility(data, result) {
   eq85.hidden = !low;
   eq85.disabled = !low;
   const kg = result.trs.kg;
+  $('#kv_kg_src').disabled = kg.source === 'nocal';
   html($('#kv-kg-sub'), richText(kgSourceText(kg)));
   $('#kv-kg-bykv').hidden = kg.source !== 'table';
   $('#kv-kg-spread').hidden = kg.source !== 'table';
@@ -494,7 +501,13 @@ function renderReadout(result, data) {
     rows.push([data.kv_cert_form === 'k' ? L('N<sub>Д</sub> из сертификата, Гр/нКл', 'N<sub>D</sub> from the certificate, Gy/nC') : L(`N<sub>${ns},Qo</sub> из сертификата, Гр/нКл`, `N<sub>${ns},Qo</sub> from the certificate, Gy/nC`), '', c.base, 6]);
   }
   rows.push([
-    data.kv_cert_form === 'n' ? L(`N<sub>${ns}</sub> для СПО пучка (единицы таблицы)`, `N<sub>${ns}</sub> at the beam HVL (table units)`) : data.kv_cert_form === 'k' ? L('K для СПО пучка', 'K at the beam HVL') : L('k<sub>Q</sub> для СПО пучка', 'k<sub>Q</sub> at the beam HVL'),
+    data.kv_cert_form === 'n'
+      ? L(`N<sub>${ns}</sub> для СПО пучка (единицы таблицы)`, `N<sub>${ns}</sub> at the beam HVL (table units)`)
+      : data.kv_cert_form === 'k'
+        ? L('K для СПО пучка', 'K at the beam HVL')
+        : c.kq1
+          ? L('k<sub>Q</sub> принят равным 1 (калибровки в рентгене нет)', 'k<sub>Q</sub> taken as 1 (no x-ray calibration)')
+          : L('k<sub>Q</sub> для СПО пучка', 'k<sub>Q</sub> at the beam HVL'),
     '', c.value, data.kv_cert_form === 'n' ? 6 : 4,
   ]);
   rows.push([L(`N<sub>${ns},Q</sub>, Гр/нКл`, `N<sub>${ns},Q</sub>, Gy/nC`), '', c.NQ, 6]);
@@ -573,15 +586,17 @@ function reportText(data, r) {
       ? L(`N_Д = ${data.kv_n} ${unitN}, множитель K по качествам`, `N_D = ${data.kv_n} ${unitN}, multiplier K per quality`)
       : data.kv_cert_form === 'n'
         ? L(`${ns} по качествам, ${unitN}`, `${ns} per quality, ${unitN}`)
-        : L(`${ns},Qo = ${data.kv_n} ${unitN}${r.qo === 'co60' ? ' (⁶⁰Co, 5 см)' : ''}, k_Q по качествам`, `${ns},Qo = ${data.kv_n} ${unitN}${r.qo === 'co60' ? ' (⁶⁰Co, 5 cm)' : ''}, k_Q per quality`);
+        : data.kv_cert_form === 'co'
+          ? L(`${ns},Qo = ${data.kv_n} ${unitN} (⁶⁰Co, 5 см); калибровки в рентгене нет, k_Q = 1 (не по Rev.1 и DIN 6809-4)`, `${ns},Qo = ${data.kv_n} ${unitN} (⁶⁰Co, 5 cm); no x-ray calibration, k_Q = 1 (neither Rev.1 nor DIN 6809-4)`)
+          : L(`${ns},Qo = ${data.kv_n} ${unitN}${r.qo === 'co60' ? ' (⁶⁰Co, 5 см)' : ''}, k_Q по качествам`, `${ns},Qo = ${data.kv_n} ${unitN}${r.qo === 'co60' ? ' (⁶⁰Co, 5 cm)' : ''}, k_Q per quality`);
   line(L('Сертификат', 'Certificate'), formTxt);
   // как введено в таблицу (с теми же знаками), по возрастанию СПО
   const raw = (key, q) => String(data[key][q.row - 1] ?? '').trim();
   const qs = r.cert.rows?.map((q) => `${raw('kv_cq_kv', q) ? L(`${raw('kv_cq_kv', q)} кВ / `, `${raw('kv_cq_kv', q)} kV / `) : ''}${raw('kv_cq_hvl', q)} ${L('мм', 'mm')} ${mat} → ${raw('kv_cq_val', q)}`).join('; ');
   if (qs) line(L('Качества сертификата', 'Certificate qualities'), qs);
   const valName = data.kv_cert_form === 'k' ? 'K' : data.kv_cert_form === 'n' ? ns : 'k_Q';
-  line(L('Для СПО пучка', 'At the beam HVL'), `${valName} = ${fmt(r.cert.value, data.kv_cert_form === 'n' ? 6 : 4)}; ${ns},Q = ${fmt(r.cert.NQ, 6)} ${L('Гр/нКл', 'Gy/nC')}${r.cert.interp?.extrapolated ? L(' (экстраполяция)', ' (extrapolated)') : ''}`);
-  if (r.cal === 'ndw') {
+  line(L('Для СПО пучка', 'At the beam HVL'), `${valName} = ${fmt(r.cert.value, data.kv_cert_form === 'n' ? 6 : 4)}; ${ns},Q = ${fmt(r.cert.NQ, 6)} ${L('Гр/нКл', 'Gy/nC')}${r.cert.interp?.extrapolated ? L(' (экстраполяция)', ' (extrapolated)') : ''}${r.cert.kq1 ? L(' (принят: калибровки в рентгене нет)', ' (assumed: no x-ray calibration)') : ''}`);
+  if (r.cal === 'ndw' && data.kv_cert_form !== 'co') {
     const labTxt = data.kv_lab_shape === 'square' ? L(`квадратное поле ${data.kv_lab_f || '—'} см`, `square field ${data.kv_lab_f || '—'} cm`) : L(`поле Ø ${data.kv_lab_f || '—'} см`, `field ${data.kv_lab_f || '—'} cm diameter`);
     line(L('Калибровка в лаборатории', 'Laboratory calibration'), L(`${labTxt}, РИП ${data.kv_lab_ssd || '—'} см`, `${labTxt}, SSD ${data.kv_lab_ssd || '—'} cm`));
   }
@@ -739,7 +754,9 @@ export function kvUncSource() {
     kvRange: result.range,
     kvCal: result.cal,
     kvQo: result.qo === 'co60' ? 'co60' : 'kv',
-    kvKg: src === 'same' || src === 'one' ? src : 'calc',
+    // калибровки в рентгене нет: k_g = 1 — в бюджете как k_g = 1 по DIN
+    kvKg: src === 'same' || src === 'one' ? src : src === 'nocal' ? 'one' : 'calc',
+    kvKq: result.cert.kq1 ? 'one' : 'cert',
     M: p === x.ctrl ? data.kv_Mc : data.kv_M1,
     // доза на опорной глубине (поверхность или 2 г/см²): бюджет Rev.1 составлен для неё
     value: none ? NaN : p.perUnit,

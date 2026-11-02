@@ -298,6 +298,13 @@ function kvRows(ctx) {
         'N_D,w and k_Q,M are obtained at 5 cm, while the dose is determined at 2 cm; DIN 6809-4 takes k_z = 1 with an uncertainty of 0.5%. Rev.1 Table 33 has no such row.',
       ),
     },
+    st_kq1: {
+      label: L('k_Q = 1: калибровки камеры в рентгене нет', 'k_Q = 1: no x-ray calibration of the chamber'),
+      how: L(
+        'Камера откалибрована только в ⁶⁰Co, k_Q,M рентгеновских качеств приняты равными 1. Типового значения нет: насколько k_Q,M отличается от 1, без калибровки в рентгене не узнать. Пока здесь нет своей оценки с источником, u_c её не включает и занижена.',
+        'The chamber is calibrated in ⁶⁰Co only; the k_Q,M of the x-ray qualities are taken as 1. There is no typical value: how far k_Q,M is from 1 cannot be known without an x-ray calibration. Until your own estimate with its source is entered here, u_c does not include it and is underestimated.',
+      ),
+    },
     st_stab: {
       label: L('Долговременная стабильность дозиметра пользователя', "Long-term stability of the user's dosimeter"),
       how: L('Изменение отклика камеры с электрометром между калибровками: по контрольному источнику или сравнению с другими камерами.', 'Change in the response of the chamber and electrometer between calibrations: from a check source or a comparison with other chambers.'),
@@ -387,7 +394,12 @@ function buildTemplate(id, ctx) {
       .map(([key, d]) => ({ key, ...(key === 'st_kg' ? kvKgRow(R, ctx, d[col]) : { ...R[key], def: d[col] }), ...(key === 'st_kg' && ctx.kvKg === 'one' ? {} : { ref }) }));
     const st2 = rows.filter((r) => !r.lab);
     // Qo = ⁶⁰Co (DIN 6809-4): к табл. 33 добавляется k_z = 1 — пересчёт с 5 см на 2 см
-    if (id === 't33ndw' && ctx.kvQo === 'co60') st2.splice(st2.findIndex((r) => r.key === 'st_kg') + 1, 0, { key: 'st_kz', ...R.st_kz, def: DIN_KZ, ref: `${T.din}, разд. 6.4` });
+    if (id === 't33ndw' && ctx.kvQo === 'co60') {
+      const at = st2.findIndex((r) => r.key === 'st_kg') + 1;
+      st2.splice(at, 0, { key: 'st_kz', ...R.st_kz, def: DIN_KZ, ref: `${T.din}, разд. 6.4` });
+      // калибровки в рентгене нет: строка k_Q = 1 без типового значения — оценку вводит пользователь
+      if (ctx.kvKq === 'one') st2.splice(at + 1, 0, { key: 'st_kq1', ...R.st_kq1, def: NaN, ref: L('не TRS-398 Rev.1 и не DIN 6809-4', 'neither TRS-398 Rev.1 nor DIN 6809-4') });
+    }
     g(stage1, rows.filter((r) => r.lab), true);
     g(L('Этап 2. Пучок рентгеновского излучения пользователя', "Step 2. User's x-ray beam"), st2, true);
     return { family: id, groups, stages: true };
@@ -472,6 +484,12 @@ function templateInfo(id, ctx) {
         `Qo = ⁶⁰Co (DIN 6809-4, не TRS-398 Rev.1): для этого случая в Rev.1 бюджета нет, показана табл. 33 (N_D,w) со строкой k_z = 1 (DIN, ${pct(DIN_KZ, 1)} %). По DIN 6809-4, табл. 7, при калибровке в ⁶⁰Co u_c = ${pct(DIN_T7_UC, 2)} %.`,
         `Qo = ⁶⁰Co (DIN 6809-4, not TRS-398 Rev.1): Rev.1 gives no budget for this case, so Table 33 (N_D,w) is shown with a k_z = 1 row (DIN, ${pct(DIN_KZ, 1)}%). DIN 6809-4, Table 7, gives u_c = ${pct(DIN_T7_UC, 2)}% for a calibration in ⁶⁰Co.`,
       ));
+      if (ctx.kvKq === 'one') {
+        notes.push(L(
+          'Камера откалибрована только в ⁶⁰Co, k_Q = 1: так не допускают ни Rev.1, ни DIN 6809-4, и типовой оценки для этого нет. Строка «k_Q = 1…» пуста, пока вы не введёте свою оценку с источником; до этого u_c её не включает.',
+          'The chamber is calibrated in ⁶⁰Co only, k_Q = 1: neither Rev.1 nor DIN 6809-4 allows this, and there is no typical estimate for it. The “k_Q = 1…” row stays empty until you enter your own estimate with its source; until then u_c does not include it.',
+        ));
+      }
     }
     if (ctx.protocol === 'tg51') notes.push(L('TG-51 не охватывает kV-рентген: показан бюджет TRS-398 Rev.1.', 'TG-51 does not cover kV x-rays: the TRS-398 Rev.1 budget is shown.'));
     return {
@@ -526,6 +544,7 @@ function templateInfo(id, ctx) {
  * @param {'ndw'|'nk'} [o.kvCal]        kV-рентген: калибровка N_D,w или N_K
  * @param {'kv'|'co60'} [o.kvQo]        kV-рентген, средние энергии, N_D,w: опорное качество (⁶⁰Co — DIN 6809-4)
  * @param {'calc'|'same'|'one'} [o.kvKg] kV-рентген, N_D,w: k_g рассчитан; не нужен (геометрия как в лаборатории); принят 1
+ * @param {'cert'|'one'} [o.kvKq]   kV-рентген, Qo = ⁶⁰Co: k_Q,M из калибровки в рентгене или k_Q = 1 без неё
  * @param {'trs'|'tg51'} o.protocol
  * @param {'cyl'|'pp'} [o.chamberType]   тип камеры (электроны)
  * @param {boolean} [o.crossQ]   фотоны: рабочая камера откалибрована в клиническом пучке Q_cross (TRS-398, разд. 4.5.2)
@@ -552,6 +571,13 @@ export function uncertaintyBudget(o) {
   // kV-рентген: расчёт не по TRS-398 Rev.1 помечается всегда
   if (o.beam === 'kv' && id === 't33ndw' && o.kvQo === 'co60') {
     add('warn', L('Qo = ⁶⁰Co — расчёт по DIN 6809-4, не по TRS-398 Rev.1: типовой бюджет — табл. 33 Rev.1 (N_D,w) по аналогии, со строкой k_z = 1 по DIN.', 'Qo = ⁶⁰Co: the calculation follows DIN 6809-4, not TRS-398 Rev.1; the typical budget is Rev.1 Table 33 (N_D,w) by analogy, with a k_z = 1 row per DIN.'), `${prefix}unc_kv_qo`, `${T.din}, табл. 7`);
+  }
+  if (o.beam === 'kv' && id === 't33ndw' && o.kvQo === 'co60' && o.kvKq === 'one') {
+    const own = !isBlank(parseOverrides(o.over)[`${id}.st_kq1`]);
+    add('warn', own
+      ? L('k_Q = 1 без калибровки камеры в рентгене — не по TRS-398 Rev.1 и не по DIN 6809-4: u_c включает вашу оценку в строке «k_Q = 1…».', 'k_Q = 1 without an x-ray calibration of the chamber is neither TRS-398 Rev.1 nor DIN 6809-4: u_c includes your estimate in the “k_Q = 1…” row.')
+      : L('k_Q = 1 без калибровки камеры в рентгене — не по TRS-398 Rev.1 и не по DIN 6809-4. Типового значения для этого нет, и u_c его не включает: введите свою оценку с источником в строке «k_Q = 1…», иначе u_c занижена.', 'k_Q = 1 without an x-ray calibration of the chamber is neither TRS-398 Rev.1 nor DIN 6809-4. There is no typical value for it and u_c does not include it: enter your own estimate with its source in the “k_Q = 1…” row, otherwise u_c is underestimated.'),
+    `${prefix}unc_kv_kq`, `${T.trs}, разд. 9.2.1; ${T.din}, разд. 6.4.2`);
   }
   if (o.beam === 'kv' && o.kvCal !== 'nk' && o.kvKg === 'one') {
     add('warn', L('k_g = 1 при другом поле или РИП — подход DIN 6809-4 и SSRMP No 9, не TRS-398 Rev.1: строка k_g — их оценка неопределённости.', 'k_g = 1 with a different field or SSD is the DIN 6809-4 and SSRMP No 9 approach, not TRS-398 Rev.1: the k_g row is their uncertainty estimate.'), `${prefix}unc_kv_kg`, `${T.din}, разд. 6.3, 6.4`);

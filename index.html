@@ -1651,9 +1651,10 @@
             <option value="kq">N при Qo и k_Q по качествам</option>
             <option value="n">N по качествам</option>
             <option value="k">N_Д и множитель K по качествам (поверка)</option>
+            <option value="co">только N_D,w в ⁶⁰Co: k_Q = 1 (не по Rev.1 и DIN)</option>
           </select>
         </div>
-        <div class="field" data-show="kv_cert_form:kq,k">
+        <div class="field" data-show="kv_cert_form:kq,k,co">
           <label for="kv_n" id="kv-lbl-n">N<sub>D,w,Qo</sub></label>
           <input type="text" id="kv_n" class="num" inputmode="decimal" placeholder="0,04530">
           <span class="sub" id="kv-n-sub"></span>
@@ -1663,7 +1664,7 @@
           <select id="kv_n_unit"></select>
         </div>
       </div>
-      <div class="pairs cert-table" id="kv_cert">
+      <div class="pairs cert-table" id="kv_cert" data-show="kv_cert_form:kq,n,k">
         <span class="label">Качества пучка из сертификата</span>
         <div class="pairs-head"><span class="pair-no">№</span><span>кВ</span><span id="kv-lbl-cq-hvl">СПО, мм Al</span><span id="kv-lbl-cq-val">k<sub>Q</sub></span></div>
         <div class="pairs-list" id="kv-cert-rows"></div>
@@ -1677,7 +1678,7 @@
         <div class="field out-cell"><span class="label" id="kv-lbl-cert-value">k<sub>Q</sub> для пучка</span><output data-out="cert.value" data-digits="4" data-flag="kv_cert"></output></div>
         <div class="field out-cell used"><span class="label" id="kv-lbl-nq">N<sub>D,w,Q</sub>, Гр/нКл</span><output data-out="cert.NQ" data-digits="6"></output></div>
       </div>
-      <div data-show="kv_cal:ndw">
+      <div data-show="kv_cal:ndw;kv_cert_form:kq,n,k">
         <h4 class="series-head">Условия калибровки в лаборатории</h4>
         <p class="sub-hint" id="kv-lab-hint"></p>
         <div class="grid">
@@ -2729,6 +2730,13 @@
           <select id="unc_kv_qo">
             <option value="kv">рентгеновское, на глубине 2 см</option>
             <option value="co60">⁶⁰Co на 5 см (DIN 6809-4, не по TRS-398 Rev.1)</option>
+          </select>
+        </div>
+        <div class="field span-2" data-show="unc_beam_type:kv;unc_kv_range:medium;unc_kv_cal:ndw;unc_kv_qo:co60">
+          <label for="unc_kv_kq">k<sub>Q,M</sub> рентгеновских качеств</label>
+          <select id="unc_kv_kq">
+            <option value="cert">из калибровки камеры в рентгене (DIN 6809-4)</option>
+            <option value="one">калибровки в рентгене нет: k_Q = 1 (не по Rev.1 и DIN)</option>
           </select>
         </div>
         <div class="field span-2" data-show="unc_beam_type:kv;unc_kv_cal:ndw">

@@ -76,7 +76,8 @@ export const KV_DEFAULTS = {
   kv_foil: false, // плоскопараллельная камера выше 40 кВ: фольга 0,2 мм, откалиброванная вместе с камерой
   kv_cal: 'ndw', // 'ndw' — N_D,w; 'nk' — N_K (воздушная керма в свободном воздухе)
   kv_qo: 'kv', // средние энергии, N_D,w: 'kv' — kV-качество на 2 см; 'co60' — ⁶⁰Co на 5 см (DIN 6809-4)
-  kv_cert_form: 'kq', // 'kq' — N_Qo и k_Q по качествам; 'n' — N по качествам; 'k' — N_Д и множитель K по качествам
+  kv_cert_form: 'kq', // 'kq' — N_Qo и k_Q по качествам; 'n' — N по качествам; 'k' — N_Д и множитель K по качествам;
+  // 'co' — только N_D,w в ⁶⁰Co, калибровки в рентгене нет: k_Q = 1 (не по Rev.1 и не по DIN 6809-4; только при Qo = ⁶⁰Co)
   kv_n: '', // N_Qo (или N_Д) из сертификата
   kv_n_unit: 'Gy/nC',
   kv_cq_kv: ['', '', '', ''], // таблица качеств сертификата: кВ (для записи),
@@ -166,7 +167,7 @@ export function normalizeKv(input) {
   if (!Array.isArray(f.kv_staff) || f.kv_staff.length === 0) f.kv_staff = [''];
   if (f.kv_range !== 'medium') f.kv_range = 'low';
   if (f.kv_cal !== 'nk') f.kv_cal = 'ndw';
-  if (!['kq', 'n', 'k'].includes(f.kv_cert_form)) f.kv_cert_form = 'kq';
+  if (!['kq', 'n', 'k', 'co'].includes(f.kv_cert_form)) f.kv_cert_form = 'kq';
   if (!KV_SET_UNITS[f.kv_set_unit]) f.kv_set_unit = 'min';
   return f;
 }
@@ -246,6 +247,8 @@ export function computeKv(form) {
   const mat = R.material;
   const cal = f.kv_cal;
   const qo = range === 'medium' && cal === 'ndw' && f.kv_qo === 'co60' ? 'co60' : 'kv';
+  // камера откалибрована только в ⁶⁰Co, k_Q,M рентгеновских качеств нет: k_Q = 1 (не по Rev.1 и не по DIN)
+  const kq1 = qo === 'co60' && f.kv_cert_form === 'co';
   const secRef = range === 'low' ? `${REF.trs}, разд. 8.1` : `${REF.trs}, разд. 9.1`;
   const eqText = { low: { nk: L('ур. (50)–(51)', 'Eqs (50)–(51)'), ndw: L('ур. (52)', 'Eq. (52)') }, medium: { nk: L('ур. (57)', 'Eq. (57)'), ndw: L('ур. (58)', 'Eq. (58)') } }[range][cal];
 
@@ -291,7 +294,8 @@ export function computeKv(form) {
   if (f.kv_cone_shape === 'square' && Number.isFinite(fClin)) {
     add('info', 'common', L(`Квадратное поле ${ru(coneSize, 1)} см заменено кругом равной площади диаметром ${ru(fClin, 2)} см: данные B_w и [μen/ρ] и табл. 28–29 даны для круглых полей.`, `The square field of ${ru(coneSize, 1)} cm is replaced by a circle of equal area, ${ru(fClin, 2)} cm in diameter: the B_w and [μen/ρ] data and Tables 28–29 are given for circular fields.`), null, 'kv_cone');
   }
-  const needLab = cal === 'ndw';
+  // без калибровки в рентгене нет и геометрии, к которой относился бы k_g
+  const needLab = cal === 'ndw' && f.kv_cert_form !== 'co';
   const labSize = needLab ? geomRead('kv_lab_f', L('Поле в лаборатории', 'Field at the laboratory'), 50) : NaN;
   const ssdLab = needLab ? geomRead('kv_lab_ssd', L('РИП в лаборатории', 'SSD at the laboratory'), 150) : NaN;
   const fLab = equivalentDiameter(f.kv_lab_shape, labSize);
@@ -324,19 +328,32 @@ export function computeKv(form) {
   const cert = { form: certForm, qo };
   const nUnitOk = (v) => v >= 1e-3 && v <= 20;
   if (certForm !== 'n') {
-    const raw = read('kv_n', certForm === 'k' ? L('N_Д из сертификата', 'N_D from the certificate') : L(`${nName} при Qo из сертификата`, `${nName} at Qo from the certificate`));
+    const raw = read('kv_n', certForm === 'k' ? L('N_Д из сертификата', 'N_D from the certificate') : certForm === 'co' ? L('N_D,w в ⁶⁰Co из сертификата', 'N_D,w in ⁶⁰Co from the certificate') : L(`${nName} при Qo из сертификата`, `${nName} at Qo from the certificate`));
     cert.base = Number.isFinite(raw) ? ndwToGyPerNC(raw, f.kv_n_unit) : NaN;
     if (Number.isFinite(cert.base) && !nUnitOk(cert.base)) add('warn', 'common', L(`${nName} = ${dec(cert.base.toPrecision(4))} Гр/нКл выглядит неправдоподобно: проверьте единицы.`, `${nName} = ${dec(cert.base.toPrecision(4))} Gy/nC looks implausible: check the units.`), null, 'kv_n');
   }
-  const table = certRows(f);
+  // форма 'co': таблицы качеств нет — k_Q = 1
+  const table = certForm === 'co' ? { rows: [], errors: [], duplicates: [] } : certRows(f);
   cert.rows = table.rows;
-  const valName = { kq: 'k_Q', n: nName, k: 'K' }[certForm];
+  const valName = { kq: 'k_Q', n: nName, k: 'K', co: 'k_Q' }[certForm];
+  if (certForm === 'co' && qo !== 'co60') {
+    add('error', 'common', L(
+      'Вариант «только N_D,w в ⁶⁰Co (k_Q = 1)» — для средних энергий с калибровкой N_D,w и Qo = ⁶⁰Co. Выберите такие условия или другую форму сертификата.',
+      'The "N_D,w in ⁶⁰Co only (k_Q = 1)" option applies to medium energies with an N_D,w calibration and Qo = ⁶⁰Co. Choose these conditions or another certificate form.',
+    ), `${REF.din}, разд. 6.4.2`, ['kv_cert_form', 'kv_qo']);
+  }
+  if (kq1) {
+    cert.value = 1;
+    cert.kQ = 1;
+    cert.kq1 = true;
+    cert.NQ = cert.base;
+  }
   if (table.errors.length) add('error', 'common', L(`Таблица качеств сертификата, строки ${table.errors.join(', ')}: нужны СПО и ${valName} — положительные числа.`, `Certificate quality table, rows ${table.errors.join(', ')}: the HVL and ${valName} must be positive numbers.`), null, 'kv_cert');
   if (table.duplicates.length) add('error', 'common', L(`Таблица качеств сертификата: СПО повторяется (строки ${table.duplicates.join(', ')}).`, `Certificate quality table: the HVL is repeated (rows ${table.duplicates.join(', ')}).`), null, 'kv_cert');
   if (qo === 'co60' && certForm === 'n') {
     add('error', 'common', L('Для Qo = ⁶⁰Co нужны k_Q,M рентгеновских качеств относительно N_D,w в ⁶⁰Co: выберите форму «N и k_Q по качествам» или «N_Д и множитель K».', 'For Qo = ⁶⁰Co, the k_Q,M of the x-ray qualities relative to N_D,w in ⁶⁰Co are required: choose the form "N and k_Q per quality" or "N_D and multiplier K".'), `${REF.din}, разд. 6.4.2`, 'kv_cert_form');
   }
-  if (table.rows.length === 0 && !table.errors.length) {
+  if (certForm !== 'co' && table.rows.length === 0 && !table.errors.length) {
     if (qo === 'co60') {
       add('error', 'common', L('Сертификат только с ⁶⁰Co: для рентгена нужна калибровка этой камеры в рентгеновских качествах (k_Q,M). Типовые k_Q для kV-рентгена не применяются: чувствительность отдельных камер одного типа различается.', 'A ⁶⁰Co-only certificate: x-rays require a calibration of this chamber in x-ray qualities (k_Q,M). Generic k_Q are not used for kV x-rays: the response of individual chambers of the same type differs.'), `${REF.trs}, разд. 9.2.1; ${REF.din}, разд. 6.4.2`, 'kv_cert');
     } else {
@@ -374,7 +391,14 @@ export function computeKv(form) {
       else cert.K = cert.value;
     }
   }
-  if (qo === 'co60') {
+  if (kq1) {
+    cert.kz = 1;
+    notRev1.push(L('k_Q = 1: камера откалибрована только в ⁶⁰Co, калибровки в рентгене нет (не по Rev.1 и не по DIN 6809-4)', 'k_Q = 1: the chamber is calibrated in ⁶⁰Co only, with no x-ray calibration (neither Rev.1 nor DIN 6809-4)'));
+    add('warn', 'common', L(
+      'k_Q = 1: камера откалибрована только в ⁶⁰Co, k_Q,M рентгеновских качеств неизвестны и приняты равными 1. Так не допускают ни TRS-398 Rev.1 (разд. 9.2.1), ни DIN 6809-4 (разд. 6.4.2): оба требуют калибровки этой камеры в рентгеновских качествах. Насколько k_Q,M отличается от 1, без такой калибровки не узнать, поэтому результат — оценка, а не референсная дозиметрия. k_z = 1 (5 см → 2 см) и k_g = 1 взяты как в DIN 6809-4.',
+      'k_Q = 1: the chamber is calibrated in ⁶⁰Co only; the k_Q,M of the x-ray qualities are unknown and taken as 1. Neither TRS-398 Rev.1 (Sec. 9.2.1) nor DIN 6809-4 (Sec. 6.4.2) allows this: both require a calibration of this chamber in x-ray qualities. How far k_Q,M is from 1 cannot be known without such a calibration, so the result is an estimate, not reference dosimetry. k_z = 1 (5 cm → 2 cm) and k_g = 1 are taken as in DIN 6809-4.',
+    ), `${REF.trs}, разд. 9.2.1; ${REF.din}, разд. 6.4.2`, 'kv_cert_form');
+  } else if (qo === 'co60') {
     cert.kz = 1;
     notRev1.push(L('Qo = ⁶⁰Co (DIN 6809-4)', 'Qo = ⁶⁰Co (DIN 6809-4)'));
     add('warn', 'common', L(
@@ -600,7 +624,12 @@ export function computeKv(form) {
     // k_g: ур. (52) или (58)
     const src = f.kv_kg_src;
     kg.lab = { f: fLab, ssd: ssdLab };
-    if (geomOk && labOk && sameGeometry) {
+    if (kq1) {
+      // калибровки в рентгене нет — нет и лабораторной геометрии для k_g
+      kg.value = 1;
+      kg.source = 'nocal';
+      kg.lab = null;
+    } else if (geomOk && labOk && sameGeometry) {
       kg.value = 1;
       kg.source = 'same';
     } else if (!geomOk || !labOk) {
@@ -734,13 +763,13 @@ export function computeKv(form) {
   // соответствие стандартным условиям (табл. 26, 27, 31)
   const shown = trs.blocked ? {} : ctrl.on ? (trs.ctrl && !trs.ctrl.blocked ? trs.ctrl : {}) : trs;
   const conditions = evaluateConditions(KV_CONDITIONS, {
-    range, cal, qo, kv, chamber, fClin, ssd, sameGeometry, kgSource: kg.source, pchSource: phys.pchSource,
+    range, cal, qo, kq1, kv, chamber, fClin, ssd, sameGeometry, kgSource: kg.source, pchSource: phys.pchSource,
     nkFsGiven: !isBlank(f.kv_nk_fs), coneLargest: f.kv_cone_largest, kleak, kpolRaw,
   }, 'trs');
   const compliance = complianceFromConditions(conditions, Number.isFinite(shown.perUnit));
 
   // справочное сравнение с TG-61 или DIN 6809-4 / SSRMP No 9 — на итог не влияет
-  const compare = qualityOk ? compareKv(f, { range, cal, qo, kv, hvl, ssd, fClin, chamber, phys, kg }) : { available: false, rows: [], notes: [], flags: [] };
+  const compare = qualityOk ? compareKv(f, { range, cal, qo, kq1, kv, hvl, ssd, fClin, chamber, phys, kg }) : { available: false, rows: [], notes: [], flags: [] };
   compare.flags.forEach((k) => flag(k, 'warn'));
 
   return {

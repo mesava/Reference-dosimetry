@@ -272,3 +272,69 @@ test('kV-рентген → «Неопределённость»: перенос
   await pause(300);
   assert.deepEqual(errors, []);
 });
+
+test('kV-рентген: камера только с ⁶⁰Co — k_Q = 1 с пометкой «не по Rev.1 и не по DIN»; перенос в «Неопределённость»', async () => {
+  const { page, errors } = await openPage(browser);
+  const pause = (ms = 400) => page.waitForTimeout(ms);
+  await page.goto(`${server.url}/index.html#kv`);
+  await page.waitForSelector('#kv-messages li');
+  await page.click('#kv-btn-sample');
+  await pause();
+  // вариант доступен только при Qo = ⁶⁰Co
+  const coOpt = page.locator('#kv_cert_form option[value="co"]');
+  assert.equal(await coOpt.evaluate((o) => o.disabled), true);
+  await page.selectOption('#kv_qo', 'co60');
+  await pause(200);
+  assert.equal(await coOpt.evaluate((o) => o.disabled), false);
+  await page.selectOption('#kv_cert_form', 'co');
+  await page.fill('#kv_n', '0,05389');
+  await pause();
+  // таблица качеств, поле и РИП лаборатории не нужны; выбор k_g недоступен
+  assert.ok(await page.locator('#kv_cert').isHidden());
+  assert.ok(await page.locator('#kv_lab_f').isHidden());
+  assert.ok(await page.locator('#kv_n').isVisible());
+  assert.match(await page.locator('#kv-n-sub').innerText(), /калибровки в рентгене нет/);
+  assert.ok(await page.locator('#kv_kg_src').isDisabled());
+  assert.match(await page.locator('#kv-kg-sub').innerText(), /калибровки в рентгене нет/);
+  assert.equal(await page.locator('#module-kv output[data-out="cert.value"]').innerText(), '1,0000');
+  assert.equal(await page.locator('#module-kv output[data-out="cert.NQ"]').innerText(), '0,053890');
+  assert.match(await page.locator('#kv-factors').innerText(), /kQ принят равным 1 \(калибровки в рентгене нет\)\s+1,0000/);
+  // пометки: итог, условия, замечания; справочного сравнения с DIN нет
+  assert.match(await page.locator('#kv-notrev1-flag').innerText(), /k_Q = 1: камера откалибрована только в ⁶⁰Co|kQ = 1: камера откалибрована только в ⁶⁰Co/);
+  assert.match(await page.locator('#kv-compliance').innerText(), /только в ⁶⁰Co, kQ = 1 — ни TRS-398 Rev\.1, ни DIN 6809-4/);
+  assert.match(await page.locator('#kv-messages').innerText(), /ни TRS-398 Rev\.1 \(разд\. 9\.2\.1\), ни DIN 6809-4 \(разд\. 6\.4\.2\)/);
+  assert.match(await page.locator('#kv-proto-cmp').innerText(), /требует kQ,M из калибровки в рентгене/);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.click('#kv-btn-copy-report');
+  await pause(300);
+  const report = await page.evaluate(() => navigator.clipboard.readText());
+  assert.match(report, /калибровки в рентгене нет, k_Q = 1 \(не по Rev\.1 и DIN 6809-4\)/);
+  assert.ok(!/Калибровка в лаборатории:/.test(report));
+
+  // перенос в «Неопределённость»: строка k_Q = 1 без типового значения, предупреждение
+  await page.evaluate(() => (location.hash = '#uncertainty'));
+  await page.waitForSelector('#unc-result .dose-big');
+  await page.locator('[data-pull="kv"]').click();
+  await pause();
+  assert.equal(await page.inputValue('#unc_kv_qo'), 'co60');
+  assert.equal(await page.inputValue('#unc_kv_kq'), 'one');
+  assert.equal(await page.inputValue('#unc_kv_kg'), 'one');
+  assert.match(await page.locator('#unc-budget').innerText(), /kQ = 1: калибровки камеры в рентгене нет[\s\S]*?не TRS-398 Rev\.1 и не DIN 6809-4\s+как получено\t—\t\t—/);
+  assert.match(await page.locator('#unc-messages').innerText(), /не по TRS-398 Rev\.1 и не по DIN 6809-4[\s\S]*uc занижена/);
+  await page.selectOption('#unc_kv_qo', 'kv');
+  await pause();
+  assert.ok(await page.locator('#unc_kv_kq').isHidden());
+  assert.ok(!/калибровки камеры в рентгене нет/.test(await page.locator('#unc-budget').innerText()));
+
+  // по-английски — без кириллицы на вкладке kV
+  await page.evaluate(() => (location.hash = '#kv'));
+  await page.locator('#lang_en').check();
+  await pause(600);
+  // строка состояния («Протокол скопирован…») остаётся на языке, на котором её написали
+  const status = (await page.locator('#kv-status').innerText()).trim();
+  assert.deepEqual((await cyrLines(page)).filter((l) => l.trim() !== status), []);
+  assert.match(await page.locator('#kv-notrev1-flag').innerText(), /calibrated in ⁶⁰Co only/);
+  await page.locator('#lang_ru').check();
+  await pause(300);
+  assert.deepEqual(errors, []);
+});

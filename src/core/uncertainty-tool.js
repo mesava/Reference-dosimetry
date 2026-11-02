@@ -31,6 +31,7 @@ export const UT_DEFAULTS = {
   unc_kv_cal: 'ndw', // 'ndw' | 'nk'
   unc_kv_qo: 'kv', // средние энергии, N_D,w: 'kv' | 'co60' (DIN 6809-4)
   unc_kv_kg: 'calc', // N_D,w: 'calc' — рассчитан или от лаборатории; 'same' — геометрия как в лаборатории; 'one' — k_g = 1 (DIN)
+  unc_kv_kq: 'cert', // Qo = ⁶⁰Co: 'cert' — k_Q,M из калибровки в рентгене; 'one' — калибровки в рентгене нет, k_Q = 1 (не по Rev.1 и DIN)
 
   unc_cert_U: '', // расширенная неопределённость N_D,w из свидетельства, %
   unc_cert_k: '2',
@@ -86,6 +87,7 @@ export function normalizeUncTool(input) {
   if (f.unc_kv_cal !== 'nk') f.unc_kv_cal = 'ndw';
   if (f.unc_kv_qo !== 'co60') f.unc_kv_qo = 'kv';
   if (!['calc', 'same', 'one'].includes(f.unc_kv_kg)) f.unc_kv_kg = 'calc';
+  if (f.unc_kv_kq !== 'one') f.unc_kv_kq = 'cert';
   if (!UT_UNITS[f.unc_unit]) f.unc_unit = defaultUnit(f.unc_beam_type);
   // kV-рентген: бюджет — для дозы на опорной глубине (поверхность или 2 г/см²); пересчёта на d_max нет
   if (f.unc_value_at !== 'max' || f.unc_beam_type === 'kv') f.unc_value_at = 'zref';
@@ -114,6 +116,7 @@ export function computeUncertaintyTool(form) {
   // kV-рентген: Qo = ⁶⁰Co — только средние энергии с N_D,w; k_g — только для N_D,w
   const kvQo = kv && f.unc_kv_range === 'medium' && f.unc_kv_cal === 'ndw' ? f.unc_kv_qo : 'kv';
   const kvKg = kv && f.unc_kv_cal === 'ndw' ? f.unc_kv_kg : 'calc';
+  const kvKq = kvQo === 'co60' ? f.unc_kv_kq : 'cert';
 
   // качество пучка электронов: нужно только для плоскопараллельной камеры по TRS-398 (R50 < 2 г/см²)
   let r50 = NaN;
@@ -219,6 +222,7 @@ export function computeUncertaintyTool(form) {
     kvCal: f.unc_kv_cal,
     kvQo,
     kvKg,
+    kvKq,
     certU: f.unc_cert_U,
     certK: f.unc_cert_k,
     over: f.unc_over,
