@@ -1558,7 +1558,7 @@
     <!-- 1 -->
     <section class="step" aria-labelledby="kv-s1">
       <header><span class="step-no">1</span><h2 id="kv-s1">Аппарат и пучок</h2>
-        <p class="hint">Качество пучка задают напряжение на трубке и <button type="button" class="term" data-term="hvl">СПО</button>: для низких энергий — в мм Al, для средних — в мм Cu. Тубус и РИП — те, для которых определяется доза; для квадратного тубуса берётся круг той же площади.</p></header>
+        <p class="hint">Качество пучка задают напряжение на трубке и <button type="button" class="term" data-term="hvl">СПО</button>: для низких энергий — в мм Al, для средних — в мм Cu. Тубус и РИП — те, для которых определяется доза; квадратный и прямоугольный тубус заменяются кругом той же площади.</p></header>
       <div class="grid">
         <div class="field"><label for="kv_institution">Учреждение</label><div class="combo" data-list="institutions"><input type="text" id="kv_institution"></div></div>
         <div class="field"><label for="kv_machine">Аппарат</label><div class="combo" data-list="machines-kv"><input type="text" id="kv_machine" placeholder="Модель, № трубки"></div></div>
@@ -1584,14 +1584,30 @@
       <div class="grid subgrid">
         <div class="field">
           <label for="kv_cone_shape">Тубус</label>
-          <select id="kv_cone_shape"><option value="circle">круглый</option><option value="square">квадратный</option></select>
+          <select id="kv_cone_shape"><option value="circle">круглый</option><option value="square">квадратный</option><option value="rect">прямоугольный</option></select>
         </div>
         <div class="field"><label for="kv_cone" id="kv-lbl-cone">Диаметр поля, см</label><input type="text" id="kv_cone" class="num" inputmode="decimal"><span class="sub" id="kv-cone-sub">на конце тубуса</span></div>
-        <div class="field out-cell" data-show="kv_cone_shape:square"><span class="label">Круг той же площади, см</span><output data-out="inputs.fClin" data-digits="2"></output><span class="sub">d = 2a/√π</span></div>
+        <div class="field" data-show="kv_cone_shape:rect"><label for="kv_cone_b">Сторона b, см</label><input type="text" id="kv_cone_b" class="num" inputmode="decimal"></div>
+        <div class="field out-cell" data-show="kv_cone_shape:square,rect"><span class="label">Круг той же площади, см</span><output data-out="inputs.fClin" data-digits="2"></output><span class="sub" id="kv-feq-sub">d = 2a/√π</span></div>
         <div class="field"><label for="kv_ssd">РИП, см</label><input type="text" id="kv_ssd" class="num" inputmode="decimal"><span class="sub">расстояние источник — поверхность (конец тубуса)</span></div>
         <div class="field" data-show="kv_range:medium">
           <label class="check"><input type="checkbox" id="kv_cone_largest"> <span>Самый большой тубус аппарата</span></label>
           <span class="sub">если тубуса 10 см нет (TRS-398, табл. 31)</span>
+        </div>
+      </div>
+      <div class="grid subgrid" id="kv-phantom-block">
+        <div class="field span-2">
+          <label for="kv_phantom">Фантом</label>
+          <select id="kv_phantom"></select>
+          <span class="sub" id="kv-phantom-sub"></span>
+        </div>
+      </div>
+      <div id="kv-ph-custom" hidden>
+        <h4 class="series-head">Свой материал фантома</h4>
+        <div class="grid">
+          <div class="field span-2"><label for="kv_ph_name">Название и производитель</label><input type="text" id="kv_ph_name" placeholder="Название (производитель)"></div>
+          <div class="field"><label for="kv_ph_rho">Плотность, г/см³</label><input type="text" id="kv_ph_rho" class="num" inputmode="decimal"><span class="sub">для протокола; в расчёт не входит</span></div>
+          <div class="field span-all"><label for="kv_ph_note">Состав, данные о водоэквивалентности в kV и их источник</label><input type="text" id="kv_ph_note"></div>
         </div>
       </div>
     </section>
@@ -1689,6 +1705,11 @@
           <div class="field"><label for="kv_lab_f" id="kv-lbl-lab-f">Диаметр, см</label><input type="text" id="kv_lab_f" class="num" inputmode="decimal"></div>
           <div class="field out-cell" data-show="kv_lab_shape:square"><span class="label">Круг той же площади, см</span><output data-out="inputs.fLab" data-digits="2"></output></div>
           <div class="field"><label for="kv_lab_ssd">РИП в лаборатории, см</label><input type="text" id="kv_lab_ssd" class="num" inputmode="decimal"></div>
+          <div class="field span-2" data-show="kv_range:low">
+            <label for="kv_lab_phantom">Фантом при калибровке</label>
+            <select id="kv_lab_phantom"></select>
+            <span class="sub">камера калибруется вместе с фантомом: в клинике нужен тот же материал (TRS-398 Rev.1, разд. 8.2.2; SSRMP No 9, разд. 2.3)</span>
+          </div>
         </div>
       </div>
       <div class="grid two">
@@ -1986,6 +2007,7 @@
         <div class="grid">
           <div class="field"><label for="kv_pdd2">PDD(2 см), %</label><input type="text" id="kv_pdd2" class="num" inputmode="decimal"><span class="sub">от дозы на поверхности, клиническая для того же тубуса и РИП; пусто — без пересчёта</span></div>
           <div class="field out-cell"><span class="label" id="kv-lbl-surf">На поверхности</span><output data-out="trs.perUnitSurf" data-digits="4"></output></div>
+          <div class="field span-2"><label for="kv_pdd_phantom">Фантом, в котором снята PDD</label><select id="kv_pdd_phantom"></select><span class="sub" id="kv-pdd-phantom-sub"></span></div>
         </div>
       </div>
       <h4 class="series-head">Сравнение</h4>

@@ -1,6 +1,6 @@
 // Модуль «kV-рентген»: связывает форму с расчётным ядром kv.js (TRS-398 Rev.1, разд. 8 и 9).
 import { computeKv, KV_DEFAULTS, normalizeKv } from '../core/kv.js';
-import { KV_CHAMBERS, kvChamberLabel } from '../core/kv-tables.js';
+import { KV_CHAMBERS, kvChamberLabel, KV_PHANTOMS, resolveKvPhantom, kvPhantomStatus } from '../core/kv-tables.js';
 import { TG61_T8_CHAMBER } from '../core/kv-tg61.js';
 import { SAMPLE_KV, SAMPLE_KV_EN } from '../core/sample-kv.js';
 import { L, getLang, refText } from '../core/i18n.js';
@@ -46,6 +46,28 @@ function fillChamberSelect() {
   parts.push(`<option value="CUSTOM">${L('Ввести свою камеру…', 'Enter a custom chamber…')}</option>`);
   sel.innerHTML = parts.join('');
   if (keep && sel.querySelector(`option[value="${CSS.escape(keep)}"]`)) sel.value = keep;
+}
+
+/** Списки материала фантома: вода, ПММА, водоэквивалентные пластики, полистирол, свой материал. */
+function fillPhantomSelects() {
+  const opt = (p) => `<option value="${p.id}">${esc(p.name())}</option>`;
+  const wep = KV_PHANTOMS.filter((p) => p.kind === 'wep');
+  const body = [
+    ...KV_PHANTOMS.filter((p) => p.kind === 'water' || p.kind === 'pmma').map(opt),
+    `<optgroup label="${esc(L('Водоэквивалентные пластики', 'Water-equivalent plastics'))}">`,
+    ...wep.map(opt),
+    '</optgroup>',
+    ...KV_PHANTOMS.filter((p) => p.kind === 'ps').map(opt),
+  ].join('');
+  const fill = (id, customText) => {
+    const sel = $(id);
+    const keep = sel.value;
+    sel.innerHTML = `<option value="">${esc(L('— не указан —', '— not specified —'))}</option>${body}<option value="custom">${esc(customText)}</option>`;
+    if (keep && sel.querySelector(`option[value="${CSS.escape(keep)}"]`)) sel.value = keep;
+  };
+  fill('#kv_phantom', L('свой материал…', 'custom material…'));
+  fill('#kv_lab_phantom', L('свой материал (описан в разделе 1)', 'custom material (described in section 1)'));
+  fill('#kv_pdd_phantom', L('свой материал (описан в разделе 1)', 'custom material (described in section 1)'));
 }
 
 function fillUnitSelects() {
@@ -199,7 +221,33 @@ function applyVisibility(data, result) {
 
   $('#kv-lbl-hvl').textContent = L(`СПО, мм ${mat}`, `HVL, mm ${mat}`);
   $('#kv-lbl-cq-hvl').textContent = L(`СПО, мм ${mat}`, `HVL, mm ${mat}`);
-  $('#kv-lbl-cone').textContent = data.kv_cone_shape === 'square' ? L('Сторона поля, см', 'Field side, cm') : L('Диаметр поля, см', 'Field diameter, cm');
+  const shape = data.kv_cone_shape;
+  $('#kv-lbl-cone').textContent = shape === 'square' ? L('Сторона поля, см', 'Field side, cm') : shape === 'rect' ? L('Сторона a, см', 'Side a, cm') : L('Диаметр поля, см', 'Field diameter, cm');
+  $('#kv-feq-sub').textContent = shape === 'rect' ? 'd = 2√(ab/π)' : 'd = 2a/√π';
+
+  // фантом: у воздушного метода низких энергий его нет; подсказка — что о материале говорят источники
+  const phm = result.phantom;
+  $('#kv-phantom-block').hidden = low && result.cal === 'nk';
+  $('#kv-ph-custom').hidden = !phm.customUsed;
+  html(
+    $('#kv-phantom-sub'),
+    richText(
+      phm.status
+        ? phm.status.text
+        : low
+          ? L('ПММА или водоэквивалентный пластик, тот же, что при калибровке (TRS-398 Rev.1, табл. 27, разд. 8.2.2)', 'PMMA or a water-equivalent plastic, the same as at calibration (TRS-398 Rev.1, Table 27, Sec. 8.2.2)')
+          : L('только вода (TRS-398 Rev.1, разд. 4.2.3, табл. 31; TG-61, разд. IV.A)', 'water only (TRS-398 Rev.1, Sec. 4.2.3, Table 31; TG-61, Sec. IV.A)'),
+    ),
+  );
+  const pddSt = result.depth.phantomStatus ?? kvPhantomStatus(resolveKvPhantom(data.kv_pdd_phantom, data.kv_ph_name), 'pdd');
+  html(
+    $('#kv-pdd-phantom-sub'),
+    richText(
+      pddSt
+        ? pddSt.text
+        : L('для PDD в kV SSRMP No 9 рекомендует воду, A-150, Plastic Water DT, Solid Water RMI 457, Virtual Water (разд. 5.7.1.2)', 'for PDD in kV beams SSRMP No 9 recommends water, A-150, Plastic Water DT, Solid Water RMI 457 or Virtual Water (Sec. 5.7.1.2)'),
+    ),
+  );
   $('#kv-lbl-lab-f').textContent = data.kv_lab_shape === 'square' ? L('Сторона, см', 'Side, cm') : L('Диаметр, см', 'Diameter, cm');
 
   // камера
@@ -573,11 +621,20 @@ function reportText(data, r) {
   line(L('Дата', 'Date'), data.kv_date || '—');
   line(L('Измерения выполнили', 'Measured by'), data.kv_staff.filter((s) => s.trim()).join(', ') || '—');
   line(L('Пучок', 'Beam'), L(`${data.kv_kv || '—'} кВ, СПО ${data.kv_hvl || '—'} мм ${mat}${data.kv_filter ? `, фильтр ${data.kv_filter}` : ''}`, `${data.kv_kv || '—'} kV, HVL ${data.kv_hvl || '—'} mm ${mat}${data.kv_filter ? `, filter ${data.kv_filter}` : ''}`));
-  const sq = data.kv_cone_shape === 'square';
-  const coneTxt = sq
-    ? L(`квадратный тубус ${data.kv_cone || '—'} см (круг той же площади Ø ${fmt(i.fClin, 2)} см)`, `square applicator ${data.kv_cone || '—'} cm (circle of equal area, ${fmt(i.fClin, 2)} cm diameter)`)
-    : L(`тубус Ø ${data.kv_cone || '—'} см`, `applicator ${data.kv_cone || '—'} cm diameter`);
+  const coneTxt =
+    data.kv_cone_shape === 'square'
+      ? L(`квадратный тубус ${data.kv_cone || '—'} см (круг той же площади Ø ${fmt(i.fClin, 2)} см)`, `square applicator ${data.kv_cone || '—'} cm (circle of equal area, ${fmt(i.fClin, 2)} cm diameter)`)
+      : data.kv_cone_shape === 'rect'
+        ? L(`прямоугольный тубус ${data.kv_cone || '—'} × ${data.kv_cone_b || '—'} см (круг той же площади Ø ${fmt(i.fClin, 2)} см)`, `rectangular applicator ${data.kv_cone || '—'} × ${data.kv_cone_b || '—'} cm (circle of equal area, ${fmt(i.fClin, 2)} cm diameter)`)
+        : L(`тубус Ø ${data.kv_cone || '—'} см`, `applicator ${data.kv_cone || '—'} cm diameter`);
   line(L('Геометрия', 'Geometry'), L(`${coneTxt}, РИП ${data.kv_ssd || '—'} см${r.range === 'medium' && data.kv_cone_largest ? ', самый большой тубус аппарата' : ''}; ${r.range === 'low' ? 'доза на поверхности' : 'доза на глубине 2 г/см² в воде'}`, `${coneTxt}, SSD ${data.kv_ssd || '—'} cm${r.range === 'medium' && data.kv_cone_largest ? ', largest applicator of the unit' : ''}; ${r.range === 'low' ? 'dose at the surface' : 'dose at a depth of 2 g/cm² in water'}`));
+  const phx = r.phantom;
+  const customTxt = () => {
+    const parts = [String(data.kv_ph_rho ?? '').trim() ? L(`плотность ${data.kv_ph_rho} г/см³`, `density ${data.kv_ph_rho} g/cm³`) : '', String(data.kv_ph_note ?? '').trim()].filter(Boolean);
+    return parts.length ? ` (${parts.join('; ')})` : '';
+  };
+  const phName = (p) => (p ? `${p.name}${p.kind === 'custom' ? customTxt() : ''}` : L('не указан', 'not specified'));
+  if (!(r.range === 'low' && r.cal === 'nk')) line(L('Фантом', 'Phantom'), phName(phx.clin));
   out.push('');
   line(L('Камера', 'Chamber'), `${r.chamber ? `${r.chamber.label} (${r.chamber.type === 'pp' ? L('плоскопараллельная', 'plane-parallel') : L('цилиндрическая', 'cylindrical')})` : '—'}, ${L('№', 'S/N')} ${data.kv_ch_serial || '—'}${r.chamber?.type === 'pp' && data.kv_foil ? L(', с фольгой 0,2 мм', ', with a 0.2 mm foil') : ''}`);
   const unitN = unitLabel(NDW_UNITS[data.kv_n_unit]);
@@ -598,7 +655,8 @@ function reportText(data, r) {
   line(L('Для СПО пучка', 'At the beam HVL'), `${valName} = ${fmt(r.cert.value, data.kv_cert_form === 'n' ? 6 : 4)}; ${ns},Q = ${fmt(r.cert.NQ, 6)} ${L('Гр/нКл', 'Gy/nC')}${r.cert.interp?.extrapolated ? L(' (экстраполяция)', ' (extrapolated)') : ''}${r.cert.kq1 ? L(' (принят: калибровки в рентгене нет)', ' (assumed: no x-ray calibration)') : ''}`);
   if (r.cal === 'ndw' && data.kv_cert_form !== 'co') {
     const labTxt = data.kv_lab_shape === 'square' ? L(`квадратное поле ${data.kv_lab_f || '—'} см`, `square field ${data.kv_lab_f || '—'} cm`) : L(`поле Ø ${data.kv_lab_f || '—'} см`, `field ${data.kv_lab_f || '—'} cm diameter`);
-    line(L('Калибровка в лаборатории', 'Laboratory calibration'), L(`${labTxt}, РИП ${data.kv_lab_ssd || '—'} см`, `${labTxt}, SSD ${data.kv_lab_ssd || '—'} cm`));
+    const labPh = r.range === 'low' ? L(`; фантом: ${phName(phx.lab)}`, `; phantom: ${phName(phx.lab)}`) : '';
+    line(L('Калибровка в лаборатории', 'Laboratory calibration'), L(`${labTxt}, РИП ${data.kv_lab_ssd || '—'} см${labPh}`, `${labTxt}, SSD ${data.kv_lab_ssd || '—'} cm${labPh}`));
   }
   line(L('Стандартные условия', 'Reference conditions'), L(`T0 = ${data.kv_T0} °C, P0 = ${data.kv_P0} кПа`, `T0 = ${data.kv_T0} °C, P0 = ${data.kv_P0} kPa`));
   line(L('Электрометр', 'Electrometer'), `${data.kv_el_model || '—'}, ${L('№', 'S/N')} ${data.kv_el_serial || '—'}, k_elec = ${data.kv_kelec}`);
@@ -657,7 +715,10 @@ function reportText(data, r) {
           `${title}: corrected M = ${fmt(y.M)} nC; D_w ${zTxt} = ${fmt(y.DcGy, 2)} cGy = ${fmt(y.D)} Gy per exposure; ${fmt(y.perUnit, 4)} ${x.rateLabel}${dev}`,
         ),
       );
-      if (r.depth.on && Number.isFinite(y.perUnitSurf)) out.push(L(`  PDD(2 см) = ${fmt(r.depth.pdd, 1)} %; на поверхности ${fmt(y.perUnitSurf, 4)} ${x.rateLabel}`, `  PDD(2 cm) = ${fmt(r.depth.pdd, 1)} %; at the surface ${fmt(y.perUnitSurf, 4)} ${x.rateLabel}`));
+      if (r.depth.on && Number.isFinite(y.perUnitSurf)) {
+        const pp = r.depth.phantom ? L(` (фантом: ${phName(r.depth.phantom)})`, ` (phantom: ${phName(r.depth.phantom)})`) : '';
+        out.push(L(`  PDD(2 см) = ${fmt(r.depth.pdd, 1)} %${pp}; на поверхности ${fmt(y.perUnitSurf, 4)} ${x.rateLabel}`, `  PDD(2 cm) = ${fmt(r.depth.pdd, 1)} %${pp}; at the surface ${fmt(y.perUnitSurf, 4)} ${x.rateLabel}`));
+      }
     };
     if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (раздел 6)', 'From check measurements (section 6)'));
     else if (r.ctrl.on) out.push(L('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: в контрольных измерениях (раздел 6) ошибки (см. замечания).', 'RESULT NOT CALCULATED: the check measurements (section 6) contain errors (see Messages).'));
@@ -790,6 +851,7 @@ function refreshForLang() {
   const kept = $$('select', ROOT()).map((sel) => [sel, sel.value]);
   fillUnitSelects();
   fillChamberSelect();
+  fillPhantomSelects();
   for (const [sel, v] of kept) if ([...sel.options].some((o) => o.value === v)) sel.value = v;
   $$('#kv-sheet .cells').forEach((box) => renderCells(box, readCells(box)));
   {
@@ -810,6 +872,7 @@ export function initKv() {
   setStatus = makeStatus($('#kv-status'));
   fillUnitSelects();
   fillChamberSelect();
+  fillPhantomSelects();
   $$('#kv-sheet .cells').forEach((box) => setupCells(box, update));
   setupPairs(pairsBox(), update);
   $$('#kv-sheet > section .combo').forEach((c) => makeCombo(c));

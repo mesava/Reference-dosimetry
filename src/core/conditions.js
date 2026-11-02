@@ -260,11 +260,20 @@ export const ELECTRON_CONDITIONS = [
 // ------------------------------------------------------------------------------------- kV-рентген
 // Табл. 26 (низкие энергии, N_K — камера в свободном воздухе), табл. 27 (низкие, N_D,w — на поверхности фантома),
 // табл. 31 (средние энергии — в воде на 2 г/см²). Поле и РИП, отличные от лабораторных, допустимы, если k_g взят по
-// Rev.1 (ур. 52, 58); k_g = 1 вместо нужного, p_ch вручную и Qo = ⁶⁰Co — отступления.
+// Rev.1 (ур. 52, 58); k_g = 1 вместо нужного, p_ch вручную и Qo = ⁶⁰Co — отступления. Фантом: низкие энергии — ПММА или
+// водоэквивалентный пластик, тот же, что при калибровке (табл. 27, разд. 8.2.2); средние — вода (разд. 4.2.3, табл. 31).
 
 const DIN = 'DIN 6809-4:2020';
 const kvOnly = (range, cal, test) => (c) => (c.range === range && (!cal || c.cal === cal) ? test(c) : 'na');
-const fieldTxt = (c) => cm(Math.round(c.fClin * 10) / 10);
+const r1 = (x) => cm(Math.round(x * 10) / 10);
+/** Поле тубуса как задано: Ø d, a × a или a × b. */
+const fieldTxt = (c) => (c.coneShape === 'square' ? `${r1(c.coneSize)} × ${r1(c.coneSize)}` : c.coneShape === 'rect' ? `${r1(c.coneSize)} × ${r1(c.coneB)}` : `Ø ${r1(c.fClin)}`);
+/** Стандартное поле Rev.1: круг диаметром s или квадрат s × s (разд. 8.4.1, табл. 26, 31). */
+const isStdField = (c, s, tol) =>
+  c.coneShape === 'square' ? Math.abs(c.coneSize - s) < tol : c.coneShape === 'rect' ? Math.abs(c.coneSize - s) < tol && Math.abs(c.coneB - s) < tol : Math.abs(c.fClin - s) < tol;
+/** Средние энергии: тубус, сопоставимый с 10 × 10 см или Ø 10 см (табл. 31, сноска c) — круг той же площади от 9,5 до 11,8 см. */
+const medComparable = (d) => d > 9.5 && d < 20 / Math.sqrt(Math.PI) + 0.5;
+const phantomName = (p) => p?.name ?? L('не указан', 'not specified');
 
 export const KV_CONDITIONS = [
   {
@@ -282,9 +291,9 @@ export const KV_CONDITIONS = [
     id: 'kvLowNkField',
     group: 'geometry',
     scope: 'trs',
-    label: () => L('поле диаметром 10 см (плоскопараллельная камера) или 5 см (цилиндрическая) либо N_K с поправкой на поле', 'field 10 cm in diameter (plane-parallel chamber) or 5 cm (cylindrical), or N_K corrected for the field'),
-    ref: `${TRS}, табл. 26, рис. 11`,
-    check: kvOnly('low', 'nk', (c) => (c.chamber ? need(c.fClin, (d) => c.nkFsGiven || Math.abs(d - (c.chamber.type === 'cyl' ? 5 : 10)) < 0.05) : null)),
+    label: () => L('поле Ø 10 см или 10 × 10 см (плоскопараллельная камера), Ø 5 см или 5 × 5 см (цилиндрическая) либо N_K с поправкой на поле', 'field 10 cm in diameter or 10 × 10 cm (plane-parallel chamber), 5 cm in diameter or 5 × 5 cm (cylindrical), or N_K corrected for the field'),
+    ref: `${TRS}, разд. 8.4.1, табл. 26, рис. 11`,
+    check: kvOnly('low', 'nk', (c) => (c.chamber ? need(c.fClin, () => c.nkFsGiven || isStdField(c, c.chamber.type === 'cyl' ? 5 : 10, 0.05)) : null)),
     reason: (c) => L(`поле ${fieldTxt(c)} см без поправки N_K на размер поля`, `field of ${fieldTxt(c)} cm without an N_K field-size correction`),
   },
   {
@@ -295,6 +304,29 @@ export const KV_CONDITIONS = [
     ref: `${TRS}, табл. 27`,
     check: kvOnly('low', 'ndw', (c) => (c.chamber ? c.chamber.type === 'pp' : null)),
     reason: () => L('камера не плоскопараллельная', 'the chamber is not plane-parallel'),
+  },
+  {
+    id: 'kvLowPhantom',
+    group: 'geometry',
+    scope: 'trs',
+    label: () => L('фантом из ПММА или водоэквивалентного пластика', 'phantom of PMMA or a water-equivalent plastic'),
+    ref: `${TRS}, табл. 27, разд. 8.2.2`,
+    check: kvOnly('low', 'ndw', (c) => (!c.phantomStatus || c.phantomStatus.state === 'unknown' ? null : c.phantomStatus.state !== 'no')),
+    reason: (c) => L(`фантом — ${phantomName(c.phantom)}: не ПММА и не водоэквивалентный пластик`, `phantom: ${phantomName(c.phantom)}, neither PMMA nor a water-equivalent plastic`),
+    unknown: (c) =>
+      c.phantom
+        ? L(`фантом — ${phantomName(c.phantom)}: водоэквивалентность проверьте по данным производителя`, `phantom: ${phantomName(c.phantom)}; check its water equivalence against the manufacturer data`)
+        : L('не указан материал фантома', 'the phantom material is not specified'),
+  },
+  {
+    id: 'kvLowPhantomLab',
+    group: 'geometry',
+    scope: 'trs',
+    label: () => L('фантом тот же, на котором калибровалась камера', 'the same phantom as at the chamber calibration'),
+    ref: `${TRS}, разд. 8.2.2; SSRMP No 9, разд. 2.3`,
+    check: kvOnly('low', 'ndw', (c) => (c.phantom && c.labPhantom ? c.phantom.id === c.labPhantom.id : null)),
+    reason: (c) => L(`фантом — ${phantomName(c.phantom)}, а камера калибровалась на фантоме ${phantomName(c.labPhantom)}: камера калибруется вместе с фантомом`, `phantom: ${phantomName(c.phantom)}, while the chamber was calibrated on ${phantomName(c.labPhantom)}; the chamber is calibrated together with its phantom`),
+    unknown: (c) => (c.phantom ? L('не указан фантом, на котором калибровалась камера', 'the phantom used at the chamber calibration is not specified') : L('не указан материал фантома', 'the phantom material is not specified')),
   },
   {
     id: 'kvGeometry',
@@ -312,7 +344,7 @@ export const KV_CONDITIONS = [
     id: 'kvMedChamber',
     group: 'detector',
     scope: 'trs',
-    label: () => L('цилиндрическая камера в воде на глубине 2 г/см²', 'cylindrical chamber in water at a depth of 2 g/cm²'),
+    label: () => L('цилиндрическая камера на глубине 2 г/см²', 'cylindrical chamber at a depth of 2 g/cm²'),
     ref: `${TRS}, табл. 31`,
     check: kvOnly('medium', null, (c) => (c.chamber ? c.chamber.type === 'cyl' : null)),
     reason: () => L('камера не цилиндрическая', 'the chamber is not cylindrical'),
@@ -321,10 +353,23 @@ export const KV_CONDITIONS = [
     id: 'kvMedField',
     group: 'geometry',
     scope: 'trs',
-    label: () => L('поле 10 см (или самый большой тубус аппарата)', 'field 10 cm (or the largest applicator of the unit)'),
-    ref: `${TRS}, табл. 31`,
-    check: kvOnly('medium', null, (c) => (c.coneLargest ? true : need(c.fClin, (d) => Math.abs(d - 10) < 0.5))),
-    reason: (c) => L(`поле ${fieldTxt(c)} см вместо 10 см (если больших тубусов нет, отметьте «самый большой тубус»)`, `field of ${fieldTxt(c)} cm instead of 10 cm (if there are no larger applicators, mark "largest applicator")`),
+    label: () => L('поле 10 × 10 см или Ø 10 см, тубус сопоставимого размера или самый большой квадратный или круглый тубус аппарата', 'field 10 × 10 cm or 10 cm in diameter, an applicator of comparable size, or the largest square or circular applicator of the unit'),
+    ref: `${TRS}, табл. 31, сноска c`,
+    check: kvOnly('medium', null, (c) => need(c.fClin, (d) => medComparable(d) || (c.coneLargest && c.coneShape !== 'rect'))),
+    reason: (c) =>
+      c.coneLargest
+        ? L(`самый большой тубус аппарата прямоугольный (${fieldTxt(c)} см): TRS-398 Rev.1 в этом случае берёт самый большой квадратный или круглый`, `the largest applicator of the unit is rectangular (${fieldTxt(c)} cm): TRS-398 Rev.1 then takes the largest square or circular one`)
+        : L(`поле ${fieldTxt(c)} см вместо 10 × 10 см или Ø 10 см (если больших тубусов нет, отметьте «самый большой тубус»)`, `field of ${fieldTxt(c)} cm instead of 10 × 10 cm or 10 cm in diameter (if there are no larger applicators, mark "largest applicator")`),
+  },
+  {
+    id: 'kvMedPhantom',
+    group: 'geometry',
+    scope: 'trs',
+    label: () => L('водный фантом', 'water phantom'),
+    ref: `${TRS}, разд. 4.2.3, табл. 31`,
+    check: kvOnly('medium', null, (c) => (c.phantom ? c.phantom.kind === 'water' : null)),
+    reason: (c) => L(`фантом — ${phantomName(c.phantom)}: для средних энергий твердые фантомы, в том числе водоэквивалентные пластики, не допускаются`, `phantom: ${phantomName(c.phantom)}; solid phantoms, including water-equivalent plastics, are not allowed for medium energies`),
+    unknown: () => L('не указан материал фантома', 'the phantom material is not specified'),
   },
   {
     id: 'kvQo',

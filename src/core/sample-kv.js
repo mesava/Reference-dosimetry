@@ -17,6 +17,7 @@ export const SAMPLE_KV = {
   kv_cone_shape: 'circle',
   kv_cone: '10',
   kv_ssd: '50',
+  kv_phantom: 'water',
 
   kv_ch_model: 'PTW30013',
   kv_ch_serial: '0000',
@@ -56,6 +57,7 @@ export const SAMPLE_KV = {
   kv_Mc: ['21,96', '21,95', '21,96'],
 
   kv_pdd2: '88,6',
+  kv_pdd_phantom: 'water',
   kv_ref: '0,9950',
   kv_ref_at: 'zref',
   kv_tol: '2',

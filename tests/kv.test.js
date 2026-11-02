@@ -22,12 +22,13 @@ const LOW_NDW = {
   kv_cq_kv: ['30', '50', '70'], kv_cq_hvl: ['0,36', '1,0', '2,9'], kv_cq_val: ['1,000', '1,012', '1,025'],
   kv_lab_f: '3', kv_lab_ssd: '30', kv_env_T: '21', kv_env_P: '100', kv_set_unit: 'min', kv_set: '1',
   kv_timer_mode: 'manual', kv_tau: '0,01', kv_M1: ['2,000', '2,001', '1,999'], kv_Mopp: ['2,004', '2,005', '2,003'],
+  kv_phantom: 'pmma', kv_lab_phantom: 'pmma',
 };
 // Средние энергии, N_K: PTW 30013 в воде на 2 см.
 const MED_NK = {
   ...LOW_NDW, kv_range: 'medium', kv_kv: '200', kv_hvl: '1,0', kv_cone: '10', kv_ssd: '50', kv_ch_model: 'PTW30013', kv_foil: false,
   kv_cal: 'nk', kv_cert_form: 'kq', kv_n: '0,045', kv_cq_kv: ['150', '200', '250'], kv_cq_hvl: ['0,5', '1', '2'], kv_cq_val: ['0,995', '1,000', '1,010'],
-  kv_lab_f: '', kv_lab_ssd: '',
+  kv_lab_f: '', kv_lab_ssd: '', kv_phantom: 'water',
 };
 const M1 = mean([2, 2.001, 1.999]);
 const kpolOf = (m, mo) => (Math.abs(m) + Math.abs(mo)) / (2 * Math.abs(m));

@@ -17,13 +17,16 @@
 // Ошибка таймера (концевой эффект) не мультипликативна (разд. 9.4.2): доза относится к X + τ, где X — заданная
 // величина (Гр, время или МЕ).
 // Справочное сравнение с TG-61 (ветки N_K) и DIN 6809-4 / SSRMP No 9 (ветки N_D,w) — kv-compare.js, на итог не влияет.
+// Квадратный и прямоугольный тубус заменяются кругом той же площади (данные Andreo и табл. 28–29 — для круглых полей).
+// Материал фантома (KV_PHANTOMS в kv-tables.js) в расчёт не входит, но проверяется по условиям: низкие энергии — ПММА
+// или водоэквивалентный пластик, тот же, что при калибровке (табл. 27, разд. 8.2.2); средние — только вода (табл. 31).
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
 import { L } from './i18n.js';
 import { temperaturePressure, polarity, environmentChecks, readTolerance } from './common.js';
 import { timerError, timerErrorMultiple } from './cobalt.js';
 import { KV_CONDITIONS, evaluateConditions, complianceFromConditions } from './conditions.js';
-import { resolveKvChamber, interpLog, kgFromTable, pchFromTable32 } from './kv-tables.js';
+import { resolveKvChamber, interpLog, kgFromTable, pchFromTable32, resolveKvPhantom, kvPhantomStatus, KV_PHANTOMS } from './kv-tables.js';
 import { kvCalculator, ANDREO_CITATION } from './kv-data.js';
 import { compareKv } from './kv-compare.js';
 import * as TRS from './trs398.js';
@@ -32,6 +35,8 @@ const REF = {
   trs: 'TRS-398 Rev.1',
   din: 'DIN 6809-4:2020',
   r374: 'WGTG51 Report 374',
+  ssrmp: 'SSRMP No 9',
+  tg61: 'TG-61',
 };
 
 /** Диапазоны энергии: материал СПО и границы из разд. 8.1 и 9.1. */
@@ -62,10 +67,16 @@ export const KV_DEFAULTS = {
   kv_kv: '',
   kv_filter: '',
   kv_hvl: '',
-  kv_cone_shape: 'circle', // 'circle' | 'square'
-  kv_cone: '', // диаметр или сторона, см
+  kv_cone_shape: 'circle', // 'circle' | 'square' | 'rect'
+  kv_cone: '', // диаметр или сторона, см (у прямоугольного — сторона a)
+  kv_cone_b: '', // прямоугольный тубус: сторона b, см
   kv_cone_largest: false, // средние энергии: самый большой тубус аппарата (табл. 31, сноска c)
   kv_ssd: '', // РИП на конце тубуса, см
+  // фантом (низкие энергии, N_K — камера в свободном воздухе, без фантома): id из KV_PHANTOMS, 'custom' — свой, '' — не указан
+  kv_phantom: '',
+  kv_ph_name: '', // свой материал: название и производитель
+  kv_ph_rho: '', // свой материал: плотность, г/см³ (для протокола)
+  kv_ph_note: '', // свой материал: состав, данные о водоэквивалентности и их источник
 
   // камера и сертификат
   kv_ch_model: '', // id камеры (kv-tables.js), 'MY:…' или 'CUSTOM'
@@ -86,6 +97,7 @@ export const KV_DEFAULTS = {
   kv_lab_shape: 'circle',
   kv_lab_f: '', // поле лаборатории, см (диаметр или сторона)
   kv_lab_ssd: '', // РИП лаборатории, см
+  kv_lab_phantom: '', // низкие энергии, N_D,w: фантом при калибровке (камера калибруется вместе с фантомом, разд. 8.2.2)
   kv_nk_fs: '', // низкие энергии, N_K: поправка N_K на размер поля (рис. 11 или лаборатория); пусто — 1
   kv_T0: '20',
   kv_P0: '101,325',
@@ -145,6 +157,7 @@ export const KV_DEFAULTS = {
 
   // глубина (средние энергии) и сравнение
   kv_pdd2: '', // PDD(2 см), % от дозы на поверхности; пусто — без пересчёта
+  kv_pdd_phantom: '', // в каком фантоме снята PDD (SSRMP No 9, разд. 5.7.1.2)
   kv_ref: '', // значение для сравнения в единицах итога
   kv_ref_at: 'zref', // 'zref' | 'surface'
   kv_tol: '2',
@@ -169,12 +182,18 @@ export function normalizeKv(input) {
   if (f.kv_cal !== 'nk') f.kv_cal = 'ndw';
   if (!['kq', 'n', 'k', 'co'].includes(f.kv_cert_form)) f.kv_cert_form = 'kq';
   if (!KV_SET_UNITS[f.kv_set_unit]) f.kv_set_unit = 'min';
+  if (!['circle', 'square', 'rect'].includes(f.kv_cone_shape)) f.kv_cone_shape = 'circle';
+  if (f.kv_lab_shape !== 'square') f.kv_lab_shape = 'circle';
+  const phantomIds = ['custom', ...KV_PHANTOMS.map((p) => p.id)];
+  for (const k of ['kv_phantom', 'kv_lab_phantom', 'kv_pdd_phantom']) if (!phantomIds.includes(f[k])) f[k] = '';
   return f;
 }
 
-/** Диаметр круглого поля, равного по площади квадратному со стороной a: d = 2a/√π. */
-export function equivalentDiameter(shape, size) {
-  return shape === 'square' ? (2 * size) / Math.sqrt(Math.PI) : size;
+/** Диаметр круглого поля той же площади: квадрат со стороной a — d = 2a/√π, прямоугольник a × b — d = 2√(ab/π). */
+export function equivalentDiameter(shape, size, b) {
+  if (shape === 'square') return (2 * size) / Math.sqrt(Math.PI);
+  if (shape === 'rect') return 2 * Math.sqrt((size * b) / Math.PI);
+  return size;
 }
 
 /**
@@ -288,11 +307,25 @@ export function computeKv(form) {
     if (Number.isFinite(v) && (v <= 0 || v > max)) add('error', 'common', L(`«${label}» задаётся в сантиметрах (больше 0 и не больше ${max} см).`, `"${label}" is entered in centimeters (above 0 and up to ${max} cm).`), null, key);
     return v > 0 && v <= max ? v : NaN;
   };
-  const coneSize = geomRead('kv_cone', L('Размер тубуса', 'Applicator size'), 50);
+  const rect = f.kv_cone_shape === 'rect';
+  const coneSize = geomRead('kv_cone', rect ? L('Сторона a тубуса', 'Applicator side a') : L('Размер тубуса', 'Applicator size'), 50);
+  const coneB = rect ? geomRead('kv_cone_b', L('Сторона b тубуса', 'Applicator side b'), 50) : NaN;
   const ssd = geomRead('kv_ssd', L('РИП', 'SSD'), 150);
-  const fClin = equivalentDiameter(f.kv_cone_shape, coneSize);
+  const fClin = equivalentDiameter(f.kv_cone_shape, coneSize, coneB);
+  const dataNote = L('данные B_w и [μen/ρ] и табл. 28–29 даны для круглых полей', 'the B_w and [μen/ρ] data and Tables 28–29 are given for circular fields');
   if (f.kv_cone_shape === 'square' && Number.isFinite(fClin)) {
-    add('info', 'common', L(`Квадратное поле ${ru(coneSize, 1)} см заменено кругом равной площади диаметром ${ru(fClin, 2)} см: данные B_w и [μen/ρ] и табл. 28–29 даны для круглых полей.`, `The square field of ${ru(coneSize, 1)} cm is replaced by a circle of equal area, ${ru(fClin, 2)} cm in diameter: the B_w and [μen/ρ] data and Tables 28–29 are given for circular fields.`), null, 'kv_cone');
+    add('info', 'common', L(`Квадратное поле ${ru(coneSize, 1)} см заменено кругом равной площади диаметром ${ru(fClin, 2)} см: ${dataNote}.`, `The square field of ${ru(coneSize, 1)} cm is replaced by a circle of equal area, ${ru(fClin, 2)} cm in diameter: ${dataNote}.`), null, 'kv_cone');
+  }
+  if (rect && Number.isFinite(fClin)) {
+    const side = (x) => ru(x, Number.isInteger(x) ? 0 : Number.isInteger(Math.round(x * 1e6) / 1e5) ? 1 : 2);
+    const ab = `${side(coneSize)} × ${side(coneB)}`;
+    add('info', 'common', L(`Прямоугольное поле ${ab} см заменено кругом равной площади диаметром ${ru(fClin, 2)} см: ${dataNote}.`, `The rectangular field of ${ab} cm is replaced by a circle of equal area, ${ru(fClin, 2)} cm in diameter: ${dataNote}.`), null, ['kv_cone', 'kv_cone_b']);
+    if (Math.max(coneSize, coneB) / Math.min(coneSize, coneB) > 2) {
+      add('warn', 'common', L(
+        `Поле ${ab} см вытянуто больше чем вдвое: круг той же площади для него — грубое приближение. Сверьте эквивалентное поле с таблицами эквивалентных полей для kV-рентгена (например, BJR Suppl. 25) и укажите это в примечаниях.`,
+        `The ${ab} cm field is elongated more than twofold: a circle of equal area is only a rough approximation for it. Check the equivalent field against equivalent-field tables for kV x-rays (for example, BJR Suppl. 25) and note this in the remarks.`,
+      ), null, ['kv_cone', 'kv_cone_b']);
+    }
   }
   // без калибровки в рентгене нет и геометрии, к которой относился бы k_g
   const needLab = cal === 'ndw' && f.kv_cert_form !== 'co';
@@ -320,6 +353,19 @@ export function computeKv(form) {
     if (chamber.type === 'pp' && Number.isFinite(kv) && kv > 40 && !f.kv_foil) {
       add('info', 'common', L('Выше 40 кВ к окну плоскопараллельной камеры добавляют фольгу 0,2 мм (ПММА, полиэтилен или майлар) — ту же, с которой камера калибровалась в лаборатории.', 'Above 40 kV a 0.2 mm foil (PMMA, polyethylene or Mylar) is added to the window of a plane-parallel chamber, the same one with which the chamber was calibrated.'), `${REF.trs}, разд. 8.2.1`, 'kv_foil');
     }
+  }
+
+  // ---------------------------------------------------------------- фантом
+  // низкие энергии, N_K: камера в свободном воздухе, фантома нет; фантом лаборатории — только для низких энергий, N_D,w
+  const phantom = range === 'low' && cal === 'nk' ? null : resolveKvPhantom(f.kv_phantom, f.kv_ph_name);
+  const labPhantom = range === 'low' && needLab ? resolveKvPhantom(f.kv_lab_phantom, f.kv_ph_name) : null;
+  const phantomStatus = kvPhantomStatus(phantom, range);
+  if (phantomStatus?.state === 'no') add('warn', 'common', L(`Фантом — ${phantom.name}: ${phantomStatus.text}.`, `Phantom: ${phantom.name}; ${phantomStatus.text}.`), null, 'kv_phantom');
+  if (phantom && labPhantom && phantom.id !== labPhantom.id) {
+    add('warn', 'common', L(
+      `Фантом (${phantom.name}) не тот, на котором камера калибровалась (${labPhantom.name}): камера калибруется вместе с фантомом, и N_D,w относится к тому же материалу — обратное рассеяние у другого материала другое.`,
+      `The phantom (${phantom.name}) is not the one on which the chamber was calibrated (${labPhantom.name}): the chamber is calibrated together with its phantom, and N_D,w applies to that material; another material gives different backscatter.`,
+    ), `${REF.trs}, разд. 8.2.2; ${REF.ssrmp}, разд. 2.3`, ['kv_phantom', 'kv_lab_phantom']);
   }
 
   // ------------------------------------------------------------ сертификат
@@ -695,6 +741,12 @@ export function computeKv(form) {
       }
     }
     kgCheck();
+    if (range === 'low' && phantom && phantom.kind !== 'pmma' && (kg.source === 'table' || kg.source === 'eq85')) {
+      add('info', 'trs', L(
+        `k_g в ур. (52) определён для фантома из ПММА, а фантом — ${phantom.name}: применимость ${kg.source === 'table' ? 'табл. 28–29' : 'ур. (85)'} к другому материалу в TRS-398 Rev.1 не рассматривается.`,
+        `k_g in Eq. (52) is defined for a PMMA phantom, while the phantom is ${phantom.name}: TRS-398 Rev.1 does not consider whether ${kg.source === 'table' ? 'Tables 28–29 apply' : 'Eq. (85) applies'} to another material.`,
+      ), `${REF.trs}, разд. 8.4.2, ур. (52)`, ['kv_kg_src', 'kv_phantom']);
+    }
     phys.kg = kg.value;
     phys.kz = qo === 'co60' ? 1 : undefined;
     phys.factor = kg.value;
@@ -709,6 +761,22 @@ export function computeKv(form) {
     depth.pdd = read('kv_pdd2', L('PDD(2 см)', 'PDD(2 cm)'), 'depth');
     if (Number.isFinite(depth.pdd) && (depth.pdd < 20 || depth.pdd > 100)) add('error', 'depth', L('PDD(2 см) вводится в процентах от дозы на поверхности, от 20 до 100.', 'PDD(2 cm) is entered as a percentage of the surface dose, from 20 to 100.'), null, 'kv_pdd2');
     depth.ok = !messages.some((m) => m.level === 'error' && m.scope === 'depth');
+    // в каком фантоме снята PDD: SSRMP No 9, разд. 5.7.1.2
+    depth.phantom = resolveKvPhantom(f.kv_pdd_phantom, f.kv_ph_name);
+    depth.phantomStatus = kvPhantomStatus(depth.phantom, 'pdd');
+    const st = depth.phantomStatus;
+    if (st && st.state !== 'ok') {
+      add(st.state === 'warn' ? 'warn' : 'info', 'depth', L(`PDD(2 см) снята в фантоме: ${depth.phantom.name}; ${st.text}.`, `PDD(2 cm) was measured in: ${depth.phantom.name}; ${st.text}.`), null, 'kv_pdd_phantom');
+    }
+  }
+  // свой материал фантома: название для протокола, плотность — правдоподобная
+  const customUsed = phantom?.kind === 'custom' || labPhantom?.kind === 'custom' || (range === 'medium' && f.kv_pdd_phantom === 'custom');
+  if (customUsed) {
+    if (isBlank(f.kv_ph_name)) add('warn', 'common', L('Свой материал фантома: укажите название и производителя — они попадут в протокол.', 'Custom phantom material: enter its name and manufacturer for the report.'), null, 'kv_ph_name');
+    if (!isBlank(f.kv_ph_rho)) {
+      const rho = parseNumber(f.kv_ph_rho);
+      if (!(rho >= 0.5 && rho <= 3)) add('warn', 'common', L('Плотность материала фантома вводится в г/см³ (обычно 0,9–1,2): проверьте значение.', 'The phantom material density is entered in g/cm³ (usually 0.9–1.2): check the value.'), null, 'kv_ph_rho');
+    }
   }
   const finish = (x, M, Xe) => {
     x.M = M;
@@ -764,7 +832,8 @@ export function computeKv(form) {
   const shown = trs.blocked ? {} : ctrl.on ? (trs.ctrl && !trs.ctrl.blocked ? trs.ctrl : {}) : trs;
   const conditions = evaluateConditions(KV_CONDITIONS, {
     range, cal, qo, kq1, kv, chamber, fClin, ssd, sameGeometry, kgSource: kg.source, pchSource: phys.pchSource,
-    nkFsGiven: !isBlank(f.kv_nk_fs), coneLargest: f.kv_cone_largest, kleak, kpolRaw,
+    nkFsGiven: !isBlank(f.kv_nk_fs), coneLargest: f.kv_cone_largest, coneShape: f.kv_cone_shape, coneSize, coneB, kleak, kpolRaw,
+    phantom, labPhantom, phantomStatus,
   }, 'trs');
   const compliance = complianceFromConditions(conditions, Number.isFinite(shown.perUnit));
 
@@ -783,7 +852,8 @@ export function computeKv(form) {
     cert,
     compliance,
     notRev1,
-    inputs: { kv, hvl, ssd, coneSize, fClin, fLab, ssdLab, sameGeometry, T, P, H: env.H, T0, P0, V1, V2, kelec, kleak, M1, Mopp, M2, X, Xeff, unit: f.kv_set_unit, unitLabel: uLabel },
+    phantom: { clin: phantom, lab: labPhantom, status: phantomStatus, customUsed },
+    inputs: { kv, hvl, ssd, coneSize, coneB, fClin, fLab, ssdLab, sameGeometry, T, P, H: env.H, T0, P0, V1, V2, kelec, kleak, M1, Mopp, M2, X, Xeff, unit: f.kv_set_unit, unitLabel: uLabel },
     timer,
     ctrl,
     depth,

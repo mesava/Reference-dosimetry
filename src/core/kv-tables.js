@@ -179,3 +179,83 @@ export function pchFromTable32(key, hvl) {
   if (hvl > hs[hs.length - 1]) return { value: ys[ys.length - 1], extrapolated: 'above' };
   return { value: interpLog(hs, ys, hvl).value, extrapolated: null };
 }
+
+// ------------------------------------------------------------------------------------------ материалы фантома
+// TRS-398 Rev.1: разд. 4.2.3 — вода стандартная среда для средних энергий; твердые фантомы (полистирол, ПММА, «твердая»,
+// «пластиковая», «виртуальная» вода) для референсной дозиметрии не допускаются, кроме ПММА для низких энергий;
+// разд. 8.2.2, табл. 27 — низкие энергии: водоэквивалентный пластик или ПММА, камера калибруется вместе с фантомом;
+// табл. 31 — средние энергии: вода. TG-61, разд. IV.A — средние энергии, метод в фантоме: вода, пластик — только для
+// рутинного контроля. SSRMP No 9: разд. 2.3 — низкие энергии: водоэквивалентные пластики и даже ПММА допустимы (камера
+// и фантом калибруются как одно целое); разд. 5.7.1.2 — относительная дозиметрия в kV: рекомендованы A-150,
+// Plastic Water DT, Solid Water RMI 457, Virtual Water; не рекомендованы Plastic Water, RW3, ПММА и полистирол.
+
+/**
+ * Материалы фантома. kind: 'water' — вода; 'pmma' — ПММА; 'wep' — водоэквивалентный пластик; 'ps' — полистирол.
+ * pdd — оценка SSRMP No 9 (разд. 5.7.1.2) для относительной дозиметрии в kV: 'rec' — рекомендован, 'notrec' — нет.
+ */
+export const KV_PHANTOMS = [
+  { id: 'water', kind: 'water', name: () => L('вода', 'water') },
+  { id: 'pmma', kind: 'pmma', pdd: 'notrec', name: () => L('ПММА (оргстекло)', 'PMMA (acrylic)') },
+  { id: 'pwdt', kind: 'wep', pdd: 'rec', name: () => 'Plastic Water DT (CIRS)' },
+  { id: 'sw457', kind: 'wep', pdd: 'rec', name: () => 'Solid Water RMI 457 (Gammex)' },
+  { id: 'vw', kind: 'wep', pdd: 'rec', name: () => 'Virtual Water (Med-Cal)' },
+  { id: 'a150', kind: 'wep', pdd: 'rec', name: () => L('A-150 (тканеэквивалентный пластик)', 'A-150 (tissue-equivalent plastic)') },
+  { id: 'rw3', kind: 'wep', pdd: 'notrec', name: () => 'RW3 (PTW)' },
+  { id: 'pw', kind: 'wep', pdd: 'notrec', name: () => 'Plastic Water (CIRS)' },
+  { id: 'ps', kind: 'ps', pdd: 'notrec', name: () => L('полистирол', 'polystyrene') },
+];
+
+/** Материал фантома по id: 'custom' — свой (название из формы); пусто или неизвестный id — null. */
+export function resolveKvPhantom(id, customName = '') {
+  if (id === 'custom') {
+    const n = String(customName ?? '').trim();
+    return { id, kind: 'custom', name: n ? L(`свой материал «${n}»`, `custom material "${n}"`) : L('свой материал', 'custom material') };
+  }
+  const p = KV_PHANTOMS.find((x) => x.id === id);
+  return p ? { id: p.id, kind: p.kind, pdd: p.pdd, name: p.name() } : null;
+}
+
+/**
+ * Годится ли материал и откуда это известно. use: 'low' — референсная доза на поверхности (низкие энергии, N_D,w);
+ * 'medium' — референсная доза на 2 см (средние энергии); 'pdd' — PDD(2 см) для пересчёта на поверхность.
+ * state: 'ok' | 'warn' | 'no' | 'unknown'.
+ */
+export function kvPhantomStatus(p, use) {
+  if (!p) return null;
+  if (use === 'medium') {
+    return p.kind === 'water'
+      ? { state: 'ok', text: L('вода — стандартная среда (TRS-398 Rev.1, разд. 4.2.3, табл. 31; TG-61, разд. IV.A)', 'water is the reference medium (TRS-398 Rev.1, Sec. 4.2.3, Table 31; TG-61, Sec. IV.A)') }
+      : {
+          state: 'no',
+          text: L(
+            'для средних энергий референсная доза определяется только в воде: твердые фантомы, в том числе водоэквивалентные пластики, не допускаются (TRS-398 Rev.1, разд. 4.2.3, табл. 31; TG-61, разд. IV.A); пластик — только для рутинного контроля после сравнения с водой',
+            'for medium energies the reference dose is determined in water only: solid phantoms, including water-equivalent plastics, are not allowed (TRS-398 Rev.1, Sec. 4.2.3, Table 31; TG-61, Sec. IV.A); plastic is for routine checks only, after a comparison with water',
+          ),
+        };
+  }
+  if (use === 'pdd') {
+    if (p.kind === 'water') return { state: 'ok', text: L('вода — опорная среда', 'water is the reference medium') };
+    if (p.pdd === 'rec') return { state: 'ok', text: L('SSRMP No 9 рекомендует его для относительной дозиметрии в kV (разд. 5.7.1.2)', 'SSRMP No 9 recommends it for relative dosimetry in kV beams (Sec. 5.7.1.2)') };
+    if (p.pdd === 'notrec') return { state: 'warn', text: L('SSRMP No 9 не рекомендует его для относительной дозиметрии в kV (разд. 5.7.1.2): сравните PDD(2 см) с измерением в воде', 'SSRMP No 9 does not recommend it for relative dosimetry in kV beams (Sec. 5.7.1.2): compare PDD(2 cm) with a measurement in water') };
+    return {
+      state: 'unknown',
+      text: L(
+        'для относительной дозиметрии в kV SSRMP No 9 рекомендует A-150, Plastic Water DT, Solid Water RMI 457 и Virtual Water (разд. 5.7.1.2); для другого материала сравните PDD(2 см) с измерением в воде',
+        'for relative dosimetry in kV beams SSRMP No 9 recommends A-150, Plastic Water DT, Solid Water RMI 457 and Virtual Water (Sec. 5.7.1.2); for another material, compare PDD(2 cm) with a measurement in water',
+      ),
+    };
+  }
+  // низкие энергии: доза на поверхности фантома
+  switch (p.kind) {
+    case 'water':
+      return { state: 'ok', text: L('вода: окно камеры обычно нельзя поставить вровень с поверхностью воды, поэтому применяют пластик (TRS-398 Rev.1, разд. 8.2.2)', 'water: the chamber window usually cannot be set flush with the water surface, so plastic is used instead (TRS-398 Rev.1, Sec. 8.2.2)') };
+    case 'pmma':
+      return { state: 'ok', text: L('допускается: камеры табл. 7 рассчитаны на фантом из ПММА, поставляемый вместе с камерой (TRS-398 Rev.1, табл. 27, разд. 8.2.2; SSRMP No 9, разд. 2.3)', 'allowed: the chambers of Table 7 are designed for a PMMA phantom supplied with the chamber (TRS-398 Rev.1, Table 27, Sec. 8.2.2; SSRMP No 9, Sec. 2.3)') };
+    case 'wep':
+      return { state: 'ok', text: L('водоэквивалентный пластик допускается (TRS-398 Rev.1, табл. 27; SSRMP No 9, разд. 2.3); лучше всего — материал, предназначенный для kV-рентгена (TRS-398 Rev.1, разд. 8.2.2)', 'a water-equivalent plastic is allowed (TRS-398 Rev.1, Table 27; SSRMP No 9, Sec. 2.3); a material designed for kV x-rays is best (TRS-398 Rev.1, Sec. 8.2.2)') };
+    case 'ps':
+      return { state: 'no', text: L('полистирол — не ПММА и не водоэквивалентный пластик, в стандартных условиях его нет (TRS-398 Rev.1, табл. 27, разд. 4.2.3)', 'polystyrene is neither PMMA nor a water-equivalent plastic and is not among the reference conditions (TRS-398 Rev.1, Table 27, Sec. 4.2.3)') };
+    default:
+      return { state: 'unknown', text: L('свой материал: допускается водоэквивалентный пластик или ПММА (TRS-398 Rev.1, табл. 27) — проверьте по данным производителя', 'custom material: a water-equivalent plastic or PMMA is allowed (TRS-398 Rev.1, Table 27); check against the manufacturer data') };
+  }
+}

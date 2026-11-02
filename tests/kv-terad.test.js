@@ -18,6 +18,8 @@ const LOW = {
   kv_cq_kv: ['15', '30', '50', '70'], kv_cq_hvl: ['0,10', '0,43', '1,10', '3,10'], kv_cq_val: ['1,010', '1,000', '0,998', '1,022'],
   kv_lab_shape: 'circle', kv_lab_f: '3', kv_lab_ssd: '50', kv_T0: '20', kv_P0: '101,325', kv_kelec: '1', kv_env_P_unit: 'hPa',
   kv_set_unit: 'min', kv_set: '1', kv_timer_mode: 'none', kv_V1: '300',
+  // 23342 стояла в RW3; на каком фантоме калибровала PTW, в данных нет
+  kv_phantom: 'rw3',
 };
 // пучок: СПО, мм Al (по измерениям отделения) и k_Q, взятый на приёмке (по кВ; 75 и 100 кВ — экстраполяция за TW70)
 const LOW_BEAMS = { 50: ['0,822', 0.998], 75: ['1,530', 1.028], 100: ['2,848', 1.06] };
@@ -114,7 +116,7 @@ test('Терад 200, 120–200 кВ: k_Q = 1 (Farmer только с ⁶⁰Co) 
   const base = {
     ...KV_DEFAULTS,
     kv_range: 'medium', kv_ch_model: 'PTW30013', kv_cal: 'ndw', kv_qo: 'co60', kv_cert_form: 'co', kv_n: '0,05389', kv_n_unit: 'Gy/nC',
-    kv_cone_shape: 'square', kv_T0: '20', kv_P0: '101,325', kv_kelec: '1', kv_env_P_unit: 'hPa',
+    kv_cone_shape: 'rect', kv_T0: '20', kv_P0: '101,325', kv_kelec: '1', kv_env_P_unit: 'hPa', kv_phantom: 'custom', kv_ph_name: 'твёрдая вода (марка не указана)', kv_pdd_phantom: 'rw3',
     kv_set_unit: 'min', kv_set: '1', kv_timer_mode: 'none',
     // k_s и k_pol — одна серия 400/200 В на все пучки, k_s по формуле для импульсного пучка, как на приёмке
     kv_V1: '400', kv_V2: '200', kv_ks_on: true, kv_rec_trs: 'eq13',
@@ -122,8 +124,8 @@ test('Терад 200, 120–200 кВ: k_Q = 1 (Farmer только с ⁶⁰Co) 
   };
   const run = (o) => computeKv({ ...base, ...o });
   const beams = { 120: '0,222', 140: '0,420', 150: '0,746', 200: '1,484' };
-  // тубус: [РИП, сторона квадрата той же площади (6×8, 4×15, 8×10 см), T, P]
-  const apps = [[40, Math.sqrt(48), 22.6, 1007.5], [40, Math.sqrt(60), 22.1, 1007.4], [50, Math.sqrt(80), 22.7, 1007.5]];
+  // прямоугольные тубусы: [РИП, a, b, T, P]
+  const apps = [[40, 6, 8, 22.6, 1007.5], [40, 4, 15, 22.1, 1007.4], [50, 8, 10, 22.7, 1007.5]];
   // [показания за 1 мин, PDD(2 см)/PDD(0), D приёмки на 2 см в Гр/мин]
   const cases = {
     120: [[[9.532, 9.535, 9.551], 76.41 / 106, 0.524556378654961], [[9.016, 9.016, 9.02], 72.72 / 101.4, 0.495063214539923], [[6.574, 6.576, 6.58], 66.96 / 87.97, 0.361765188578338]],
@@ -133,8 +135,8 @@ test('Терад 200, 120–200 кВ: k_Q = 1 (Farmer только с ⁶⁰Co) 
   };
   for (const [kv, rows] of Object.entries(cases)) {
     rows.forEach(([M, pdd, theirs], i) => {
-      const [ssd, side, T, P] = apps[i];
-      const r = run({ kv_kv: kv, kv_hvl: beams[kv], kv_cone: c(side.toFixed(3)), kv_ssd: String(ssd), kv_env_T: c(T), kv_env_P: c(P), kv_Mc: M.map(c), kv_pdd2: c((pdd * 100).toFixed(6)) });
+      const [ssd, a, b, T, P] = apps[i];
+      const r = run({ kv_kv: kv, kv_hvl: beams[kv], kv_cone: String(a), kv_cone_b: String(b), kv_ssd: String(ssd), kv_env_T: c(T), kv_env_P: c(P), kv_Mc: M.map(c), kv_pdd2: c((pdd * 100).toFixed(6)) });
       const x = r.trs.ctrl;
       assert.equal(x.blocked, false);
       assert.match(r.notRev1.join(';'), /k_Q = 1/);
@@ -144,9 +146,17 @@ test('Терад 200, 120–200 кВ: k_Q = 1 (Farmer только с ⁶⁰Co) 
       assert.ok(Math.abs(ds - P0) < 0.002, `${kv} кВ, тубус ${i + 1}, поверхность: ${ds}`);
     });
   }
-  const r = run({ kv_kv: '120', kv_hvl: '0,222', kv_cone: '8,944', kv_ssd: '50', kv_env_T: '20', kv_env_P: '1013,25' });
+  const r = run({ kv_kv: '120', kv_hvl: '0,222', kv_cone: '8', kv_cone_b: '10', kv_ssd: '50', kv_env_T: '20', kv_env_P: '1013,25' });
   assert.ok(Math.abs(r.trs.ks - 1.00121722345502) < 1e-9);
   assert.ok(Math.abs(r.trs.kpol - 1.00470614392648) < 1e-9);
   // k_pol > 1,004 — отступление от критерия камеры эталонного класса
   assert.ok(r.compliance.reasons.some((x) => /k_pol = 1,0047/.test(x.text)));
+  // тубус 8 × 10 см сопоставим с 10 × 10 см (табл. 31, сноска c); твёрдая вода — не вода: нестандартные условия
+  assert.equal(r.compliance.conditions.find((x) => x.id === 'kvMedField').state, 'met');
+  assert.ok(r.compliance.reasons.some((x) => /фантом — свой материал «твёрдая вода \(марка не указана\)»: для средних энергий твердые фантомы/.test(x.text)));
+  // 4 × 15 см вытянут больше чем вдвое — предупреждение о круге той же площади; PDD в RW3 — SSRMP No 9 не рекомендует
+  const long = run({ kv_kv: '120', kv_hvl: '0,222', kv_cone: '4', kv_cone_b: '15', kv_ssd: '40', kv_env_T: '20', kv_env_P: '1013,25', kv_pdd2: '70' });
+  assert.ok(long.messages.some((m) => m.level === 'warn' && /вытянуто больше чем вдвое/.test(m.text)));
+  assert.equal(long.flags.kv_pdd_phantom, 'warn');
+  assert.ok(long.messages.some((m) => m.level === 'warn' && /PDD\(2 см\) снята в фантоме: RW3 \(PTW\); SSRMP No 9 не рекомендует/.test(m.text)));
 });

@@ -338,3 +338,74 @@ test('kV-рентген: камера только с ⁶⁰Co — k_Q = 1 с п
   await pause(300);
   assert.deepEqual(errors, []);
 });
+
+test('kV-рентген: прямоугольный тубус, материал фантома с источниками, свой материал в протоколе; по-английски', async () => {
+  const { page, errors } = await openPage(browser);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const pause = (ms = 400) => page.waitForTimeout(ms);
+  await page.goto(`${server.url}/index.html#kv`);
+  await page.waitForSelector('#kv-messages li');
+  await page.click('#kv-btn-sample');
+  await pause();
+  // пример: водный фантом — по табл. 31
+  assert.equal(await page.inputValue('#kv_phantom'), 'water');
+  assert.match(await page.locator('#kv-phantom-sub').innerText(), /вода — стандартная среда \(TRS-398 Rev\.1, разд\. 4\.2\.3, табл\. 31; TG-61, разд\. IV\.A\)/);
+  assert.ok(await page.locator('#kv-ph-custom').isHidden());
+
+  // прямоугольный тубус 8 × 10 см → круг той же площади 10,09 см, сопоставим с 10 × 10 см (табл. 31)
+  await page.selectOption('#kv_cone_shape', 'rect');
+  await page.fill('#kv_cone', '8');
+  await page.fill('#kv_cone_b', '10');
+  await pause();
+  assert.equal(await page.locator('#kv-lbl-cone').innerText(), 'Сторона a, см');
+  assert.equal(await page.locator('#module-kv output[data-out="inputs.fClin"]').innerText(), '10,09');
+  assert.equal(await page.locator('#kv-feq-sub').innerText(), 'd = 2√(ab/π)');
+  assert.match(await page.locator('#kv-messages').innerText(), /Прямоугольное поле 8 × 10 см заменено кругом равной площади диаметром 10,09 см/);
+  assert.match(await page.locator('#kv-compliance').innerText(), /отступлений от условий TRS-398 Rev\.1 не найдено/);
+
+  // RW3 для референсной дозы средних энергий — нестандартные условия; PDD в RW3 — замечание по SSRMP No 9
+  await page.selectOption('#kv_phantom', 'rw3');
+  await page.selectOption('#kv_pdd_phantom', 'rw3');
+  await pause();
+  assert.match(await page.locator('#kv-phantom-sub').innerText(), /референсная доза определяется только в воде/);
+  assert.match(await page.locator('#kv-compliance').innerText(), /Нестандартные условия[\s\S]*фантом — RW3 \(PTW\): для средних энергий твердые фантомы/);
+  assert.match(await page.locator('#kv-pdd-phantom-sub').innerText(), /SSRMP No 9 не рекомендует его для относительной дозиметрии в kV \(разд\. 5\.7\.1\.2\)/);
+  assert.match(await page.locator('#kv-messages').innerText(), /PDD\(2 см\) снята в фантоме: RW3 \(PTW\)/);
+
+  // свой материал: поля названия, плотности и данных; всё — в протоколе
+  await page.selectOption('#kv_phantom', 'custom');
+  await pause();
+  assert.ok(await page.locator('#kv-ph-custom').isVisible());
+  assert.match(await page.locator('#kv-messages').innerText(), /укажите название и производителя/);
+  await page.fill('#kv_ph_name', 'Plastic X (Y Inc.)');
+  await page.fill('#kv_ph_rho', '1,04');
+  await page.fill('#kv_ph_note', 'полистирол + TiO₂; данные производителя');
+  await pause();
+  await page.click('#kv-btn-copy-report');
+  await pause(300);
+  const report = await page.evaluate(() => navigator.clipboard.readText());
+  assert.match(report, /прямоугольный тубус 8 × 10 см \(круг той же площади Ø 10,09 см\)/);
+  assert.match(report, /Фантом: свой материал «Plastic X \(Y Inc\.\)» \(плотность 1,04 г\/см³; полистирол \+ TiO₂; данные производителя\)/);
+  assert.match(report, /PDD\(2 см\) = 88,6 % \(фантом: RW3 \(PTW\)\)/);
+
+  // по-английски — без кириллицы (свой материал назван латиницей)
+  await page.locator('#lang_en').check();
+  await pause(600);
+  const status = (await page.locator('#kv-status').innerText()).trim();
+  assert.deepEqual((await cyrLines(page)).filter((l) => l.trim() !== status), []);
+  assert.match(await page.locator('#kv_phantom option[value="pwdt"]').innerText(), /Plastic Water DT/);
+  assert.match(await page.locator('#kv_phantom option[value=""]').innerText(), /not specified/);
+  await page.locator('#lang_ru').check();
+  await pause(300);
+
+  // низкие энергии, N_D,w: фантом при калибровке; N_K (камера в воздухе) — поля фантома нет
+  await page.selectOption('#kv_range', 'low');
+  await pause();
+  assert.ok(await page.locator('#kv_lab_phantom').isVisible());
+  assert.match(await page.locator('#kv-phantom-sub').innerText(), /свой материал: допускается водоэквивалентный пластик или ПММА/);
+  await page.selectOption('#kv_cal', 'nk');
+  await pause();
+  assert.ok(await page.locator('#kv-phantom-block').isHidden());
+  assert.ok(await page.locator('#kv_lab_phantom').isHidden());
+  assert.deepEqual(errors, []);
+});
