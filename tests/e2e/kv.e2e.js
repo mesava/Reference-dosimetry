@@ -56,6 +56,12 @@ test('kV-рентген: пример, ветки расчёта, пометка
   assert.match(await page.locator('#module-kv .inline-result').first().innerText(), /итог 1,0012 Гр\/мин на 2 г\/см²/i);
   assert.ok(await page.locator('#kv_qo').isVisible());
   assert.ok(await page.locator('#kv_pdd2').isVisible());
+  // справочное сравнение для N_D,w: DIN 6809-4 и SSRMP No 9 без k_g; на итог не влияет
+  const pc = await page.locator('#kv-proto-cmp').innerText();
+  assert.match(pc, /Справочно · DIN 6809-4 и SSRMP No 9/);
+  assert.match(pc, /1,0013\s*Гр\/мин на 2 г\/см²/);
+  assert.match(pc, /\+0,01 %/);
+  assert.match(await page.locator('#kv-pc-table').innerText(), /Отношение доз DIN \/ SSRMP \/ Rev\.1\s+1,0001/);
 
   // протокол текстом
   await page.click('#kv-btn-copy-report');
@@ -67,6 +73,7 @@ test('kV-рентген: пример, ветки расчёта, пометка
   assert.match(report, /k_g = 0,9999 \(ур\. \(90\)/);
   assert.match(report, /1,0012 Гр\/мин; значение для сравнения 0,9950 Гр\/мин на 2 г\/см², отклонение \+0,62 %/);
   assert.match(report, /Andreo P 2019/);
+  assert.match(report, /— Справочно: DIN 6809-4 и SSRMP No 9, k_g = 1 \(на итог не влияет\) —\n1,0013 Гр\/мин на 2 г\/см²; отличие от TRS-398 Rev\.1 \+0,01 %/);
 
   // сохранить и открыть файл: итог сверяется с сохранённым
   const [download] = await Promise.all([page.waitForEvent('download'), page.click('#kv-btn-save')]);
@@ -155,6 +162,18 @@ test('kV-рентген: пример, ветки расчёта, пометка
   assert.equal(await page.locator('#module-kv output[data-out="trs.phys.pch"]').innerText(), '1,0146');
   assert.ok(await page.locator('#kv-pch-field').isHidden());
   assert.ok(await page.locator('#kv-andreo-cite').isVisible());
+  // TG-61, метод в фантоме: PTW 30013 нет в табл. VIII — нужен P_Q,cham из литературы; с ним — отличие от Rev.1
+  assert.match(await page.locator('#kv-proto-cmp').innerText(), /TG-61, метод в фантоме на 2 см[\s\S]*не посчитано: камеры PTW 30013 нет в табл\. VIII/);
+  assert.ok(await page.locator('#kv_tg61_pq').isVisible());
+  await page.fill('#kv_tg61_pq', '1,020');
+  await pause();
+  assert.match(await page.locator('#kv-proto-cmp').innerText(), /[+−]\d,\d\d %/);
+  assert.match(await page.locator('#kv-pc-table').innerText(), /Камера в фантоме[\s\S]*1,0200\s+введён вручную[\s\S]*1,0146/);
+  // камера из табл. VIII: поле P_Q,cham не нужно
+  await page.selectOption('#kv_ch_model', 'NE2571');
+  await pause();
+  assert.ok(await page.locator('#kv_tg61_pq').isHidden());
+  assert.match(await page.locator('#kv-pc-table').innerText(), /табл\. VIII \(NE2571\)/);
 
   // по-английски — без кириллицы (пример загружается заново: подписи демо-набора по-английски)
   await page.click('#kv-btn-sample');
@@ -164,6 +183,13 @@ test('kV-рентген: пример, ветки расчёта, пометка
   assert.match(await page.locator('#kv-dose-rows').innerText(), /1\.0012\s*Gy\/min at 2 g\/cm²/);
   assert.match(await page.locator('#kv-s3').innerText(), /Exposure setting and timer error/);
   assert.match(await page.locator('#kv-eq-hint').innerText(), /Eq\. \(58\)/);
+  assert.match(await page.locator('#kv-proto-cmp').innerText(), /For reference · DIN 6809-4 and SSRMP No 9/);
+  // ветка N_K по-английски: строка TG-61 с причиной и поле P_Q,cham — без кириллицы
+  await page.selectOption('#kv_cal', 'nk');
+  await pause();
+  assert.match(await page.locator('#kv-proto-cmp').innerText(), /not calculated: PTW 30013 is not in TG-61 Table VIII/);
+  assert.deepEqual(await cyrLines(page), []);
+  await page.selectOption('#kv_cal', 'ndw');
   await page.locator('#lang_ru').check();
   await pause(400);
   assert.match(await page.locator('#kv-dose-rows').innerText(), /1,0012\s*Гр\/мин/);

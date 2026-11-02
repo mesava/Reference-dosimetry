@@ -92,7 +92,8 @@
 - k<sub>g</sub> на поле и РИП: табл. 28–29 (PTW 23342, 23344; качество по ln(СПО) между столбцами TW, значение по кВ рядом), ур. (85), ур. (90) для средних энергий или значение лаборатории; B<sub>w</sub>, [μ<sub>en</sub>/ρ]<sub>w,air</sub> — по данным Andreo (2019), p<sub>ch</sub> — по табл. 32; квадратный тубус — круг той же площади;
 - облучение задаётся временем, дозой по монитору или в МЕ; ошибка таймера (концевой эффект) — теми же способами, что у ⁶⁰Co; k<sub>s</sub> = 1 по умолчанию, метод двух напряжений — по флажку; обратная полярность необязательна (без неё k<sub>pol</sub> = 1 с предупреждением);
 - проверки: достижимость СПО при данном кВ, тип камеры для ветки, поле и РИП, единицы; Q<sub>o</sub> = ⁶⁰Co (DIN 6809-4), k<sub>g</sub> = 1 при другом поле и ручной p<sub>ch</sub> считаются, но помечаются «не по TRS-398 Rev.1»;
-- доза на единицу задания (Гр/мин, Гр/Гр или сГр/МЕ), для средних энергий — и на поверхности через PDD(2 см); сравнение с прежним значением, допуск.
+- доза на единицу задания (Гр/мин, Гр/Гр или сГр/МЕ), для средних энергий — и на поверхности через PDD(2 см); сравнение с прежним значением, допуск;
+- справочная строка под итогом (на него не влияет): для веток N<sub>K</sub> — AAPM TG-61 (метод в воздухе для низких энергий, в фантоме на 2 см — для средних; табл. IV, V, VII–IX), для веток N<sub>D,w</sub> — DIN 6809-4 и SSRMP No 9 с поправкой на поле и РИП, равной 1; в разделе 7 — пары множителей и отношение доз. Показание и N<sub>Q</sub> те же, что в расчёте по Rev.1, так что отличие идёт только от данных и формализма.
 
 Подробности — в [docs/kv.md](docs/kv.md).
 
@@ -244,6 +245,8 @@ src/core/               расчётное ядро без зависимост�
   electrons.js          полный расчёт и проверки для электронов, доступные способы k_Q для камеры и калибровки
   kv.js                 kV-рентген по TRS-398 Rev.1 (разд. 8, 9): четыре ветки (низкие/средние энергии × N_K/N_D,w), N_Q из таблицы сертификата по ln(СПО), k_g, p_ch, ошибка таймера, проверки; Qo = ⁶⁰Co по DIN 6809-4 с пометкой
   kv-tables.js          kV-рентген: камеры, табл. 28–29 (k_g для PTW 23342, 23344) и табл. 32 (p_ch) TRS-398 Rev.1
+  kv-tg61.js            kV-рентген, справочно: табл. IV, V, VII–IX AAPM TG-61 ([μen/ρ]w,air, B_w, P_Q,cham, P_sheath)
+  kv-compare.js         kV-рентген, справочное сравнение: TG-61 для веток N_K, DIN 6809-4 и SSRMP No 9 для веток N_D,w
   kvx.js                kV-рентген: B_w и [μen/ρ]w,air по данным Andreo (2019), интерполяция как в веб-приложении МАГАТЭ kvx-rays.iaea.org
   kv-data.js            kV-рентген: подключение данных Andreo и калькулятора B_w и [μen/ρ]w,air, ссылка на источник
   kv-nist.js            коэффициенты ослабления Al и Cu (NIST) — только для проверки, что СПО достижим при данном kV
@@ -308,7 +311,7 @@ scripts/build.mjs       сборка автономного файла dist/inde
 scripts/i18n-check.mjs  проверка, что у русских строк в JS есть английская пара
 .github/workflows/      тесты, проверки и публикация сайта на GitHub Actions
 docs/cobalt.md          ⁶⁰Co: формулы, источники и ограничения
-docs/kv.md              kV-рентген: четыре ветки TRS-398 Rev.1, сертификат по качествам, k_g, p_ch, данные Andreo, проверки
+docs/kv.md              kV-рентген: четыре ветки TRS-398 Rev.1, сертификат по качествам, k_g, p_ch, данные Andreo, проверки, справочное сравнение с TG-61, DIN 6809-4 и SSRMP No 9
 docs/photons.md         МВ фотоны: формулы, источники и ограничения
 docs/electrons.md       электроны: формулы, источники и ограничения
 docs/tools.md           камера и пучок: перекрёстная калибровка (⁶⁰Co, МВ фотоны, электроны)
@@ -381,7 +384,7 @@ docs/journal.md         журнал: файл, оборудование, изм
 2. **Проверка на независимых данных** того, что ещё не проверено: у ⁶⁰Co — ошибка таймера, пересчёт на z<sub>max</sub> и распад; перекрёстная калибровка, электроны с цилиндрической камерой, TG-51 целиком, журнал в режиме проверки выхода и с несколькими пучками аппарата (нужны протоколы с независимым расчётом).
 3. **Из отзыва коллег — в следующую очередь:** проверить «В пластинах» на ежедневных измерениях отделения (ряд проверок после привязки; привязка и первая проверка уже сверены с таблицами отделения); выбор разделов для печати — после уточнения у коллег. Камеры для малых полей (CC01, Razor) — не в TRS-398 Rev.1, это TRS-483: пока — как «своя камера» с ручным k<sub>Q</sub>.
 4. **Новые модули**, по важности и объёму (подраздел брахитерапии уже есть во вкладке «Дозиметрия» с пометкой «в разработке», адрес `#brachy`):
-   - **kV-рентген по TRS-398 Rev.1** — отдельный большой модуль (воспроизводимость, линейность, СПО и др.); данные Andreo (2019) для B<sub>w</sub> и [μ<sub>en</sub>/ρ]<sub>w,air</sub> и их калькулятор уже в репозитории и совпадают с веб-приложением МАГАТЭ во всех 117 контрольных точках до 4-го знака (`tests/kv-data.test.js`); расчётное ядро четырёх ветвей (`src/core/kv.js`, `tests/kv.test.js`) и вкладка `#kv` готовы (`src/ui/kv-ui.js`, `tests/e2e/kv.e2e.js`, [docs/kv.md](docs/kv.md)); дальше — справочное сравнение с TG-61, DIN 6809-4 и SSRMP No 9, бюджет неопределённости (табл. 30 и 33) и проверка на протоколах отделения;
+   - **kV-рентген по TRS-398 Rev.1** — отдельный большой модуль (воспроизводимость, линейность, СПО и др.); данные Andreo (2019) для B<sub>w</sub> и [μ<sub>en</sub>/ρ]<sub>w,air</sub> и их калькулятор уже в репозитории и совпадают с веб-приложением МАГАТЭ во всех 117 контрольных точках до 4-го знака (`tests/kv-data.test.js`); расчётное ядро четырёх ветвей (`src/core/kv.js`, `tests/kv.test.js`), вкладка `#kv` (`src/ui/kv-ui.js`, `tests/e2e/kv.e2e.js`, [docs/kv.md](docs/kv.md)) и справочное сравнение с TG-61, DIN 6809-4 и SSRMP No 9 (`src/core/kv-compare.js`, `tests/kv-compare.test.js`) готовы; дальше — бюджет неопределённости (табл. 30 и 33) и проверка на протоколах отделения;
    - **брахитерапия:** источники ⁶⁰Co и ¹⁹²Ir, колодезная камера и фантом PTW 9193.
 
 ## Литература / References
@@ -389,7 +392,9 @@ docs/journal.md         журнал: файл, оборудование, изм
 - Andreo P, Burns D T, Kapsch R-P, McEwen M and Vatnitsky S 2024 Absorbed dose determination in external beam radiotherapy: an international code of practice for dosimetry based on standards of absorbed dose to water. IAEA Technical Reports Series no. 398 (Rev. 1) (Vienna: International Atomic Energy Agency)
 - Andreo P, Burns D T, Hohlfeld K, Huq M S, Kanai T, Laitano F, Smyth V and Vynckier S 2000 Absorbed dose determination in external beam radiotherapy: an international code of practice for dosimetry based on standards of absorbed dose to water. IAEA Technical Reports Series no. 398 (Vienna: International Atomic Energy Agency); рус. изд.: Определение поглощенной дозы при дистанционной лучевой терапии: Международные практические рекомендации по дозиметрии, основанные на эталонах единицы поглощенной дозы в воде. Серия технических докладов № 398 (Вена: МАГАТЭ, 2004) — первое издание; из него только табл. 18 (k<sub>Q</sub> для PTW 23343 Markus и Exradin P11 при калибровке в ⁶⁰Co) как нестандартный способ для электронов
 - Andreo P 2019 Data for the dosimetry of low- and medium-energy kV x rays. Phys. Med. Biol. 64 205019. doi:[10.1088/1361-6560/ab421d](https://doi.org/10.1088/1361-6560/ab421d) — B<sub>w</sub> и [μ<sub>en</sub>/ρ]<sub>w,air</sub> для kV-рентгена; файлы данных веб-приложения МАГАТЭ kvx-rays.iaea.org используются с разрешения автора ([data/andreo-kv/](data/andreo-kv/README.md))
-- DIN 6809-4:2020-04 Klinische Dosimetrie — Teil 4: Röntgentherapie mit Röntgenröhrenspannungen zwischen 10 kV und 300 kV (Berlin: Beuth) — СПО качеств TW (табл. 2) для табл. 28–29 TRS-398 Rev.1; Q<sub>o</sub> = ⁶⁰Co для средних энергий (с пометкой «не по TRS-398 Rev.1»)
+- DIN 6809-4:2020-04 Klinische Dosimetrie — Teil 4: Röntgentherapie mit Röntgenröhrenspannungen zwischen 10 kV und 300 kV (Berlin: Beuth) — СПО качеств TW (табл. 2) для табл. 28–29 TRS-398 Rev.1; Q<sub>o</sub> = ⁶⁰Co для средних энергий (с пометкой «не по TRS-398 Rev.1»); справочное сравнение для веток N<sub>D,w</sub>
+- Ma C-M, Coffey C W, DeWerd L A, Liu C, Nath R, Seltzer S M and Seuntjens J P 2001 AAPM protocol for 40–300 kV x-ray beam dosimetry in radiotherapy and radiobiology. Med. Phys. 28 868–93. doi:[10.1118/1.1374247](https://doi.org/10.1118/1.1374247) — TG-61, справочное сравнение для kV-рентгена (табл. IV, V, VII–IX)
+- Aspradakis M M, Buchillier T, Kohler G, Kottler C and Krayenbühl J 2023 SSRMP Recommendations No 9: Reference dosimetry in low and medium energy x-ray beams. Z. Med. Phys. doi:[10.1016/j.zemedi.2022.12.003](https://doi.org/10.1016/j.zemedi.2022.12.003) — справочное сравнение для kV-рентгена (k<sub>FS/SSD</sub> = 1)
 - Almond P R, Biggs P J, Coursey B M, Hanson W F, Huq M S, Nath R and Rogers D W O 1999 AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon and electron beams. Med. Phys. 26 1847–70. doi:[10.1118/1.598691](https://doi.org/10.1118/1.598691)
 - McEwen M, DeWerd L, Ibbott G, Followill D, Rogers D W O, Seltzer S and Seuntjens J 2014 Addendum to the AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon beams. Med. Phys. 41 041501. doi:[10.1118/1.4866223](https://doi.org/10.1118/1.4866223)
 - Muir B, Culberson W, Davis S, Kim G G, Lee S-W, Lowenstein J, Renaud J, Sarfehnia A, Siebers J, Tantôt L and Tolani N 2022 AAPM WGTG51 Report 374: Guidance for TG-51 reference dosimetry. Med. Phys. 49 6739–64. doi:[10.1002/mp.15949](https://doi.org/10.1002/mp.15949)

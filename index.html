@@ -1996,6 +1996,25 @@
         </div>
         <div class="field"><label for="kv_tol">Допуск, ±&nbsp;%</label><input type="text" id="kv_tol" class="num" inputmode="decimal" placeholder="2"><span class="sub">по умолчанию 2 %</span></div>
       </div>
+
+      <h4 class="series-head" id="kv-pc-head">Справочно: другие протоколы</h4>
+      <p class="hint" id="kv-pc-hint"></p>
+      <div class="grid" data-show="kv_range:medium;kv_cal:nk">
+        <div class="field">
+          <label for="kv_tg61_sleeve">Водозащитный чехол</label>
+          <select id="kv_tg61_sleeve">
+            <option value="none">без чехла (водостойкая камера)</option>
+            <option value="pmma">ПММА</option>
+            <option value="polystyrene">полистирол</option>
+            <option value="nylon">нейлон</option>
+          </select>
+          <span class="sub">для P<sub>sheath</sub> по табл. IX TG-61</span>
+        </div>
+        <div class="field" data-show="kv_tg61_sleeve:pmma,polystyrene,nylon"><label for="kv_tg61_sleeve_t">Толщина чехла, мм</label><input type="text" id="kv_tg61_sleeve_t" class="num" inputmode="decimal"><span class="sub">от 0,5 до 3 мм</span></div>
+        <div class="field" id="kv-tg61-pq-field"><label for="kv_tg61_pq">P<sub>Q,cham</sub> для TG-61</label><input type="text" id="kv_tg61_pq" class="num" inputmode="decimal"><span class="sub">камеры нет в табл. VIII TG-61: значение из литературы, источник — в примечаниях</span></div>
+      </div>
+      <div class="table-wrap"><table class="factors pc-table" id="kv-pc-table"></table></div>
+      <p class="sub-hint">Справочное сравнение на итог не влияет. Показание и N<sub>Q</sub> в нём те же, что в расчёте по TRS-398 Rev.1, поэтому разница идёт только от данных и формализма протоколов.</p>
     </section>
 
     <!-- 8 -->
@@ -2013,6 +2032,7 @@
       <p class="demo-flag" id="kv-notrev1-flag" hidden></p>
       <p class="file-note" id="kv-file-note" hidden></p>
       <div class="dose-rows" id="kv-dose-rows"></div>
+      <div class="dose-row ref-row" id="kv-proto-cmp" hidden></div>
       <div class="compliance" id="kv-compliance" hidden></div>
       <p class="sub-hint" id="kv-andreo-cite" hidden></p>
     </section>
@@ -3377,6 +3397,8 @@
         <li>Andreo P, Burns D T, Hohlfeld K, Huq M S, Kanai T, Laitano F, Smyth V and Vynckier S 2000 Absorbed dose determination in external beam radiotherapy: an international code of practice for dosimetry based on standards of absorbed dose to water. IAEA Technical Reports Series no. 398 (Vienna: International Atomic Energy Agency). Русское издание: МАГАТЭ, 2004. Первое издание; используется только табл. 18 — k<sub>Q</sub> для PTW 23343 Markus и Exradin P11 при калибровке в ⁶⁰Co (нестандартный способ для электронов).</li>
         <li>Andreo P 2019 Data for the dosimetry of low- and medium-energy kV x rays. Phys. Med. Biol. 64 205019. doi:<a href="https://doi.org/10.1088/1361-6560/ab421d" target="_blank" rel="noopener">10.1088/1361-6560/ab421d</a></li>
         <li>DIN 6809-4:2020-04 Klinische Dosimetrie — Teil 4: Röntgentherapie mit Röntgenröhrenspannungen zwischen 10 kV und 300 kV (Berlin: Beuth)</li>
+        <li>Ma C-M, Coffey C W, DeWerd L A, Liu C, Nath R, Seltzer S M and Seuntjens J P 2001 AAPM protocol for 40–300 kV x-ray beam dosimetry in radiotherapy and radiobiology. Med. Phys. 28 868–93. doi:<a href="https://doi.org/10.1118/1.1374247" target="_blank" rel="noopener">10.1118/1.1374247</a></li>
+        <li>Aspradakis M M, Buchillier T, Kohler G, Kottler C and Krayenbühl J 2023 SSRMP Recommendations No 9: Reference dosimetry in low and medium energy x-ray beams. Z. Med. Phys. doi:<a href="https://doi.org/10.1016/j.zemedi.2022.12.003" target="_blank" rel="noopener">10.1016/j.zemedi.2022.12.003</a></li>
         <li>Almond P R, Biggs P J, Coursey B M, Hanson W F, Huq M S, Nath R and Rogers D W O 1999 AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon and electron beams. Med. Phys. 26 1847–70. doi:<a href="https://doi.org/10.1118/1.598691" target="_blank" rel="noopener">10.1118/1.598691</a></li>
         <li>McEwen M, DeWerd L, Ibbott G, Followill D, Rogers D W O, Seltzer S and Seuntjens J 2014 Addendum to the AAPM's TG-51 protocol for clinical reference dosimetry of high-energy photon beams. Med. Phys. 41 041501. doi:<a href="https://doi.org/10.1118/1.4866223" target="_blank" rel="noopener">10.1118/1.4866223</a></li>
         <li>Muir B, Culberson W, Davis S, Kim G G, Lee S-W, Lowenstein J, Renaud J, Sarfehnia A, Siebers J, Tantôt L and Tolani N 2022 AAPM WGTG51 Report 374: Guidance for TG-51 reference dosimetry. Med. Phys. 49 6739–64. doi:<a href="https://doi.org/10.1002/mp.15949" target="_blank" rel="noopener">10.1002/mp.15949</a></li>

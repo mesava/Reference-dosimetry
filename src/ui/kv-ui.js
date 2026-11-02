@@ -1,6 +1,7 @@
 // Модуль «kV-рентген»: связывает форму с расчётным ядром kv.js (TRS-398 Rev.1, разд. 8 и 9).
 import { computeKv, KV_DEFAULTS, normalizeKv } from '../core/kv.js';
 import { KV_CHAMBERS, kvChamberLabel } from '../core/kv-tables.js';
+import { TG61_T8_CHAMBER } from '../core/kv-tg61.js';
 import { SAMPLE_KV, SAMPLE_KV_EN } from '../core/sample-kv.js';
 import { L, getLang, refText } from '../core/i18n.js';
 import { localizeDecimals } from './i18n.js';
@@ -288,6 +289,74 @@ function applyVisibility(data, result) {
   html($('#kv-nkfs-sub'), L(`стандартное поле — Ø ${std} см; для другого поля — рис. 11 TRS-398 или от лаборатории; пусто — 1`, `standard field: ${std} cm diameter; for another field, from TRS-398 Fig. 11 or the laboratory; empty means 1`));
   $('#kv-lbl-surf').textContent = L(`На поверхности, ${rate}`, `At the surface, ${rate}`);
   $('#kv-lbl-ref').textContent = L(`Значение для сравнения, ${rate}`, `Comparison value, ${rate}`);
+
+  // справочное сравнение с другим протоколом
+  html($('#kv-pc-hint'), symText(pcHint(result)));
+  $('#kv-tg61-pq-field').hidden = !(result.range === 'medium' && result.cal === 'nk' && c && (c.custom || !TG61_T8_CHAMBER[c.id]));
+  renderPcTable(result);
+}
+
+// ------------------------------------------------------------ справочное сравнение (TG-61, DIN 6809-4, SSRMP No 9)
+/** Короткое имя сравниваемого протокола для заголовков. */
+const pcShort = (cmp) => cmp.short;
+/** Текст с символами: X_abc — нижний индекс, [μen/ρ]w,air — с индексами. */
+const symText = (t) => richText(t).replace(/\[μen\/ρ\]w,air/g, '[μ<sub>en</sub>/ρ]<sub>w,air</sub>');
+
+/** Что и как сравнивается в текущей ветке. */
+function pcHint(r) {
+  if (r.cal === 'nk' && r.range === 'low') {
+    return L(
+      'Ветка N_K сравнивается с AAPM TG-61, методом в воздухе (ур. 3): D = M · N_K · B_w · P_stem,air · [μen/ρ]w,air; B_w — табл. V (Grosswendt), [μen/ρ]w,air — табл. IV.',
+      'The N_K branch is compared with AAPM TG-61, the in-air method (Eq. 3): D = M · N_K · B_w · P_stem,air · [μen/ρ]w,air; B_w from Table V (Grosswendt), [μen/ρ]w,air from Table IV.',
+    );
+  }
+  if (r.cal === 'nk') {
+    return L(
+      'Ветка N_K сравнивается с AAPM TG-61, методом в фантоме на 2 см (ур. 4): D = M · N_K · P_Q,cham · P_sheath · [μen/ρ]w,air; [μen/ρ]w,air на 2 см — табл. VII, P_Q,cham — табл. VIII, P_sheath — табл. IX.',
+      'The N_K branch is compared with AAPM TG-61, the in-phantom method at 2 cm (Eq. 4): D = M · N_K · P_Q,cham · P_sheath · [μen/ρ]w,air; [μen/ρ]w,air at 2 cm from Table VII, P_Q,cham from Table VIII, P_sheath from Table IX.',
+    );
+  }
+  return L(
+    `Ветка N_D,w сравнивается с ${r.qo === 'co60' ? 'DIN 6809-4' : 'DIN 6809-4 и SSRMP No 9'}: D = M · N_D,w,Q без поправки на поле и РИП (k_g = 1). У TG-61 варианта для N_D,w нет.`,
+    `The N_D,w branch is compared with ${r.qo === 'co60' ? 'DIN 6809-4' : 'DIN 6809-4 and SSRMP No 9'}: D = M · N_D,w,Q with no field and SSD correction (k_g = 1). TG-61 has no N_D,w variant.`,
+  );
+}
+
+/** Таблица пар множителей «протокол — Rev.1» в разделе 7. */
+function renderPcTable(r) {
+  const table = $('#kv-pc-table');
+  const cmp = r.compare;
+  if (!cmp?.kind) {
+    html(table, '');
+    return;
+  }
+  if (!cmp.rows.length) {
+    html(table, `<tbody><tr><td>${L('Сравнение не посчитано', 'Comparison not calculated')}: ${richText(cmp.reason ?? '—')}.</td></tr></tbody>`);
+    return;
+  }
+  const cell = (v, src) => `<td class="v">${Number.isFinite(v) ? fmt(v, 4) : '—'}<span class="src">${richText(src)}</span></td>`;
+  const rows = cmp.rows.map((x) => `<tr><td>${richText(x.label)} <i>${symText(x.sym)}</i></td>${cell(x.cmp, x.cmpSrc)}${cell(x.rev1, x.rev1Src)}</tr>`).join('');
+  const total = `<tr class="total"><td>${L(`Отношение доз ${pcShort(cmp)} / Rev.1`, `Dose ratio ${pcShort(cmp)} / Rev.1`)}</td><td class="v" colspan="2">${fmt(cmp.ratio, 4)} (${fmtSigned(cmp.diffPct, 2)} %)</td></tr>`;
+  const notes = cmp.notes.map((n) => `<tr><td colspan="3" class="note">${richText(n)}</td></tr>`).join('');
+  html(table, `<thead><tr><th>${L('Множитель', 'Factor')}</th><th>${esc(pcShort(cmp))}</th><th>${PROTO_NAME}</th></tr></thead><tbody>${rows}${total}${notes}</tbody>`);
+}
+
+/** Справочная строка под итогом: доза по сравниваемому протоколу и отличие от Rev.1. */
+function protoCmpRow(result) {
+  const cmp = result.compare;
+  const x = result.trs;
+  const p = primaryOf(x);
+  const none = x.blocked || ctrlFailed(x);
+  const zTxt = result.range === 'low' ? L('на поверхности', 'at the surface') : L('на 2 г/см²', 'at 2 g/cm²');
+  const head = `${L('Справочно', 'For reference')} · ${cmp.title}`;
+  if (none || !cmp.available) {
+    const why = none ? L('итога по TRS-398 Rev.1 нет — сравнивать не с чем', 'there is no TRS-398 Rev.1 result to compare with') : L(`не посчитано: ${cmp.reason}`, `not calculated: ${cmp.reason}`);
+    return `<div class="proto"><span>${richText(head)}</span></div><div class="secondary">${richText(why)}</div>`;
+  }
+  const chip = `<span class="chip" title="${L('Отличие от итога по TRS-398 Rev.1', 'Difference from the TRS-398 Rev.1 result')}">${fmtSigned(cmp.diffPct, 2)} %</span>`;
+  return `<div class="proto"><span>${richText(head)}</span>${chip}</div>
+    <div class="ref-value">${fmt(p.perUnit * cmp.ratio, 4)}<small>${x.rateLabel} ${zTxt}</small></div>
+    <div class="secondary">${L('отличие от Rev.1 — в разделе 7; на итог не влияет', 'the difference from Rev.1 is broken down in section 7; does not affect the result')}</div>`;
 }
 
 // ------------------------------------------------------------ вывод
@@ -364,6 +433,9 @@ function doseRow(result) {
 function renderReadout(result, data) {
   const x = result.trs;
   $('#kv-dose-rows').innerHTML = doseRow(result);
+  const pc = $('#kv-proto-cmp');
+  pc.hidden = !result.compare?.kind;
+  if (result.compare?.kind) html(pc, protoCmpRow(result));
   renderCompliance($('#kv-compliance'), result.compliance, PROTO_NAME);
 
   const nr = $('#kv-notrev1-flag');
@@ -579,6 +651,22 @@ function reportText(data, r) {
     if (cl) out.push(cl);
   }
   if (r.andreo.citation) out.push(L(`B_w и [μen/ρ]w,air — данные: ${r.andreo.citation}`, `B_w and [μen/ρ]w,air data: ${r.andreo.citation}`));
+  const cmp = r.compare;
+  if (cmp?.kind) {
+    out.push('');
+    out.push(L(`— Справочно: ${cmp.title} (на итог не влияет) —`, `— For reference: ${cmp.title} (does not affect the result) —`));
+    const p = primaryOf(x);
+    if (x.blocked || ctrlFailed(x)) out.push(L('Итога по TRS-398 Rev.1 нет — сравнивать не с чем.', 'There is no TRS-398 Rev.1 result to compare with.'));
+    else if (!cmp.available) out.push(L(`Не посчитано: ${cmp.reason}.`, `Not calculated: ${cmp.reason}.`));
+    else {
+      const zTxt = r.range === 'low' ? L('на поверхности', 'at the surface') : L('на 2 г/см²', 'at 2 g/cm²');
+      out.push(L(`${fmt(p.perUnit * cmp.ratio, 4)} ${x.rateLabel} ${zTxt}; отличие от ${PROTO_NAME} ${fmtSigned(cmp.diffPct, 2)} % (отношение доз ${fmt(cmp.ratio, 4)})`, `${fmt(p.perUnit * cmp.ratio, 4)} ${x.rateLabel} ${zTxt}; difference from ${PROTO_NAME} ${fmtSigned(cmp.diffPct, 2)} % (dose ratio ${fmt(cmp.ratio, 4)})`));
+      const short = pcShort(cmp);
+      cmp.rows.forEach((y) => out.push(`  ${y.sym}: ${short} ${fmt(y.cmp, 4)} (${y.cmpSrc}); Rev.1 ${Number.isFinite(y.rev1) ? fmt(y.rev1, 4) : '—'} (${y.rev1Src})`));
+      cmp.notes.forEach((n) => out.push(`  ${n}`));
+    }
+    out.push(`  [${refText(cmp.ref)}]`);
+  }
   out.push('');
   const msgs = r.messages.filter((m) => m.level !== 'info');
   if (msgs.length) {

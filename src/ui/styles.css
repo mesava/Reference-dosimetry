@@ -387,6 +387,10 @@ details.more[open] summary { margin-bottom: 10px; }
 .dose-big small { font-size: 14px; color: var(--display-dim); margin-left: 8px; letter-spacing: 0; }
 .dose-row .secondary { font: 13px var(--font-mono); color: var(--display-dim); font-variant-numeric: tabular-nums; }
 .dose-row.blocked .dose-big { color: var(--display-dim); }
+/* справочная строка другого протокола под итогом (kV-рентген): мельче итога, на него не влияет */
+.dose-row.ref-row { padding-top: 10px; border-top: 1px dashed rgba(255, 255, 255, 0.16); }
+.dose-row.ref-row .ref-value { font: 500 18px/1.2 var(--font-mono); color: var(--display-ink); font-variant-numeric: tabular-nums; }
+.dose-row.ref-row .ref-value small { font-size: 12px; color: var(--display-dim); margin-left: 6px; }
 .compliance { font: 12.5px/1.45 var(--font-body); padding: 6px 10px; border-left: 3px solid currentColor; border-radius: 4px; background: rgba(255, 255, 255, 0.04); }
 .compliance b { font-weight: 600; }
 .compliance ul { margin: 4px 0 0; padding-left: 18px; }
@@ -512,7 +516,7 @@ footer.page-foot .page-foot-legal { margin-top: 4px; font-size: 12px; }
   .step, .panel { border-color: #999; }
   .panel, .sign-block, .display { break-inside: avoid; }
   .display { background: #fff; color: #000; border: 1px solid #999; }
-  .display h2, .dose-row .proto, .dose-row .secondary, .delta { color: #000 !important; }
+  .display h2, .dose-row .proto, .dose-row .secondary, .dose-row.ref-row .ref-value, .delta { color: #000 !important; }
   .dose-big, .display .chip, .delta b { color: #000 !important; }
   input, select, textarea { border: 0; padding: 0; background: none; height: auto; }
   .print-only { display: block; }
@@ -680,6 +684,10 @@ fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; }
 .pairs .eq { margin: 0; }
 .pairs.flag-warn .pair-row input { border-color: var(--warn); background: var(--warn-soft); }
 .pairs.flag-error .pair-row input { border-color: var(--err); background: var(--err-soft); }
+/* kV-рентген: таблица справочного сравнения с другим протоколом */
+table.factors.pc-table { margin-top: 8px; }
+table.factors.pc-table .src { display: block; font-size: 11.5px; color: var(--muted); font-family: var(--font-body); white-space: normal; }
+table.factors.pc-table td.note { font-size: 12px; color: var(--muted); border-bottom: 0; padding-top: 2px; padding-bottom: 2px; }
 /* kV-рентген: таблица качеств сертификата (кВ, СПО, значение) */
 .cert-table { max-width: 560px; }
 .cert-table .pairs-head, .cert-table .pair-row { grid-template-columns: 28px repeat(3, minmax(0, 1fr)); }

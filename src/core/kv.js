@@ -16,6 +16,7 @@
 // камеры, k_z = 1 — с пометкой «нестандартные условия».
 // Ошибка таймера (концевой эффект) не мультипликативна (разд. 9.4.2): доза относится к X + τ, где X — заданная
 // величина (Гр, время или МЕ).
+// Справочное сравнение с TG-61 (ветки N_K) и DIN 6809-4 / SSRMP No 9 (ветки N_D,w) — kv-compare.js, на итог не влияет.
 
 import { parseNumber, parseCells, isBlank, pressureToKPa, ndwToGyPerNC, ru, dec } from './units.js';
 import { L } from './i18n.js';
@@ -24,6 +25,7 @@ import { timerError, timerErrorMultiple } from './cobalt.js';
 import { KV_CONDITIONS, evaluateConditions, complianceFromConditions } from './conditions.js';
 import { resolveKvChamber, interpLog, kgFromTable, pchFromTable32 } from './kv-tables.js';
 import { kvCalculator, ANDREO_CITATION } from './kv-data.js';
+import { compareKv } from './kv-compare.js';
 import * as TRS from './trs398.js';
 
 const REF = {
@@ -62,7 +64,6 @@ export const KV_DEFAULTS = {
   kv_hvl: '',
   kv_cone_shape: 'circle', // 'circle' | 'square'
   kv_cone: '', // диаметр или сторона, см
-  kv_cone_closed: false, // закрытый тубус (для сравнения с TG-61)
   kv_cone_largest: false, // средние энергии: самый большой тубус аппарата (табл. 31, сноска c)
   kv_ssd: '', // РИП на конце тубуса, см
 
@@ -100,6 +101,11 @@ export const KV_DEFAULTS = {
   kv_kg_lab: '',
   kv_kg_nk: '', // ур. (85): отношение N_K^PMMA(клин.)/N_K^PMMA(лаб.) из лаборатории
   kv_pch: '', // средние энергии, N_K: p_ch для камеры не из табл. 32
+
+  // справочное сравнение с TG-61 (средние энергии, N_K): чехол (табл. IX) и P_Q,cham для камеры не из табл. VIII
+  kv_tg61_sleeve: 'none', // 'none' | 'pmma' | 'polystyrene' | 'nylon'
+  kv_tg61_sleeve_t: '1', // толщина чехла, мм
+  kv_tg61_pq: '',
 
   // окружающая среда
   kv_env_T: '',
@@ -144,7 +150,7 @@ export const KV_DEFAULTS = {
 };
 
 const CELL_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_Mc'];
-const BOOL_KEYS = ['kv_cone_closed', 'kv_cone_largest', 'kv_foil', 'kv_lab_pol_applied', 'kv_lab_ks_applied', 'kv_ks_on'];
+const BOOL_KEYS = ['kv_cone_largest', 'kv_foil', 'kv_lab_pol_applied', 'kv_lab_ks_applied', 'kv_ks_on'];
 
 export function normalizeKv(input) {
   const f = { ...KV_DEFAULTS, ...input, protocol: 'trs' };
@@ -733,6 +739,10 @@ export function computeKv(form) {
   }, 'trs');
   const compliance = complianceFromConditions(conditions, Number.isFinite(shown.perUnit));
 
+  // справочное сравнение с TG-61 или DIN 6809-4 / SSRMP No 9 — на итог не влияет
+  const compare = qualityOk ? compareKv(f, { range, cal, qo, kv, hvl, ssd, fClin, chamber, phys, kg }) : { available: false, rows: [], notes: [], flags: [] };
+  compare.flags.forEach((k) => flag(k, 'warn'));
+
   return {
     protocol: 'trs',
     form: f,
@@ -751,6 +761,7 @@ export function computeKv(form) {
     cmp,
     trs,
     andreo: { ...andreo, citation: andreo.used ? ANDREO_CITATION : null },
+    compare,
     messages,
     flags,
     hasErrors: messages.some((m) => m.level === 'error'),
