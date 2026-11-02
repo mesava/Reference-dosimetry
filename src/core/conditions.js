@@ -257,6 +257,96 @@ export const ELECTRON_CONDITIONS = [
   ),
 ];
 
+// ------------------------------------------------------------------------------------- kV-рентген
+// Табл. 26 (низкие энергии, N_K — камера в свободном воздухе), табл. 27 (низкие, N_D,w — на поверхности фантома),
+// табл. 31 (средние энергии — в воде на 2 г/см²). Поле и РИП, отличные от лабораторных, допустимы, если k_g взят по
+// Rev.1 (ур. 52, 58); k_g = 1 вместо нужного, p_ch вручную и Qo = ⁶⁰Co — отступления.
+
+const DIN = 'DIN 6809-4:2020';
+const kvOnly = (range, cal, test) => (c) => (c.range === range && (!cal || c.cal === cal) ? test(c) : 'na');
+const fieldTxt = (c) => cm(Math.round(c.fClin * 10) / 10);
+
+export const KV_CONDITIONS = [
+  {
+    id: 'kvLowNkChamber',
+    group: 'detector',
+    scope: 'trs',
+    label: () => L('плоскопараллельная камера до 100 кВ или цилиндрическая выше 70 кВ', 'plane-parallel chamber up to 100 kV or cylindrical above 70 kV'),
+    ref: `${TRS}, табл. 26`,
+    check: kvOnly('low', 'nk', (c) => (c.chamber && num(c.kv) !== null ? (c.chamber.type === 'pp' ? c.kv <= 100 : c.kv >= 70) : null)),
+    reason: (c) => (c.chamber.type === 'pp'
+      ? L(`плоскопараллельная камера при ${cm(c.kv)} кВ (выше 100 кВ)`, `plane-parallel chamber at ${cm(c.kv)} kV (above 100 kV)`)
+      : L(`цилиндрическая камера при ${cm(c.kv)} кВ (ниже 70 кВ)`, `cylindrical chamber at ${cm(c.kv)} kV (below 70 kV)`)),
+  },
+  {
+    id: 'kvLowNkField',
+    group: 'geometry',
+    scope: 'trs',
+    label: () => L('поле диаметром 10 см (плоскопараллельная камера) или 5 см (цилиндрическая) либо N_K с поправкой на поле', 'field 10 cm in diameter (plane-parallel chamber) or 5 cm (cylindrical), or N_K corrected for the field'),
+    ref: `${TRS}, табл. 26, рис. 11`,
+    check: kvOnly('low', 'nk', (c) => (c.chamber ? need(c.fClin, (d) => c.nkFsGiven || Math.abs(d - (c.chamber.type === 'cyl' ? 5 : 10)) < 0.05) : null)),
+    reason: (c) => L(`поле ${fieldTxt(c)} см без поправки N_K на размер поля`, `field of ${fieldTxt(c)} cm without an N_K field-size correction`),
+  },
+  {
+    id: 'kvLowNdwChamber',
+    group: 'detector',
+    scope: 'trs',
+    label: () => L('плоскопараллельная камера на поверхности фантома', 'plane-parallel chamber at the phantom surface'),
+    ref: `${TRS}, табл. 27`,
+    check: kvOnly('low', 'ndw', (c) => (c.chamber ? c.chamber.type === 'pp' : null)),
+    reason: () => L('камера не плоскопараллельная', 'the chamber is not plane-parallel'),
+  },
+  {
+    id: 'kvGeometry',
+    group: 'geometry',
+    scope: 'trs',
+    label: () => L('поле и РИП как при калибровке или поправка k_g по TRS-398 Rev.1', 'field and SSD as at calibration, or a k_g correction according to TRS-398 Rev.1'),
+    ref: `${TRS}, табл. 27, ур. (52), (58)`,
+    check: (c) => (c.cal !== 'ndw' ? 'na' : c.sameGeometry ? true : c.kgSource ? c.kgSource !== 'one' : null),
+    reason: () => L('поле или РИП не как в лаборатории, а k_g принят равным 1 (как DIN 6809-4 и SSRMP No 9)', 'field or SSD different from the laboratory, with k_g taken as 1 (as in DIN 6809-4 and SSRMP No 9)'),
+  },
+  {
+    id: 'kvMedChamber',
+    group: 'detector',
+    scope: 'trs',
+    label: () => L('цилиндрическая камера в воде на глубине 2 г/см²', 'cylindrical chamber in water at a depth of 2 g/cm²'),
+    ref: `${TRS}, табл. 31`,
+    check: kvOnly('medium', null, (c) => (c.chamber ? c.chamber.type === 'cyl' : null)),
+    reason: () => L('камера не цилиндрическая', 'the chamber is not cylindrical'),
+  },
+  {
+    id: 'kvMedField',
+    group: 'geometry',
+    scope: 'trs',
+    label: () => L('поле 10 см (или самый большой тубус аппарата)', 'field 10 cm (or the largest applicator of the unit)'),
+    ref: `${TRS}, табл. 31`,
+    check: kvOnly('medium', null, (c) => (c.coneLargest ? true : need(c.fClin, (d) => Math.abs(d - 10) < 0.5))),
+    reason: (c) => L(`поле ${fieldTxt(c)} см вместо 10 см (если больших тубусов нет, отметьте «самый большой тубус»)`, `field of ${fieldTxt(c)} cm instead of 10 cm (if there are no larger applicators, mark "largest applicator")`),
+  },
+  {
+    id: 'kvQo',
+    group: 'route',
+    scope: 'trs',
+    label: () => L('калибровка камеры в рентгеновских качествах (Qo — kV-качество)', 'chamber calibrated in x-ray qualities (Qo is a kV quality)'),
+    ref: `${TRS}, разд. 9.2.1; ${DIN}, разд. 6.4.2`,
+    check: (c) => (c.range === 'medium' && c.cal === 'ndw' ? c.qo !== 'co60' : 'na'),
+    reason: () => L('Qo = ⁶⁰Co с k_Q,M рентгеновских качеств — способ DIN 6809-4, не TRS-398 Rev.1', 'Qo = ⁶⁰Co with x-ray k_Q,M is the DIN 6809-4 method, not TRS-398 Rev.1'),
+  },
+  {
+    id: 'kvPch',
+    group: 'coefficients',
+    scope: 'trs',
+    label: () => L('p_ch по табл. 32', 'p_ch from Table 32'),
+    ref: `${TRS}, табл. 32`,
+    check: kvOnly('medium', 'nk', (c) => (c.pchSource ? c.pchSource === 'table32' : null)),
+    reason: () => L('p_ch введён вручную: камеры нет в табл. 32', 'p_ch entered manually: the chamber is not in Table 32'),
+  },
+  leakage,
+  polarityCond(0.004, `${TRS}, табл. 3`, (c) =>
+    L(`k_pol = ${ru(c.kpolRaw, 4)}: эффект полярности больше 0,4 % (критерий эталонного класса)`, `k_pol = ${ru(c.kpolRaw, 4)}: polarity effect above 0.4 % (reference-class criterion)`),
+  ),
+];
+
 /**
  * Проверка перечня условий для выбранного протокола (scope — 'trs' | 'tg51').
  * Возвращает [{ id, group, scope, state, label, reason, ref }].
