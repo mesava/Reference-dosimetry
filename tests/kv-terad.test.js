@@ -111,6 +111,17 @@ test('Терад 200, 50–100 кВ по TRS-398 Rev.1: k_Q по ln(СПО) из
   const small = low(100, LOW_ROWS[100][3]);
   assert.equal(small.trs.blocked, true);
   assert.ok(small.messages.some((m) => m.level === 'error' && /поле вне табл\. 28–29 \(2–20 см\)/.test(m.text)));
+  // с 0.49.2: свой k_g лаборатории у такого тубуса (разд. 8.4.2) — расчёт идёт, а тубус, который в таблице есть, остаётся по
+  // таблице, даже если у строки введено значение (условное 0,95 — только для проверки, не от лаборатории)
+  const own = low(100, LOW_ROWS[100][3], { kv_kg_lab: '0,95' });
+  assert.equal(own.trs.blocked, false);
+  assert.equal(own.trs.kg.source, 'lab');
+  assert.equal(own.trs.kg.value, 0.95);
+  assert.ok(own.messages.some((m) => m.level === 'info' && /для этого тубуса взят его k_g лаборатории/.test(m.text)));
+  assert.ok(!own.notRev1.some((x) => /k_g/.test(x)));
+  const inTable = low(100, LOW_ROWS[100][2], { kv_kg_lab: '0,95' });
+  assert.equal(inTable.trs.kg.source, 'table');
+  assert.ok(Math.abs(inTable.trs.kg.value - 0.9311) < 5e-5);
 });
 
 test('Терад 200, 120–200 кВ: k_Q = 1 (Farmer только с ⁶⁰Co) — доза на 2 см и на поверхности совпадают (−0,025 % — только P₀)', () => {

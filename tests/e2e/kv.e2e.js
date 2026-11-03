@@ -138,6 +138,21 @@ test('kV-рентген: пример, ветки расчёта, пометка
   assert.ok(await page.locator('#kv-andreo-cite').isHidden(), 'табл. 28 — без данных Andreo');
   assert.match(await page.locator('#kv-compliance').innerText(), /не найдено/);
 
+  // тубус вне табл. 28 (Ø 1,5 см): поле «k_g лаборатории» строки — его k_g, способ режима остаётся «по табл. 28» (0.49.2)
+  assert.ok(await page.locator('#kv_kg_lab').isVisible());
+  assert.match(await page.locator('#kv-kglab-field').innerText(), /только для тубуса вне табл\. 28–29/);
+  const cone0 = await page.inputValue('#kvr0_kv_cone');
+  await page.fill('#kvr0_kv_cone', '1,5');
+  await pause();
+  assert.match(await page.locator('#kv-messages').innerText(), /Введите для этого тубуса kg лаборатории/);
+  await page.fill('#kv_kg_lab', '0,95');
+  await pause();
+  assert.equal(await page.locator('#module-kv output[data-out="trs.kg.value"]').innerText(), '0,9500');
+  assert.match(await page.locator('#kv-messages').innerText(), /для этого тубуса взят его kg лаборатории/);
+  await page.fill('#kv_kg_lab', '');
+  await page.fill('#kvr0_kv_cone', cone0);
+  await pause();
+
   // квадратный тубус → круг той же площади
   await page.selectOption('#kvr0_kv_cone_shape', 'square');
   await pause();

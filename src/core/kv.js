@@ -968,6 +968,15 @@ export function computeKv(form) {
         if (Math.abs(ssd - 30) > 1e-6 || Math.abs(ssdLab - 30) > 1e-6) {
           add('info', 'trs', L(`Табл. ${t.table} получена при РИП 30 см; k_g зависит в основном от поля и мало — от РИП, поэтому таблицу можно применять при обычных клинических РИП.`, `Table ${t.table} was obtained at 30 cm SSD; k_g depends mainly on the field and only slightly on the SSD, so the table may be used at the usual clinical SSDs.`), `${REF.trs}, разд. 8.4.2`);
         }
+      } else if (!isBlank(f.kv_kg_lab)) {
+        // таблица этот тубус не покрывает, а у строки свой k_g лаборатории: он и берётся, остальные строки режима — по
+        // таблице (TRS-398 Rev.1, разд. 8.4.2: k_g от лаборатории — законный источник для любого поля)
+        kg.value = readFactor('kv_kg_lab', L('k_g лаборатории', 'k_g from the laboratory'));
+        kg.source = 'lab';
+        add('info', 'trs', L(
+          'Поле вне табл. 28–29 или камеры в них нет: для этого тубуса взят его k_g лаборатории (поле «k_g лаборатории» строки).',
+          'The field is outside Tables 28–29 or the chamber is not in them: for this applicator its k_g from the laboratory is used (the row’s “k_g from the laboratory” field).',
+        ), `${REF.trs}, разд. 8.4.2`, 'kv_kg_lab');
       } else {
         const why = !chamber?.kgTable
           ? L('для этой камеры нет табл. 28–29 (они только для PTW 23342 и 23344)', 'there is no Table 28–29 for this chamber (they are only for PTW 23342 and 23344)')
@@ -975,8 +984,8 @@ export function computeKv(form) {
             ? L('поле вне табл. 28–29 (2–20 см)', 'the field is outside Tables 28–29 (2–20 cm)')
             : L('СПО вне качеств табл. 28–29 (TW10–TW100, 0,030–4,41 мм Al)', 'the HVL is outside the qualities of Tables 28–29 (TW10–TW100, 0.030–4.41 mm Al)');
         add('error', 'trs', L(
-          `Поле или РИП отличаются от лабораторных, а k_g взять неоткуда: ${why}. Введите k_g лаборатории или отношение N_K^PMMA от лаборатории (ур. 85).`,
-          `The field or SSD differ from the laboratory, and there is no source for k_g: ${why}. Enter k_g from the laboratory or the N_K^PMMA ratio from the laboratory (Eq. 85).`,
+          `Поле или РИП отличаются от лабораторных, а k_g взять неоткуда: ${why}. Введите для этого тубуса k_g лаборатории (поле «k_g лаборатории»; остальные тубусы режима останутся по таблице) или выберите ур. (85) с отношением N_K^PMMA от лаборатории.`,
+          `The field or SSD differ from the laboratory, and there is no source for k_g: ${why}. Enter k_g from the laboratory for this applicator (the “k_g from the laboratory” field; the other applicators of the mode stay on the table) or choose Eq. (85) with the N_K^PMMA ratio from the laboratory.`,
         ), `${REF.trs}, разд. 8.4.2, прил. I, ур. (84)–(85)`, 'kv_kg_src');
         kg.value = NaN;
       }

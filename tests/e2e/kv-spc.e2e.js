@@ -86,3 +86,22 @@ test('kV-рентген: контрольная карта режима, общ�
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
   assert.deepEqual(errors, []);
 });
+
+test('kV-рентген: калибровка с выходом вне допуска в отсчёте — пояснение и совет «Новый отсчёт карты» (0.49.2)', async () => {
+  const { j } = kvHistoryJournal();
+  for (const x of j.kvRecords.find((r) => r.date === '2026-05-05').summary.modes) for (const y of x.rows) y.base = y.D / 0.95;
+  const { page, errors } = await openPage(browser);
+  await page.goto(`${server.url}/index.html#history`);
+  await page.evaluate((jj) => localStorage.setItem('reference-dosimetry.journal.v1', JSON.stringify({ journal: jj })), j);
+  await page.reload();
+  await page.waitForSelector('#hs_machine');
+  await page.selectOption('#hs_machine', { label: 'РТА' });
+  await page.waitForTimeout(300);
+  assert.match(await page.locator('#hs-kv-spc-summary').innerText(), /В текущий отсчёт входит калибровка с выходом вне допуска от прежней базы: 05\.05\.2026 \(−5,00 %\)\. .*«Новый отсчёт карты» у записи/);
+  const item = page.locator('#hs-kv-records .jsessions > li').filter({ hasText: '05.05.2026' });
+  await item.locator('[data-kv-spc]').click();
+  await page.waitForTimeout(300);
+  assert.doesNotMatch(await page.locator('#hs-kv-spc-summary').innerText(), /ступеньку/);
+  assert.deepEqual(errors, []);
+  await page.context().close();
+});

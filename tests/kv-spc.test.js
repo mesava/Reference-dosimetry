@@ -117,3 +117,20 @@ test('CSV: сигналы карты — в строке стандартног�
   assert.equal(lastDay.filter((l) => /точка за 3σ/.test(l)).length, 2, 'по строке на режим — у стандартного тубуса');
   assert.equal(lines.filter((l) => /точка за 3σ/.test(l)).length, 2);
 });
+
+test('ступенька в отсчёте (0.49.2): калибровка с выходом вне допуска от прежней базы — в chart.steps, после «Нового отсчёта» — нет', () => {
+  const { j, machine, modeIds } = kvHistoryJournal();
+  // в примере калибровка 05.05.2026 в допуске: ступенек нет
+  assert.deepEqual(kvModeChart(j, machine, modeIds[0]).steps, []);
+  // как на Терад 200 06.10.2024: при калибровке выход ниже прежней базы на 5 % (база переписана)
+  const cal = j.kvRecords.find((r) => r.date === '2026-05-05');
+  for (const x of cal.summary.modes) for (const y of x.rows) y.base = y.D / 0.95;
+  const steps = kvModeChart(j, machine, modeIds[0]).steps;
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0].date, '2026-05-05');
+  assert.ok(near(steps[0].dev, -5, 1e-9));
+  assert.equal(steps[0].tol, 2);
+  // с этой записи — новый отсчёт: ступенька — его первая точка, в отсчёт не входит
+  cal.spcRestart = true;
+  assert.deepEqual(kvModeChart(j, machine, modeIds[0]).steps, []);
+});

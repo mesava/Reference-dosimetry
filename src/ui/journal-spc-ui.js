@@ -482,7 +482,15 @@ export function renderKvSpc(charts, modeId) {
     `Стандартный тубус: ${last.label}. 0 % — ${fmt(ref.D, 4)} ${ref.unit} (${fmtDate(ref.date)}, первая запись отсчёта).${band ? ` База последней записи — ${fmt(band.base, 4)} ${ref.unit} (${baseTxt}), на карте ${fmtSigned(band.level, 2)} %.` : ' У последней записи базы нет — полосы допуска на карте нет.'}`,
     `Reference applicator: ${last.label}. 0 % is ${fmt(ref.D, 4)} ${ref.unit} (${fmtDate(ref.date)}, the first record of the count).${band ? ` The baseline of the last record is ${fmt(band.base, 4)} ${ref.unit} (${baseTxt}), ${fmtSigned(band.level, 2)} % on the chart.` : ' The last record has no baseline, so there is no tolerance band on the chart.'}`,
   ));
-  summary.innerHTML = `<p>${refLine}</p><p>${segmentLine(chart)}</p>${chart.trend || chart.trendWait ? `<p>${trendLine(chart, tol, { vsBase: baseTxt })}</p>` : ''}${signalsHtml(chart, () => '', L('Сигналов нет: выход режима меняется в пределах обычного разброса.', 'No signals: the output of the mode varies within its usual scatter.'))}${kvHelpHtml()}`;
+  const steps = chart.steps ?? [];
+  const stepList = steps.map((x) => `${fmtDate(x.date)} (${fmtSigned(x.dev, 2)} %)`).join(', ');
+  const stepLine = steps.length
+    ? `<p class="spc-warn">${esc(L(
+        `В текущий отсчёт входит калибровка с выходом вне допуска от прежней базы: ${stepList}. Центральная линия, тренд и прогноз считаются через эту ступеньку. Если уровень выхода после неё другой, начните с этой записи новый отсчёт: «Новый отсчёт карты» у записи в разделе «Записи журнала».`,
+        `The current count includes a calibration with the output outside the tolerance from the previous baseline: ${stepList}. The centre line, the trend and the forecast are calculated across this step. If the output level after it is different, start a new count from this record: “New chart count” at the record in the Journal records section.`,
+      ))}</p>`
+    : '';
+  summary.innerHTML = `<p>${refLine}</p><p>${segmentLine(chart)}</p>${stepLine}${chart.trend || chart.trendWait ? `<p>${trendLine(chart, tol, { vsBase: baseTxt })}</p>` : ''}${signalsHtml(chart, () => '', L('Сигналов нет: выход режима меняется в пределах обычного разброса.', 'No signals: the output of the mode varies within its usual scatter.'))}${kvHelpHtml()}`;
   return chosen.modeId;
 }
 

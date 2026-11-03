@@ -77,7 +77,8 @@ export function kvControlPoints(j, machine, modeId) {
  * (points, segments, current, trend, trendWait) и { tol, band, forecast }: band — { level, hi, lo (в % от первой
  * записи отсчёта), base, baseDate, fromDay } или null, если у последней записи базы нет; forecast — когда линия тренда
  * текущего отсчёта выйдет из полосы допуска ({ side, day } | { side, already } | { side, beyond }), только при значимом
- * тренде.
+ * тренде; steps — калибровки текущего отсчёта (кроме первой записи), при которых выход был вне допуска от прежней базы:
+ * [{ date, recId, dev, tol }] (с 0.49.2).
  */
 export function kvModeChart(j, machine, modeId) {
   const pts = kvControlPoints(j, machine, modeId);
@@ -102,7 +103,18 @@ export function kvModeChart(j, machine, modeId) {
     else if (day - last.day > YEARS3) forecast = { side, beyond: true };
     else forecast = { side, day };
   }
-  return { ...chart, tol, band, forecast };
+  // калибровки текущего отсчёта, при которых выход был вне допуска от прежней базы (база переписана): тренд и прогноз
+  // считаются через эту ступеньку — если уровень выхода после неё другой, отсчёт стоит начать с неё заново
+  const steps = [];
+  if (chart.current) {
+    for (let i = chart.current.from + 1; i <= chart.current.to; i++) {
+      const p = chart.points[i];
+      if (p.mode !== 'cal' || !fin(p.base) || !fin(p.tol)) continue;
+      const dev = (p.D / p.base - 1) * 100;
+      if (Math.abs(dev) > p.tol) steps.push({ date: p.date, recId: p.recId, dev, tol: p.tol });
+    }
+  }
+  return { ...chart, tol, band, forecast, steps };
 }
 
 /** Карты всех режимов аппарата с записями: [{ modeId, n, title, range, chart }]. */

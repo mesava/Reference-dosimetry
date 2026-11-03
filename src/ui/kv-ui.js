@@ -1332,6 +1332,10 @@ function applyVisibility(data, result) {
   $('#kv-kg-bykv').hidden = kg.source !== 'table';
   $('#kv-kg-spread').hidden = kg.source !== 'table';
   $('#kv-kg-bw').hidden = kg.source !== 'eq85';
+  // k_g лаборатории: при «лаборатории» — у каждой строки; при табл. 28–29 — только для тубуса, которого в таблице нет
+  const kgSrc = $('#kv_kg_src').value;
+  $('#kv-kglab-field').hidden = !(kgSrc === 'lab' || (kgSrc === 'auto' && low));
+  $('#kv-kglab-sub').hidden = kgSrc !== 'auto';
   $('#kv-pch-field').hidden = !(result.range === 'medium' && result.cal === 'nk' && c && !c.pch);
   const ph = result.trs.phys;
   html($('#kv-muen-sub'), low ? L('FIA, по СПО', 'FIA, by HVL') : L('на 2 см, по кВ, СПО, полю и РИП', 'at 2 cm, by kV, HVL, field and SSD'));
