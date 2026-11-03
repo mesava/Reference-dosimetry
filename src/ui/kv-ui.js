@@ -13,6 +13,8 @@ import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, renderPairs, readPairs, setupPairs } from './widgets.js';
 import { refreshSectionNav } from './section-nav.js';
 import { setupKvJournal, renderKvJournal } from './kv-journal-ui.js';
+import { setupKvHvl, renderHvlSheet, renderPlates, readPlates, hvlFieldSub, hvlReportLines } from './kv-hvl-ui.js';
+import { KV_PLATE_KEYS, hvlDecimals } from '../core/kv-hvl.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf, renderCompliance, complianceLine, ctrlErrorText,
@@ -25,7 +27,7 @@ const DRAFT_KEY = 'reference-dosimetry.kv.v1';
 // формат 3 (0.37.0): режимы аппарата — общие поля common, камеры chambers, режимы modes со строками аппликаторов, выбранный
 // режим mode; form — плоская форма выбранной строки выбранного режима. Формат 2 (0.36): rows и active одного режима.
 const FILE_TAG = { app: 'reference-dosimetry', module: 'kv', version: 3 };
-const SERIES_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc'];
+const SERIES_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc', 'kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc'];
 const PAIR_KEYS = ['kv_tt', 'kv_tm'];
 const CERT_KEYS = ['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_val'];
 const PROTO_NAME = 'TRS-398 Rev.1';
@@ -145,13 +147,14 @@ function readForm() {
     if (key === 'protocol') data.protocol = 'trs';
     else if (key === 'kv_staff') data.kv_staff = readStaff($('#kv-staff-list'));
     else if (SERIES_KEYS.includes(key)) data[key] = readCells(seriesBox(key));
-    else if (PAIR_KEYS.includes(key) || CERT_KEYS.includes(key)) continue;
+    else if (PAIR_KEYS.includes(key) || CERT_KEYS.includes(key) || KV_PLATE_KEYS.includes(key)) continue;
     else {
       const el = document.getElementById(key);
       if (!el) continue;
       data[key] = el.type === 'checkbox' ? el.checked : el.value;
     }
   }
+  Object.assign(data, readPlates());
   const { a, b } = readPairs(pairsBox());
   data.kv_tt = a;
   data.kv_tm = b;
@@ -166,7 +169,7 @@ function writeForm(values) {
   const data = normalizeKv(values);
   if (String(data.kv_ch_model).startsWith('MY:') && !getMyChambers().some((c) => c.id === data.kv_ch_model)) data.kv_ch_model = 'CUSTOM';
   for (const [key, value] of Object.entries(data)) {
-    if (key === 'protocol' || PAIR_KEYS.includes(key) || CERT_KEYS.includes(key)) continue;
+    if (key === 'protocol' || PAIR_KEYS.includes(key) || CERT_KEYS.includes(key) || KV_PLATE_KEYS.includes(key)) continue;
     if (key === 'kv_staff') renderStaff($('#kv-staff-list'), value, update);
     else if (SERIES_KEYS.includes(key)) renderCells(seriesBox(key), value);
     else {
@@ -178,6 +181,7 @@ function writeForm(values) {
   }
   renderPairs(pairsBox(), data.kv_tt, data.kv_tm);
   renderCert(data.kv_cq_kv, data.kv_cq_hvl, data.kv_cq_val);
+  renderPlates(data);
   localizeDecimals(ROOT());
 }
 
@@ -202,7 +206,7 @@ const sess = {
 const rowForm = (i) => kvVisitRowForm(visit, visit.mode, i);
 
 // текстовые поля: в них число с запятой или точкой — не число (серийный номер, фильтр), разделитель не меняется
-const TEXT_KEYS = new Set(['kv_institution', 'kv_machine', 'kv_jmachine', 'kv_jmode', 'kv_date', 'kv_staff', 'kv_notes', 'kv_filter', 'kv_ph_name', 'kv_ph_note', 'kv_cc_maker', 'kv_cc_model', 'kv_ch_serial', 'kv_el_model', 'kv_el_serial']);
+const TEXT_KEYS = new Set(['kv_institution', 'kv_machine', 'kv_jmachine', 'kv_jmode', 'kv_date', 'kv_staff', 'kv_notes', 'kv_filter', 'kv_ph_name', 'kv_ph_note', 'kv_cc_maker', 'kv_cc_model', 'kv_ch_serial', 'kv_el_model', 'kv_el_serial', 'kv_hl_app', 'kv_pl_name', 'kv_pl_mat']);
 /**
  * Десятичный разделитель в числах всех режимов, камер и строк — языка интерфейса (поля формы — localizeDecimals; здесь —
  * невыбранные режимы, камеры и строки: их числа видны в подписях режимов, сводке и протоколе).
@@ -520,7 +524,7 @@ function renderSectionTags() {
     else h.removeAttribute('data-tag');
   };
   const mt = visit.modes.length > 1 ? L(` · режим ${visit.mode + 1}`, ` · mode ${visit.mode + 1}`) : '';
-  for (const id of ['kv-s3', 'kv-s4', 'kv-s5', 'kv-s6', 'kv-s7', 'kv-s8']) tag(id, mt);
+  for (const id of ['kv-sh1', 'kv-s3', 'kv-s4', 'kv-s5', 'kv-s6', 'kv-s7', 'kv-s8']) tag(id, mt);
   tag('kv-s2', visit.chambers.length > 1 ? L(` · камера ${mode().chamber + 1}`, ` · chamber ${mode().chamber + 1}`) : '');
 }
 
@@ -805,12 +809,12 @@ function openRow(m, i) {
 
 // ------------------------------------------------------------ листы вкладки (как ярлыки листов в Excel)
 // Разделы формы разнесены по листам (data-kv-page); виден один лист, у каждого — своя ссылка #kv/<лист>.
-// Листы «СПО и k_Q», «Линейность» и «Воспроизводимость» пока заготовки. Печать и PDF — все разделы, как раньше.
+// Листы «Линейность» и «Воспроизводимость» пока заготовки. Печать и PDF — все разделы, как раньше.
 const PAGE_KEY = 'reference-dosimetry.kv.page';
 const KV_PAGES = ['modes', 'hvl', 'timer', 'linearity', 'repro', 'dose', 'summary'];
-const WIP_PAGES = new Set(['hvl', 'linearity', 'repro']);
+const WIP_PAGES = new Set(['linearity', 'repro']);
 /** Листы по выбранному режиму: над ними — строка выбора режима (при двух режимах и больше). */
-const MODE_PAGES = new Set(['timer', 'dose']);
+const MODE_PAGES = new Set(['hvl', 'timer', 'dose']);
 const pageOf = (key) => (KV_PAGES.includes(key) ? key : 'modes');
 let page = (() => {
   try {
@@ -857,7 +861,7 @@ export function kvShown() {
   showPage(KV_PAGES.includes(h) ? h : page);
 }
 
-/** Строка выбора режима над листами «Ошибка таймера» и «Поглощённая доза». */
+/** Строка выбора режима над листами «СПО и k_Q», «Ошибка таймера» и «Поглощённая доза». */
 function renderModeBar() {
   const bar = $('#kv-modebar');
   if (!bar || !current) return;
@@ -895,6 +899,15 @@ function pageState(key) {
   }
   const shown = (el) => !el.closest('[hidden]');
   let st = 'empty';
+  if (key === 'hvl') {
+    // лист СПО — худшее из измерений всех режимов (форма показывает только выбранный режим)
+    const rank = { empty: 0, done: 1, warn: 2, error: 3 };
+    for (const { hvl: h } of current.vr.modes) {
+      const l = h.state === 'empty' ? 'empty' : h.state === 'error' || h.messages.some((m) => m.level === 'error') ? 'error' : h.messages.some((m) => m.level === 'warn') ? 'warn' : 'done';
+      if (rank[l] > rank[st]) st = l;
+    }
+    if (st === 'error') return st;
+  }
   for (const sec of $$(`#kv-sheet [data-kv-page="${key}"]`)) {
     if ([...sec.querySelectorAll('.flag-error')].some(shown)) return 'error';
     if ([...sec.querySelectorAll('.flag-warn')].some(shown)) st = 'warn';
@@ -1061,6 +1074,31 @@ const nSym = (cal) => (cal === 'nk' ? 'K' : 'D,w');
 const html = (el, s) => {
   if (el && el.innerHTML !== s) el.innerHTML = s;
 };
+
+/**
+ * Строка над таблицей аппликаторов (лист «Поглощённая доза»): пучок режима, СПО (измеренный или из таблицы режимов),
+ * значение сертификата для него и τ. Здесь они только показываются: вводятся на листах «СПО и k_Q» и «Ошибка таймера».
+ */
+function renderDoseBeam(r, all) {
+  const i = r.inputs;
+  const form = r.form?.kv_cert_form;
+  const valName = form === 'k' ? 'K' : form === 'n' ? (r.cal === 'nk' ? 'N_K,Q' : 'N_D,w,Q') : 'k_Q';
+  const t = r.timer ?? {};
+  const st = all.timer?.state;
+  const tau = st === 'window'
+    ? L('τ в дозу не входит', 'τ does not enter the dose')
+    : st === 'off'
+      ? L('τ не учитывается', 'τ disregarded')
+      : Number.isFinite(t.tauS) ? `τ = ${fmtSigned(t.tauS, 2)} ${L('с', 's')}` : Number.isFinite(t.tau) ? `τ = ${fmtSigned(t.tau, 3)} ${i.unitLabel}` : '';
+  const parts = [
+    Number.isFinite(i.kv) ? L(`${fmt(i.kv, i.kv % 1 ? 1 : 0)} кВ`, `${fmt(i.kv, i.kv % 1 ? 1 : 0)} kV`) : '',
+    Number.isFinite(i.hvl) ? L(`СПО ${fmt(i.hvl, hvlDecimals(i.hvl))} мм ${r.material} (${i.hvlSource === 'measured' ? 'измеренный' : 'из таблицы режимов'})`, `HVL ${fmt(i.hvl, hvlDecimals(i.hvl))} mm ${r.material} (${i.hvlSource === 'measured' ? 'measured' : 'from the modes table'})`) : '',
+    Number.isFinite(r.cert?.value) ? `${valName} = ${fmt(r.cert.value, form === 'n' ? 6 : 4)}` : '',
+    tau,
+  ].filter(Boolean);
+  const who = visit.modes.length > 1 ? L(`Режим ${visit.mode + 1}`, `Mode ${visit.mode + 1}`) : L('Пучок', 'Beam');
+  html($('#kv-dose-beam'), parts.length ? richText(L(`${who}: ${parts.join(' · ')}. СПО и k_Q — лист «СПО и k_Q», τ — лист «Ошибка таймера».`, `${who}: ${parts.join(' · ')}. The HVL and k_Q come from the “HVL and k_Q” sheet, τ from the “Timer error” sheet.`)) : '');
+}
 
 /** Уравнение ветки: подсказка раздела 8. */
 function eqHint(r) {
@@ -1439,8 +1477,10 @@ function renderReadout(result, data) {
   }));
 
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
-  const scopeName = { common: '', trs: '', depth: L('Пересчёт на поверхность · ', 'Transfer to the surface · '), ctrl: L('Контрольные измерения · ', 'Check measurements · ') };
-  const list = result.messages;
+  const scopeName = { common: '', trs: '', depth: L('Пересчёт на поверхность · ', 'Transfer to the surface · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), hvl: L('Измерение СПО · ', 'HVL measurement · ') };
+  // замечания к измерению СПО режима (лист «СПО и k_Q») — среди замечаний строки, по уровню
+  const order = { error: 0, warn: 1, info: 2 };
+  const list = [...(current.all?.hvl?.messages ?? []).map((m) => ({ ...m, scope: 'hvl' })), ...result.messages].sort((a, b) => order[a.level] - order[b.level]);
   $('#kv-messages').innerHTML = list.length
     ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope] ?? ''}${lvlName[m.level]}</span><span>${richText(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
     : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
@@ -1581,7 +1621,8 @@ function reportText(data, r, all = null, vr = null) {
   line(L('Аппарат', 'Machine'), data.kv_machine || '—');
   line(L('Дата', 'Date'), data.kv_date || '—');
   line(L('Измерения выполнили', 'Measured by'), data.kv_staff.filter((s) => s.trim()).join(', ') || '—');
-  line(vr && visit.modes.length > 1 ? L(`Пучок (режим ${visit.mode + 1})`, `Beam (mode ${visit.mode + 1})`) : L('Пучок', 'Beam'), L(`${data.kv_kv || '—'} кВ${data.kv_ma ? `, ${data.kv_ma} мА` : ''}, СПО ${data.kv_hvl || '—'} мм ${mat}${data.kv_filter ? `, фильтр ${data.kv_filter}` : ''}`, `${data.kv_kv || '—'} kV${data.kv_ma ? `, ${data.kv_ma} mA` : ''}, HVL ${data.kv_hvl || '—'} mm ${mat}${data.kv_filter ? `, filter ${data.kv_filter}` : ''}`));
+  const hvlTxt = i.hvlSource === 'measured' ? L(`${fmt(i.hvl, hvlDecimals(i.hvl))} мм ${mat} (измеренный)`, `${fmt(i.hvl, hvlDecimals(i.hvl))} mm ${mat} (measured)`) : `${data.kv_hvl || '—'} ${L('мм', 'mm')} ${mat}`;
+  line(vr && visit.modes.length > 1 ? L(`Пучок (режим ${visit.mode + 1})`, `Beam (mode ${visit.mode + 1})`) : L('Пучок', 'Beam'), L(`${data.kv_kv || '—'} кВ${data.kv_ma ? `, ${data.kv_ma} мА` : ''}, СПО ${hvlTxt}${data.kv_filter ? `, фильтр ${data.kv_filter}` : ''}`, `${data.kv_kv || '—'} kV${data.kv_ma ? `, ${data.kv_ma} mA` : ''}, HVL ${hvlTxt}${data.kv_filter ? `, filter ${data.kv_filter}` : ''}`));
   // режимы и строки аппликаторов: коротко все, подробно ниже — выбранная строка выбранного режима
   const pUnit = unitLabel(PRESSURE_UNITS[data.kv_env_P_unit]);
   if (vr && visit.modes.length > 1) {
@@ -1602,6 +1643,12 @@ function reportText(data, r, all = null, vr = null) {
     out.push('');
     out.push(L(`Аппликаторы (${sess.rows.length}); подробно ниже — строка ${sess.active + 1}:`, `Applicators (${sess.rows.length}); row ${sess.active + 1} is detailed below:`));
     rowsReport(mode(), all, pUnit).forEach((l) => out.push(l));
+    out.push('');
+  }
+  // измерение СПО и значение сертификата по режимам (лист «СПО и k_Q»)
+  const hvlLines = vr ? hvlReportLines(visit, vr) : [];
+  if (hvlLines.length) {
+    hvlLines.forEach((l) => out.push(l));
     out.push('');
   }
   const coneTxt =
@@ -1865,8 +1912,11 @@ function update(opts = {}) {
   renderSummary(vr);
   applyVisibility(data, result);
   renderOutputs(ROOT(), result);
-  renderFlags(ROOT(), result.flags, seriesBox);
+  renderFlags(ROOT(), { ...result.flags, ...all.hvl.flags }, seriesBox);
   renderReadout(result, data);
+  renderHvlSheet(data, vr);
+  html($('#kv-hvl-sub'), richText(hvlFieldSub(all.hvl, result)));
+  renderDoseBeam(result, all);
   renderRowsState(all);
   // после renderFlags: он снимает подсветку со всех полей вкладки, таблицы режимов и таймера подсвечивают свои заново
   renderModes(vr, !opts.fromModes);
@@ -1940,6 +1990,19 @@ export function initKv() {
     },
     status: (t) => setStatus(t),
     isDemo: () => !!current.data && isDemo(current.data),
+  });
+  // лист «СПО и k_Q»: набор пластин, переход к режиму из таблицы по режимам
+  setupKvHvl({
+    getVisit: () => visit,
+    changed: () => {
+      openedFile = null;
+      update();
+    },
+    status: (t) => setStatus(t),
+    material: () => (mode().shared.kv_range === 'medium' ? 'Cu' : 'Al'),
+    modeName: (m) => modeName(m),
+    chamberName: (j) => L(`${j + 1} — ${chamberName(visit.chambers[j])}`, `${j + 1}: ${chamberName(visit.chambers[j])}`),
+    selectMode: (m) => selectMode(m),
   });
   update();
   if (!draft) setStatus(L('Введите свои данные или нажмите «Загрузить пример» (раздел «Данные»), чтобы посмотреть расчёт на вымышленных значениях.', 'Enter your own data or click "Load example" (the Data panel) to see the calculation on fictitious values.'));

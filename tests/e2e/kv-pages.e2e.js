@@ -1,6 +1,6 @@
 // Вкладка «kV-рентген»: листы как ярлыки в Excel (0.40.0). Разделы разнесены по листам «Аппарат и режимы» (1–2),
-// «Ошибка таймера» (3), «Поглощённая доза» (4–8), «Сводка и протокол» (9–10); «СПО и k_Q», «Линейность» и
-// «Воспроизводимость» — заготовки. У листа своя ссылка #kv/<лист>, открытый лист запоминается; ссылка «раздел N» на
+// «СПО и k_Q» (без номеров, 0.43.0), «Ошибка таймера» (3), «Поглощённая доза» (4–8), «Сводка и протокол» (9–10);
+// «Линейность» и «Воспроизводимость» — заготовки. У листа своя ссылка #kv/<лист>, открытый лист запоминается; ссылка «раздел N» на
 // раздел другого листа открывает этот лист; список разделов слева — только разделы открытого листа; отметки состояния
 // на ярлыках; печать — все разделы; на телефоне ряд ярлыков прокручивается вбок, страница — нет.
 import { test, before, after } from 'node:test';
@@ -20,7 +20,7 @@ after(async () => {
 
 const current = (page) => page.getAttribute('#kv-pages a[aria-current]', 'data-kv-go');
 const shown = (page) =>
-  page.locator('#kv-sheet section.step').evaluateAll((secs) => secs.filter((s) => s.offsetParent !== null).map((s) => s.querySelector('.step-no').textContent.trim()));
+  page.locator('#kv-sheet section.step').evaluateAll((secs) => secs.filter((s) => s.offsetParent !== null).map((s) => s.querySelector('.step-no')?.textContent.trim() ?? s.getAttribute('aria-labelledby')));
 const states = (page) => page.locator('#kv-pages a').evaluateAll((as) => Object.fromEntries(as.map((a) => [a.dataset.kvGo, a.dataset.state])));
 
 test('kV-рентген: листы — разделы по листам, адрес листа, переход по ссылке на раздел, состояние, печать', async () => {
@@ -37,14 +37,16 @@ test('kV-рентген: листы — разделы по листам, адр
   assert.deepEqual(await page.locator('#module-kv-secnav .secnav-item').evaluateAll((bs) => bs.map((b) => b.querySelector('.n').textContent)), ['1', '2']);
   // пустая вкладка: заготовки — «готовится», сводка без отметки
   const empty = await states(page);
-  assert.equal(empty.hvl, 'wip');
+  assert.equal(empty.hvl, 'empty');
+  assert.equal(empty.linearity, 'wip');
   assert.equal(empty.summary, 'none');
   assert.equal(empty.dose, 'empty');
-  assert.equal(await page.getAttribute('#kv-pages a[data-kv-go="hvl"]', 'title'), 'СПО и kQ: лист готовится');
+  assert.equal(await page.getAttribute('#kv-pages a[data-kv-go="hvl"]', 'title'), 'СПО и kQ: не заполнен');
+  assert.equal(await page.getAttribute('#kv-pages a[data-kv-go="linearity"]', 'title'), 'Линейность: лист готовится');
 
   await page.click('#kv-btn-sample');
   await pause();
-  assert.deepEqual(await states(page), { modes: 'done', hvl: 'wip', timer: 'done', linearity: 'wip', repro: 'wip', dose: 'done', summary: 'none' });
+  assert.deepEqual(await states(page), { modes: 'done', hvl: 'done', timer: 'done', linearity: 'wip', repro: 'wip', dose: 'done', summary: 'none' });
   // ток трубки не число — предупреждение на листе «Аппарат и режимы»
   await page.fill('#kv_ma', 'десять');
   await pause();
@@ -67,15 +69,15 @@ test('kV-рентген: листы — разделы по листам, адр
   await kvPage(page, 'summary');
   assert.deepEqual(await shown(page), ['9', '10']);
   assert.ok(await page.locator('#kv-modebar').isHidden());
-  // заготовка: текст листа, разделов нет
+  // лист «СПО и k_Q»: три раздела без номеров, строка выбора режима; заготовка «Линейность» — текст, разделов нет
   await kvPage(page, 'hvl');
+  assert.deepEqual(await shown(page), ['kv-sh1', 'kv-sh2', 'kv-sh3']);
+  assert.ok(await page.locator('#kv-modebar').isVisible());
+  assert.deepEqual(await page.locator('#module-kv-secnav .secnav-item').evaluateAll((bs) => bs.map((b) => b.title)), ['Измерение СПО', 'СПО и kQ по режимам', 'Набор пластин']);
+  await kvPage(page, 'linearity');
   assert.deepEqual(await shown(page), []);
-  assert.match(await page.locator('#kv-wip-hvl').locator('xpath=..').innerText(), /Лист готовится\. Здесь будут измерение СПО по режимам/);
-  // ссылка «раздел 2» в заготовке открывает лист «Аппарат и режимы»
-  await page.locator('.kv-wip[data-kv-page="hvl"] a.sec-link').click();
-  await pause(800);
-  assert.equal(await current(page), 'modes');
-  assert.ok(await page.locator('#kv-s2').isVisible());
+  assert.match(await page.locator('#kv-wip-lin').locator('xpath=..').innerText(), /Лист готовится\. Здесь будет проверка линейности по режимам/);
+  await kvPage(page, 'modes');
   // ссылка «раздел 4» в разделе 1 — лист «Поглощённая доза»
   await page.locator('section[aria-labelledby="kv-s1"] .hint a.sec-link', { hasText: 'раздел 4' }).first().click();
   await pause(800);
@@ -102,9 +104,9 @@ test('kV-рентген: листы — разделы по листам, адр
   assert.ok(await page.locator('#module-kv').isVisible());
   assert.equal(await current(page), 'timer');
 
-  // печать: все разделы рабочего листа, без ярлыков и заготовок
+  // печать: все разделы рабочего листа (лист СПО — раз СПО измеряли), без ярлыков и заготовок
   await page.emulateMedia({ media: 'print' });
-  assert.deepEqual(await shown(page), ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']);
+  assert.deepEqual(await shown(page), ['1', '2', 'kv-sh1', 'kv-sh2', 'kv-sh3', '3', '4', '5', '6', '7', '8', '9', '10']);
   assert.ok(await page.locator('#kv-pages').isHidden());
   assert.ok(await page.locator('.kv-wip').first().isHidden());
   await page.emulateMedia({ media: 'screen' });

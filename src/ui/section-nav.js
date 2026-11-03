@@ -71,7 +71,7 @@ function render(s) {
     s.items = items;
     s.list.innerHTML = items
       .map(
-        (i, k) => `<li data-k="${k}"><button type="button" class="secnav-item" data-k="${k}" title="${escHtml(`${i.no}. ${i.text}`)}">` +
+        (i, k) => `<li data-k="${k}"><button type="button" class="secnav-item" data-k="${k}" title="${escHtml(i.no ? `${i.no}. ${i.text}` : i.text)}">` +
           `<span class="secnav-no" aria-hidden="true"><span class="n">${escHtml(i.no)}</span>${CHECK}</span>` +
           `<span class="secnav-label">${i.html}</span><span class="visually-hidden secnav-state"></span></button></li>`,
       )

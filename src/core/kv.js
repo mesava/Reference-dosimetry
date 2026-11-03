@@ -130,6 +130,33 @@ export const KV_DEFAULTS = {
   kv_env_P: '',
   kv_env_P_unit: 'kPa',
 
+  // измерение СПО (лист «СПО и k_Q», kv-hvl.js): расстояние источник — камера и поле у фильтров — для протокола;
+  // показания без фильтров, с x₁, с x₂ и контрольное без фильтров в конце; толщины — число в мм или пластины набора через
+  // «+» (u(x) и cov — вручную только для чисел)
+  kv_hl_dist: '',
+  kv_hl_app: '',
+  kv_hl_D0: ['', '', ''],
+  kv_hl_D1: ['', '', ''],
+  kv_hl_D2: ['', '', ''],
+  kv_hl_Dc: ['', '', ''],
+  kv_hl_x1: '',
+  kv_hl_x2: '',
+  kv_hl_ux1: '',
+  kv_hl_ux2: '',
+  kv_hl_cov: '',
+  kv_hl_apply: true, // измеренный СПО — в расчёт режима вместо СПО из таблицы режимов
+  // допуски измерения СПО по методике учреждения (в Rev.1 чисел нет; общие для режимов; пусто — без проверки):
+  // u_A среднего, %; D̄₁ и D̄₂ от D̄₀/2, %; контрольный D₀ от начального, %
+  kv_hl_ua_tol: '',
+  kv_hl_band_tol: '',
+  kv_hl_ctrl_tol: '',
+  // набор пластин (общий для режимов): обозначение, материал 'Al' | 'Cu', номинальная и измеренная толщина, u(t), мм
+  kv_pl_name: [],
+  kv_pl_mat: [],
+  kv_pl_nom: [],
+  kv_pl_t: [],
+  kv_pl_u: [],
+
   // задание облучения и ошибка таймера
   kv_set_unit: 'min', // 'Gy' | 'min' | 's' | 'MU'
   kv_set: '',
@@ -175,8 +202,9 @@ export const KV_DEFAULTS = {
   kv_tol: '2',
 };
 
-const CELL_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc'];
-const BOOL_KEYS = ['kv_cone_largest', 'kv_foil', 'kv_lab_pol_applied', 'kv_lab_ks_applied', 'kv_ks_on'];
+const CELL_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc', 'kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc'];
+const BOOL_KEYS = ['kv_cone_largest', 'kv_foil', 'kv_lab_pol_applied', 'kv_lab_ks_applied', 'kv_ks_on', 'kv_hl_apply'];
+const PLATE_KEYS = ['kv_pl_name', 'kv_pl_mat', 'kv_pl_nom', 'kv_pl_t', 'kv_pl_u'];
 
 export function normalizeKv(input) {
   const f = { ...KV_DEFAULTS, ...input, protocol: 'trs' };
@@ -192,6 +220,10 @@ export function normalizeKv(input) {
     f[k] = a;
   }
   for (const k of BOOL_KEYS) f[k] = f[k] === true || f[k] === 'true';
+  // набор пластин: столбцы одной длины, строки — текст
+  const np = Math.max(0, ...PLATE_KEYS.map((k) => (Array.isArray(f[k]) ? f[k].length : 0)));
+  for (const k of PLATE_KEYS) f[k] = Array.from({ length: np }, (_, i) => (Array.isArray(f[k]) && f[k][i] !== undefined && f[k][i] !== null ? String(f[k][i]) : ''));
+  f.kv_pl_mat = f.kv_pl_mat.map((m) => (m === 'Cu' ? 'Cu' : 'Al'));
   if (!Array.isArray(f.kv_staff) || f.kv_staff.length === 0) f.kv_staff = [''];
   if (f.kv_range !== 'medium') f.kv_range = 'low';
   if (f.kv_cal !== 'nk') f.kv_cal = 'ndw';
@@ -310,7 +342,14 @@ export function computeKv(form) {
 
   // ------------------------------------------------------------ качество пучка
   const kv = read('kv_kv', L('Напряжение на трубке', 'Tube voltage'));
-  const hvl = read('kv_hvl', L(`СПО, мм ${mat}`, `HVL, mm ${mat}`));
+  // СПО, измеренный на листе «СПО и k_Q» (kv_hvl_meas — от computeKvVisit, kv-hvl.js), заменяет СПО из таблицы режимов
+  const hvlMeas = typeof f.kv_hvl_meas === 'number' && f.kv_hvl_meas > 0 ? f.kv_hvl_meas : NaN;
+  const hvlNominal = parseNumber(f.kv_hvl);
+  const hvl = Number.isFinite(hvlMeas) ? hvlMeas : read('kv_hvl', L(`СПО, мм ${mat}`, `HVL, mm ${mat}`));
+  if (Number.isFinite(hvlMeas)) {
+    const was = Number.isFinite(hvlNominal) ? L(` (в таблице режимов — ${ru(hvlNominal, 3)} мм ${mat})`, ` (${ru(hvlNominal, 3)} mm ${mat} in the modes table)`) : '';
+    add('info', 'common', L(`СПО пучка — измеренный на листе «СПО и k_Q»: ${ru(hvl, 3)} мм ${mat}${was}. По нему — k_Q и все величины, зависящие от СПО.`, `The beam HVL is the one measured on the “HVL and k_Q” sheet: ${ru(hvl, 3)} mm ${mat}${was}. k_Q and all HVL-dependent quantities use it.`), `${REF.trs}, разд. ${range === 'low' ? '8.3.2' : '9.3.2'}`);
+  }
   let qualityOk = Number.isFinite(kv) && Number.isFinite(hvl);
   if (Number.isFinite(kv) && (kv < 10 || kv > 300)) {
     add('error', 'common', L('Напряжение на трубке задаётся в киловольтах, от 10 до 300 кВ.', 'The tube voltage is entered in kilovolts, from 10 to 300 kV.'), secRef, 'kv_kv');
@@ -1010,7 +1049,7 @@ export function computeKv(form) {
     compliance,
     notRev1,
     phantom: { clin: phantom, lab: labPhantom, status: phantomStatus, customUsed },
-    inputs: { kv, hvl, ssd, coneSize, coneB, fClin, fLab, ssdLab, sameGeometry, T, P, H: env.H, T0, P0, V1, V2, kelec, kleak, M1, Mopp, M2, X, Xeff, unit: f.kv_set_unit, unitLabel: uLabel },
+    inputs: { kv, hvl, hvlSource: Number.isFinite(hvlMeas) ? 'measured' : 'table', hvlNominal, ssd, coneSize, coneB, fClin, fLab, ssdLab, sameGeometry, T, P, H: env.H, T0, P0, V1, V2, kelec, kleak, M1, Mopp, M2, X, Xeff, unit: f.kv_set_unit, unitLabel: uLabel },
     timer,
     ctrl,
     depth,

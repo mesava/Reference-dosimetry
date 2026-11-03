@@ -304,6 +304,8 @@ test('режимы аппарата: из нескольких режимов с
   const near05 = computeKvVisit(v).modes[1];
   // СПО 0,50: ln(1,00/0,50) = 0,69 < ln(0,50/0,20) = 0,92 — режим 1
   assert.equal(near05.polMode, 0);
+  // СПО режима 2 — из таблицы режимов, а не измеренный на листе «СПО и k_Q»
+  v.modes[1].shared.kv_hl_apply = false;
   v.modes[1].shared.kv_hvl = '0,30';
   const near03 = computeKvVisit(v).modes[1];
   // СПО 0,30: ln(0,30/0,20) = 0,41 < ln(1,00/0,30) = 1,20 — режим 3

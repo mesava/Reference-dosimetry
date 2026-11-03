@@ -1440,3 +1440,59 @@ table.kv-modes-t tbody tr.active td { background: var(--accent-soft); }
   table.kv-rows tbody tr.active td { background: none; font-weight: 600; }
   table.kv-rows .cone-in select { appearance: none; border: 0; width: auto; }
 }
+/* kV: лист «СПО и k_Q» — измерение СПО, таблица по режимам, набор пластин */
+.kv-dose-beam { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+.kv-dose-beam:empty { display: none; }
+.kv-hl-memo { margin: 6px 0 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 80ch; font-size: 13px; color: var(--muted); }
+table.kv-hl-budget { font-size: 13px; }
+table.kv-hl-budget td.v, table.kv-hl-budget th.v { text-align: right; white-space: nowrap; }
+table.kv-hl-budget tr.sum td { border-top: 1px solid var(--rule); font-weight: 600; }
+#kv-hl-budget-box[hidden] { display: none; }
+table.kv-hvlq td small { display: block; font: 11px var(--font-body); color: var(--muted); white-space: nowrap; }
+table.kv-hvlq td.v { width: auto; white-space: nowrap; }
+table.kv-hvlq td.q { font-size: 12.5px; }
+table.kv-hvlq tbody td { background: var(--sheet); }
+table.kv-hvlq tbody tr.active td { background: var(--accent-soft); }
+table.kv-hvlq th.act, table.kv-hvlq td.act { width: 1.6em; text-align: center; }
+table.kv-hvlq .st { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--rule); vertical-align: middle; }
+table.kv-hvlq .st.ok { background: var(--ok); }
+table.kv-hvlq .st.warn { background: var(--warn); }
+table.kv-hvlq .st.error { background: var(--err); }
+table.kv-hvlq .kv-hq-pick { min-width: 1.8em; height: 26px; padding: 0 4px; border: 1px solid var(--rule); border-radius: 4px; background: var(--sheet); color: var(--muted); font: 12px var(--font-mono); cursor: pointer; }
+table.kv-hvlq .kv-hq-pick[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+table.kv-plates td.name input { min-width: 5em; max-width: 14em; }
+table.kv-plates td.v input { width: 6.5em; }
+section[data-kv-page="hvl"] h4.series-head { margin-top: 14px; }
+.cell-mean output .ua { font-size: 0.8em; color: var(--muted); text-transform: none; letter-spacing: 0; }
+table.kv-plates td.mat select { min-width: 4.2em; height: 32px; }
+table.kv-plates th.del, table.kv-plates td.del { width: 2em; text-align: center; }
+table.kv-plates select.flag-error, table.kv-plates input.flag-error { border-color: var(--err); background: var(--err-soft); }
+#kv-plates-note.warn { color: var(--err); }
+@media (max-width: 560px) {
+  /* строка режима: № | режим, состояние | камера | СПО измерен., в расчёте | качества | k_Q, N_Q */
+  table.kv-hvlq tr { grid-template-columns: 2.2em repeat(2, minmax(0, 1fr)) 1.4em; align-items: start; }
+  table.kv-hvlq tbody tr.active { background: var(--accent-soft); }
+  table.kv-hvlq tbody td, table.kv-hvlq tbody tr.active td { background: none; }
+  table.kv-hvlq td.no { grid-column: 1; grid-row: 1 / span 4; }
+  table.kv-hvlq td.mode { grid-column: 2 / span 2; grid-row: 1; }
+  table.kv-hvlq td.act { grid-column: 4; grid-row: 1; text-align: right; }
+  table.kv-hvlq td.ch { grid-column: 2 / span 2; grid-row: 2; }
+  table.kv-hvlq td.meas { grid-column: 2; grid-row: 3; text-align: left; }
+  table.kv-hvlq td.used { grid-column: 3; grid-row: 3; text-align: left; }
+  table.kv-hvlq td.q { grid-column: 2 / span 2; grid-row: 4; }
+  table.kv-hvlq td.kq { grid-column: 2; grid-row: 5; text-align: left; }
+  table.kv-hvlq td.nq { grid-column: 3; grid-row: 5; text-align: left; }
+  /* пластина: № | обозначение, материал | номинал, измерено, u(t) | удалить */
+  table.kv-plates tr { grid-template-columns: 1.6em repeat(3, minmax(0, 1fr)) 40px; }
+  table.kv-plates td.no { grid-column: 1; grid-row: 1 / span 2; }
+  table.kv-plates td.name { grid-column: 2 / span 2; grid-row: 1; }
+  table.kv-plates td.mat { grid-column: 4; grid-row: 1; }
+  table.kv-plates td.del { grid-column: 5; grid-row: 1 / span 2; align-self: center; }
+  table.kv-plates td.v { grid-row: 2; text-align: left; }
+  table.kv-plates td.v input { width: 100%; }
+}
+@media print {
+  table.kv-hvlq .kv-hq-pick { border: 0; background: none; color: inherit; padding: 0; }
+  table.kv-hvlq tbody tr.active td { background: none; }
+  table.kv-plates td.del, #kv-btn-add-plate { display: none; }
+}

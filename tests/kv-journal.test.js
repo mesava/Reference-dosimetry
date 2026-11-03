@@ -111,14 +111,18 @@ test('«Сохранить аппарат в Оборудование»: нов�
   assert.deepEqual(ch.kv.kv_cq_hvl, SAMPLE_KV.kv_cq_hvl);
   assert.ok(!('kv_ch_model' in ch.kv) && !('kv_el_model' in ch.kv));
   assert.ok(Object.keys(ch.kv).every((k) => KV_CERT_KEYS.includes(k)));
-  // режимы: пучок, камера, электрометр, аппликатор, референсный — стандартный тубус вкладки (Ø 10 см, табл. 31)
-  assert.deepEqual(m.modes.map((x) => [x.range, x.kv, x.ma, x.filter, x.hvl, x.chamberId === ch.id, x.electrometerId === res.journal.electrometers[0].id]), [
-    ['medium', '200', '10', '0,5 мм Cu + 1 мм Al', '1,00', true, true], ['medium', '120', '', '0,2 мм Cu', '0,30', true, true],
+  // режимы: пучок, камера, электрометр, аппликатор, референсный — стандартный тубус вкладки (Ø 10 см, табл. 31);
+  // у режима 1 СПО измерен на листе «СПО и k_Q» — записан измеренным с датой измерения
+  assert.deepEqual(m.modes.map((x) => [x.range, x.kv, x.ma, x.filter, x.hvl, x.hvlSource, x.hvlDate, x.chamberId === ch.id, x.electrometerId === res.journal.electrometers[0].id]), [
+    ['medium', '200', '10', '0,5 мм Cu + 1 мм Al', '1,000', 'measured', SAMPLE_KV.kv_date, true, true], ['medium', '120', '', '0,2 мм Cu', '0,30', 'nominal', '', true, true],
   ]);
+  // набор пластин для СПО — с аппаратом
+  assert.deepEqual(m.plates.map((p) => [p.name, p.mat, p.t, p.u]), SAMPLE_KV.kv_pl_name.map((n, i) => [n, 'Cu', SAMPLE_KV.kv_pl_t[i], SAMPLE_KV.kv_pl_u[i]]));
+  assert.deepEqual([res.report.hvlMeasured, res.report.platesSaved], [1, 6]);
   assert.deepEqual(m.applicators.map((a) => [a.shape, a.a, a.ssd]), [['circle', '10', '50']]);
   assert.ok(m.modes.every((x) => x.applicators.length === 1 && x.refApplicator === m.applicators[0].id));
   assert.deepEqual(res.modeIds, m.modes.map((x) => x.id));
-  assert.match(kvSaveText(m, res.report), /^Аппарат «Xstrahl 300» сохранён в «Оборудование»: добавлен аппарат «Xstrahl 300»; режимов добавлено: 2; аппликаторов добавлено: 1; камеры добавлены: PTW 30013 № 0000; электрометры добавлены: Электрометр \(демо\)\. Сохраните журнал в файл\.$/);
+  assert.match(kvSaveText(m, res.report), /^Аппарат «Xstrahl 300» сохранён в «Оборудование»: добавлен аппарат «Xstrahl 300»; режимов добавлено: 2; аппликаторов добавлено: 1; камеры добавлены: PTW 30013 № 0000; электрометры добавлены: Электрометр \(демо\); измеренный СПО записан в режимов: 1; набор пластин для СПО сохранён \(6\)\. Сохраните журнал в файл\.$/);
 
   // повторно — по связи: режимы обновляются, новый тубус добавляется к аппарату и к режиму, прежние отметки остаются
   const j1 = res.journal;
@@ -137,7 +141,8 @@ test('«Сохранить аппарат в Оборудование»: нов�
   assert.equal(m1.modes[0].applicators.length, 2);
   assert.equal(m1.modes[1].applicators.length, 1);
   // СПО другой: без согласия не меняется, расхождение — в отчёте
-  assert.deepEqual(r2.report.hvl, [{ mode: 1, was: '0,30', now: '0,32', source: 'nominal', range: 'medium' }]);
+  assert.deepEqual(r2.report.hvl, [{ mode: 1, was: '0,30', now: '0,32', source: 'nominal', sourceDate: '', measured: false, range: 'medium' }]);
+  assert.equal(r2.report.platesSaved, 0, 'набор тот же — не перезаписывается');
   assert.equal(m1.modes[1].hvl, '0,30');
   assert.equal(kvMachineFromVisit(j1, v, { replaceHvl: true }).journal.machines[0].modes[1].hvl, '0,32');
   // новый сертификат камеры записывается в её запись

@@ -41,7 +41,12 @@ export const KV_MODE_DEFAULTS = {
   chamberId: '', electrometerId: '', applicators: [], refApplicator: '', notes: '',
 };
 /** Аппарат: tube — номер (серийный) рентгеновской трубки; после замены трубки СПО меряют заново. */
-export const KV_MACHINE_EXTRA = { tube: '', applicators: [], modes: [] };
+export const KV_MACHINE_EXTRA = { tube: '', applicators: [], modes: [], plates: [] };
+/**
+ * Пластина набора для измерения СПО (с 0.43.0; вводится на листе «СПО и k_Q» вкладки kV и сохраняется с аппаратом):
+ * name — обозначение («Al1»), mat — 'Al' | 'Cu', nom и t — номинальная и измеренная толщина, u — u(t), мм.
+ */
+export const KV_PLATE_DEFAULTS = { name: '', mat: 'Al', nom: '', t: '', u: '' };
 
 export function newKvApplicator(from = {}) {
   return { ...KV_APPLICATOR_DEFAULTS, shape: from.shape ?? 'circle', ssd: str(from.ssd), id: rid('a') };
@@ -78,6 +83,14 @@ export function normalizeKvMachine(m) {
   out.applicators = arr(m?.applicators).map(normApplicator);
   const ids = new Set(out.applicators.map((a) => a.id));
   out.modes = arr(m?.modes).map((x) => normMode(x, ids));
+  out.plates = arr(m?.plates)
+    .map((p) => {
+      const x = { ...KV_PLATE_DEFAULTS, ...(p && typeof p === 'object' ? p : {}) };
+      for (const k of ['name', 'nom', 't', 'u']) x[k] = str(x[k]);
+      x.mat = x.mat === 'Cu' ? 'Cu' : 'Al';
+      return { name: x.name, mat: x.mat, nom: x.nom, t: x.t, u: x.u };
+    })
+    .filter((x) => [x.name, x.nom, x.t, x.u].some((v) => !isBlank(v)));
   delete out.calGeo;
   return out;
 }

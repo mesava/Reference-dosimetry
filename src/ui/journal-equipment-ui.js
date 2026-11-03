@@ -395,6 +395,16 @@ function kvChip(checks) {
   return '';
 }
 
+/** Набор пластин для СПО у аппарата: сколько пластин Al и Cu; вводится на листе «СПО и k_Q» вкладки kV. */
+function kvPlatesText(m) {
+  const n = (mat) => (m.plates ?? []).filter((p) => p.mat === mat).length;
+  const al = n('Al');
+  const cu = n('Cu');
+  if (!al && !cu) return L('Набора пластин для СПО у аппарата нет: его вводят на листе «СПО и k_Q» вкладки «kV-рентген» и сохраняют сюда вместе с аппаратом.', 'The unit has no HVL plate set: it is entered on the “HVL and k_Q” sheet of the kV x-rays tab and saved here together with the unit.');
+  const parts = [al ? `Al — ${al}` : '', cu ? `Cu — ${cu}` : ''].filter(Boolean).join(', ');
+  return L(`Набор пластин для СПО: ${parts}. Правится на листе «СПО и k_Q» вкладки «kV-рентген» и подставляется туда вместе с режимами.`, `HVL plate set: ${parts}. It is edited on the “HVL and k_Q” sheet of the kV x-rays tab and filled in there together with the modes.`);
+}
+
 function kvMachineCard(j, m) {
   const k = 'machine';
   const checks = kvMachineChecks(m, j);
@@ -418,6 +428,7 @@ function kvMachineCard(j, m) {
     <h3 class="sub-h">${esc(L('Режимы', 'Modes'))}</h3>
     <div class="jbeams">${m.modes.map((x, i) => kvModeBlock(j, m, x, i, checks)).join('') || `<p class="sub-hint">${esc(L('Режимов пока нет: режим — напряжение, ток, фильтр и СПО со своей камерой и своими аппликаторами.', 'No modes yet: a mode is a voltage, current, filter and HVL with its own chamber and applicators.'))}</p>`}</div>
     <div class="row-tools"><button type="button" class="link-btn" data-add-kvmode="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить режим', 'Add a mode'))}</button></div>
+    <p class="sub-hint jkv-plates">${richText(kvPlatesText(m))}</p>
     <p class="sub-hint">${esc(L('Новый режим копирует диапазон, камеру, электрометр и аппликаторы последнего. Во вкладке «kV-рентген» аппарат выбирается на листе «Аппарат и режимы»: отмеченные режимы подставляются с камерой, её kV-сертификатом, электрометром и аппликаторами, а измеренное возвращается сюда кнопкой «Сохранить аппарат в Оборудование».', 'A new mode copies the range, chamber, electrometer and applicators of the last one. In the kV x-rays tab the unit is selected on the Machine and modes sheet: the ticked modes are filled in with the chamber, its kV certificate, the electrometer and the applicators, and the measured data come back here with “Save the unit to Equipment”.'))}</p>
     <div class="row-tools">
       <button type="button" class="link-btn danger" data-del="machine:${esc(m.id)}"${hasSessions ? ` disabled title="${esc(L('У аппарата есть записи в журнале', 'The machine has records in the journal'))}"` : ''}>${esc(L('Удалить аппарат', 'Delete machine'))}</button>

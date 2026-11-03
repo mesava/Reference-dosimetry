@@ -7,7 +7,7 @@ import { kvMachineModeTitle, applicatorText, hvlUnit } from '../core/kv-machine.
 import { kvVisitFromMachine, kvMachineFromVisit, kvSaveText, kvMachineText } from '../core/kv-journal.js';
 import { chamberText } from '../core/journal.js';
 import { parseCells } from '../core/units.js';
-import { $, esc, richText } from './common.js';
+import { $, esc, richText, dateText } from './common.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
 
 let api = null;
@@ -23,7 +23,25 @@ const kvMachines = (j) => j.machines.filter((m) => m.kind === 'kv');
 const machineName = (m) => kvMachineText(m) || L('аппарат без названия', 'unnamed unit');
 const ticked = (m) => m.modes.filter((x) => !unticked.get(m.id)?.has(x.id)).map((x) => x.id);
 /** Во вкладке есть показания (в любом режиме и строке). */
-const hasReadings = (v) => v.modes.some((md) => md.rows.some((r) => ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_Mc'].some((k) => parseCells(r[k]).n > 0)));
+const hasReadings = (v) =>
+  v.modes.some((md) => md.rows.some((r) => ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_Mc'].some((k) => parseCells(r[k]).n > 0)) || ['kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc'].some((k) => parseCells(md.shared[k]).n > 0));
+/** Источник СПО режима «Оборудования»: «номинальный» или «измеренный 03.11.2026». */
+const hvlSourceText = (source, date) =>
+  source === 'measured' ? L(`измеренный${date ? ` ${dateText(date)}` : ''}`, `measured${date ? ` ${dateText(date)}` : ''}`) : L('номинальный', 'nominal');
+
+/** Вопрос о СПО при сохранении: что в «Оборудовании», что во вкладке и чем заменить. */
+function hvlAskText(list, date) {
+  const line = (h) =>
+    L(
+      `режим ${h.mode + 1} — ${h.was} ${hvlUnit(h.range)} (${hvlSourceText(h.source, h.sourceDate)}) → ${h.now} ${hvlUnit(h.range)} (${h.measured ? hvlSourceText('measured', date) : 'из таблицы режимов'})`,
+      `mode ${h.mode + 1}: ${h.was} ${hvlUnit(h.range)} (${hvlSourceText(h.source, h.sourceDate)}) → ${h.now} ${hvlUnit(h.range)} (${h.measured ? hvlSourceText('measured', date) : 'from the modes table'})`,
+    );
+  const nominalByMeasured = list.every((h) => h.measured && h.source !== 'measured');
+  return L(
+    `СПО в «Оборудовании» другой: ${list.map(line).join('; ')}. ${nominalByMeasured ? 'Заменить номинальный измеренным?' : 'Заменить значениями вкладки?'}`,
+    `The HVL in Equipment differs: ${list.map(line).join('; ')}. ${nominalByMeasured ? 'Replace the nominal value with the measured one?' : 'Replace with the values of the tab?'}`,
+  );
+}
 
 /** Режим аппарата строкой списка: «Режим 1 — 200 кВ / 15 мА: СПО 1,0 мм Cu; PTW 30013 № 1001; аппликаторы F5, F10 (референсный F10)». */
 function modeLine(j, m, x, i) {
@@ -32,7 +50,9 @@ function modeLine(j, m, x, i) {
   const apps = m.applicators.filter((a) => x.applicators.includes(a.id));
   const ref = m.applicators.find((a) => a.id === x.refApplicator);
   const parts = [
-    x.hvl ? L(`СПО ${x.hvl} ${hvlUnit(x.range)}`, `HVL ${x.hvl} ${hvlUnit(x.range)}`) : L('СПО не задан', 'no HVL'),
+    x.hvl
+      ? L(`СПО ${x.hvl} ${hvlUnit(x.range)}`, `HVL ${x.hvl} ${hvlUnit(x.range)}`) + (x.hvlSource === 'measured' ? ` (${hvlSourceText('measured', x.hvlDate)})` : '')
+      : L('СПО не задан', 'no HVL'),
     ch ? chamberText(ch) : L('камера не выбрана', 'no chamber'),
     apps.length ? L(`аппликаторов ${apps.length}`, `${apps.length} applicator${apps.length === 1 ? '' : 's'}`) + (ref ? L(`, референсный ${ref.name || applicatorText(ref)}`, `, reference ${ref.name || applicatorText(ref)}`) : '') : L('аппликаторы не отмечены', 'no applicators ticked'),
   ];
@@ -63,7 +83,7 @@ export function renderKvJournal() {
       ? L('Ручной ввод: вкладка не связана с аппаратом «Оборудования». Выберите аппарат, чтобы подставить его режимы, или сохраните вкладку в «Оборудование» — появится новый аппарат.', 'Manual entry: the tab is not linked to a unit in Equipment. Select a unit to fill in its modes, or save the tab to Equipment as a new unit.')
       : L('В «Оборудовании» рентгенотерапевтических аппаратов нет: вкладка заполняется вручную. «Сохранить аппарат в Оборудование» заведёт аппарат с режимами, аппликаторами и камерами вкладки.', 'There are no x-ray therapy units in Equipment: the tab is filled in by hand. “Save the unit to Equipment” creates a unit with the modes, applicators and chambers of the tab.');
   const ask = hvlAsk
-    ? `<div class="kvj-ask" role="group" aria-label="${esc(L('СПО в «Оборудовании» другой', 'The HVL in Equipment differs'))}"><p>${richText(L(`СПО в «Оборудовании» другой: ${hvlAsk.map((h) => `режим ${h.mode + 1} — ${h.was} → ${h.now} ${hvlUnit(h.range)} (${h.source === 'measured' ? 'измеренный' : 'номинальный'})`).join('; ')}. Заменить значениями вкладки?`, `The HVL in Equipment differs: ${hvlAsk.map((h) => `mode ${h.mode + 1}: ${h.was} → ${h.now} ${hvlUnit(h.range)} (${h.source})`).join('; ')}. Replace with the values of the tab?`))}</p>
+    ? `<div class="kvj-ask" role="group" aria-label="${esc(L('СПО в «Оборудовании» другой', 'The HVL in Equipment differs'))}"><p>${richText(hvlAskText(hvlAsk, v.common.kv_date))}</p>
       <div class="row-tools"><button type="button" class="primary" data-kvj="save-hvl">${esc(L('Заменить СПО', 'Replace the HVL'))}</button><button type="button" data-kvj="save-keep">${esc(L('Оставить СПО из «Оборудования»', 'Keep the HVL from Equipment'))}</button><button type="button" class="link-btn" data-kvj="save-cancel">${esc(L('Отмена', 'Cancel'))}</button></div></div>`
     : '';
   const html = `<div class="jbind-row"><span class="jlink-h">${esc(L('Журнал отделения', 'Department journal'))}</span>${sel}</div>

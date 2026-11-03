@@ -72,7 +72,7 @@ test('kV-рентген: таблица режимов — ввод в стро�
   await page.click('#kv-btn-copy-report');
   await pause();
   const report = await page.evaluate(() => navigator.clipboard.readText());
-  assert.match(report, /Пучок \(режим 2\): 150 кВ, 15 мА, СПО 0,50 мм Cu, фильтр 0,25 мм Cu \+ 1 мм Al\n/);
+  assert.match(report, /Пучок \(режим 2\): 150 кВ, 15 мА, СПО 0,500 мм Cu \(измеренный\), фильтр 0,25 мм Cu \+ 1 мм Al\n/);
   assert.match(report, /\nРежим 1: 200 кВ, 10 мА, СПО 1,00 мм Cu, фильтр 0,5 мм Cu \+ 1 мм Al; камера 1/);
 
   // новая камера в строке режима 1: режим 1 открывается, его камера 2 — в разделе 2; режим 2 — с камерой 1

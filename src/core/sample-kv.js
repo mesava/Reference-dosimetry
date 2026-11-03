@@ -52,6 +52,24 @@ export const SAMPLE_KV = {
   kv_tp_R2: ['21,95', '21,95', '21,96'],
   kv_tau_tol: '3',
 
+  // измерение СПО (лист «СПО и k_Q»): медные пластины набора, контрольный D₀ в конце; измеренный СПО — 1,000 мм Cu
+  kv_hl_dist: '100',
+  kv_hl_app: 'Ø 3 см',
+  kv_hl_D0: ['30,11', '30,12', '30,13'],
+  kv_hl_D1: ['16,70', '16,71', '16,70'],
+  kv_hl_D2: ['14,02', '14,03', '14,02'],
+  kv_hl_Dc: ['30,13', '30,12'],
+  kv_hl_x1: 'Cu1+Cu3+Cu4',
+  kv_hl_x2: 'Cu1+Cu6',
+  kv_hl_ua_tol: '1',
+  kv_hl_band_tol: '20',
+  kv_hl_ctrl_tol: '1',
+  kv_pl_name: ['Cu1', 'Cu2', 'Cu3', 'Cu4', 'Cu5', 'Cu6'],
+  kv_pl_mat: ['Cu', 'Cu', 'Cu', 'Cu', 'Cu', 'Cu'],
+  kv_pl_nom: ['0,1', '0,1', '0,25', '0,5', '0,5', '1,0'],
+  kv_pl_t: ['0,101', '0,099', '0,252', '0,498', '0,503', '1,002'],
+  kv_pl_u: ['0,003', '0,003', '0,003', '0,003', '0,003', '0,003'],
+
   kv_V1: '400',
   kv_polarity: '+',
   kv_M1: ['21,95', '21,96', '21,95'],
@@ -73,6 +91,7 @@ export const SAMPLE_KV_EN = {
   kv_machine: 'Orthovoltage x-ray unit (demo)',
   kv_filter: '0.5 mm Cu + 1 mm Al',
   kv_el_model: 'Electrometer (demo)',
+  kv_hl_app: 'Ø 3 cm',
   kv_notes: 'Demo data, not results of real measurements.',
 };
 
@@ -109,7 +128,12 @@ export const SAMPLE_KV_ROWS = [
 // Второй режим того же аппарата в том же измерении (раздел 1, «Режимы аппарата»): 150 кВ с двумя аппликаторами той же камерой. Серий при
 // обратной полярности и данных ошибки таймера в нём нет — k_pol и τ берутся из режима 1. Значения вымышлены.
 export const SAMPLE_KV_MODE2 = {
-  shared: { kv_kv: '150', kv_ma: '12', kv_filter: '0,25 мм Cu + 1 мм Al', kv_hvl: '0,50' },
+  shared: {
+    kv_kv: '150', kv_ma: '12', kv_filter: '0,25 мм Cu + 1 мм Al', kv_hvl: '0,50',
+    // измеренный СПО — 0,500 мм Cu; контрольного D₀ нет
+    kv_hl_D0: ['41,24', '41,25', '41,26'], kv_hl_D1: ['22,04', '22,05', '22,04'], kv_hl_D2: ['17,85', '17,84', '17,85'],
+    kv_hl_x1: 'Cu1+Cu2+Cu3', kv_hl_x2: 'Cu1+Cu5',
+  },
   rows: [
     {
       kv_cone_shape: 'circle',

@@ -43,29 +43,42 @@ test('kV-рентген ↔ «Оборудование»: сохранить а�
   await pause();
   await jb(page, 'save').click();
   await pause();
-  assert.match(await status(page), /^Аппарат «Xstrahl 300» сохранён в «Оборудование»: добавлен аппарат «Xstrahl 300»; режимов добавлено: 2; аппликаторов добавлено: 3; камеры добавлены: PTW 30013 № 0000; электрометры добавлены: Электрометр \(демо\)\./);
-  // вкладка связана с аппаратом: он выбран, режимы — с флажками
+  assert.match(await status(page), /^Аппарат «Xstrahl 300» сохранён в «Оборудование»: добавлен аппарат «Xstrahl 300»; режимов добавлено: 2; аппликаторов добавлено: 3; камеры добавлены: PTW 30013 № 0000; электрометры добавлены: Электрометр \(демо\); измеренный СПО записан в режимов: 2; набор пластин для СПО сохранён \(6\)\./);
+  // вкладка связана с аппаратом: он выбран, режимы — с флажками; СПО — измеренный на листе «СПО и k_Q», с датой
   assert.equal(await jb(page, 'machine').locator('option:checked').innerText(), 'Xstrahl 300');
   assert.equal(await page.locator('#kv-jbind [data-kvj-mode]').count(), 2);
-  assert.match(await page.locator('#kv-jbind .kvj-modes').innerText(), /Режим 1 — 200 кВ \/ 10 мА \/ 0,5 мм Cu \+ 1 мм Al: СПО 1,00 мм Cu; PTW 30013 № 0000; аппликаторов 3, референсный Ø 10 см, РИП 50 см/);
+  assert.match(await page.locator('#kv-jbind .kvj-modes').innerText(), /Режим 1 — 200 кВ \/ 10 мА \/ 0,5 мм Cu \+ 1 мм Al: СПО 1,000 мм Cu \(измеренный 15\.09\.2026\); PTW 30013 № 0000; аппликаторов 3, референсный Ø 10 см, РИП 50 см/);
 
-  // повторное сохранение с другим СПО — вопрос; «Оставить» не меняет СПО, «Заменить» — меняет
+  // измеренный СПО режима 1 не в расчёте, в таблице режимов другой — вопрос; «Оставить» не меняет СПО, «Заменить» — меняет
+  await kvPage(page, 'hvl');
+  await page.uncheck('#kv_hl_apply');
+  await kvPage(page, 'modes');
   await page.fill('#kv_hvl', '1,10');
   await pause();
   await jb(page, 'save').click();
   await pause();
-  assert.match(await page.locator('#kv-jbind .kvj-ask').innerText(), /СПО в «Оборудовании» другой: режим 1 — 1,00 → 1,10 мм Cu \(номинальный\)\. Заменить значениями вкладки\?/);
+  assert.match(await page.locator('#kv-jbind .kvj-ask').innerText(), /СПО в «Оборудовании» другой: режим 1 — 1,000 мм Cu \(измеренный 15\.09\.2026\) → 1,10 мм Cu \(из таблицы режимов\)\. Заменить значениями вкладки\?/);
   assert.ok(await jb(page, 'save').isDisabled());
   await jb(page, 'save-keep').click();
   await pause();
   assert.match(await status(page), /режимов обновлено: 2\. Сохраните журнал/);
   assert.equal(await page.locator('#kv-jbind .kvj-ask').count(), 0);
-  assert.match(await page.locator('#kv-jbind .kvj-modes').innerText(), /СПО 1,00 мм Cu/);
+  assert.match(await page.locator('#kv-jbind .kvj-modes').innerText(), /СПО 1,000 мм Cu \(измеренный 15\.09\.2026\)/);
   await jb(page, 'save').click();
   await pause();
   await jb(page, 'save-hvl').click();
   await pause();
-  assert.match(await page.locator('#kv-jbind .kvj-modes').innerText(), /СПО 1,10 мм Cu/);
+  assert.match(await page.locator('#kv-jbind .kvj-modes').innerText(), /СПО 1,10 мм Cu; /);
+  // измеренный снова в расчёте: в «Оборудовании» номинальный — «Заменить номинальный измеренным?»
+  await kvPage(page, 'hvl');
+  await page.check('#kv_hl_apply');
+  await kvPage(page, 'modes');
+  await jb(page, 'save').click();
+  await pause();
+  assert.match(await page.locator('#kv-jbind .kvj-ask').innerText(), /СПО в «Оборудовании» другой: режим 1 — 1,10 мм Cu \(номинальный\) → 1,000 мм Cu \(измеренный 15\.09\.2026\)\. Заменить номинальный измеренным\?/);
+  await jb(page, 'save-hvl').click();
+  await pause();
+  assert.match(await page.locator('#kv-jbind .kvj-modes').innerText(), /СПО 1,000 мм Cu \(измеренный 15\.09\.2026\)/);
 
   // «Оборудование»: аппарат с режимами и аппликаторами; у камеры — kV-сертификат
   await page.goto(`${server.url}/index.html#equipment`);
@@ -106,7 +119,7 @@ test('kV-рентген ↔ «Оборудование»: сохранить а�
   assert.match(await status(page), /^Подставлены режимы аппарата «Xstrahl 300»: 1\./);
   assert.equal(await page.locator('#kv-modes tr').count(), 1);
   assert.equal(await page.inputValue('#kv_kv'), '200');
-  assert.equal(await page.inputValue('#kv_hvl'), '1,10');
+  assert.equal(await page.inputValue('#kv_hvl'), '1,000');
   assert.equal(await page.inputValue('#kv_machine'), 'Xstrahl 300');
   // камера и kV-сертификат — из записи камеры, электрометр — из записи электрометра
   assert.equal(await page.inputValue('#kv_ch_model'), 'PTW30013');

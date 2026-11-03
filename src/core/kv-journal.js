@@ -4,11 +4,14 @@
 // kvMachineFromVisit — обратно, кнопкой «Сохранить аппарат в Оборудование»: режимы, аппликаторы, камеры с kV-сертификатом
 // и электрометры вкладки — в журнал. Ничего не удаляет: аппликаторы режима только добавляются, СПО «Оборудования»
 // заменяется значением вкладки, только если пользователь согласился. Расчёта здесь нет.
+// С 0.43.0: СПО, измеренный на листе «СПО и k_Q» и взятый в расчёт режима, записывается в режим как измеренный (с датой
+// измерения) — вместо номинального только с согласия пользователя; набор пластин для СПО хранится с аппаратом.
 import { KV_CHAMBER_KEYS, newKvMode, newKvChamber, emptyKvRow, computeKvVisit } from './kv-session.js';
 import { normalizeKvMachine, newKvApplicator, newKvMachineMode, kvRefCandidates, journalModelOfKv, kvModelOfJournal } from './kv-machine.js';
 import { uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, orgText, chamberText, electrometerText } from './journal.js';
 import { findEChamber } from './electron-chambers.js';
-import { parseNumber, isBlank } from './units.js';
+import { parseNumber, isBlank, dec } from './units.js';
+import { hvlText } from './kv-hvl.js';
 import { L } from './i18n.js';
 
 const str = (v) => (v === undefined || v === null ? '' : String(v));
@@ -100,6 +103,14 @@ export function kvVisitFromMachine(j, machine, modeIds, visit) {
   });
   const common = { ...visit.common, kv_jmachine: machine.id, kv_machine: kvMachineText(machine) };
   if (!isBlank(orgText(j))) common.kv_institution = orgText(j);
+  // набор пластин аппарата — на лист «СПО и k_Q» (у аппарата без набора остаётся набор вкладки)
+  if (machine.plates?.length) {
+    common.kv_pl_name = machine.plates.map((p) => p.name);
+    common.kv_pl_mat = machine.plates.map((p) => p.mat);
+    common.kv_pl_nom = machine.plates.map((p) => p.nom);
+    common.kv_pl_t = machine.plates.map((p) => p.t);
+    common.kv_pl_u = machine.plates.map((p) => p.u);
+  }
   return { visit: { common, chambers, modes, mode: 0 }, noCert: [...new Set(noCert)] };
 }
 
@@ -109,6 +120,14 @@ const sameApp = (a, r) =>
 /** Режим «Оборудования», совпадающий с режимом вкладки по диапазону, напряжению, фильтру и току (если он есть у обоих). */
 const sameMode = (y, s) =>
   y.range === (s.kv_range === 'medium' ? 'medium' : 'low') && sameNum(y.kv, s.kv_kv) && norm(y.filter) === norm(s.kv_filter) && (isBlank(y.ma) || isBlank(s.kv_ma) || sameNum(y.ma, s.kv_ma));
+
+/** Набор пластин вкладки (непустые строки) в виде пластин аппарата. */
+function visitPlates(common) {
+  const n = Math.max(0, ...['kv_pl_name', 'kv_pl_mat', 'kv_pl_nom', 'kv_pl_t', 'kv_pl_u'].map((k) => (Array.isArray(common[k]) ? common[k].length : 0)));
+  const at = (k, i) => str(Array.isArray(common[k]) ? common[k][i] : '').trim();
+  return Array.from({ length: n }, (_, i) => ({ name: at('kv_pl_name', i), mat: at('kv_pl_mat', i) === 'Cu' ? 'Cu' : 'Al', nom: at('kv_pl_nom', i), t: at('kv_pl_t', i), u: at('kv_pl_u', i) }))
+    .filter((x) => [x.name, x.nom, x.t, x.u].some((v) => v !== ''));
+}
 
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, copy(o[k])]));
 const sameKv = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -166,7 +185,7 @@ function upsertElectrometer(j, vc, rep) {
  */
 export function kvMachineFromVisit(j0, visit, { replaceHvl = false } = {}) {
   const j = structuredClone(j0);
-  const rep = { machineAdded: false, modesAdded: 0, modesUpdated: 0, appsAdded: 0, chambersAdded: [], certSaved: [], electrometersAdded: [], hvl: [] };
+  const rep = { machineAdded: false, modesAdded: 0, modesUpdated: 0, appsAdded: 0, chambersAdded: [], certSaved: [], electrometersAdded: [], hvl: [], hvlMeasured: 0, platesSaved: 0 };
   const name = str(visit.common.kv_machine).trim();
   let m = j.machines.find((x) => x.kind === 'kv' && x.id === visit.common.kv_jmachine)
     ?? (name ? j.machines.find((x) => x.kind === 'kv' && (norm(x.name) === norm(name) || norm(kvMachineText(x)) === norm(name))) : null);
@@ -176,6 +195,12 @@ export function kvMachineFromVisit(j0, visit, { replaceHvl = false } = {}) {
     rep.machineAdded = true;
   }
   const vr = computeKvVisit(visit);
+  const plates = visitPlates(visit.common);
+  if (plates.length && JSON.stringify(plates) !== JSON.stringify(m.plates ?? [])) {
+    m.plates = plates;
+    rep.platesSaved = plates.length;
+  }
+  const date = str(visit.common.kv_date);
   const used = new Set();
   const modeIds = visit.modes.map((md, i) => {
     const s = md.shared;
@@ -199,11 +224,27 @@ export function kvMachineFromVisit(j0, visit, { replaceHvl = false } = {}) {
     }
     used.add(x.id);
     Object.assign(x, { range: s.kv_range === 'medium' ? 'medium' : 'low', kv: str(s.kv_kv), ma: str(s.kv_ma), filter: str(s.kv_filter) });
-    if (isBlank(x.hvl)) x.hvl = str(s.kv_hvl);
-    else if (!isBlank(s.kv_hvl) && !sameNum(x.hvl, s.kv_hvl)) {
-      rep.hvl.push({ mode: i, was: x.hvl, now: str(s.kv_hvl), source: x.hvlSource, range: x.range });
-      if (replaceHvl) x.hvl = str(s.kv_hvl);
-    }
+    // СПО режима: измеренный на листе «СПО и k_Q» (если взят в расчёт) или из таблицы режимов
+    const h = vr.modes[i]?.hvl;
+    const measured = !!h?.apply;
+    const now = measured ? dec(hvlText(h.used)) : str(s.kv_hvl);
+    const setHvl = () => {
+      x.hvl = now;
+      if (measured) {
+        x.hvlSource = 'measured';
+        x.hvlDate = date;
+        rep.hvlMeasured++;
+      } else {
+        x.hvlSource = 'nominal'; // значение таблицы режимов вкладки
+        x.hvlDate = '';
+      }
+    };
+    if (isBlank(x.hvl)) {
+      if (!isBlank(now)) setHvl();
+    } else if (!isBlank(now) && !sameNum(x.hvl, now)) {
+      rep.hvl.push({ mode: i, was: x.hvl, now, source: x.hvlSource, sourceDate: x.hvlDate, measured, range: x.range });
+      if (replaceHvl) setHvl();
+    } else if (measured && (x.hvlSource !== 'measured' || x.hvlDate !== date)) setHvl(); // то же значение — измерен заново
     const vc = visit.chambers[md.chamber] ?? {};
     const chId = upsertChamber(j, vc, rep);
     if (chId) x.chamberId = chId;
@@ -231,6 +272,8 @@ export function kvSaveText(m, rep) {
     rep.chambersAdded.length ? L(`камеры добавлены: ${rep.chambersAdded.join(', ')}`, `chambers added: ${rep.chambersAdded.join(', ')}`) : '',
     rep.certSaved.length ? L(`kV-сертификат записан в камеры: ${rep.certSaved.join(', ')}`, `kV certificate saved to the chambers: ${rep.certSaved.join(', ')}`) : '',
     rep.electrometersAdded.length ? L(`электрометры добавлены: ${rep.electrometersAdded.join(', ')}`, `electrometers added: ${rep.electrometersAdded.join(', ')}`) : '',
+    rep.hvlMeasured ? L(`измеренный СПО записан в режимов: ${rep.hvlMeasured}`, `measured HVL saved to modes: ${rep.hvlMeasured}`) : '',
+    rep.platesSaved ? L(`набор пластин для СПО сохранён (${rep.platesSaved})`, `the HVL plate set saved (${rep.platesSaved})`) : '',
   ].filter(Boolean);
   return L(
     `Аппарат «${name}» сохранён в «Оборудование»${parts.length ? `: ${parts.join('; ')}` : ''}. Сохраните журнал в файл.`,
