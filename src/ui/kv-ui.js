@@ -1,12 +1,14 @@
 // Модуль «kV-рентген»: связывает форму с расчётным ядром kv.js (TRS-398 Rev.1, разд. 8 и 9).
 import { KV_DEFAULTS, normalizeKv } from '../core/kv.js';
-import { emptyKvRow, kvRowForm, normalizeKvSession, kvRowLabel, computeKvSession, kvRowEmpty, splitKvForm, KV_ROW_KEYS } from '../core/kv-session.js';
+import {
+  emptyKvRow, kvRowLabel, kvRowEmpty, KV_ROW_KEYS, normalizeKvVisit, splitKvVisitForm, kvVisitRowForm, computeKvVisit, newKvMode, newKvChamber,
+  kvModeLabel, kvModeFrom } from '../core/kv-session.js';
 import { KV_CHAMBERS, kvChamberLabel, KV_PHANTOMS, resolveKvPhantom, kvPhantomStatus } from '../core/kv-tables.js';
 import { TG61_T8_CHAMBER } from '../core/kv-tg61.js';
-import { SAMPLE_KV, SAMPLE_KV_EN, SAMPLE_KV_ROWS } from '../core/sample-kv.js';
+import { SAMPLE_KV, SAMPLE_KV_EN, SAMPLE_KV_ROWS, SAMPLE_KV_MODE2, SAMPLE_KV_MODE2_EN } from '../core/sample-kv.js';
 import { L, getLang, refText } from '../core/i18n.js';
 import { localizeDecimals } from './i18n.js';
-import { PRESSURE_UNITS, NDW_UNITS, unitLabel, dec } from '../core/units.js';
+import { PRESSURE_UNITS, NDW_UNITS, unitLabel, dec, parseCells } from '../core/units.js';
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, renderPairs, readPairs, setupPairs } from './widgets.js';
 import {
@@ -15,10 +17,12 @@ import {
   fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote, notifyUpdate, richText,
   inlineResultHtml, setInlineResult } from './common.js';
 
-// черновик: { form, rows, active } (до 0.36.0 — плоская форма одного расчёта, читается как одна строка)
+// черновик: приезд { version: 3, common, chambers, modes, mode } (0.36 — { form, rows, active }, до 0.36.0 — плоская
+// форма одного расчёта; старые черновики читаются как один режим)
 const DRAFT_KEY = 'reference-dosimetry.kv.v1';
-// формат 2 (0.36.0): строки аппликаторов rows и выбранная строка active; form — плоская форма выбранной строки
-const FILE_TAG = { app: 'reference-dosimetry', module: 'kv', version: 2 };
+// формат 3 (0.37.0): приезд — общие поля common, камеры chambers, режимы modes со строками аппликаторов, выбранный
+// режим mode; form — плоская форма выбранной строки выбранного режима. Формат 2 (0.36): rows и active одного режима.
+const FILE_TAG = { app: 'reference-dosimetry', module: 'kv', version: 3 };
 const SERIES_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_Mc'];
 const PAIR_KEYS = ['kv_tt', 'kv_tm'];
 const CERT_KEYS = ['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_val'];
@@ -86,6 +90,27 @@ function fillCustomFields(saved) {
 
 /** Демонстрационный набор на текущем языке (текстовые поля), числа одинаковые. */
 const sampleData = () => (getLang() === 'en' ? { ...SAMPLE_KV, ...SAMPLE_KV_EN } : SAMPLE_KV);
+/** Демонстрационный приезд: режим 1 — 200 кВ с тремя аппликаторами, режим 2 — 150 кВ с двумя (k_pol и τ — из режима 1). */
+function sampleVisit(s) {
+  const v = normalizeKvVisit({ form: s, rows: [s, ...SAMPLE_KV_ROWS], active: 0 });
+  const m2 = newKvMode(v.modes[0]);
+  Object.assign(m2.shared, SAMPLE_KV_MODE2.shared, getLang() === 'en' ? SAMPLE_KV_MODE2_EN : {});
+  m2.rows = SAMPLE_KV_MODE2.rows;
+  v.modes.push(m2);
+  return normalizeKvVisit(v);
+}
+/** Текстовые поля примера в невыбранных режимах и камерах — на текущем языке (выбранные — localizeDemo в форме). */
+function localizeVisitDemo() {
+  const en = getLang() === 'en';
+  const swap = (obj, ruS, enS) => {
+    for (const [k, ev] of Object.entries(enS)) if (typeof ruS[k] === 'string' && obj[k] === (en ? ruS[k] : ev)) obj[k] = en ? ev : ruS[k];
+  };
+  for (const md of visit.modes) {
+    swap(md.shared, SAMPLE_KV, SAMPLE_KV_EN);
+    swap(md.shared, SAMPLE_KV_MODE2.shared, SAMPLE_KV_MODE2_EN);
+  }
+  for (const ch of visit.chambers) swap(ch, SAMPLE_KV, SAMPLE_KV_EN);
+}
 const isDemo = (d) => [SAMPLE_KV.kv_institution, SAMPLE_KV_EN.kv_institution].includes(d.kv_institution) && [SAMPLE_KV.kv_machine, SAMPLE_KV_EN.kv_machine].includes(d.kv_machine);
 
 // ------------------------------------------------------------ таблица качеств сертификата
@@ -155,8 +180,49 @@ function writeForm(values) {
 }
 
 // ------------------------------------------------------------ таблица аппликаторов (раздел 4)
-/** Строки аппликаторов: общие поля, строки и выбранная строка. Поля выбранной строки показаны в разделах формы. */
-let sess = normalizeKvSession(null);
+/** Приезд: общие поля, камеры, режимы со строками аппликаторов и выбранный режим (kv-session.js). */
+let visit = normalizeKvVisit(null);
+/** Выбранный режим. */
+const mode = () => visit.modes[visit.mode];
+/** Строки и выбранная строка выбранного режима. Поля выбранной строки показаны в разделах формы. */
+const sess = {
+  get rows() {
+    return mode().rows;
+  },
+  get active() {
+    return mode().active;
+  },
+  set active(i) {
+    mode().active = i;
+  },
+};
+/** Плоская форма строки i выбранного режима. */
+const rowForm = (i) => kvVisitRowForm(visit, visit.mode, i);
+
+// текстовые поля: в них число с запятой или точкой — не число (серийный номер, фильтр), разделитель не меняется
+const TEXT_KEYS = new Set(['kv_institution', 'kv_machine', 'kv_date', 'kv_staff', 'kv_notes', 'kv_filter', 'kv_ph_name', 'kv_ph_note', 'kv_cc_maker', 'kv_cc_model', 'kv_ch_serial', 'kv_el_model', 'kv_el_serial']);
+/**
+ * Десятичный разделитель в числах всех режимов, камер и строк — языка интерфейса (поля формы — localizeDecimals; здесь —
+ * невыбранные режимы, камеры и строки: их числа видны в подписях режимов, сводке и протоколе).
+ */
+function localizeVisitNumbers() {
+  const en = getLang() === 'en';
+  const loc = (v) => (typeof v === 'string' && /^\s*[+\-−]?\d+[.,]\d+\s*$/.test(v) ? (en ? v.replace(',', '.') : v.replace('.', ',')) : v);
+  const walk = (obj) => {
+    for (const [k, v] of Object.entries(obj)) if (!TEXT_KEYS.has(k)) obj[k] = Array.isArray(v) ? v.map(loc) : loc(v);
+  };
+  walk(visit.common);
+  visit.chambers.forEach(walk);
+  for (const md of visit.modes) {
+    walk(md.shared);
+    md.rows.forEach(walk);
+  }
+}
+/** Новые данные вкладки (файл, черновик, пример, очистка): числа — с разделителем языка интерфейса. */
+function setVisit(v) {
+  visit = v;
+  localizeVisitNumbers();
+}
 const rowsBody = () => $('#kv-rows-body');
 const rowWord = (i) => L(`строка ${i + 1}`, `row ${i + 1}`);
 /** Ячеек показаний M₁ в строке таблицы: не меньше трёх и не меньше введённых (больше — кнопкой «+» в разделе 5). */
@@ -253,14 +319,14 @@ function onRowInput(el) {
 function selectRow(i) {
   if (i === sess.active || !sess.rows[i]) return;
   sess.active = i;
-  writeForm(kvRowForm(sess, i));
+  writeForm(rowForm(i));
   update({ fromTable: true });
 }
 
 function addRow() {
   sess.rows.push(emptyKvRow(sess.rows.at(-1)));
   sess.active = sess.rows.length - 1;
-  writeForm(kvRowForm(sess, sess.active));
+  writeForm(rowForm(sess.active));
   openedFile = null;
   update();
   $(`#kvr${sess.active}_kv_cone`)?.focus();
@@ -273,7 +339,7 @@ function deleteRow(i) {
   if (sess.active > i) sess.active--;
   else if (wasActive) sess.active = Math.min(i, sess.rows.length - 1);
   // поля выбранной строки в разделах формы: та же строка (с новым номером) или соседняя, если удалили выбранную
-  writeForm(kvRowForm(sess, sess.active));
+  writeForm(rowForm(sess.active));
   openedFile = null;
   update();
 }
@@ -296,6 +362,206 @@ function onDeleteClick(btn) {
     btn.classList.remove('armed');
     btn.setAttribute('aria-label', label);
   }, 4000);
+}
+
+/**
+ * Состояние строки для точки в таблице: пустая, ошибки, предупреждения или без замечаний, и подсказка. Строка без
+ * показаний M₁ (например, тубусы нового режима) ещё не измерена: она серая, а не красная.
+ */
+function rowState(r, row) {
+  if (kvRowEmpty(row)) return { lvl: 'empty', tip: L('Строка не заполнена', 'The row is empty') };
+  const m = parseCells(row.kv_M1);
+  if (m.n === 0 && !m.error) return { lvl: 'empty', tip: L('Показаний ещё нет', 'No readings yet') };
+  const errs = r.messages.filter((m) => m.level === 'error');
+  const warns = r.messages.filter((m) => m.level === 'warn');
+  if (errs.length) return { lvl: 'error', tip: L(`Ошибок: ${errs.length}. ${errs[0].text}`, `Errors: ${errs.length}. ${errs[0].text}`) };
+  if (warns.length) return { lvl: 'warn', tip: L(`Предупреждений: ${warns.length}. ${warns[0].text}`, `Warnings: ${warns.length}. ${warns[0].text}`) };
+  return { lvl: 'ok', tip: L('Замечаний нет', 'No issues') };
+}
+
+// ------------------------------------------------------------ режимы и камеры приезда
+const LVL_RANK = { empty: 0, ok: 1, warn: 2, error: 3 };
+/** Состояние режима — худшее из его строк. */
+function modeState(mr, md) {
+  let lvl = 'empty';
+  mr.results.forEach((r, i) => {
+    const l = rowState(r, md.rows[i]).lvl;
+    if (LVL_RANK[l] > LVL_RANK[lvl]) lvl = l;
+  });
+  return lvl;
+}
+const modeName = (m) => kvModeLabel(visit.modes[m].shared) || L('пучок не задан', 'beam not set');
+
+/** Название камеры приезда: модель и серийный номер. */
+function chamberName(ch) {
+  const id = String(ch?.kv_ch_model ?? '');
+  let name = '';
+  if (id === 'CUSTOM' || id.startsWith('MY:')) name = [ch.kv_cc_maker, ch.kv_cc_model].map((v) => String(v ?? '').trim()).filter(Boolean).join(' ');
+  else if (id) {
+    const c = KV_CHAMBERS.find((x) => x.id === id);
+    name = c ? kvChamberLabel(c) : id;
+  }
+  const sn = String(ch?.kv_ch_serial ?? '').trim();
+  return [name || L('камера не выбрана', 'no chamber selected'), sn ? L(`№ ${sn}`, `S/N ${sn}`) : ''].filter(Boolean).join(' ');
+}
+/** Номера режимов (с 1), в которых выбрана камера j. */
+const chamberModes = (j) => visit.modes.flatMap((md, m) => (md.chamber === j ? [m + 1] : []));
+
+/** Полоса режимов в разделе 1: кнопка на режим с точкой состояния; удалить можно, пока режимов больше одного. */
+function renderModes(vr) {
+  const chips = visit.modes.map((md, m) => {
+    const on = m === visit.mode;
+    const lvl = modeState(vr.modes[m], md);
+    const tip = { empty: L('строки не заполнены', 'rows are empty'), ok: L('замечаний нет', 'no issues'), warn: L('есть предупреждения', 'there are warnings'), error: L('есть ошибки', 'there are errors') }[lvl];
+    const title = L(`Режим ${m + 1}: ${modeName(m)}; ${tip}`, `Mode ${m + 1}: ${modeName(m)}; ${tip}`);
+    return `<button type="button" class="kv-mode${on ? ' active' : ''}" data-m="${m}" aria-pressed="${on}" title="${esc(title)}" aria-label="${esc(title)}"><span class="st ${lvl}" aria-hidden="true"></span><b>${m + 1}</b> ${esc(modeName(m))}</button>`;
+  });
+  html($('#kv-modes'), chips.join(''));
+  $('#kv-btn-del-mode').hidden = visit.modes.length <= 1;
+}
+
+/** Выбор камеры режима в разделе 2: камеры приезда и «новая камера». */
+function renderChamberPick() {
+  const sel = $('#kv-mode-chamber');
+  const cur = mode().chamber;
+  const opts = visit.chambers.map((ch, j) => `<option value="${j}">${esc(L(`Камера ${j + 1}`, `Chamber ${j + 1}`))} — ${esc(chamberName(ch))}</option>`);
+  opts.push(`<option value="new">${esc(L('+ новая камера приезда…', '+ new chamber for this visit…'))}</option>`);
+  html(sel, opts.join(''));
+  sel.value = String(cur);
+  const used = chamberModes(cur);
+  $('#kv-btn-del-ch').hidden = visit.chambers.length <= 1 || used.length > 1;
+  const where = used.length > 1 ? L(`Камера ${cur + 1} выбрана в режимах ${used.join(', ')}: поля ниже меняют её во всех этих режимах.`, `Chamber ${cur + 1} is used in modes ${used.join(', ')}: the fields below change it in all of them.`) : '';
+  $('#kv-mode-chamber-sub').textContent = [where, L('Новая камера берёт электрометр, T₀, P₀ и напряжения текущей.', 'A new chamber takes the electrometer, T₀, P₀ and voltages of the current one.')].filter(Boolean).join(' ');
+}
+
+/** Номер режима и камеры у заголовков разделов 2–8, если их несколько. */
+function renderSectionTags() {
+  const tag = (id, t) => {
+    const h = document.getElementById(id);
+    if (!h) return;
+    if (t) h.dataset.tag = t;
+    else h.removeAttribute('data-tag');
+  };
+  const mt = visit.modes.length > 1 ? L(` · режим ${visit.mode + 1}`, ` · mode ${visit.mode + 1}`) : '';
+  for (const id of ['kv-s3', 'kv-s4', 'kv-s5', 'kv-s6', 'kv-s7', 'kv-s8']) tag(id, mt);
+  tag('kv-s2', visit.chambers.length > 1 ? L(` · камера ${mode().chamber + 1}`, ` · chamber ${mode().chamber + 1}`) : '');
+}
+
+/** Что взято из других режимов: «k_pol и τ — из режима 1 (…)». */
+function borrowedText(mr) {
+  const by = new Map();
+  for (const [key, name] of [['polMode', 'k_pol'], ['ksMode', 'k_s'], ['tauMode', 'τ']]) {
+    const j = mr[key];
+    if (j >= 0) by.set(j, [...(by.get(j) ?? []), name]);
+  }
+  return [...by].map(([j, names]) => L(`${names.join(' и ')} — из ${kvModeFrom(visit, j)}`, `${names.join(' and ')} from ${kvModeFrom(visit, j)}`)).join('; ');
+}
+
+/** Сводка приезда (раздел 9): все режимы и строки, итог, отклонение и состояние; номер строки открывает её. */
+function renderSummary(vr) {
+  const cap = (t) => ` data-cap="${esc(t)}"`;
+  const trs = [];
+  const notes = [];
+  visit.modes.forEach((md, m) => {
+    const mr = vr.modes[m];
+    md.rows.forEach((row, i) => {
+      const r = mr.results[i];
+      const x = r.trs;
+      const p = primaryOf(x);
+      const none = x.blocked || ctrlFailed(x);
+      const v = none ? NaN : valueAt(p, r);
+      const dev = none ? NaN : p.deviation;
+      const tol = r.cmp.tolerance;
+      const devCls = !Number.isFinite(dev) ? '' : Math.abs(dev) <= tol / 2 ? ' good' : Math.abs(dev) > tol ? ' bad' : '';
+      const { lvl, tip } = rowState(r, row);
+      const on = m === visit.mode && i === md.active;
+      const std = md.rows.length > 1 && i === mr.stdRow;
+      const unit = `${x.rateLabel}, ${whereText(r, atSurfOf(p, r))}`;
+      const ref = Number.isFinite(r.cmp.ref) ? fmt(r.cmp.ref, 4) : '—';
+      trs.push(`<tr data-m="${m}" data-i="${i}" class="${i === 0 ? 'grp' : ''}${on ? ' active' : ''}">
+        <td class="no"><button type="button" class="kv-sum-pick" aria-label="${esc(L(`Открыть режим ${m + 1}, строку ${i + 1}`, `Open mode ${m + 1}, row ${i + 1}`))}">${m + 1}.${i + 1}</button></td>
+        <td class="mode"${cap(L('Режим', 'Mode'))}>${i === 0 ? esc(modeName(m)) : ''}</td>
+        <td class="ch"${cap(L('Камера', 'Chamber'))}>${i === 0 ? esc(L(`камера ${md.chamber + 1}`, `chamber ${md.chamber + 1}`)) : ''}</td>
+        <td class="app"${cap(L('Аппликатор', 'Applicator'))}>${esc(kvRowLabel(row) || '—')}${std ? ` <span class="kv-std" title="${esc(L('Стандартный тубус', 'Reference applicator'))}">${L('ст.', 'ref.')}</span>` : ''}</td>
+        <td class="v ssd"${cap(L('РИП, см', 'SSD, cm'))}>${esc(String(row.kv_ssd ?? '').trim() || '—')}</td>
+        <td class="v d"${cap('D')}>${Number.isFinite(v) ? fmt(v, 4) : '—'}<small>${esc(unit)}</small></td>
+        <td class="v ref"${cap(L('Сравнить с', 'Compare with'))}>${ref}</td>
+        <td class="v dev${devCls}"${cap(L('Откл., %', 'Dev., %'))}>${fmtSigned(dev, 2)}</td>
+        <td class="act"><span class="st ${lvl}" role="img" title="${esc(tip)}" aria-label="${esc(tip)}"></span></td>
+      </tr>`);
+    });
+    const b = borrowedText(mr);
+    if (b) notes.push(L(`Режим ${m + 1}: ${b}.`, `Mode ${m + 1}: ${b}.`));
+  });
+  html($('#kv-sum-body'), trs.join(''));
+  localizeDecimals($('#kv-sum-body'));
+  const note = $('#kv-sum-note');
+  note.hidden = !notes.length;
+  html(note, richText(notes.join(' ')));
+}
+
+/** Переход к режиму m: его камера, пучок и выбранная строка — в разделы формы. */
+function selectMode(m) {
+  if (m === visit.mode || !visit.modes[m]) return;
+  visit.mode = m;
+  writeForm(rowForm(sess.active));
+  update();
+  $(`#kv-modes [data-m="${m}"]`)?.focus();
+}
+
+function addMode() {
+  visit.modes.push(newKvMode(mode()));
+  visit.mode = visit.modes.length - 1;
+  writeForm(rowForm(0));
+  openedFile = null;
+  update();
+  $('#kv_kv').focus();
+  setStatus(L(`Добавлен режим ${visit.mode + 1}: введите напряжение и СПО. Камера, фантом и тубусы — как в предыдущем режиме.`, `Mode ${visit.mode + 1} added: enter the voltage and HVL. The chamber, phantom and applicators are as in the previous mode.`));
+}
+
+function deleteMode() {
+  if (visit.modes.length <= 1) return;
+  const m = visit.mode;
+  visit.modes.splice(m, 1);
+  visit.mode = Math.min(m, visit.modes.length - 1);
+  writeForm(rowForm(sess.active));
+  openedFile = null;
+  update();
+  setStatus(L(`Режим ${m + 1} удалён.`, `Mode ${m + 1} deleted.`));
+}
+
+/** Камера режима: одна из камер приезда или новая. */
+function pickChamber(value) {
+  if (value === 'new') {
+    visit.chambers.push(newKvChamber(visit.chambers[mode().chamber]));
+    mode().chamber = visit.chambers.length - 1;
+  } else if (visit.chambers[Number(value)]) mode().chamber = Number(value);
+  writeForm(rowForm(sess.active));
+  openedFile = null;
+  update();
+  if (value === 'new') setStatus(L(`Добавлена камера ${mode().chamber + 1}: выберите модель и введите сертификат.`, `Chamber ${mode().chamber + 1} added: select the model and enter the certificate.`));
+}
+
+/** Удаление камеры, выбранной только в этом режиме: режиму назначается первая из оставшихся. */
+function deleteChamber() {
+  const k = mode().chamber;
+  if (visit.chambers.length <= 1 || chamberModes(k).length > 1) return;
+  visit.chambers.splice(k, 1);
+  for (const md of visit.modes) md.chamber = md.chamber === k ? 0 : md.chamber > k ? md.chamber - 1 : md.chamber;
+  writeForm(rowForm(sess.active));
+  openedFile = null;
+  update();
+  setStatus(L(`Камера ${k + 1} удалена; в режиме ${visit.mode + 1} выбрана камера ${mode().chamber + 1}.`, `Chamber ${k + 1} deleted; mode ${visit.mode + 1} now uses chamber ${mode().chamber + 1}.`));
+}
+
+/** Строка i режима m из сводки: режим и строка выбираются, фокус — на номер строки в таблице раздела 4. */
+function openRow(m, i) {
+  if (!visit.modes[m]?.rows[i]) return;
+  visit.mode = m;
+  visit.modes[m].active = i;
+  writeForm(rowForm(i));
+  update();
+  rowsBody().querySelector(`tr[data-i="${i}"] .kv-row-pick`)?.focus();
 }
 
 /** «строка 1 (Ø 10 см)» — название строки в тексте. */
@@ -349,16 +615,7 @@ function renderRowsState(all) {
     devTd.classList.toggle('bad', Number.isFinite(dev) && Math.abs(dev) > tol);
 
     const empty = kvRowEmpty(sess.rows[i]);
-    const errs = r.messages.filter((m) => m.level === 'error');
-    const warns = r.messages.filter((m) => m.level === 'warn');
-    const lvl = empty ? 'empty' : errs.length ? 'error' : warns.length ? 'warn' : 'ok';
-    const tip = empty
-      ? L('Строка не заполнена', 'The row is empty')
-      : errs.length
-        ? L(`Ошибок: ${errs.length}. ${errs[0].text}`, `Errors: ${errs.length}. ${errs[0].text}`)
-        : warns.length
-          ? L(`Предупреждений: ${warns.length}. ${warns[0].text}`, `Warnings: ${warns.length}. ${warns[0].text}`)
-          : L('Замечаний нет', 'No issues');
+    const { lvl, tip } = rowState(r, sess.rows[i]);
     const st = tr.querySelector('.st');
     st.className = `st ${lvl}`;
     st.title = tip;
@@ -395,8 +652,11 @@ function renderRowsState(all) {
   } else if (n > 1 && r0.range === 'medium') {
     notes.push(L('Стандартного тубуса в таблице нет: по табл. 31 это поле 10 × 10 см или Ø 10 см, тубус сопоставимого размера или самый большой квадратный или круглый (отметьте «Самый большой тубус аппарата» в разделе 1).', 'There is no reference applicator in the table: by Table 31 it is a 10 × 10 cm or 10 cm diameter field, an applicator of comparable size, or the largest square or circular one (tick "Largest applicator of the unit" in section 1).'));
   }
-  if (n > 1 && all.results.some((r) => r.trs.kpolFrom)) notes.push(L(`k_pol строк без серии при обратной полярности — из ${from(all.polSrc)}.`, `k_pol of the rows without an opposite-polarity series is taken from ${from(all.polSrc)}.`));
-  if (n > 1 && all.results.some((r) => r.trs.ksFrom)) notes.push(L(`k_s строк без серии при V₂ — из ${from(all.ksSrc)}.`, `k_s of the rows without a V₂ series is taken from ${from(all.ksSrc)}.`));
+  if (n > 1 && all.polSrc >= 0 && all.results.some((r) => r.trs.kpolFrom)) notes.push(L(`k_pol строк без серии при обратной полярности — из ${from(all.polSrc)}.`, `k_pol of the rows without an opposite-polarity series is taken from ${from(all.polSrc)}.`));
+  if (n > 1 && all.ksSrc >= 0 && all.results.some((r) => r.trs.ksFrom)) notes.push(L(`k_s строк без серии при V₂ — из ${from(all.ksSrc)}.`, `k_s of the rows without a V₂ series is taken from ${from(all.ksSrc)}.`));
+  // серий нет во всём режиме: k_pol и k_s — из ближайшего по СПО режима с той же камерой
+  if (all.polMode >= 0) notes.push(L(`В этом режиме серии при обратной полярности нет: k_pol — из ${kvModeFrom(visit, all.polMode)}, ближайшего по СПО с той же камерой.`, `This mode has no opposite-polarity series: k_pol is taken from ${kvModeFrom(visit, all.polMode)}, the nearest in HVL with the same chamber.`));
+  if (all.ksMode >= 0) notes.push(L(`В этом режиме серии при V₂ нет: k_s — из ${kvModeFrom(visit, all.ksMode)}, ближайшего по СПО с той же камерой.`, `This mode has no V₂ series: k_s is taken from ${kvModeFrom(visit, all.ksMode)}, the nearest in HVL with the same chamber.`));
   const note = $('#kv-rows-note');
   note.hidden = !notes.length;
   html(note, richText(notes.join(' ')));
@@ -412,16 +672,30 @@ function renderRowsState(all) {
     }
   }
   const of = $('#kv-row-of');
-  of.hidden = n <= 1;
-  if (n > 1) {
+  const nm = visit.modes.length;
+  of.hidden = n <= 1 && nm <= 1;
+  if (!of.hidden) {
     const row = sess.rows[sess.active];
     const lab = kvRowLabel(row);
     const ssd = String(row.kv_ssd ?? '').trim();
-    const std = sess.active === all.stdRow;
-    of.textContent = L(
-      `Строка ${sess.active + 1} из ${n}${lab ? ` · ${lab}` : ''}${ssd ? ` · РИП ${ssd} см` : ''}${std ? ' · стандартный тубус' : ''}`,
-      `Row ${sess.active + 1} of ${n}${lab ? ` · ${lab}` : ''}${ssd ? ` · SSD ${ssd} cm` : ''}${std ? ' · reference applicator' : ''}`,
-    );
+    const std = n > 1 && sess.active === all.stdRow;
+    of.textContent = [
+      nm > 1 ? L(`Режим ${visit.mode + 1} из ${nm} · ${modeName(visit.mode)}`, `Mode ${visit.mode + 1} of ${nm} · ${modeName(visit.mode)}`) : '',
+      n > 1 ? L(`Строка ${sess.active + 1} из ${n}`, `Row ${sess.active + 1} of ${n}`) : '',
+      lab,
+      ssd ? L(`РИП ${ssd} см`, `SSD ${ssd} cm`) : '',
+      std ? L('стандартный тубус', 'reference applicator') : '',
+    ].filter(Boolean).join(' · ');
+  }
+
+  // τ из другого режима — пометка в разделе 3
+  const tf = $('#kv-timer-from');
+  tf.hidden = all.tauMode < 0;
+  if (all.tauMode >= 0) {
+    const time = all.timer.unit === 'min' || all.timer.unit === 's';
+    html(tf, richText(time
+      ? L(`Своих данных ошибки таймера в этом режиме нет: τ взята из ${kvModeFrom(visit, all.tauMode)} — ближайшего по напряжению режима, где она измерена. Чтобы не учитывать τ, выберите «не учитывать».`, `This mode has no timer error data of its own: τ is taken from ${kvModeFrom(visit, all.tauMode)}, the mode with the nearest voltage where it was measured. To ignore τ, select "disregard".`)
+      : L(`Своих данных концевого эффекта в этом режиме нет: τ взят из ${kvModeFrom(visit, all.tauMode)}. Чтобы не учитывать τ, выберите «не учитывать».`, `This mode has no end-effect data of its own: τ is taken from ${kvModeFrom(visit, all.tauMode)}. To ignore τ, select "disregard".`)));
   }
 }
 
@@ -877,7 +1151,31 @@ function renderReadout(result, data) {
 }
 
 // ------------------------------------------------------------ протокол текстом
-function reportText(data, r, all = null) {
+/** Строки аппликаторов режима коротко для протокола: тубус, РИП, T, P, M₁, k_TP, доза, отклонение, откуда k_pol и k_s. */
+function rowsReport(md, mr, pUnit) {
+  const cells = (a) => (Array.isArray(a) ? a.filter((v) => String(v).trim() !== '').join('; ') : a);
+  return md.rows.map((row, k) => {
+    const y = mr.results[k];
+    const t = y.trs;
+    const p = primaryOf(t);
+    const none = t.blocked || ctrlFailed(t);
+    const at = whereText(y, atSurfOf(p, y));
+    const lab = kvRowLabel(row) || '—';
+    const ssd = String(row.kv_ssd ?? '').trim() || '—';
+    const env = `T = ${String(row.kv_env_T ?? '').trim() || '—'} °C, P = ${String(row.kv_env_P ?? '').trim() || '—'} ${pUnit}`;
+    const dose = none ? L('не вычислена (см. замечания строки)', 'not calculated (see the row messages)') : `${fmt(valueAt(p, y), 4)} ${t.rateLabel} ${at}`;
+    const dev = !none && Number.isFinite(p.deviation) ? L(`, отклонение ${fmtSigned(p.deviation, 2)} %`, `, deviation ${fmtSigned(p.deviation, 2)} %`) : '';
+    // из другого режима — сказано в строке режима, у строк не повторяется
+    const from = [t.kpolFrom && mr.polSrc >= 0 ? L(`k_pol из ${t.kpolFrom}`, `k_pol from ${t.kpolFrom}`) : '', t.ksFrom && mr.ksSrc >= 0 ? L(`k_s из ${t.ksFrom}`, `k_s from ${t.ksFrom}`) : ''].filter(Boolean).join(', ');
+    const std = md.rows.length > 1 && k === mr.stdRow;
+    return L(
+      `  ${k + 1}. ${lab}${std ? ' (стандартный тубус)' : ''}, РИП ${ssd} см; ${env}; M₁ ${cells(row.kv_M1) || '—'} нКл; k_TP = ${fmt(t.kTP)}; D = ${dose}${dev}${from ? ` (${from})` : ''}`,
+      `  ${k + 1}. ${lab}${std ? ' (reference applicator)' : ''}, SSD ${ssd} cm; ${env}; M₁ ${cells(row.kv_M1) || '—'} nC; k_TP = ${fmt(t.kTP)}; D = ${dose}${dev}${from ? ` (${from})` : ''}`,
+    );
+  });
+}
+
+function reportText(data, r, all = null, vr = null) {
   const out = [];
   const line = (k, v) => out.push(`${k}: ${v}`);
   const cells = (a) => (Array.isArray(a) ? a.filter((s) => String(s).trim() !== '').join('; ') : a);
@@ -894,30 +1192,24 @@ function reportText(data, r, all = null) {
   line(L('Аппарат', 'Machine'), data.kv_machine || '—');
   line(L('Дата', 'Date'), data.kv_date || '—');
   line(L('Измерения выполнили', 'Measured by'), data.kv_staff.filter((s) => s.trim()).join(', ') || '—');
-  line(L('Пучок', 'Beam'), L(`${data.kv_kv || '—'} кВ, СПО ${data.kv_hvl || '—'} мм ${mat}${data.kv_filter ? `, фильтр ${data.kv_filter}` : ''}`, `${data.kv_kv || '—'} kV, HVL ${data.kv_hvl || '—'} mm ${mat}${data.kv_filter ? `, filter ${data.kv_filter}` : ''}`));
-  // строки аппликаторов: коротко все, подробно ниже — выбранная
-  if (all && sess.rows.length > 1) {
+  line(vr && visit.modes.length > 1 ? L(`Пучок (режим ${visit.mode + 1})`, `Beam (mode ${visit.mode + 1})`) : L('Пучок', 'Beam'), L(`${data.kv_kv || '—'} кВ, СПО ${data.kv_hvl || '—'} мм ${mat}${data.kv_filter ? `, фильтр ${data.kv_filter}` : ''}`, `${data.kv_kv || '—'} kV, HVL ${data.kv_hvl || '—'} mm ${mat}${data.kv_filter ? `, filter ${data.kv_filter}` : ''}`));
+  // режимы и строки аппликаторов: коротко все, подробно ниже — выбранная строка выбранного режима
+  const pUnit = unitLabel(PRESSURE_UNITS[data.kv_env_P_unit]);
+  if (vr && visit.modes.length > 1) {
+    out.push('');
+    out.push(L(`Режимы приезда (${visit.modes.length}); подробно ниже — режим ${visit.mode + 1}, строка ${sess.active + 1}:`, `Modes of the visit (${visit.modes.length}); mode ${visit.mode + 1}, row ${sess.active + 1} is detailed below:`));
+    visit.modes.forEach((md, m) => {
+      const filt = String(md.shared.kv_filter ?? '').trim();
+      const b = borrowedText(vr.modes[m]);
+      const ch = L(`камера ${md.chamber + 1} (${chamberName(visit.chambers[md.chamber])})`, `chamber ${md.chamber + 1} (${chamberName(visit.chambers[md.chamber])})`);
+      out.push(L(`Режим ${m + 1}: ${modeName(m)}${filt ? `, фильтр ${filt}` : ''}; ${ch}${b ? `; ${b}` : ''}`, `Mode ${m + 1}: ${modeName(m)}${filt ? `, filter ${filt}` : ''}; ${ch}${b ? `; ${b}` : ''}`));
+      rowsReport(md, vr.modes[m], pUnit).forEach((l) => out.push(l));
+    });
+    out.push('');
+  } else if (all && sess.rows.length > 1) {
     out.push('');
     out.push(L(`Аппликаторы (${sess.rows.length}); подробно ниже — строка ${sess.active + 1}:`, `Applicators (${sess.rows.length}); row ${sess.active + 1} is detailed below:`));
-    sess.rows.forEach((row, k) => {
-      const y = all.results[k];
-      const t = y.trs;
-      const p = primaryOf(t);
-      const none = t.blocked || ctrlFailed(t);
-      const at = whereText(y, atSurfOf(p, y));
-      const lab = kvRowLabel(row) || '—';
-      const ssd = String(row.kv_ssd ?? '').trim() || '—';
-      const env = `T = ${String(row.kv_env_T ?? '').trim() || '—'} °C, P = ${String(row.kv_env_P ?? '').trim() || '—'} ${unitLabel(PRESSURE_UNITS[data.kv_env_P_unit])}`;
-      const dose = none ? L('не вычислена (см. замечания строки)', 'not calculated (see the row messages)') : `${fmt(valueAt(p, y), 4)} ${t.rateLabel} ${at}`;
-      const dev = !none && Number.isFinite(p.deviation) ? L(`, отклонение ${fmtSigned(p.deviation, 2)} %`, `, deviation ${fmtSigned(p.deviation, 2)} %`) : '';
-      const from = [t.kpolFrom ? L(`k_pol из ${t.kpolFrom}`, `k_pol from ${t.kpolFrom}`) : '', t.ksFrom ? L(`k_s из ${t.ksFrom}`, `k_s from ${t.ksFrom}`) : ''].filter(Boolean).join(', ');
-      out.push(
-        L(
-          `  ${k + 1}. ${lab}${k === all.stdRow ? ' (стандартный тубус)' : ''}, РИП ${ssd} см; ${env}; M₁ ${cells(row.kv_M1) || '—'} нКл; k_TP = ${fmt(t.kTP)}; D = ${dose}${dev}${from ? ` (${from})` : ''}`,
-          `  ${k + 1}. ${lab}${k === all.stdRow ? ' (reference applicator)' : ''}, SSD ${ssd} cm; ${env}; M₁ ${cells(row.kv_M1) || '—'} nC; k_TP = ${fmt(t.kTP)}; D = ${dose}${dev}${from ? ` (${from})` : ''}`,
-        ),
-      );
-    });
+    rowsReport(mode(), all, pUnit).forEach((l) => out.push(l));
     out.push('');
   }
   const coneTxt =
@@ -974,16 +1266,19 @@ function reportText(data, r, all = null) {
         : data.kv_timer_mode === 'manual'
           ? L('введено', 'entered manually')
           : L('не учитывалась', 'not accounted for');
+  const timerFull = tm.from ? L(`из ${tm.from}: в этом режиме не измерялась`, `from ${tm.from}: not measured in this mode`) : timerTxt;
   if (data.kv_timer_mode === 'window') {
     line(L('Время', 'Time'), L(`заряд накоплен электрометром за ${data.kv_set} ${u} при включённой трубке; ошибка таймера в результат не входит`, `charge collected by the electrometer over ${data.kv_set} ${u} with the tube on; the timer error does not enter the result`));
-  } else line(L('Задание облучения', 'Exposure setting'), `X = ${data.kv_set} ${u}; τ = ${fmt(tm.tau, 4)} ${u} (${timerTxt}); X + τ = ${fmt(i.Xeff, 4)} ${u}`);
+  } else line(L('Задание облучения', 'Exposure setting'), `X = ${data.kv_set} ${u}; τ = ${fmt(tm.tau, 4)} ${u} (${timerFull}); X + τ = ${fmt(i.Xeff, 4)} ${u}`);
   line(L('Напряжения', 'Voltages'), data.kv_ks_on ? L(`V1 = ${data.kv_V1} В, V2 = ${data.kv_V2} В, обычная полярность ${data.kv_polarity}`, `V1 = ${data.kv_V1} V, V2 = ${data.kv_V2} V, normal polarity ${data.kv_polarity}`) : L(`V1 = ${data.kv_V1} В, обычная полярность ${data.kv_polarity}`, `V1 = ${data.kv_V1} V, normal polarity ${data.kv_polarity}`));
   const mean = L('среднее', 'mean');
   line(L('M(V1, обычная), нКл', 'M(V1, normal), nC'), `${cells(data.kv_M1)} → ${mean} ${fmt(Math.abs(i.M1.mean), 4)}`);
   if (i.Mopp.n > 0) line(L('M(V1, обратная), нКл', 'M(V1, opposite), nC'), `${cells(data.kv_Mopp)} → ${mean} ${fmt(Math.abs(i.Mopp.mean), 4)}`);
+  else if (x.kpolFrom && all?.polMode >= 0) line(L('M(V1, обратная)', 'M(V1, opposite)'), L(`в этом режиме не измерялось; k_pol из ${x.kpolFrom}`, `not measured in this mode; k_pol from ${x.kpolFrom}`));
   else if (x.kpolFrom) line(L('M(V1, обратная)', 'M(V1, opposite)'), L(`в этой строке не измерялось; k_pol из ${x.kpolFrom}`, `not measured in this row; k_pol from ${x.kpolFrom}`));
   else line(L('M(V1, обратная)', 'M(V1, opposite)'), L('не измерялось (k_pol = 1)', 'not measured (k_pol = 1)'));
-  if (data.kv_ks_on && x.ksFrom) line(L('M(V2)', 'M(V2)'), L(`в этой строке не измерялось; k_s из ${x.ksFrom}`, `not measured in this row; k_s from ${x.ksFrom}`));
+  if (data.kv_ks_on && x.ksFrom && all?.ksMode >= 0) line(L('M(V2)', 'M(V2)'), L(`в этом режиме не измерялось; k_s из ${x.ksFrom}`, `not measured in this mode; k_s from ${x.ksFrom}`));
+  else if (data.kv_ks_on && x.ksFrom) line(L('M(V2)', 'M(V2)'), L(`в этой строке не измерялось; k_s из ${x.ksFrom}`, `not measured in this row; k_s from ${x.ksFrom}`));
   else if (data.kv_ks_on) line(L('M(V2), нКл', 'M(V2), nC'), `${cells(data.kv_M2)} → ${mean} ${fmt(Math.abs(i.M2.mean), 4)}`);
   if (r.ctrl.on) line(L('Контрольные измерения M(V1), нКл', 'Check measurements M(V1), nC'), `${cells(data.kv_Mc)} → ${mean} ${fmt(r.ctrl.mean, 4)} ${L('за', 'for')} ${setText(r, r.ctrl.X)}`);
   out.push('');
@@ -1088,8 +1383,8 @@ export function importKv(obj) {
       ),
     );
   }
-  sess = normalizeKvSession(obj);
-  writeForm(kvRowForm(sess, sess.active));
+  setVisit(normalizeKvVisit(obj));
+  writeForm(rowForm(sess.active));
   openedFile = obj;
   update();
 }
@@ -1130,13 +1425,19 @@ export function kvUncSource() {
 }
 
 // ------------------------------------------------------------ цикл
-let current = { data: null, result: null, all: null };
+let current = { data: null, result: null, all: null, vr: null };
 
-/** Сверка с открытым файлом: итог выбранной строки с её итогом в файле (у файлов до 0.36.0 — одна строка). */
+/**
+ * Сверка с открытым файлом: итог выбранной строки выбранного режима с её итогом в файле (формат 3 — modeResults,
+ * формат 2 — rowResults одного режима, до 0.36.0 — один итог).
+ */
 function fileNote(result) {
   if (!openedFile) return null;
-  const saved = Array.isArray(openedFile.rowResults) ? openedFile.rowResults[sess.active] : (Number(openedFile.active) || 0) === sess.active ? openedFile.result : null;
-  return saved ? compareWithFile({ ...openedFile, result: saved }, snapshot(result), snapCmp(result)) : null;
+  const f = openedFile;
+  let saved = null;
+  if (Array.isArray(f.modeResults)) saved = f.modeResults[visit.mode]?.[sess.active] ?? null;
+  else if (visit.mode === 0) saved = Array.isArray(f.rowResults) ? f.rowResults[sess.active] : (Number(f.active) || 0) === sess.active ? f.result : null;
+  return saved ? compareWithFile({ ...f, result: saved }, snapshot(result), snapCmp(result)) : null;
 }
 
 /**
@@ -1146,15 +1447,23 @@ function fileNote(result) {
  */
 function update(opts = {}) {
   if (!opts.fromTable) {
-    const { shared, row } = splitKvForm(readForm());
-    sess.shared = shared;
-    sess.rows[sess.active] = row;
+    const p = splitKvVisitForm(readForm());
+    const md = mode();
+    visit.common = p.common;
+    visit.chambers[md.chamber] = p.chamber;
+    md.shared = p.mode;
+    md.rows[md.active] = p.row;
   }
-  const all = computeKvSession(sess);
+  const vr = computeKvVisit(visit);
+  const all = vr.modes[visit.mode];
   const result = all.results[sess.active];
-  const data = normalizeKv(kvRowForm(sess, sess.active));
-  current = { data, result, all };
+  const data = normalizeKv(rowForm(sess.active));
+  current = { data, result, all, vr };
   if (!opts.fromTable) renderRows(data, result);
+  renderModes(vr);
+  renderChamberPick();
+  renderSectionTags();
+  renderSummary(vr);
   applyVisibility(data, result);
   renderOutputs(ROOT(), result);
   renderFlags(ROOT(), result.flags, seriesBox);
@@ -1163,7 +1472,7 @@ function update(opts = {}) {
   $('#kv-demo-flag').hidden = !isDemo(data);
   renderNotesFlag($('#kv-notes-flag'), data.kv_notes, [SAMPLE_KV.kv_notes, SAMPLE_KV_EN.kv_notes], isDemo(data));
   renderFileNote($('#kv-file-note'), fileNote(result));
-  saveDraft({ form: data, rows: sess.rows, active: sess.active });
+  saveDraft({ version: FILE_TAG.version, ...visit });
   renderSignBlock($('#kv-sign'), data.kv_staff);
   notifyUpdate(ROOT());
 }
@@ -1186,6 +1495,9 @@ function refreshForLang() {
   }
   renderStaff($('#kv-staff-list'), readStaff($('#kv-staff-list')), update);
   localizeDemo(SAMPLE_KV, SAMPLE_KV_EN);
+  localizeDemo(SAMPLE_KV_MODE2.shared, SAMPLE_KV_MODE2_EN);
+  localizeVisitDemo();
+  localizeVisitNumbers();
   localizeDecimals(ROOT());
   update();
 }
@@ -1201,9 +1513,11 @@ export function initKv() {
 
   const draft = loadDraft();
   // без черновика вкладка открывается пустой: пример — только по кнопке «Загрузить пример»
-  sess = normalizeKvSession(draft && typeof draft === 'object' ? draft : { ...KV_DEFAULTS, kv_date: today() });
-  writeForm(kvRowForm(sess, sess.active));
+  setVisit(normalizeKvVisit(draft && typeof draft === 'object' ? draft : { ...KV_DEFAULTS, kv_date: today() }));
+  writeForm(rowForm(sess.active));
   localizeDemo(SAMPLE_KV, SAMPLE_KV_EN);
+  localizeDemo(SAMPLE_KV_MODE2.shared, SAMPLE_KV_MODE2_EN);
+  localizeVisitDemo();
   update();
   if (!draft) setStatus(L('Введите свои данные или нажмите «Загрузить пример» (раздел «Данные»), чтобы посмотреть расчёт на вымышленных значениях.', 'Enter your own data or click "Load example" (the Data panel) to see the calculation on fictitious values.'));
 
@@ -1211,12 +1525,15 @@ export function initKv() {
   const inTable = (el) => !!el?.closest?.('#kv-rows-body');
   sheet.addEventListener('input', (e) => {
     if (inTable(e.target)) return onRowInput(e.target);
+    // камера режима — по событию change
+    if (e.target.id === 'kv-mode-chamber') return;
     openedFile = null;
     update();
   });
   sheet.addEventListener('change', (e) => {
     // список формы тубуса в таблице уже обработан по событию input
     if (inTable(e.target)) return;
+    if (e.target.id === 'kv-mode-chamber') return pickChamber(e.target.value);
     openedFile = null;
     if (e.target.id === 'kv_ch_model') {
       const id = e.target.value;
@@ -1238,6 +1555,20 @@ export function initKv() {
     if (del) onDeleteClick(del);
   });
   $('#kv-btn-add-row').addEventListener('click', addRow);
+
+  // режимы приезда (раздел 1), камера режима (раздел 2), сводка (раздел 9)
+  $('#kv-modes').addEventListener('click', (e) => {
+    const b = e.target.closest('.kv-mode');
+    if (b) selectMode(Number(b.dataset.m));
+  });
+  $('#kv-btn-add-mode').addEventListener('click', addMode);
+  armButton($('#kv-btn-del-mode'), () => L('Удалить режим', 'Delete mode'), () => L(`Точно удалить режим ${visit.mode + 1}?`, `Delete mode ${visit.mode + 1}?`), deleteMode);
+  armButton($('#kv-btn-del-ch'), () => L('Удалить камеру', 'Delete chamber'), () => L(`Точно удалить камеру ${mode().chamber + 1}?`, `Delete chamber ${mode().chamber + 1}?`), deleteChamber);
+  $('#kv-sum-body').addEventListener('click', (e) => {
+    const b = e.target.closest('.kv-sum-pick');
+    const tr = b?.closest('tr[data-m]');
+    if (tr) openRow(Number(tr.dataset.m), Number(tr.dataset.i));
+  });
 
   $('#kv-cert-add').addEventListener('click', () => {
     const c = readCert();
@@ -1304,23 +1635,34 @@ export function initKv() {
   $('#kv-btn-sample').addEventListener('click', () => {
     openedFile = null;
     const s = sampleData();
-    sess = normalizeKvSession({ form: s, rows: [s, ...SAMPLE_KV_ROWS], active: 0 });
-    writeForm(kvRowForm(sess, 0));
+    setVisit(sampleVisit(s));
+    writeForm(rowForm(0));
     update();
-    setStatus(L('Загружен демонстрационный пример (вымышленные данные).', 'Demo example loaded (fictitious data).'));
+    setStatus(L('Загружен демонстрационный пример (вымышленные данные): два режима, в режиме 2 k_pol и τ взяты из режима 1.', 'Demo example loaded (fictitious data): two modes; mode 2 takes k_pol and τ from mode 1.'));
   });
   armButton($('#kv-btn-clear'), () => L('Очистить', 'Clear'), () => L('Точно очистить?', 'Clear everything?'), () => {
-    sess = normalizeKvSession({ ...KV_DEFAULTS, kv_date: today() });
-    writeForm(kvRowForm(sess, 0));
+    setVisit(normalizeKvVisit({ ...KV_DEFAULTS, kv_date: today() }));
+    writeForm(rowForm(0));
     openedFile = null;
     update();
     setStatus(L('Форма очищена.', 'The form has been cleared.'));
   });
 
-  // result — итог выбранной строки (как в файлах до 0.36.0), rowResults — итоги всех строк для сверки при открытии
+  // result — итог выбранной строки выбранного режима (как в файлах до 0.36.0), modeResults — итоги всех строк всех
+  // режимов для сверки при открытии
   const payload = () =>
     JSON.stringify(
-      { ...FILE_TAG, ...fileStamp(snapshot(current.result)), rowResults: current.all.results.map(snapshot), savedAt: new Date().toISOString(), form: current.data, rows: sess.rows, active: sess.active },
+      {
+        ...FILE_TAG,
+        ...fileStamp(snapshot(current.result)),
+        modeResults: current.vr.modes.map((mr) => mr.results.map(snapshot)),
+        savedAt: new Date().toISOString(),
+        form: current.data,
+        common: visit.common,
+        chambers: visit.chambers,
+        modes: visit.modes,
+        mode: visit.mode,
+      },
       null,
       2,
     );
@@ -1344,7 +1686,7 @@ export function initKv() {
   $('#kv-btn-copy-json').addEventListener('click', () =>
     copyText(payload(), L('Данные скопированы. Чтобы вставить их обратно, нажмите Ctrl+V на странице вне полей ввода.', 'Data copied. To paste them back, press Ctrl+V on the page outside the input fields.'), setStatus),
   );
-  $('#kv-btn-copy-report').addEventListener('click', () => copyText(reportText(current.data, current.result, current.all), L('Протокол скопирован в буфер обмена.', 'Report copied to the clipboard.'), setStatus));
+  $('#kv-btn-copy-report').addEventListener('click', () => copyText(reportText(current.data, current.result, current.all, current.vr), L('Протокол скопирован в буфер обмена.', 'Report copied to the clipboard.'), setStatus));
   $('#kv-btn-pdf').addEventListener('click', () => printToPdf([L('Дозиметрия', 'Dosimetry'), 'kV', current.data.kv_machine, current.data.kv_date].filter(Boolean).join('_'), setStatus));
   $('#kv-btn-print').addEventListener('click', () => window.print());
 }

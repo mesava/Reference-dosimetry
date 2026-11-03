@@ -1,6 +1,6 @@
 // Вкладка «kV-рентген», раздел 4 «Аппликаторы»: строка на тубус со своими T, P и показаниями, выбор строки (её поля
 // в разделах ниже и итог справа), ввод в таблице и в разделах формы, добавление и удаление строк, k_pol из строки 1,
-// файл формата 2 и старый файл как одна строка, черновик, протокол со списком строк; по-английски без кириллицы.
+// файл формата 3 и старый файл как одна строка, черновик, протокол со списком строк; по-английски без кириллицы.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -54,13 +54,13 @@ test('kV-рентген: таблица аппликаторов — строк�
   assert.match(await page.locator('#kv-rows-note').innerText(), /Стандартный тубус \(табл\. 31\) — строка 1 \(Ø 10 см\), метка «ст\.»: по нему референсная доза\. Тубусы, отличающиеся от него только полем, — измерения в нестандартных условиях \(TRS-398 Rev\.1, разд\. 9\.5\)/);
   assert.match(await page.locator('#kv-compliance').innerText(), /^Референсные условия: отступлений/);
   assert.equal(await page.locator('#kv-rows-body tr[data-i="1"] .st').getAttribute('class'), 'st ok');
-  assert.match(await page.locator('#kv-row-of').innerText(), /^Строка 1 из 3 · Ø 10 см · РИП 50 см · стандартный тубус$/);
+  assert.match(await page.locator('#kv-row-of').innerText(), /^Режим 1 из 2 · 200 кВ, СПО 1,00 мм Cu · Строка 1 из 3 · Ø 10 см · РИП 50 см · стандартный тубус$/);
   assert.equal(await page.locator('label[for="kv_env_T"]').getAttribute('data-row'), ' · строка 1');
 
   // ввод в строку 2 выбирает её: поля разделов — её, итог справа — по ней
   await page.click('#kvr1_kv_env_T');
   await pause();
-  assert.match(await page.locator('#kv-row-of').innerText(), /^Строка 2 из 3 · 6 × 8 см · РИП 50 см$/);
+  assert.match(await page.locator('#kv-row-of').innerText(), /^Режим 1 из 2 · 200 кВ, СПО 1,00 мм Cu · Строка 2 из 3 · 6 × 8 см · РИП 50 см$/);
   const comp = await page.locator('#kv-compliance').innerText();
   assert.match(comp, /^Тубус не стандартный: измерение в нестандартных условиях \(TRS-398 Rev\.1, разд\. 9\.5\); референсная доза — по стандартному тубусу, строка 1 \(Ø 10 см\)/);
   assert.match(comp, /поле 6 × 8 см вместо 10 × 10 см или Ø 10 см/);
@@ -113,28 +113,29 @@ test('kV-рентген: таблица аппликаторов — строк�
   assert.equal(await rows.count(), 2);
 
   // удалили выбранную строку — подробно соседняя (строка 2)
-  assert.match(await page.locator('#kv-row-of').innerText(), /^Строка 2 из 2/);
+  assert.match(await page.locator('#kv-row-of').innerText(), / · Строка 2 из 2 · /);
   assert.equal(await page.inputValue('#kv_env_T'), '21,4');
 
   // протокол: список строк и подробно — выбранная
   await page.click('#kv-btn-copy-report');
   await pause();
   const report = await page.evaluate(() => navigator.clipboard.readText());
-  assert.match(report, /Аппликаторы \(2\); подробно ниже — строка 2:\n {2}1\. Ø 10 см \(стандартный тубус\), РИП 50 см; T = 21,0 °C, P = 100,5 кПа; M₁ 21,95; 21,96; 21,95 нКл; k_TP = 1,0116; D = 1,0012 Гр\/мин на 2 г\/см², отклонение \+0,62 %\n {2}2\. 6 × 8 см, РИП 50 см; .*D = 0,9425 Гр\/мин на 2 г\/см², отклонение \+0,59 % \(k_pol из строки 1 \(Ø 10 см\)\)/);
+  assert.match(report, /Режимы приезда \(2\); подробно ниже — режим 1, строка 2:\nРежим 1: 200 кВ, СПО 1,00 мм Cu, фильтр 0,5 мм Cu \+ 1 мм Al; камера 1 \(PTW 30013 № 0000\)\n {2}1\. Ø 10 см \(стандартный тубус\), РИП 50 см; T = 21,0 °C, P = 100,5 кПа; M₁ 21,95; 21,96; 21,95 нКл; k_TP = 1,0116; D = 1,0012 Гр\/мин на 2 г\/см², отклонение \+0,62 %\n {2}2\. 6 × 8 см, РИП 50 см; .*D = 0,9425 Гр\/мин на 2 г\/см², отклонение \+0,59 % \(k_pol из строки 1 \(Ø 10 см\)\)/);
 
   assert.match(report, /Условия: T = 21,4 °C/);
   assert.match(report, /\nТубус не стандартный: измерение в нестандартных условиях \(TRS-398 Rev\.1, разд\. 9\.5\); референсная доза — по стандартному тубусу, строка 1 \(Ø 10 см\): поле 6 × 8 см/);
   assert.doesNotMatch(report, /НЕСТАНДАРТНЫЕ УСЛОВИЯ/);
   assert.match(report, /M\(V1, обратная\): в этой строке не измерялось; k_pol из строки 1 \(Ø 10 см\)/);
 
-  // файл формата 2: строки, выбранная строка и итоги строк; открывается со сверкой по выбранной строке
+  // файл формата 3: режимы со строками, выбранная строка и итоги строк; открывается со сверкой по выбранной строке
   const [download] = await Promise.all([page.waitForEvent('download'), page.click('#kv-btn-save')]);
   const saved = JSON.parse(await readFile(await download.path(), 'utf8'));
-  assert.equal(saved.version, 2);
-  assert.equal(saved.rows.length, 2);
-  assert.equal(saved.active, 1);
+  assert.equal(saved.version, 3);
+  assert.equal(saved.modes.length, 2);
+  assert.equal(saved.modes[0].rows.length, 2);
+  assert.equal(saved.modes[0].active, 1);
   assert.equal(saved.form.kv_cone_shape, 'rect');
-  assert.equal(saved.rowResults.length, 2);
+  assert.deepEqual(saved.modeResults.map((m) => m.length), [2, 2]);
   assert.ok(Math.abs(saved.result.value - 0.9425) < 1e-4);
   await page.click('#kv-btn-clear');
   await page.click('#kv-btn-clear');
@@ -143,7 +144,7 @@ test('kV-рентген: таблица аппликаторов — строк�
   await page.setInputFiles('#kv-file-input', await download.path());
   await pause();
   assert.equal(await rows.count(), 2);
-  assert.match(await page.locator('#kv-row-of').innerText(), /^Строка 2 из 2/);
+  assert.match(await page.locator('#kv-row-of').innerText(), / · Строка 2 из 2 · /);
   assert.match(await page.locator('#kv-file-note').innerText(), /совпадает с сохранённым итогом/);
   await page.click('#kv-rows-body tr[data-i="0"] .kv-row-pick');
   await pause();
@@ -154,7 +155,7 @@ test('kV-рентген: таблица аппликаторов — строк�
   await page.reload();
   await page.waitForSelector('#kv-messages li');
   assert.equal(await rows.count(), 2);
-  assert.match(await page.locator('#kv-row-of').innerText(), /^Строка 1 из 2/);
+  assert.match(await page.locator('#kv-row-of').innerText(), / · Строка 1 из 2 · /);
   assert.equal(await page.inputValue('#kvr1_kv_cone_b'), '8');
 
   // файл 0.35 (формат 1, одна форма) — одна строка с тем же итогом
@@ -173,7 +174,7 @@ test('kV-рентген: таблица аппликаторов — строк�
   assert.equal(await page.locator('#kv-rows-h-d').innerText(), 'D, Gy/min');
   assert.equal(await page.inputValue('#kvr1_kv_env_T'), '21.4');
   assert.match(await page.locator('#kv-rows-note').innerText(), /taken from row 1 \(Ø 10 cm\)/);
-  assert.match(await page.locator('#kv-row-of').innerText(), /^Row 1 of 3 · Ø 10 cm · SSD 50 cm · reference applicator$/);
+  assert.match(await page.locator('#kv-row-of').innerText(), /^Mode 1 of 2 · 200 kV, HVL 1.00 mm Cu · Row 1 of 3 · Ø 10 cm · SSD 50 cm · reference applicator$/);
   assert.equal(await page.locator('#kv-rows-body tr[data-i="0"] .kv-std').innerText(), 'ref.');
   await page.click('#kv-rows-body tr[data-i="1"] .kv-row-pick');
   await pause();

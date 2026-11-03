@@ -478,7 +478,32 @@ export function computeKv(form) {
   let tau = 0;
   let timer = { mode: f.kv_timer_mode, unit: f.kv_set_unit };
   const timerWord = U.time ? L('Ошибка таймера', 'Timer error') : L('Концевой эффект', 'End effect');
-  if (f.kv_timer_mode === 'manual') {
+  // режим приезда без своих данных ошибки таймера: τ измерена в другом режиме того же аппарата (kv-session.js
+  // передаёт, откуда — kv_tau_from, и значение в единицах задания этого режима — kv_tau_fix)
+  const noCells = (k) => {
+    const c = parseCells(f[k]);
+    return c.n === 0 && !c.error;
+  };
+  const timerBlank = f.kv_timer_mode === 'measured' ? [...f.kv_tt, ...f.kv_tm].every(isBlank) : f.kv_timer_mode === 'nexp' && noCells('kv_nx_M1') && noCells('kv_nx_Mn');
+  const tauFrom = timerBlank && !isBlank(f.kv_tau_from) ? String(f.kv_tau_from) : '';
+  if (tauFrom) {
+    const v = parseNumber(f.kv_tau_fix);
+    if (Number.isFinite(v)) {
+      tau = v;
+      timer = { ...timer, from: tauFrom };
+      add('info', 'common', U.time
+        ? L(
+          `τ = ${ru(tau, 4)} ${U.label} взята из ${tauFrom}: в этом режиме ошибку таймера не измеряли. Она зависит от того, как трубка выходит на режим, поэтому берётся из режима с ближайшим напряжением; при возможности измерьте её и здесь.`,
+          `τ = ${ru(tau, 4)} ${U.labelEn} is taken from ${tauFrom}: the timer error was not measured in this mode. It depends on how the tube ramps up, so it is taken from the mode with the nearest voltage; if possible, measure it here too.`,
+        )
+        : L(
+          `τ = ${ru(tau, 4)} ${U.label} взят из ${tauFrom}: в этом режиме концевой эффект не измеряли; при возможности измерьте его и здесь.`,
+          `τ = ${ru(tau, 4)} ${U.labelEn} is taken from ${tauFrom}: the end effect was not measured in this mode; if possible, measure it here too.`,
+        ), `${REF.trs}, разд. 9.4.2`, 'kv_timer_mode');
+    } else {
+      add('error', 'common', L(`${timerWord} из ${tauFrom} не вычислен${U.time ? 'а' : ''}: проверьте там раздел 3.`, `${timerWord} from ${tauFrom} could not be calculated: check section 3 there.`), null, 'kv_timer_mode');
+    }
+  } else if (f.kv_timer_mode === 'manual') {
     tau = read('kv_tau', L(`${U.time ? 'Ошибка таймера' : 'Концевой эффект'} τ`, `${U.time ? 'Timer error' : 'End effect'} τ`));
   } else if (windowMode) {
     if (U.time) add('info', 'common', L('Заряд накоплен на интервале, когда трубка уже вышла на режим: ошибка таймера в мощность дозы не входит. Все серии, включая контрольные, нужно снимать так же. Для расчёта времени облучения пациентов ошибку таймера всё равно нужно знать.', 'Charge was collected over an interval with the tube already at its operating output, so the timer error does not enter the dose rate. All series, including the check measurements, must be taken the same way. The timer error must still be known for calculating patient treatment times.'), `${REF.trs}, разд. 9.4.2`);
@@ -542,10 +567,15 @@ export function computeKv(form) {
   } else if (polFrom) {
     kpolRaw = parseNumber(f.kv_kpol_fix);
     if (Number.isFinite(kpolRaw)) {
-      add('info', 'common', L(
-        `k_pol = ${ru(kpolRaw, 4)} взят из ${polFrom}: серия при обратной полярности снята там, с другим аппликатором того же режима.`,
-        `k_pol = ${ru(kpolRaw, 4)} is taken from ${polFrom}: the opposite-polarity series was measured there, with another applicator of the same beam.`,
-      ), `${REF.trs}, разд. 4.4.3.3`, 'kv_Mopp');
+      add('info', 'common', f.kv_pol_mode
+        ? L(
+          `k_pol = ${ru(kpolRaw, 4)} взят из ${polFrom}: в этом режиме серии при обратной полярности нет, она снята в другом режиме той же камерой. TRS-398 Rev.1 определяет поправки в пучке пользователя: при возможности снимите серию и в этом режиме.`,
+          `k_pol = ${ru(kpolRaw, 4)} is taken from ${polFrom}: this mode has no opposite-polarity series; it was measured in another mode with the same chamber. TRS-398 Rev.1 determines the corrections in the user beam: if possible, take the series in this mode too.`,
+        )
+        : L(
+          `k_pol = ${ru(kpolRaw, 4)} взят из ${polFrom}: серия при обратной полярности снята там, с другим аппликатором того же режима.`,
+          `k_pol = ${ru(kpolRaw, 4)} is taken from ${polFrom}: the opposite-polarity series was measured there, with another applicator of the same beam.`,
+        ), `${REF.trs}, разд. 4.4.3.3`, 'kv_Mopp');
     } else {
       add('error', 'common', L(`k_pol из ${polFrom} не вычислен: проверьте там показания при обратной полярности.`, `k_pol from ${polFrom} could not be calculated: check the opposite-polarity readings there.`), null, 'kv_Mopp');
     }
@@ -570,10 +600,15 @@ export function computeKv(form) {
     ksRaw = parseNumber(f.kv_ks_fix);
     if (Number.isFinite(ksRaw)) {
       ksEquation = L(`взят из ${ksFrom}`, `taken from ${ksFrom}`);
-      add('info', 'common', L(
-        `k_s = ${ru(ksRaw, 4)} взят из ${ksFrom}: серия при пониженном напряжении V₂ снята там, с другим аппликатором того же режима.`,
-        `k_s = ${ru(ksRaw, 4)} is taken from ${ksFrom}: the series at the reduced voltage V₂ was measured there, with another applicator of the same beam.`,
-      ), `${REF.trs}, разд. 4.4.3.4`, 'kv_M2');
+      add('info', 'common', f.kv_ks_mode
+        ? L(
+          `k_s = ${ru(ksRaw, 4)} взят из ${ksFrom}: в этом режиме серии при пониженном напряжении V₂ нет, она снята в другом режиме той же камерой. k_s зависит от мощности дозы: если в этом режиме она заметно выше, снимите серию при V₂ и здесь.`,
+          `k_s = ${ru(ksRaw, 4)} is taken from ${ksFrom}: this mode has no series at the reduced voltage V₂; it was measured in another mode with the same chamber. k_s depends on the dose rate: if it is noticeably higher in this mode, take the V₂ series here too.`,
+        )
+        : L(
+          `k_s = ${ru(ksRaw, 4)} взят из ${ksFrom}: серия при пониженном напряжении V₂ снята там, с другим аппликатором того же режима.`,
+          `k_s = ${ru(ksRaw, 4)} is taken from ${ksFrom}: the series at the reduced voltage V₂ was measured there, with another applicator of the same beam.`,
+        ), `${REF.trs}, разд. 4.4.3.4`, 'kv_M2');
     } else {
       add('error', 'common', L(`k_s из ${ksFrom} не вычислен: проверьте там показания при V₂.`, `k_s from ${ksFrom} could not be calculated: check the readings at V₂ there.`), null, 'kv_M2');
     }

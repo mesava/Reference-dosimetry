@@ -1,11 +1,16 @@
 // kV-рентген: строки аппликаторов одного пучка (раздел 4 вкладки). Деление формы на общие поля и поля строки,
 // старые файлы и черновики (плоская форма) — одна строка, каждая строка считается как отдельный расчёт со своими T, P,
 // показаниями и тубусом, k_pol и k_s строк без своих серий — из первой строки с серией (ошибки источника не передаются).
+// Приезд (0.37.0): несколько режимов и камер; режим без своих серий берёт k_pol и k_s из ближайшего по СПО режима с той
+// же камерой, τ — из ближайшего по напряжению режима, где она измерена.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeKv, KV_DEFAULTS, normalizeKv } from '../src/core/kv.js';
-import { KV_ROW_KEYS, emptyKvRow, splitKvForm, kvRowForm, normalizeKvSession, kvRowLabel, computeKvSession, kvRowEmpty } from '../src/core/kv-session.js';
-import { SAMPLE_KV, SAMPLE_KV_ROWS } from '../src/core/sample-kv.js';
+import {
+  KV_ROW_KEYS, emptyKvRow, splitKvForm, kvRowForm, normalizeKvSession, kvRowLabel, computeKvSession, kvRowEmpty,
+  KV_COMMON_KEYS, KV_CHAMBER_KEYS, KV_MODE_KEYS, splitKvVisitForm, normalizeKvVisit, kvVisitRowForm, computeKvVisit, newKvMode, newKvChamber, kvModeLabel,
+} from '../src/core/kv-session.js';
+import { SAMPLE_KV, SAMPLE_KV_ROWS, SAMPLE_KV_MODE2 } from '../src/core/sample-kv.js';
 import { setLang } from '../src/core/i18n.js';
 
 setLang('ru');
@@ -193,4 +198,206 @@ test('стандартный тубус: низкие энергии N_D,w — �
   assert.equal(all.stdRow, 1);
   assert.deepEqual(all.nonRef, [false, false]);
   for (const r of all.results) assert.equal(r.compliance.status, 'standard');
+});
+
+// ------------------------------------------------------------ приезд: несколько режимов и камер (0.37.0)
+const sampleVisit = () => {
+  const v = normalizeKvVisit({ form: SAMPLE_KV, rows: [SAMPLE_KV, ...SAMPLE_KV_ROWS], active: 0 });
+  const m2 = newKvMode(v.modes[0]);
+  Object.assign(m2.shared, SAMPLE_KV_MODE2.shared);
+  m2.rows = SAMPLE_KV_MODE2.rows;
+  v.modes.push(m2);
+  return normalizeKvVisit(v);
+};
+const D = (r) => (r.trs.ctrl && !r.trs.ctrl.blocked ? r.trs.ctrl : r.trs).perUnit;
+
+test('приезд: поля формы делятся на общие, камеры, режима и строки без пересечений', () => {
+  const groups = [KV_COMMON_KEYS, KV_CHAMBER_KEYS, KV_MODE_KEYS, KV_ROW_KEYS];
+  const all = groups.flat();
+  assert.equal(new Set(all).size, all.length);
+  assert.deepEqual([...all].sort(), Object.keys(KV_DEFAULTS).sort());
+  const p = splitKvVisitForm(SAMPLE_KV);
+  assert.deepEqual(normalizeKv({ ...p.common, ...p.chamber, ...p.mode, ...p.row }), normalizeKv(SAMPLE_KV));
+  assert.equal(p.chamber.kv_ch_model, 'PTW30013');
+  assert.equal(p.mode.kv_kv, '200');
+  assert.equal(p.common.kv_machine, SAMPLE_KV.kv_machine);
+});
+
+test('приезд: старые файлы и черновики — один режим с одной камерой; формат 3 читается без потерь', () => {
+  const flat = normalizeKvVisit(SAMPLE_KV);
+  assert.equal(flat.modes.length, 1);
+  assert.equal(flat.chambers.length, 1);
+  assert.equal(flat.modes[0].rows.length, 1);
+  near(D(computeKvVisit(flat).modes[0].results[0]), 1.0012, 5e-5);
+  // формат 2 (0.36): строки одного режима и выбранная строка
+  const v2 = normalizeKvVisit({ form: kvRowForm(sample(), 2), rows: sample().rows, active: 2 });
+  assert.equal(v2.modes[0].rows.length, 3);
+  assert.equal(v2.modes[0].active, 2);
+  assert.equal(kvVisitRowForm(v2, 0, 1).kv_env_T, '21,4');
+  // формат 3 — тот же приезд после записи в JSON
+  const v = sampleVisit();
+  const again = normalizeKvVisit(JSON.parse(JSON.stringify({ ...v, form: kvVisitRowForm(v, 0, 0) })));
+  assert.deepEqual(again, normalizeKvVisit(JSON.parse(JSON.stringify(v))));
+  assert.equal(again.mode, 0);
+  // номера режима, камеры и строки ограничиваются; форма точнее частей
+  const bad = normalizeKvVisit({ ...JSON.parse(JSON.stringify(v)), mode: 5 });
+  assert.equal(bad.mode, 0);
+  const w = JSON.parse(JSON.stringify(v));
+  w.modes[1].chamber = 3;
+  w.modes[1].active = 9;
+  w.mode = 1;
+  const c = normalizeKvVisit({ ...w, form: { ...kvVisitRowForm(v, 1, 0), kv_env_T: '25,0', kv_ch_serial: '777' } });
+  assert.equal(c.modes[1].chamber, 0);
+  assert.equal(c.modes[1].active, 0);
+  assert.equal(c.modes[1].rows[0].kv_env_T, '25,0');
+  assert.equal(c.chambers[0].kv_ch_serial, '777');
+});
+
+test('приезд: режим без своих серий берёт k_pol и τ из режима 1 той же камеры', () => {
+  const v = sampleVisit();
+  const r = computeKvVisit(v);
+  const [m1, m2] = r.modes;
+  assert.deepEqual([m1.polMode, m1.ksMode, m1.tauMode], [-1, -1, -1]);
+  assert.deepEqual([m2.polMode, m2.ksMode, m2.tauMode], [0, -1, 0]);
+  // режим 1 — как раньше
+  assert.deepEqual(m1.results.map((x) => Math.round(D(x) * 1e4) / 1e4), [1.0012, 0.9425, 1.0475]);
+  // режим 2: k_pol и τ режима 1, итог в допуске
+  for (const x of m2.results) {
+    assert.equal(x.trs.kpolRaw, m1.kpolFix);
+    near(x.timer.tau, m1.timer.tau, 1e-12);
+    assert.match(x.timer.from, /^режима 1 \(200 кВ, СПО 1,00 мм Cu\)$/);
+    assert.ok(has(x, 'info', /k_pol = 0,9995 взят из режима 1 \(200 кВ, СПО 1,00 мм Cu\): в этом режиме серии при обратной полярности нет/));
+    assert.ok(has(x, 'info', /τ = 0,0101 мин взята из режима 1 \(200 кВ, СПО 1,00 мм Cu\): в этом режиме ошибку таймера не измеряли/));
+    assert.equal(x.messages.filter((m) => m.level !== 'info').length, 0);
+  }
+  assert.deepEqual(m2.results.map((x) => Math.round(D(x) * 1e4) / 1e4), [0.914, 0.862]);
+  assert.equal(m2.stdRow, 0);
+  // своя серия при обратной полярности — свой k_pol
+  v.modes[1].rows[0].kv_Mopp = ['-20,09', '-20,10', '-20,09'];
+  const own = computeKvVisit(v).modes[1];
+  assert.equal(own.polMode, -1);
+  assert.equal(own.results[1].trs.kpolFrom, 'строки 1 (Ø 10 см)');
+});
+
+test('приезд: k_pol — только из режима с той же камерой; τ — из любого (таймер — свойство аппарата)', () => {
+  const v = sampleVisit();
+  v.chambers.push(newKvChamber(v.chambers[0]));
+  v.modes[1].chamber = 1;
+  const m2 = computeKvVisit(v).modes[1];
+  assert.equal(m2.polMode, -1);
+  assert.equal(m2.tauMode, 0);
+  assert.ok(has(m2.results[0], 'warn', /обратной полярности не введены: k_pol принят равным 1/));
+  // новая камера: модель и сертификат пустые, электрометр, T₀, P₀ и напряжения — как у камеры 1
+  assert.equal(v.chambers[1].kv_ch_model, '');
+  assert.equal(v.chambers[1].kv_n, '');
+  assert.equal(v.chambers[1].kv_el_model, SAMPLE_KV.kv_el_model);
+  assert.equal(v.chambers[1].kv_V1, '400');
+});
+
+test('приезд: из нескольких режимов с серией — ближайший по СПО; ошибка в серии источника передаётся ошибкой', () => {
+  const v = sampleVisit();
+  // режим 3: 100 кВ, СПО 0,20 мм Cu, со своей серией при обратной полярности (другой k_pol)
+  const m3 = newKvMode(v.modes[0]);
+  Object.assign(m3.shared, { kv_kv: '100', kv_hvl: '0,20' });
+  m3.rows = [{ ...SAMPLE_KV_MODE2.rows[0], kv_M1: ['15,00', '15,01', '15,00'], kv_Mopp: ['-14,90', '-14,91', '-14,90'] }];
+  v.modes.push(normalizeKvVisit({ ...v, modes: [m3] }).modes[0]);
+  const near05 = computeKvVisit(v).modes[1];
+  // СПО 0,50: ln(1,00/0,50) = 0,69 < ln(0,50/0,20) = 0,92 — режим 1
+  assert.equal(near05.polMode, 0);
+  v.modes[1].shared.kv_hvl = '0,30';
+  const near03 = computeKvVisit(v).modes[1];
+  // СПО 0,30: ln(0,30/0,20) = 0,41 < ln(1,00/0,30) = 1,20 — режим 3
+  assert.equal(near03.polMode, 2);
+  assert.match(near03.results[0].trs.kpolFrom, /^режима 3 \(100 кВ, СПО 0,20 мм Cu\)$/);
+  assert.notEqual(near03.results[0].trs.kpolRaw, computeKvVisit(v).modes[0].kpolFix);
+  // серия источника с ошибкой — у режима 2 ошибка, а не k_pol = 1
+  v.modes[2].rows[0].kv_Mopp = ['14,90', '-14,91', '-14,90'];
+  const err = computeKvVisit(v).modes[1];
+  assert.equal(err.polMode, 2);
+  assert.ok(has(err.results[0], 'error', /k_pol из режима 3 \(100 кВ, СПО 0,20 мм Cu\) не вычислен/));
+});
+
+test('приезд: k_s из режима той же камеры при включённом методе двух напряжений', () => {
+  const v = sampleVisit();
+  Object.assign(v.chambers[0], { kv_ks_on: true, kv_V2: '100' });
+  v.modes[0].rows[0].kv_M2 = ['21,85', '21,86', '21,85'];
+  const r = computeKvVisit(v);
+  assert.equal(r.modes[0].ksSrc, 0);
+  assert.equal(r.modes[1].ksMode, 0);
+  const ks = r.modes[0].ksFix;
+  assert.ok(ks > 1 && ks < 1.01, String(ks));
+  for (const x of r.modes[1].results) {
+    assert.equal(x.trs.ksRaw, ks);
+    assert.ok(has(x, 'info', /k_s = \d,\d{4} взят из режима 1 \(200 кВ, СПО 1,00 мм Cu\): в этом режиме серии при пониженном напряжении V₂ нет/));
+  }
+});
+
+test('приезд: τ — из ближайшего по напряжению режима, в единицах задания; «не учитывать» и чужие единицы — без переноса', () => {
+  const v = sampleVisit();
+  const tau1 = computeKvVisit(v).modes[0].timer.tau;
+  // задание в секундах — τ пересчитывается
+  v.modes[1].shared.kv_set_unit = 's';
+  for (const row of v.modes[1].rows) row.kv_set = '60';
+  const s = computeKvVisit(v).modes[1];
+  assert.equal(s.tauMode, 0);
+  near(s.results[0].timer.tau, tau1 * 60, 1e-9);
+  near(D(s.results[0]), 0.914, 5e-5);
+  // задание в МЕ — τ в минутах не переносится
+  v.modes[1].shared.kv_set_unit = 'MU';
+  assert.equal(computeKvVisit(v).modes[1].tauMode, -1);
+  v.modes[1].shared.kv_set_unit = 'min';
+  for (const row of v.modes[1].rows) row.kv_set = '1,00';
+  // «не учитывать» — выбор пользователя: τ не берётся
+  v.modes[1].shared.kv_timer_mode = 'none';
+  const off = computeKvVisit(v).modes[1];
+  assert.equal(off.tauMode, -1);
+  assert.equal(off.results[0].timer.tau, 0);
+  assert.ok(has(off.results[0], 'warn', /Ошибка таймера не учтена/));
+  // n облучений без показаний — тоже «нет своих данных»
+  v.modes[1].shared.kv_timer_mode = 'nexp';
+  assert.equal(computeKvVisit(v).modes[1].tauMode, 0);
+  // ближайший по напряжению: режим 3 на 160 кВ со своим τ = 0,02 мин
+  v.modes[1].shared.kv_timer_mode = 'measured';
+  const m3 = newKvMode(v.modes[0]);
+  Object.assign(m3.shared, { kv_kv: '160', kv_hvl: '0,70', kv_timer_mode: 'manual', kv_tau: '0,02' });
+  m3.rows = [SAMPLE_KV_MODE2.rows[0]];
+  v.modes.push(normalizeKvVisit({ ...v, modes: [m3] }).modes[0]);
+  const m2 = computeKvVisit(v).modes[1];
+  assert.equal(m2.tauMode, 2);
+  near(m2.results[0].timer.tau, 0.02, 1e-12);
+  // у режима-источника ошибка в данных таймера — у режима 2 ошибка
+  v.modes[2].shared.kv_tau = 'abc';
+  assert.ok(has(computeKvVisit(v).modes[1].results[0], 'error', /Ошибка таймера из режима 3 \(160 кВ, СПО 0,70 мм Cu\) не вычислена/));
+});
+
+test('приезд: новый режим — камера, фантом, единица задания и тубусы как у образца; пучок, τ и показания пустые', () => {
+  const v = sampleVisit();
+  const m = newKvMode(v.modes[0]);
+  assert.equal(m.chamber, 0);
+  assert.equal(m.shared.kv_range, 'medium');
+  assert.equal(m.shared.kv_phantom, 'water');
+  assert.equal(m.shared.kv_kv, '');
+  assert.equal(m.shared.kv_hvl, '');
+  assert.deepEqual(m.shared.kv_tt, KV_DEFAULTS.kv_tt);
+  assert.equal(m.rows.length, 3);
+  assert.deepEqual(m.rows.map(kvRowLabel), ['Ø 10 см', '6 × 8 см', 'Ø 15 см']);
+  assert.deepEqual(m.rows[0].kv_M1, KV_DEFAULTS.kv_M1);
+  assert.equal(m.rows[0].kv_ref, '');
+  assert.equal(m.rows[0].kv_env_T, '21,0');
+  // известное τ образца — не для нового режима: он берёт τ из ближайшего режима
+  v.modes[0].shared.kv_timer_mode = 'manual';
+  assert.equal(newKvMode(v.modes[0]).shared.kv_timer_mode, 'measured');
+  // подпись режима
+  assert.equal(kvModeLabel(v.modes[1].shared), '150 кВ, СПО 0,50 мм Cu');
+  assert.equal(kvModeLabel(m.shared), '');
+  assert.equal(kvModeLabel({ kv_range: 'low', kv_kv: '50', kv_hvl: '' }), '50 кВ');
+});
+
+test('приезд: неизменённый режим не пересчитывается (запоминание по данным режима)', () => {
+  const v = sampleVisit();
+  const a = computeKvVisit(v);
+  v.modes[1].rows[1].kv_env_T = '22,0';
+  const b = computeKvVisit(v);
+  assert.equal(b.modes[0].results, a.modes[0].results);
+  assert.notEqual(b.modes[1].results, a.modes[1].results);
 });

@@ -1239,6 +1239,61 @@ table.kv-rows .kv-row-del:disabled { visibility: hidden; }
 #kv-rows-note:empty { display: none; }
 #kv-sheet [data-row]::after { content: attr(data-row); color: var(--accent); font-weight: 600; }
 .kv-row-of { margin: -4px 0 8px; font: 500 13px var(--font-body); color: var(--display-dim); }
+
+/* kV: режимы приезда (раздел 1), камера режима (раздел 2), сводка приезда (раздел 9) */
+.kv-modes-block { margin-top: 14px; }
+.kv-modes-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.kv-modes { display: contents; }
+.kv-mode { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 11px; border: 1px solid var(--field-border); border-radius: 16px; background: var(--sheet); color: var(--ink); font: 13px var(--font-body); cursor: pointer; }
+.kv-mode b { font: 600 12px var(--font-mono); }
+.kv-mode:hover { border-color: var(--accent); }
+.kv-mode.active { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.kv-mode .st, table.kv-sum .st { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--rule); vertical-align: middle; flex: none; }
+.kv-mode .st.ok, table.kv-sum .st.ok { background: var(--ok); }
+.kv-mode .st.warn, table.kv-sum .st.warn { background: var(--warn); }
+.kv-mode .st.error, table.kv-sum .st.error { background: var(--err); }
+.kv-ch-pick-grid { padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px dashed var(--rule); }
+.kv-ch-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.kv-ch-pick select { flex: 1 1 18em; min-width: 0; }
+#kv-sheet h2[data-tag]::after { content: attr(data-tag); color: var(--accent); font-weight: 600; font-size: 0.8em; }
+table.kv-sum td small { display: block; font: 11px var(--font-body); color: var(--muted); white-space: nowrap; text-align: right; }
+table.kv-sum td.mode { white-space: nowrap; }
+table.kv-sum tbody tr.grp td { border-top: 2px solid var(--rule); }
+table.kv-sum tbody tr.active td { background: var(--accent-soft); }
+table.kv-sum td.v.good { color: var(--ok); }
+table.kv-sum td.v.bad { color: var(--err); font-weight: 600; }
+table.kv-sum th.act, table.kv-sum td.act { width: 1.6em; text-align: center; }
+table.kv-sum .kv-sum-pick { min-width: 2.4em; height: 26px; padding: 0 4px; border: 1px solid var(--rule); border-radius: 4px; background: var(--sheet); color: var(--muted); font: 12px var(--font-mono); cursor: pointer; }
+table.kv-sum tr.active .kv-sum-pick { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+table.kv-sum .kv-std { font: 600 10px var(--font-body); color: var(--accent); cursor: help; }
+#kv-sum-note:empty { display: none; }
+@media (max-width: 560px) {
+  /* карточка строки: № | режим, камера (у первой строки режима) | аппликатор, РИП, состояние | D, сравнение, отклонение */
+  table.kv-sum tr { grid-template-columns: 2.8em repeat(3, minmax(0, 1fr)); align-items: start; }
+  table.kv-sum tbody tr.active { background: var(--accent-soft); }
+  table.kv-sum tbody tr.active td { background: none; }
+  table.kv-sum td:empty { display: none; }
+  table.kv-sum td.v, table.kv-sum td small { text-align: left; }
+  table.kv-sum td.mode { white-space: normal; }
+  table.kv-sum td.no { grid-column: 1; grid-row: 1 / span 3; }
+  table.kv-sum td.mode { grid-column: 2 / span 2; grid-row: 1; }
+  table.kv-sum td.ch { grid-column: 4; grid-row: 1; }
+  table.kv-sum td.app { grid-column: 2; grid-row: 2; }
+  table.kv-sum td.ssd { grid-column: 3; grid-row: 2; }
+  table.kv-sum td.act { grid-column: 4; grid-row: 2; text-align: right; }
+  table.kv-sum td.d { grid-column: 2; grid-row: 3; }
+  table.kv-sum td.ref { grid-column: 3; grid-row: 3; }
+  table.kv-sum td.dev { grid-column: 4; grid-row: 3; }
+  table.kv-sum tr:not(.grp) td.no { grid-row: 1 / span 2; }
+  table.kv-sum tr:not(.grp) td.app, table.kv-sum tr:not(.grp) td.ssd, table.kv-sum tr:not(.grp) td.act { grid-row: 1; }
+  table.kv-sum tr:not(.grp) td.d, table.kv-sum tr:not(.grp) td.ref, table.kv-sum tr:not(.grp) td.dev { grid-row: 2; }
+}
+@media print {
+  .kv-modes-bar .link-btn, .kv-ch-pick .link-btn { display: none; }
+  .kv-mode { border-color: #999; }
+  table.kv-sum .kv-sum-pick { border: 0; background: none; color: inherit; padding: 0; }
+  table.kv-sum tbody tr.active td { background: none; }
+}
 @media (max-width: 560px) {
   table.kv-rows tr { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   table.kv-rows tbody tr.active { background: var(--accent-soft); }

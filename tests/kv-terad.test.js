@@ -7,6 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeKv, KV_DEFAULTS } from '../src/core/kv.js';
+import { splitKvVisitForm, normalizeKvVisit, computeKvVisit } from '../src/core/kv-session.js';
 
 const c = (x) => String(x).replace('.', ',');
 // P₀ = 1013 гПа на приёмке вместо 101,325 кПа: доза ниже на 0,025 %
@@ -159,4 +160,57 @@ test('Терад 200, 120–200 кВ: k_Q = 1 (Farmer только с ⁶⁰Co) 
   assert.ok(long.messages.some((m) => m.level === 'warn' && /вытянуто больше чем вдвое/.test(m.text)));
   assert.equal(long.flags.kv_pdd_phantom, 'warn');
   assert.ok(long.messages.some((m) => m.level === 'warn' && /PDD\(2 см\) снята в фантоме: RW3 \(PTW\); SSRMP No 9 не рекомендует/.test(m.text)));
+});
+
+test('Терад 200 как один приезд (0.37.0): серия k_pol и k_s только в режиме 120 кВ — режимы 140–200 кВ берут её, доза та же; 23342 — своя камера', () => {
+  // как на приёмке: одна серия 400/200 В на все пучки Farmer; в приезде она — в строке 1 режима 120 кВ
+  const farmer = splitKvVisitForm({
+    ...KV_DEFAULTS,
+    kv_ch_model: 'PTW30013', kv_cal: 'ndw', kv_qo: 'co60', kv_cert_form: 'co', kv_n: '0,05389', kv_n_unit: 'Gy/nC',
+    kv_T0: '20', kv_P0: '101,325', kv_kelec: '1', kv_V1: '400', kv_V2: '200', kv_ks_on: true, kv_rec_trs: 'eq13',
+  }).chamber;
+  const lowCh = splitKvVisitForm(LOW).chamber;
+  const medMode = (kv, hvl) => ({
+    ...splitKvVisitForm({ ...KV_DEFAULTS, kv_range: 'medium', kv_kv: kv, kv_hvl: hvl, kv_phantom: 'custom', kv_ph_name: 'твёрдая вода (марка не указана)', kv_pdd_phantom: 'rw3', kv_set_unit: 'min', kv_timer_mode: 'none' }).mode,
+  });
+  const beams = { 120: '0,222', 140: '0,420', 150: '0,746', 200: '1,484' };
+  const apps = [[40, 6, 8, 22.6, 1007.5], [40, 4, 15, 22.1, 1007.4], [50, 8, 10, 22.7, 1007.5]];
+  const cases = {
+    120: [[[9.532, 9.535, 9.551], 0.524556378654961], [[9.016, 9.016, 9.02], 0.495063214539923], [[6.574, 6.576, 6.58], 0.361765188578338]],
+    140: [[[11.6, 11.59, 11.59], 0.637503349277362], [[11.03, 11.03, 11.04], 0.605744211195898], [[8.076, 8.068, 8.073], 0.444037890106519]],
+    150: [[[8.671, 8.674, 8.673], 0.476899429025256], [[8.274, 8.273, 8.274], 0.454234956679559], [[6.057, 6.06, 6.06], 0.333289702624858]],
+    200: [[[8.666, 8.66, 8.669], 0.476477848316993], [[8.279, 8.281, 8.283], 0.454637566125067], [[6.017, 6.021, 6.019], 0.331089407509329]],
+  };
+  const modes = Object.entries(cases).map(([kv, rows]) => ({
+    shared: medMode(kv, beams[kv]),
+    chamber: 0,
+    active: 0,
+    rows: rows.map(([M], i) => {
+      const [ssd, a, b, T, P] = apps[i];
+      const row = { kv_cone_shape: 'rect', kv_cone: String(a), kv_cone_b: String(b), kv_ssd: String(ssd), kv_set: '1', kv_env_T: c(T), kv_env_P: c(P), kv_M1: M.map(c), kv_Mc: M.map(c) };
+      if (kv === '120' && i === 0) Object.assign(row, { kv_M1: ['4,498', '4,496', '4,499'], kv_Mopp: ['-4,54', '-4,534', '-4,546'], kv_M2: ['4,486', '4,489', '4,501'] });
+      return row;
+    }),
+  }));
+  // режим 50 кВ с камерой 23342 (вторая камера приезда): k_pol у неё не измерялся и из Farmer не берётся
+  const [, shape, size, ssd, M, T, P] = LOW_ROWS[50][2];
+  modes.push({ shared: splitKvVisitForm({ ...LOW, kv_kv: '50', kv_hvl: LOW_BEAMS[50][0] }).mode, chamber: 1, active: 0, rows: [{ kv_cone_shape: shape, kv_cone: c(size), kv_ssd: String(ssd), kv_set: '1', kv_env_T: c(T), kv_env_P: c(P), kv_M1: M.map(c) }] });
+  const visit = normalizeKvVisit({ common: splitKvVisitForm({ ...KV_DEFAULTS, kv_env_P_unit: 'hPa' }).common, chambers: [farmer, lowCh], modes, mode: 0 });
+  const r = computeKvVisit(visit);
+  assert.deepEqual(r.modes.map((m) => [m.polMode, m.ksMode]), [[-1, -1], [0, 0], [0, 0], [0, 0], [-1, -1]]);
+  Object.values(cases).forEach((rows, m) => {
+    rows.forEach(([, theirs], i) => {
+      const x = r.modes[m].results[i];
+      assert.equal(x.trs.ctrl.blocked, false, `${Object.keys(cases)[m]} кВ, тубус ${i + 1}`);
+      assert.ok(Math.abs((theirs / x.trs.ctrl.perUnit - 1) * 100 - P0) < 0.002, `${Object.keys(cases)[m]} кВ, тубус ${i + 1}`);
+      assert.ok(Math.abs(x.trs.kpol - 1.00470614392648) < 1e-9);
+      assert.ok(Math.abs(x.trs.ks - 1.00121722345502) < 1e-9);
+    });
+  });
+  assert.match(r.modes[3].results[0].trs.kpolFrom, /^режима 1 \(120 кВ, СПО 0,222 мм Cu\)$/);
+  // 50 кВ: k_pol = 1 с предупреждением, k_s = 1 (у камеры 23342 метод двух напряжений не включён); доза — как отдельный расчёт
+  const lowR = r.modes[4].results[0];
+  assert.equal(lowR.trs.kpol, 1);
+  assert.equal(lowR.trs.ks, 1);
+  assert.equal(lowR.trs.perUnit, low(50, LOW_ROWS[50][2]).trs.perUnit);
 });

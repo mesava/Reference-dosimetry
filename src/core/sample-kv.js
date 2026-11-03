@@ -101,3 +101,37 @@ export const SAMPLE_KV_ROWS = [
     kv_ref: '1,0420',
   },
 ];
+
+// Второй режим того же приезда (раздел 1, «Режимы приезда»): 150 кВ с двумя аппликаторами той же камерой. Серий при
+// обратной полярности и данных ошибки таймера в нём нет — k_pol и τ берутся из режима 1. Значения вымышлены.
+export const SAMPLE_KV_MODE2 = {
+  shared: { kv_kv: '150', kv_filter: '0,25 мм Cu + 1 мм Al', kv_hvl: '0,50' },
+  rows: [
+    {
+      kv_cone_shape: 'circle',
+      kv_cone: '10',
+      kv_ssd: '50',
+      kv_set: '1,00',
+      kv_env_T: '21,5',
+      kv_env_H: '45',
+      kv_env_P: '100,4',
+      kv_M1: ['20,10', '20,11', '20,10'],
+      kv_pdd2: '84,0',
+      kv_ref: '0,9100',
+    },
+    {
+      kv_cone_shape: 'rect',
+      kv_cone: '6',
+      kv_cone_b: '8',
+      kv_ssd: '50',
+      kv_set: '1,00',
+      kv_env_T: '21,7',
+      kv_env_H: '45',
+      kv_env_P: '100,4',
+      kv_M1: ['18,92', '18,93', '18,92'],
+      kv_pdd2: '81,8',
+      kv_ref: '0,8585',
+    },
+  ],
+};
+export const SAMPLE_KV_MODE2_EN = { kv_filter: '0.25 mm Cu + 1 mm Al' };

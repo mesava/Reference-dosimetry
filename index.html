@@ -1558,7 +1558,7 @@
     <!-- 1 -->
     <section class="step" aria-labelledby="kv-s1">
       <header><span class="step-no">1</span><h2 id="kv-s1">Аппарат и пучок</h2>
-        <p class="hint">Качество пучка задают напряжение на трубке и <button type="button" class="term" data-term="hvl">СПО</button>: для низких энергий — в мм Al, для средних — в мм Cu. Тубус и РИП — выбранной строки раздела 4, у каждого аппликатора свои; квадратный и прямоугольный тубус заменяются кругом той же площади.</p></header>
+        <p class="hint">Качество пучка задают напряжение на трубке и <button type="button" class="term" data-term="hvl">СПО</button>: для низких энергий — в мм Al, для средних — в мм Cu. За один приезд можно измерить несколько режимов: у каждого свой пучок и свои аппликаторы. Тубус и РИП — выбранной строки раздела 4, у каждого аппликатора свои; квадратный и прямоугольный тубус заменяются кругом той же площади.</p></header>
       <div class="grid">
         <div class="field"><label for="kv_institution">Учреждение</label><div class="combo" data-list="institutions"><input type="text" id="kv_institution"></div></div>
         <div class="field"><label for="kv_machine">Аппарат</label><div class="combo" data-list="machines-kv"><input type="text" id="kv_machine" placeholder="Модель, № трубки"></div></div>
@@ -1568,6 +1568,15 @@
           <div id="kv-staff-list" class="staff-list" data-prefix="kv_staff" role="group" aria-labelledby="kv-staff-label"></div>
           <button type="button" class="link-btn" id="kv-btn-add-staff"><span aria-hidden="true">+</span> Добавить сотрудника</button>
         </div>
+      </div>
+      <div class="kv-modes-block">
+        <h4 class="series-head" id="kv-modes-label">Режимы приезда</h4>
+        <div class="kv-modes-bar">
+          <div class="kv-modes" id="kv-modes" role="group" aria-labelledby="kv-modes-label" data-i18n-skip></div>
+          <button type="button" class="link-btn" id="kv-btn-add-mode"><span aria-hidden="true">+</span> Добавить режим</button>
+          <button type="button" class="link-btn" id="kv-btn-del-mode" hidden>Удалить режим</button>
+        </div>
+        <p class="sub-hint">Режим — напряжение, фильтр и СПО со своими аппликаторами (раздел 4), заданием и ошибкой таймера (раздел 3). Учреждение, аппарат, дата и сотрудники — общие для приезда; камеру режима выбирают в разделе 2. Новый режим копирует камеру, фантом и тубусы выбранного, без показаний. Итоги всех режимов — в разделе 9.</p>
       </div>
       <div class="grid subgrid">
         <div class="field span-2">
@@ -1615,7 +1624,17 @@
     <!-- 2 -->
     <section class="step" aria-labelledby="kv-s2">
       <header><span class="step-no">2</span><h2 id="kv-s2">Камера и электрометр</h2>
-        <p class="hint">Камера калибруется в рентгеновских пучках тех же качеств, что и клинические: общий k<sub>Q</sub> по типу камеры для kV-рентгена не допускается. Значения сертификата вводятся таблицей по качествам; для пучка значение интерполируется линейно по ln(СПО).</p></header>
+        <p class="hint">Камера калибруется в рентгеновских пучках тех же качеств, что и клинические: общий k<sub>Q</sub> по типу камеры для kV-рентгена не допускается. Значения сертификата вводятся таблицей по качествам; для пучка значение интерполируется линейно по ln(СПО). Камеры приезда вводятся один раз: каждый режим выбирает свою, k<sub>Q</sub> берётся по СПО режима.</p></header>
+      <div class="grid two kv-ch-pick-grid">
+        <div class="field span-all">
+          <label for="kv-mode-chamber">Камера режима</label>
+          <div class="inline kv-ch-pick">
+            <select id="kv-mode-chamber" data-i18n-skip></select>
+            <button type="button" class="link-btn" id="kv-btn-del-ch" hidden>Удалить камеру</button>
+          </div>
+          <span class="sub" id="kv-mode-chamber-sub"></span>
+        </div>
+      </div>
       <div class="grid two">
         <div class="field span-all">
           <label for="kv_ch_model">Ионизационная камера</label>
@@ -1825,6 +1844,7 @@
       <div class="timer-box" data-show="kv_timer_mode:window">
         <p class="eq">Облучение запускают с запасом по времени, а заряд накапливают электрометром на меньшем интервале, который начинается после выхода трубки на режим и заканчивается до её выключения. Тогда ошибка таймера в показание не входит, и доза на единицу времени получается сразу. Все серии, включая контрольные, снимаются так же. Ошибку таймера всё равно нужно знать для расчёта времени облучения пациентов.</p>
       </div>
+      <p class="sub-hint" id="kv-timer-from" hidden></p>
       <div class="grid four">
         <div class="field out-cell used"><span class="label">τ, <span data-out-text="inputs.unitLabel"></span></span><output data-out="timer.tau" data-digits="4" data-signed="1"></output></div>
         <div class="field out-cell"><span class="label">τ/X</span><output data-out="timer.relativePct" data-digits="2" data-signed="1" data-suffix=" %" data-flag="kv_tau"></output></div>
@@ -1836,7 +1856,7 @@
     <!-- 4 -->
     <section class="step" aria-labelledby="kv-s4">
       <header><span class="step-no">4</span><h2 id="kv-s4">Аппликаторы</h2>
-        <p class="hint">По строке на каждый аппликатор этого пучка: у строки свои РИП, задание, температура и давление (измерения долгие, условия меняются), показания и значение для сравнения. Пучок, камера, сертификат и ошибка таймера — общие для всех строк. Выбранная строка подробно считается в разделах ниже, её поля отмечены там номером строки. Серии при обратной полярности и пониженном напряжении (раздел 5) обычно снимают с одним аппликатором: строка без своих серий берёт k<sub>pol</sub> и k<sub>s</sub> из первой строки, где они есть.</p></header>
+        <p class="hint">По строке на каждый аппликатор этого пучка: у строки свои РИП, задание, температура и давление (измерения долгие, условия меняются), показания и значение для сравнения. Пучок, камера, сертификат и ошибка таймера — общие для всех строк режима. Выбранная строка подробно считается в разделах ниже, её поля отмечены там номером строки. Серии при обратной полярности и пониженном напряжении (раздел 5) обычно снимают с одним аппликатором: строка без своих серий берёт k<sub>pol</sub> и k<sub>s</sub> из первой строки, где они есть, а если их нет во всём режиме — из ближайшего по СПО режима с той же камерой.</p></header>
       <div class="table-wrap kv-rows-wrap">
         <table class="factors jf-table kv-rows" id="kv-rows">
           <thead><tr>
@@ -2072,8 +2092,31 @@
     </section>
 
     <!-- 9 -->
-    <section class="step" aria-labelledby="kv-s9" data-optional>
-      <header><span class="step-no">9</span><h2 id="kv-s9">Примечания</h2></header>
+    <section class="step" aria-labelledby="kv-s9">
+      <header><span class="step-no">9</span><h2 id="kv-s9">Сводка приезда</h2>
+        <p class="hint">Итоги всех режимов и аппликаторов. Номер строки открывает её в разделах выше.</p></header>
+      <div class="table-wrap">
+        <table class="factors jf-table kv-sum" id="kv-sum">
+          <thead><tr>
+            <th class="no">№</th>
+            <th>Режим</th>
+            <th>Камера</th>
+            <th>Аппликатор</th>
+            <th class="v">РИП, см</th>
+            <th class="v">D</th>
+            <th class="v">Сравнить с</th>
+            <th class="v">Откл., %</th>
+            <th class="act"><span class="visually-hidden">Состояние строки</span></th>
+          </tr></thead>
+          <tbody id="kv-sum-body" data-i18n-skip></tbody>
+        </table>
+      </div>
+      <p class="sub-hint" id="kv-sum-note" hidden></p>
+    </section>
+
+    <!-- 10 -->
+    <section class="step" aria-labelledby="kv-s10" data-optional>
+      <header><span class="step-no">10</span><h2 id="kv-s10">Примечания</h2></header>
       <div class="field"><label for="kv_notes" class="muted">Условия, отклонения от процедуры, принятые решения</label><textarea id="kv_notes"></textarea></div>
     </section>
   </form>
