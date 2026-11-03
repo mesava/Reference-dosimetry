@@ -77,3 +77,9 @@ export async function fillPhotonReadings(page, { M1 = ['12,346', '12,348', '12,3
     for (let i = 0; i < vals.length; i++) await cells.nth(i).fill(vals[i]);
   }
 }
+
+/** Вкладка «kV-рентген» (с 0.40.0): открыть лист — modes, timer, dose, summary и т. д. */
+export async function kvPage(page, key) {
+  await page.click(`#kv-pages a[data-kv-go="${key}"]`);
+  await page.waitForTimeout(50);
+}

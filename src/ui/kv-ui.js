@@ -11,6 +11,7 @@ import { localizeDecimals } from './i18n.js';
 import { PRESSURE_UNITS, NDW_UNITS, unitLabel, dec, parseCells } from '../core/units.js';
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, renderPairs, readPairs, setupPairs } from './widgets.js';
+import { refreshSectionNav } from './section-nav.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf, renderCompliance, complianceLine, ctrlErrorText,
@@ -797,7 +798,126 @@ function openRow(m, i) {
   visit.modes[m].active = i;
   writeForm(rowForm(i));
   update();
+  showPage('dose');
   rowsBody().querySelector(`tr[data-i="${i}"] .kv-row-pick`)?.focus();
+}
+
+// ------------------------------------------------------------ листы вкладки (как ярлыки листов в Excel)
+// Разделы формы разнесены по листам (data-kv-page); виден один лист, у каждого — своя ссылка #kv/<лист>.
+// Листы «СПО и k_Q», «Линейность» и «Воспроизводимость» пока заготовки. Печать и PDF — все разделы, как раньше.
+const PAGE_KEY = 'reference-dosimetry.kv.page';
+const KV_PAGES = ['modes', 'hvl', 'timer', 'linearity', 'repro', 'dose', 'summary'];
+const WIP_PAGES = new Set(['hvl', 'linearity', 'repro']);
+/** Листы по выбранному режиму: над ними — строка выбора режима (при двух режимах и больше). */
+const MODE_PAGES = new Set(['timer', 'dose']);
+const pageOf = (key) => (KV_PAGES.includes(key) ? key : 'modes');
+let page = (() => {
+  try {
+    return pageOf(localStorage.getItem(PAGE_KEY));
+  } catch {
+    return 'modes';
+  }
+})();
+const pageFromHash = () => /^#kv\/([a-z]+)$/.exec(location.hash)?.[1];
+
+/** Открыть лист: его разделы видны, остальные скрыты; адрес — #kv/<лист>, если вкладка открыта. */
+function showPage(key, { hash = true } = {}) {
+  page = pageOf(key);
+  for (const el of $$('#kv-sheet [data-kv-page]')) el.classList.toggle('page-off', el.dataset.kvPage !== page);
+  const nav = $('#kv-pages');
+  for (const a of $$('a[data-kv-go]', nav)) {
+    if (a.dataset.kvGo !== page) {
+      a.removeAttribute('aria-current');
+      continue;
+    }
+    a.setAttribute('aria-current', 'page');
+    // на телефоне ряд ярлыков прокручивается вбок: открытый лист — в видимой части ряда
+    if (nav.scrollWidth > nav.clientWidth) nav.scrollLeft = Math.max(0, a.offsetLeft - nav.offsetLeft - (nav.clientWidth - a.offsetWidth) / 2);
+  }
+  try {
+    localStorage.setItem(PAGE_KEY, page);
+  } catch {
+    /* хранилище недоступно */
+  }
+  if (hash && !ROOT().hidden && location.hash !== `#kv/${page}`) {
+    try {
+      history.replaceState(null, '', `#kv/${page}`);
+    } catch {
+      /* в некоторых просмотрщиках адрес не меняется */
+    }
+  }
+  renderModeBar();
+  refreshSectionNav(ROOT());
+}
+
+/** Вкладка открыта (app.js): лист из адреса #kv/<лист>, иначе тот, с которым работали. */
+export function kvShown() {
+  const h = pageFromHash();
+  showPage(KV_PAGES.includes(h) ? h : page);
+}
+
+/** Строка выбора режима над листами «Ошибка таймера» и «Поглощённая доза». */
+function renderModeBar() {
+  const bar = $('#kv-modebar');
+  if (!bar || !current) return;
+  const show = MODE_PAGES.has(page) && visit.modes.length > 1;
+  bar.hidden = !show;
+  if (!show) return;
+  html(
+    $('#kv-modebar-list'),
+    visit.modes
+      .map((md, m) => {
+        const on = m === visit.mode;
+        const lvl = modeState(current.vr.modes[m], md);
+        const kv = String(md.shared.kv_kv ?? '').trim();
+        const title = L(`Режим ${m + 1}: ${modeName(m)}`, `Mode ${m + 1}: ${modeName(m)}`);
+        return `<button type="button" class="kv-mode${on ? ' active' : ''}" data-m="${m}" aria-pressed="${on}" title="${esc(title)}"><span class="st ${lvl}" aria-hidden="true"></span><b>${m + 1}</b>${kv ? ` ${esc(kv)} ${L('кВ', 'kV')}` : ''}</button>`;
+      })
+      .join(''),
+  );
+}
+
+/**
+ * Состояние листа по форме: ошибка или предупреждение (подсвеченные поля), заполнен, пуст. Лист дозы — худшее из
+ * состояний режимов (по строкам аппликаторов), заготовки — «готовится», сводка — без отметки.
+ */
+function pageState(key) {
+  if (WIP_PAGES.has(key)) return 'wip';
+  if (key === 'summary') return 'none';
+  if (key === 'dose') {
+    let lvl = 'empty';
+    visit.modes.forEach((md, m) => {
+      const l = modeState(current.vr.modes[m], md);
+      if (LVL_RANK[l] > LVL_RANK[lvl]) lvl = l;
+    });
+    return lvl === 'ok' ? 'done' : lvl;
+  }
+  const shown = (el) => !el.closest('[hidden]');
+  let st = 'empty';
+  for (const sec of $$(`#kv-sheet [data-kv-page="${key}"]`)) {
+    if ([...sec.querySelectorAll('.flag-error')].some(shown)) return 'error';
+    if ([...sec.querySelectorAll('.flag-warn')].some(shown)) st = 'warn';
+    else if (st === 'empty' && [...sec.querySelectorAll('input[type="text"], input[type="date"], textarea')].some((f) => shown(f) && f.value.trim() !== '')) st = 'done';
+  }
+  return st;
+}
+const PAGE_STATE_TEXT = () => ({
+  wip: L('лист готовится', 'sheet in preparation'),
+  empty: L('не заполнен', 'not filled in'),
+  done: L('заполнен', 'filled in'),
+  warn: L('есть предупреждения', 'has warnings'),
+  error: L('есть ошибки', 'has errors'),
+  none: '',
+});
+function renderPageStates() {
+  const texts = PAGE_STATE_TEXT();
+  for (const a of $$('#kv-pages a[data-kv-go]')) {
+    const st = pageState(a.dataset.kvGo);
+    a.dataset.state = st;
+    const name = a.textContent.replace(/\s+/g, ' ').trim();
+    if (texts[st]) a.title = `${name}: ${texts[st]}`;
+    else a.removeAttribute('title');
+  }
 }
 
 /** «строка 1 (Ø 10 см)» — название строки в тексте. */
@@ -1750,6 +1870,8 @@ function update(opts = {}) {
   // после renderFlags: он снимает подсветку со всех полей вкладки, таблицы режимов и таймера подсвечивают свои заново
   renderModes(vr, !opts.fromModes);
   renderTimerState(vr);
+  renderModeBar();
+  renderPageStates();
   $('#kv-demo-flag').hidden = !isDemo(data);
   renderNotesFlag($('#kv-notes-flag'), data.kv_notes, [SAMPLE_KV.kv_notes, SAMPLE_KV_EN.kv_notes], isDemo(data));
   renderFileNote($('#kv-file-note'), fileNote(result));
@@ -1857,6 +1979,29 @@ export function initKv() {
     if (b) selectMode(Number(b.dataset.m));
   });
   $('#kv-btn-add-mode').addEventListener('click', addMode);
+  // листы вкладки: щелчок по ярлыку открывает лист без перехода по адресу (страница не прокручивается в начало)
+  showPage(page, { hash: false });
+  $('#kv-pages').addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-kv-go]');
+    if (!a || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    e.preventDefault();
+    showPage(a.dataset.kvGo);
+    const nav = $('#kv-pages');
+    if (nav.getBoundingClientRect().top < 0) nav.scrollIntoView({ block: 'start' });
+  });
+  window.addEventListener('hashchange', () => {
+    const h = pageFromHash();
+    if (KV_PAGES.includes(h)) showPage(h, { hash: false });
+  });
+  // ссылка «раздел N» ведёт на раздел другого листа (sec-links.js): сначала открыть его лист
+  $('#kv-sheet').addEventListener('pagereveal', (e) => showPage(e.target.dataset.kvPage));
+  $('#kv-modebar-list').addEventListener('click', (e) => {
+    const b = e.target.closest('.kv-mode[data-m]');
+    if (!b) return;
+    const m = Number(b.dataset.m);
+    selectMode(m);
+    $(`#kv-modebar-list [data-m="${m}"]`)?.focus();
+  });
   armButton($('#kv-btn-del-mode'), () => L('Удалить режим', 'Delete mode'), () => L(`Точно удалить режим ${visit.mode + 1}?`, `Delete mode ${visit.mode + 1}?`), deleteMode);
   armButton($('#kv-btn-del-ch'), () => L('Удалить камеру', 'Delete chamber'), deleteChamberQuestion, deleteChamber);
   timerBody().addEventListener('click', (e) => {

@@ -5,7 +5,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { startServer, launch, openPage } from './helpers.js';
+import { startServer, launch, openPage, kvPage } from './helpers.js';
 import { SAMPLE_KV, SAMPLE_KV_ROWS } from '../../src/core/sample-kv.js';
 
 let server;
@@ -19,10 +19,16 @@ after(async () => {
   await server?.close();
 });
 
-const cyrLines = async (page) =>
-  (await page.locator('#kv-sheet, #kv-readout').evaluateAll((els) => els.map((e) => e.innerText).join('\n')))
+// все листы вкладки сразу: скрытые листы innerText не видит
+const cyrLines = async (page) => {
+  const cur = await page.getAttribute('#kv-pages a[aria-current]', 'data-kv-go');
+  await page.evaluate(() => document.querySelectorAll('#kv-sheet .page-off').forEach((e) => e.classList.remove('page-off')));
+  const lines = (await page.locator('#kv-sheet, #kv-readout').evaluateAll((els) => els.map((e) => e.innerText).join('\n')))
     .split('\n')
     .filter((l) => /[А-Яа-яЁё]/.test(l) && !/Загружен демонстрационный пример/.test(l));
+  await kvPage(page, cur);
+  return lines;
+};
 
 test('kV-рентген: режимы аппарата — k_pol и τ из соседнего режима, камеры для всех режимов, сводка, протокол, файл; по-английски', async () => {
   const { ctx, page, errors } = await openPage(browser);
@@ -55,11 +61,13 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   assert.equal(await page.locator('#kv-modes [data-m="0"]').getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('#kv-modes [data-m="0"] .st').getAttribute('class'), 'st ok');
   assert.equal(await sum.count(), 5);
+  await kvPage(page, 'summary');
   const sumText = (await sum.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
   assert.match(sumText[0], /^1\.1 200 кВ, СПО 1,00 мм Cu камера 1 Ø 10 см ст\. 50 1,0012 ?Гр\/мин, на 2 г\/см² 0,9950 \+0,62$/);
   assert.match(sumText[3], /^2\.1 150 кВ, СПО 0,50 мм Cu камера 1 Ø 10 см ст\. 50 0,9140 ?Гр\/мин, на 2 г\/см² 0,9100 \+0,44$/);
   assert.match(sumText[4], /^2\.2 6 × 8 см 50 0,8620/);
   assert.equal(await text('#kv-sum-note'), 'Режим 2: kpol и τ — из режима 1 (200 кВ, СПО 1,00 мм Cu).');
+  await kvPage(page, 'modes');
   assert.equal(await page.locator('#kv-s3').getAttribute('data-tag'), ' · режим 1');
   assert.equal(await page.locator('#kv-s2').getAttribute('data-tag'), null);
   assert.match(await text('#kv-mode-chamber-sub'), /^Камера 1 выбрана в режимах 1, 2: поля ниже меняют её во всех этих режимах\./);
@@ -84,6 +92,7 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   assert.equal(await page.inputValue('#kv_set_unit'), 'min');
 
   // «не учитывать» — τ не берётся, ошибка таймера не учтена
+  await kvPage(page, 'timer');
   await page.selectOption('#kv_timer_mode', 'none');
   await pause();
   assert.ok(await page.locator('#kv-timer-from').isHidden());
@@ -93,6 +102,7 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   assert.ok(await page.locator('#kv-timer-from').isVisible());
 
   // ввод в режиме 2 не меняет режим 1
+  await kvPage(page, 'dose');
   await page.fill('#kvr1_kv_env_T', '22,5');
   await pause();
   assert.notEqual(await cell(1, 'd'), '0,8620');
@@ -101,6 +111,7 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   await pause();
 
   // новая камера для режима 2: модель пустая, электрометр как у камеры 1; k_pol уже не переносится, τ — да
+  await kvPage(page, 'modes');
   await page.selectOption('#kv-mode-chamber', 'new');
   await pause();
   assert.deepEqual(await page.locator('#kv-mode-chamber option').allInnerTexts(), ['Камера 1 — PTW 30013 № 0000', 'Камера 2 — камера не выбрана', '+ новая камера…']);
@@ -109,7 +120,7 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   assert.equal(await page.inputValue('#kv_el_model'), SAMPLE_KV.kv_el_model);
   assert.equal(await page.locator('#kv-s2').getAttribute('data-tag'), ' · камера 2');
   assert.doesNotMatch(await text('#kv-rows-note'), /kpol — из режима/);
-  assert.ok(await page.locator('#kv-timer-from').isVisible());
+  assert.equal(await page.locator('#kv-timer-from').getAttribute('hidden'), null);
   assert.ok(await page.locator('#kv-btn-del-ch').isVisible());
   // режим 1 по-прежнему с камерой 1
   assert.match((await sum.nth(0).innerText()).replace(/\s+/g, ' '), /камера 1/);
@@ -146,7 +157,8 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   assert.equal(await chips.count(), 2);
   assert.equal(await page.inputValue('#kv_kv'), '150');
 
-  // сводка: номер строки открывает режим и строку
+  // сводка: номер строки открывает режим и строку на листе «Поглощённая доза»
+  await kvPage(page, 'summary');
   await page.click('#kv-sum-body tr[data-m="0"][data-i="1"] .kv-sum-pick');
   await pause();
   assert.equal(await page.locator('#kv-modes [data-m="0"]').getAttribute('aria-pressed'), 'true');
@@ -154,8 +166,11 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   assert.equal(await page.inputValue('#kv_env_T'), '21,4');
   assert.equal(await page.evaluate(() => document.activeElement?.closest('tr')?.dataset.i), '1');
   assert.match(await page.locator('#kv-sum-body tr[data-m="0"][data-i="1"]').getAttribute('class'), /active/);
+  assert.equal(await page.getAttribute('#kv-pages a[aria-current]', 'data-kv-go'), 'dose');
+  assert.equal(await page.evaluate(() => location.hash), '#kv/dose');
 
   // протокол режима 2: все режимы коротко, подробно — выбранная строка, τ и k_pol из режима 1
+  await kvPage(page, 'modes');
   await page.click('#kv-modes [data-m="1"]');
   await pause();
   await page.click('#kv-btn-copy-report');
@@ -230,7 +245,9 @@ test('kV-рентген: режимы и сводка по режимам на �
   await page.waitForSelector('#kv-messages li');
   await page.click('#kv-btn-sample');
   await page.waitForTimeout(300);
+  await kvPage(page, 'summary');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
+  assert.ok(await page.locator('#kv-sum').isVisible());
   assert.equal(await page.locator('#kv-sum thead').isVisible(), false);
   const cap = await page.locator('#kv-sum-body tr[data-m="1"][data-i="1"] td.v').nth(1).evaluate((e) => getComputedStyle(e, '::before').content);
   assert.equal(cap, '"D"');

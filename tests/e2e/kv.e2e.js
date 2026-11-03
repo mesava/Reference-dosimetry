@@ -4,7 +4,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { startServer, launch, openPage, CYR } from './helpers.js';
+import { startServer, launch, openPage, CYR, kvPage } from './helpers.js';
 
 let server;
 let browser;
@@ -17,11 +17,16 @@ after(async () => {
   await server?.close();
 });
 
-/** Строки текста модуля с кириллицей (кроме строки состояния и подписей, введённых пользователем). */
-const cyrLines = async (page) =>
-  (await page.locator('#kv-sheet, #kv-readout').evaluateAll((els) => els.map((e) => e.innerText).join('\n')))
+/** Строки текста модуля с кириллицей (кроме строки состояния и подписей, введённых пользователем); все листы вкладки сразу. */
+const cyrLines = async (page) => {
+  const cur = await page.getAttribute('#kv-pages a[aria-current]', 'data-kv-go');
+  await page.evaluate(() => document.querySelectorAll('#kv-sheet .page-off').forEach((e) => e.classList.remove('page-off')));
+  const lines = (await page.locator('#kv-sheet, #kv-readout').evaluateAll((els) => els.map((e) => e.innerText).join('\n')))
     .split('\n')
     .filter((l) => /[А-Яа-яЁё]/.test(l) && !/Загружен демонстрационный пример/.test(l));
+  await kvPage(page, cur);
+  return lines;
+};
 
 test('kV-рентген: пример, ветки расчёта, пометка «не по Rev.1», файл и протокол; по-английски', async () => {
   const { ctx, page, errors } = await openPage(browser);
@@ -55,6 +60,7 @@ test('kV-рентген: пример, ветки расчёта, пометка
   assert.match(await page.locator('#kv-factors').innerText(), /kg\s+0,9999/);
   assert.match(await page.locator('#module-kv .inline-result').first().innerText(), /итог 1,0012 Гр\/мин на 2 г\/см²/i);
   assert.ok(await page.locator('#kv_qo').isVisible());
+  await kvPage(page, 'dose');
   assert.ok(await page.locator('#kv_pdd2').isVisible());
   // справочное сравнение для N_D,w: DIN 6809-4 и SSRMP No 9 без k_g; на итог не влияет
   const pc = await page.locator('#kv-proto-cmp').innerText();
@@ -104,11 +110,10 @@ test('kV-рентген: пример, ветки расчёта, пометка
       await page.fill(`#kv_cq_val_${i}`, rows[i][2]);
     }
   };
+  await kvPage(page, 'modes');
   await page.selectOption('#kv_range', 'low');
   await page.fill('#kv_kv', '50');
   await page.fill('#kv_hvl', '1,0');
-  await page.fill('#kvr0_kv_cone', '5');
-  await page.fill('#kvr0_kv_ssd', '30');
   await page.selectOption('#kv_ch_model', 'PTW23342');
   await page.check('#kv_foil');
   await page.selectOption('#kv_cert_form', 'k');
@@ -116,9 +121,14 @@ test('kV-рентген: пример, ветки расчёта, пометка
   await cert([['30', '0,36', '1,000'], ['50', '1,0', '1,012'], ['70', '2,9', '1,025']]);
   await page.fill('#kv_lab_f', '3');
   await page.fill('#kv_lab_ssd', '30');
-  await page.fill('#kv_ref', '');
   await pause();
   assert.ok(await page.locator('#kv_qo').isHidden());
+  await kvPage(page, 'dose');
+  await page.fill('#kvr0_kv_cone', '5');
+  await page.fill('#kvr0_kv_ssd', '30');
+  await page.fill('#kv_ref', '');
+  await pause();
+  assert.ok(await page.locator('#kv-s8').isVisible());
   assert.ok(await page.locator('#kv_pdd2').isHidden());
   assert.equal(await page.locator('#kv-lbl-hvl').innerText(), 'СПО, мм Al');
   assert.match(await page.locator('#kv-dose-rows').innerText(), /ур\. \(52\)[\s\S]*на поверхности/);
@@ -145,11 +155,12 @@ test('kV-рентген: пример, ветки расчёта, пометка
   // воздушный метод, средние энергии: p_ch по табл. 32, [μen/ρ]z=2 по данным Andreo
   await page.selectOption('#kv_kg_src', 'auto');
   await page.selectOption('#kvr0_kv_cone_shape', 'circle');
+  await page.fill('#kvr0_kv_cone', '10');
+  await page.fill('#kvr0_kv_ssd', '50');
+  await kvPage(page, 'modes');
   await page.selectOption('#kv_range', 'medium');
   await page.fill('#kv_kv', '200');
   await page.fill('#kv_hvl', '1,0');
-  await page.fill('#kvr0_kv_cone', '10');
-  await page.fill('#kvr0_kv_ssd', '50');
   await page.selectOption('#kv_ch_model', 'PTW30013');
   await page.selectOption('#kv_cal', 'nk');
   await page.selectOption('#kv_cert_form', 'kq');
@@ -164,15 +175,17 @@ test('kV-рентген: пример, ветки расчёта, пометка
   assert.ok(await page.locator('#kv-andreo-cite').isVisible());
   // TG-61, метод в фантоме: PTW 30013 нет в табл. VIII — нужен P_Q,cham из литературы; с ним — отличие от Rev.1
   assert.match(await page.locator('#kv-proto-cmp').innerText(), /TG-61, метод в фантоме на 2 см[\s\S]*не посчитано: камеры PTW 30013 нет в табл\. VIII/);
+  await kvPage(page, 'dose');
   assert.ok(await page.locator('#kv_tg61_pq').isVisible());
   await page.fill('#kv_tg61_pq', '1,020');
   await pause();
   assert.match(await page.locator('#kv-proto-cmp').innerText(), /[+−]\d,\d\d %/);
   assert.match(await page.locator('#kv-pc-table').innerText(), /Камера в фантоме[\s\S]*1,0200\s+введён вручную[\s\S]*1,0146/);
   // камера из табл. VIII: поле P_Q,cham не нужно
+  await kvPage(page, 'modes');
   await page.selectOption('#kv_ch_model', 'NE2571');
   await pause();
-  assert.ok(await page.locator('#kv_tg61_pq').isHidden());
+  assert.equal(await page.locator('#kv_tg61_pq').evaluate((e) => !!e.closest('[hidden]')), true);
   assert.match(await page.locator('#kv-pc-table').innerText(), /табл\. VIII \(NE2571\)/);
 
   // по-английски — без кириллицы (пример загружается заново: подписи демо-набора по-английски)
@@ -181,7 +194,7 @@ test('kV-рентген: пример, ветки расчёта, пометка
   await pause(600);
   assert.deepEqual(await cyrLines(page), []);
   assert.match(await page.locator('#kv-dose-rows').innerText(), /1\.0012\s*Gy\/min at 2 g\/cm²/);
-  assert.match(await page.locator('#kv-s3').innerText(), /Exposure setting and timer error/);
+  assert.match(await page.locator('#kv-pages').innerText(), /Machine and modes[\s\S]*HVL and kQ[\s\S]*Timer error[\s\S]*Absorbed dose[\s\S]*Summary and report/);
   assert.match(await page.locator('#kv-eq-hint').innerText(), /Eq\. \(58\)/);
   assert.match(await page.locator('#kv-proto-cmp').innerText(), /For reference · DIN 6809-4 and SSRMP No 9/);
   // ветка N_K по-английски: строка TG-61 с причиной и поле P_Q,cham — без кириллицы
@@ -353,6 +366,7 @@ test('kV-рентген: прямоугольный тубус, материал
   assert.ok(await page.locator('#kv-ph-custom').isHidden());
 
   // прямоугольный тубус 8 × 10 см → круг той же площади 10,09 см, сопоставим с 10 × 10 см (табл. 31)
+  await kvPage(page, 'dose');
   await page.selectOption('#kvr0_kv_cone_shape', 'rect');
   await page.fill('#kvr0_kv_cone', '8');
   await page.fill('#kvr0_kv_cone_b', '10');
@@ -364,8 +378,9 @@ test('kV-рентген: прямоугольный тубус, материал
   assert.match(await page.locator('#kv-compliance').innerText(), /отступлений от условий TRS-398 Rev\.1 не найдено/);
 
   // RW3 для референсной дозы средних энергий — нестандартные условия; PDD в RW3 — замечание по SSRMP No 9
-  await page.selectOption('#kv_phantom', 'rw3');
   await page.selectOption('#kv_pdd_phantom', 'rw3');
+  await kvPage(page, 'modes');
+  await page.selectOption('#kv_phantom', 'rw3');
   await pause();
   assert.match(await page.locator('#kv-phantom-sub').innerText(), /референсная доза определяется только в воде/);
   assert.match(await page.locator('#kv-compliance').innerText(), /Нестандартные условия[\s\S]*фантом — RW3 \(PTW\): для средних энергий твердые фантомы/);

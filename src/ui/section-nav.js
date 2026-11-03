@@ -8,8 +8,8 @@ import { L } from '../core/i18n.js';
 const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 const navs = [];
 
-/** Видимые разделы модуля по порядку. */
-const stepsOf = (s) => [...s.sheet.querySelectorAll(':scope > section.step')].filter((sec) => !sec.hidden);
+/** Видимые разделы модуля по порядку (у вкладки с листами — только разделы открытого листа). */
+const stepsOf = (s) => [...s.sheet.querySelectorAll(':scope > section.step')].filter((sec) => !sec.hidden && !sec.classList.contains('page-off'));
 
 /** Подпись пункта: data-nav раздела (короткое название) или заголовок раздела без кнопок справок. */
 function labelOf(sec) {

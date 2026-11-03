@@ -10,7 +10,7 @@ import { CO_DEFAULTS } from '../core/cobalt.js';
 import { initCobalt, importCobalt, cobaltStatus, applyCobaltPatch, cobaltUncSource, cobaltCurrentForm, showInCobalt, setCobaltJournalSave } from './cobalt-ui.js';
 import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch, photonsUncSource, photonsCurrentForm, showInPhotons, setPhotonsJournalSave } from './photons-ui.js';
 import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch, electronsUncSource, electronsCurrentForm, showInElectrons, setElectronsJournalSave } from './electrons-ui.js';
-import { initKv, importKv, kvStatus, kvUncSource } from './kv-ui.js';
+import { initKv, importKv, kvStatus, kvUncSource, kvShown } from './kv-ui.js';
 import { initCrossCal, importCrossCal, crossCalStatus, setCrossCalTransfer } from './crosscal-ui.js';
 import { initUncTool, importUncTool, uncToolStatus, setUncSources, applyStability } from './uncertainty-tool-ui.js';
 import { initJaffe, importJaffe, jaffeStatus } from './jaffe-ui.js';
@@ -133,6 +133,8 @@ function showModule(name) {
   if (name === 'start') renderStart();
   if (name === 'session') renderSessionPage();
   if (name === 'plates') renderPlatesPage();
+  // kV-рентген: лист из адреса #kv/<лист> или тот, с которым работали
+  if (name === 'kv') kvShown();
   // «Мои камеры» меняются на вкладках дозиметрии: кнопку переноса в журнал обновить при открытии «Оборудования»
   if (name === 'equipment') renderMyChambersTool();
   refreshSectionNav($(`#module-${name}`));
@@ -140,7 +142,7 @@ function showModule(name) {
 
 /** Переключение по щелчку или по вставленным данным: адрес меняется без прокрутки к якорю. */
 function switchTo(name) {
-  if (location.hash !== `#${name}`) {
+  if (location.hash !== `#${name}` && !location.hash.startsWith(`#${name}/`)) {
     try {
       history.replaceState(null, '', `#${name}`);
     } catch {
@@ -155,7 +157,8 @@ const OLD_MODULES = {};
 
 function moduleFromHash() {
   const raw = location.hash.replace('#', '');
-  const h = OLD_MODULES[raw] ?? raw;
+  // #kv/timer — подраздел и его лист
+  const h = OLD_MODULES[raw] ?? raw.split('/')[0];
   return MODULES[h] ? h : null;
 }
 

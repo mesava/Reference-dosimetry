@@ -26,16 +26,21 @@ test('kV-рентген: ошибка таймера по режимам — в�
   const tau = async (m) => (await row(m).locator('[data-o="tau"]').innerText()).replace(/\s+/g, ' ').trim();
   const dot = (m) => row(m).locator('.st');
 
-  await page.goto(`${server.url}/index.html#kv`);
+  await page.goto(`${server.url}/index.html#kv/timer`);
   await page.waitForSelector('#kv-messages li');
-  // один режим — таблицы по режимам нет
+  // лист «Ошибка таймера»; один режим — таблицы по режимам и строки выбора режима нет
+  assert.ok(await page.locator('#kv-s3').isVisible());
   assert.ok(await page.locator('#kv-timer-block').isHidden());
+  assert.ok(await page.locator('#kv-modebar').isHidden());
   assert.equal(await page.inputValue('#kv_timer_mode'), 'twopoint');
 
   await page.click('#kv-btn-sample');
   await pause();
   assert.ok(await page.locator('#kv-timer-block').isVisible());
   assert.equal(await page.locator('#kv-timer-body tr').count(), 2);
+  // строка выбора режима над листом
+  assert.deepEqual((await page.locator('#kv-modebar-list .kv-mode').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ')), ['1 200 кВ', '2 150 кВ']);
+  assert.equal(await page.locator('#kv-modebar-list [data-m="0"]').getAttribute('aria-pressed'), 'true');
   // режим 1: свои 6 и 60 с, τ = +0,61 с (= 0,0101 мин), в допуске 3 с; режим 2 — τ из режима 1
   assert.equal(await page.inputValue('#kv_tp_t1'), '6');
   assert.equal(await page.inputValue('#kvt0_kv_tp_R2_2'), '21,96');
@@ -59,6 +64,7 @@ test('kV-рентген: ошибка таймера по режимам — в�
   await row(1).locator('.kv-tm-pick').click();
   await pause();
   assert.equal(await page.locator('#kv-modes [data-m="1"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('#kv-modebar-list [data-m="1"]').getAttribute('aria-pressed'), 'true');
   assert.equal(await page.evaluate(() => document.activeElement?.closest('tr')?.dataset.m), '1');
   assert.equal(await page.inputValue('#kv_kv'), '150');
   assert.deepEqual(await page.locator('.cells[data-series="kv_tp_R1"] input').evaluateAll((els) => els.map((e) => e.value)), ['2,10', '', '']);
@@ -98,6 +104,15 @@ test('kV-рентген: ошибка таймера по режимам — в�
   await page.selectOption('#kv_timer_mode', 'twopoint');
   await pause();
 
+  // строка выбора режима: режим 1, фокус остаётся на его кнопке
+  await page.click('#kv-modebar-list [data-m="0"]');
+  await pause();
+  assert.equal(await page.inputValue('#kv_kv'), '200');
+  assert.equal(await page.evaluate(() => document.activeElement?.closest('#kv-modebar-list') && document.activeElement.dataset.m), '0');
+  assert.equal(await page.locator('#kv-s3').getAttribute('data-tag'), ' · режим 1');
+  await page.click('#kv-modebar-list [data-m="1"]');
+  await pause();
+
   // черновик: после перезагрузки те же показания режима 2 и допуск
   await page.reload();
   await page.waitForSelector('#kv-messages li');
@@ -119,7 +134,7 @@ test('kV-рентген: ошибка таймера по режимам — в�
 
 test('kV-рентген: ошибка таймера по режимам на телефоне — карточки без горизонтальной прокрутки страницы', async () => {
   const { page, errors } = await openPage(browser, { mobile: true, viewport: { width: 390, height: 844 } });
-  await page.goto(`${server.url}/index.html#kv`);
+  await page.goto(`${server.url}/index.html#kv/timer`);
   await page.waitForSelector('#kv-messages li');
   await page.click('#kv-btn-sample');
   await page.waitForTimeout(300);

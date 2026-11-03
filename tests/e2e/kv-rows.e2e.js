@@ -4,7 +4,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { startServer, launch, openPage } from './helpers.js';
+import { startServer, launch, openPage, kvPage } from './helpers.js';
 import { SAMPLE_KV } from '../../src/core/sample-kv.js';
 
 let server;
@@ -18,10 +18,16 @@ after(async () => {
   await server?.close();
 });
 
-const cyrLines = async (page) =>
-  (await page.locator('#kv-sheet, #kv-readout').evaluateAll((els) => els.map((e) => e.innerText).join('\n')))
+// все листы вкладки сразу: скрытые листы innerText не видит
+const cyrLines = async (page) => {
+  const cur = await page.getAttribute('#kv-pages a[aria-current]', 'data-kv-go');
+  await page.evaluate(() => document.querySelectorAll('#kv-sheet .page-off').forEach((e) => e.classList.remove('page-off')));
+  const lines = (await page.locator('#kv-sheet, #kv-readout').evaluateAll((els) => els.map((e) => e.innerText).join('\n')))
     .split('\n')
     .filter((l) => /[А-Яа-яЁё]/.test(l) && !/Загружен демонстрационный пример/.test(l));
+  await kvPage(page, cur);
+  return lines;
+};
 
 test('kV-рентген: таблица аппликаторов — строки, выбор строки, файл, черновик, протокол; по-английски', async () => {
   const { ctx, page, errors } = await openPage(browser);
@@ -30,8 +36,11 @@ test('kV-рентген: таблица аппликаторов — строк�
   const rows = page.locator('#kv-rows-body tr');
   const cell = (i, o) => page.locator(`#kv-rows-body tr[data-i="${i}"] [data-o="${o}"]`).innerText();
 
-  await page.goto(`${server.url}/index.html#kv`);
+  await page.goto(`${server.url}/index.html#kv/dose`);
   await page.waitForSelector('#kv-messages li');
+  assert.equal(await page.getAttribute('#kv-pages a[aria-current]', 'data-kv-go'), 'dose');
+  assert.ok(await page.locator('#kv-s4').isVisible());
+  assert.ok(await page.locator('#kv-s1').isHidden());
   // пустая вкладка — одна пустая строка, удалить её нельзя; номера строки у полей нет
   assert.equal(await rows.count(), 1);
   assert.ok(await page.locator('#kv-rows-body .kv-row-del').isDisabled());
@@ -151,9 +160,10 @@ test('kV-рентген: таблица аппликаторов — строк�
   // строка 1 сверяется со своим итогом в файле (с итогом строки 2 она бы не совпала)
   assert.match(await page.locator('#kv-file-note').innerText(), /совпадает с сохранённым итогом/);
 
-  // черновик: после перезагрузки те же строки и выбранная строка
+  // черновик: после перезагрузки те же строки и выбранная строка; лист тот же
   await page.reload();
   await page.waitForSelector('#kv-messages li');
+  assert.ok(await page.locator('#kv-s4').isVisible());
   assert.equal(await rows.count(), 2);
   assert.match(await page.locator('#kv-row-of').innerText(), / · Строка 1 из 2 · /);
   assert.equal(await page.inputValue('#kvr1_kv_cone_b'), '8');
@@ -187,7 +197,7 @@ test('kV-рентген: таблица аппликаторов — строк�
 
 test('kV-рентген: таблица аппликаторов на телефоне — карточки без горизонтальной прокрутки страницы', async () => {
   const { page, errors } = await openPage(browser, { mobile: true, viewport: { width: 390, height: 844 } });
-  await page.goto(`${server.url}/index.html#kv`);
+  await page.goto(`${server.url}/index.html#kv/dose`);
   await page.waitForSelector('#kv-messages li');
   await page.click('#kv-btn-sample');
   await page.waitForTimeout(300);

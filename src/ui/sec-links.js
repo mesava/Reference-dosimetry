@@ -132,6 +132,8 @@ export function linkSections(root) {
 export function revealSection(module, no) {
   const sec = findSection(module, no);
   if (!sec || sec.hidden) return false;
+  // раздел на другом листе вкладки (kV-рентген): вкладка сначала открывает его лист
+  if (sec.classList.contains('page-off')) sec.dispatchEvent(new CustomEvent('pagereveal', { bubbles: true }));
   const smooth = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   sec.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
   sec.classList.remove('sec-flash');
