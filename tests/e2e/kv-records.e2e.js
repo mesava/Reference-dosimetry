@@ -5,6 +5,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer, launch, openPage, kvPage, CYR } from './helpers.js';
+import { kvHistoryJournal } from '../kv-fixture.js';
 
 let server;
 let browser;
@@ -179,4 +180,29 @@ test('kV-рентген: «Журнал и тренды» для рентген�
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
   assert.ok(await page.locator('#hs-report table.kv-prot-out').isVisible());
   assert.deepEqual(errors, []);
+});
+
+test('kV-рентген: после перезагрузки страницы на вкладке kV панель «Журнал» и база «Сравнить с» — по журналу', async () => {
+  // до 0.49.2 журнал загружался после вкладок: вкладка, связанная с аппаратом, при запуске считалась с пустым журналом
+  // («Аппарат вкладки не найден», без базы из калибровки), пока не изменишь какое-нибудь поле
+  const { j, visitOf } = kvHistoryJournal({ upTo: 11 });
+  const v = visitOf(11);
+  const { page, errors } = await openPage(browser);
+  await page.goto(`${server.url}/index.html#kv/modes`);
+  await page.evaluate(([jj, vv]) => {
+    localStorage.setItem('reference-dosimetry.journal.v1', JSON.stringify({ journal: jj }));
+    localStorage.setItem('reference-dosimetry.kv.v1', JSON.stringify({ version: 3, ...vv }));
+  }, [j, v]);
+  await page.reload();
+  await page.waitForSelector('#kv-jrec:not([hidden])');
+  await page.waitForTimeout(300);
+  const t = await recText(page);
+  assert.match(t, /РТА · проверка выхода · 07\.10\.2026/);
+  assert.match(t, /Калибровка: 05\.05\.2026 \(режимы 1, 2\)\./);
+  assert.doesNotMatch(t, /не найден/);
+  assert.equal(await recBtn(page).isDisabled(), false);
+  await kvPage(page, 'dose');
+  assert.match(await page.locator('#kvr0_kv_ref').getAttribute('title'), /^Из калибровки 05\.05\.2026 \(журнал\)/);
+  assert.deepEqual(errors, []);
+  await page.context().close();
 });

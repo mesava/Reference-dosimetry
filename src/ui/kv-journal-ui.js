@@ -66,7 +66,8 @@ function modeLine(j, m, x, i) {
 /** Блок «Журнал отделения» на листе «Аппарат и режимы». */
 export function renderKvJournal() {
   const el = $('#kv-jbind');
-  if (!el || !api) return;
+  // до первого расчёта вкладки (при запуске) показывать нечего: блок нарисует расчёт
+  if (!el || !api || !api.vr?.()) return;
   const j = getJournal();
   const v = api.getVisit();
   const ms = kvMachines(j);

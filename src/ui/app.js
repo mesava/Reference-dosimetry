@@ -362,6 +362,9 @@ function init() {
   initProtocol();
   initTerms();
   initHowto();
+  // журнал — до вкладок: вкладки при запуске считаются по журналу (kV — связь с аппаратом, база из калибровки), а
+  // загрузка черновика журнала их не оповещает
+  initJournalStore();
   initCobalt();
   initPhotons();
   initElectrons();
@@ -370,7 +373,6 @@ function init() {
   initUncTool();
   initJaffe();
   initEdepth();
-  initJournalStore();
   initEquipment();
   initHistory();
   initJournalBridges();
