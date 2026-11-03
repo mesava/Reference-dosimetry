@@ -1240,7 +1240,7 @@ table.kv-rows .kv-row-del:disabled { visibility: hidden; }
 #kv-sheet [data-row]::after { content: attr(data-row); color: var(--accent); font-weight: 600; }
 .kv-row-of { margin: -4px 0 8px; font: 500 13px var(--font-body); color: var(--display-dim); }
 
-/* kV: режимы приезда (раздел 1), камера режима (раздел 2), сводка приезда (раздел 9) */
+/* kV: режимы аппарата (раздел 1), камера режима (раздел 2), сводка по режимам (раздел 9) */
 .kv-modes-block { margin-top: 14px; }
 .kv-modes-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .kv-modes { display: contents; }

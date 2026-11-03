@@ -162,8 +162,8 @@ test('Терад 200, 120–200 кВ: k_Q = 1 (Farmer только с ⁶⁰Co) 
   assert.ok(long.messages.some((m) => m.level === 'warn' && /PDD\(2 см\) снята в фантоме: RW3 \(PTW\); SSRMP No 9 не рекомендует/.test(m.text)));
 });
 
-test('Терад 200 как один приезд (0.37.0): серия k_pol и k_s только в режиме 120 кВ — режимы 140–200 кВ берут её, доза та же; 23342 — своя камера', () => {
-  // как на приёмке: одна серия 400/200 В на все пучки Farmer; в приезде она — в строке 1 режима 120 кВ
+test('Терад 200 как одно измерение со всеми режимами (0.37.0): серия k_pol и k_s только в режиме 120 кВ — режимы 140–200 кВ берут её, доза та же; 23342 — своя камера', () => {
+  // как на приёмке: одна серия 400/200 В на все пучки Farmer; в измерении со всеми режимами она — в строке 1 режима 120 кВ
   const farmer = splitKvVisitForm({
     ...KV_DEFAULTS,
     kv_ch_model: 'PTW30013', kv_cal: 'ndw', kv_qo: 'co60', kv_cert_form: 'co', kv_n: '0,05389', kv_n_unit: 'Gy/nC',
@@ -192,7 +192,7 @@ test('Терад 200 как один приезд (0.37.0): серия k_pol и 
       return row;
     }),
   }));
-  // режим 50 кВ с камерой 23342 (вторая камера приезда): k_pol у неё не измерялся и из Farmer не берётся
+  // режим 50 кВ с камерой 23342 (вторая камера): k_pol у неё не измерялся и из Farmer не берётся
   const [, shape, size, ssd, M, T, P] = LOW_ROWS[50][2];
   modes.push({ shared: splitKvVisitForm({ ...LOW, kv_kv: '50', kv_hvl: LOW_BEAMS[50][0] }).mode, chamber: 1, active: 0, rows: [{ kv_cone_shape: shape, kv_cone: c(size), kv_ssd: String(ssd), kv_set: '1', kv_env_T: c(T), kv_env_P: c(P), kv_M1: M.map(c) }] });
   const visit = normalizeKvVisit({ common: splitKvVisitForm({ ...KV_DEFAULTS, kv_env_P_unit: 'hPa' }).common, chambers: [farmer, lowCh], modes, mode: 0 });

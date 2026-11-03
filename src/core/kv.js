@@ -478,7 +478,7 @@ export function computeKv(form) {
   let tau = 0;
   let timer = { mode: f.kv_timer_mode, unit: f.kv_set_unit };
   const timerWord = U.time ? L('Ошибка таймера', 'Timer error') : L('Концевой эффект', 'End effect');
-  // режим приезда без своих данных ошибки таймера: τ измерена в другом режиме того же аппарата (kv-session.js
+  // режим аппарата без своих данных ошибки таймера: τ измерена в другом режиме того же аппарата (kv-session.js
   // передаёт, откуда — kv_tau_from, и значение в единицах задания этого режима — kv_tau_fix)
   const noCells = (k) => {
     const c = parseCells(f[k]);

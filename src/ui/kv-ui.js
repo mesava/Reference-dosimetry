@@ -17,10 +17,10 @@ import {
   fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote, notifyUpdate, richText,
   inlineResultHtml, setInlineResult } from './common.js';
 
-// черновик: приезд { version: 3, common, chambers, modes, mode } (0.36 — { form, rows, active }, до 0.36.0 — плоская
+// черновик: все режимы { version: 3, common, chambers, modes, mode } (0.36 — { form, rows, active }, до 0.36.0 — плоская
 // форма одного расчёта; старые черновики читаются как один режим)
 const DRAFT_KEY = 'reference-dosimetry.kv.v1';
-// формат 3 (0.37.0): приезд — общие поля common, камеры chambers, режимы modes со строками аппликаторов, выбранный
+// формат 3 (0.37.0): режимы аппарата — общие поля common, камеры chambers, режимы modes со строками аппликаторов, выбранный
 // режим mode; form — плоская форма выбранной строки выбранного режима. Формат 2 (0.36): rows и active одного режима.
 const FILE_TAG = { app: 'reference-dosimetry', module: 'kv', version: 3 };
 const SERIES_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_Mc'];
@@ -90,7 +90,7 @@ function fillCustomFields(saved) {
 
 /** Демонстрационный набор на текущем языке (текстовые поля), числа одинаковые. */
 const sampleData = () => (getLang() === 'en' ? { ...SAMPLE_KV, ...SAMPLE_KV_EN } : SAMPLE_KV);
-/** Демонстрационный приезд: режим 1 — 200 кВ с тремя аппликаторами, режим 2 — 150 кВ с двумя (k_pol и τ — из режима 1). */
+/** Демонстрационный пример: режим 1 — 200 кВ с тремя аппликаторами, режим 2 — 150 кВ с двумя (k_pol и τ — из режима 1). */
 function sampleVisit(s) {
   const v = normalizeKvVisit({ form: s, rows: [s, ...SAMPLE_KV_ROWS], active: 0 });
   const m2 = newKvMode(v.modes[0]);
@@ -180,7 +180,7 @@ function writeForm(values) {
 }
 
 // ------------------------------------------------------------ таблица аппликаторов (раздел 4)
-/** Приезд: общие поля, камеры, режимы со строками аппликаторов и выбранный режим (kv-session.js). */
+/** Все режимы аппарата: общие поля, камеры, режимы со строками аппликаторов и выбранный режим (kv-session.js). */
 let visit = normalizeKvVisit(null);
 /** Выбранный режим. */
 const mode = () => visit.modes[visit.mode];
@@ -379,7 +379,7 @@ function rowState(r, row) {
   return { lvl: 'ok', tip: L('Замечаний нет', 'No issues') };
 }
 
-// ------------------------------------------------------------ режимы и камеры приезда
+// ------------------------------------------------------------ режимы аппарата и камеры
 const LVL_RANK = { empty: 0, ok: 1, warn: 2, error: 3 };
 /** Состояние режима — худшее из его строк. */
 function modeState(mr, md) {
@@ -392,7 +392,7 @@ function modeState(mr, md) {
 }
 const modeName = (m) => kvModeLabel(visit.modes[m].shared) || L('пучок не задан', 'beam not set');
 
-/** Название камеры приезда: модель и серийный номер. */
+/** Название камеры: модель и серийный номер. */
 function chamberName(ch) {
   const id = String(ch?.kv_ch_model ?? '');
   let name = '';
@@ -420,12 +420,12 @@ function renderModes(vr) {
   $('#kv-btn-del-mode').hidden = visit.modes.length <= 1;
 }
 
-/** Выбор камеры режима в разделе 2: камеры приезда и «новая камера». */
+/** Выбор камеры режима в разделе 2: введённые камеры и «новая камера». */
 function renderChamberPick() {
   const sel = $('#kv-mode-chamber');
   const cur = mode().chamber;
   const opts = visit.chambers.map((ch, j) => `<option value="${j}">${esc(L(`Камера ${j + 1}`, `Chamber ${j + 1}`))} — ${esc(chamberName(ch))}</option>`);
-  opts.push(`<option value="new">${esc(L('+ новая камера приезда…', '+ new chamber for this visit…'))}</option>`);
+  opts.push(`<option value="new">${esc(L('+ новая камера…', '+ new chamber…'))}</option>`);
   html(sel, opts.join(''));
   sel.value = String(cur);
   const used = chamberModes(cur);
@@ -457,7 +457,7 @@ function borrowedText(mr) {
   return [...by].map(([j, names]) => L(`${names.join(' и ')} — из ${kvModeFrom(visit, j)}`, `${names.join(' and ')} from ${kvModeFrom(visit, j)}`)).join('; ');
 }
 
-/** Сводка приезда (раздел 9): все режимы и строки, итог, отклонение и состояние; номер строки открывает её. */
+/** Сводка по режимам (раздел 9): все режимы и строки, итог, отклонение и состояние; номер строки открывает её. */
 function renderSummary(vr) {
   const cap = (t) => ` data-cap="${esc(t)}"`;
   const trs = [];
@@ -530,7 +530,7 @@ function deleteMode() {
   setStatus(L(`Режим ${m + 1} удалён.`, `Mode ${m + 1} deleted.`));
 }
 
-/** Камера режима: одна из камер приезда или новая. */
+/** Камера режима: одна из введённых камер или новая. */
 function pickChamber(value) {
   if (value === 'new') {
     visit.chambers.push(newKvChamber(visit.chambers[mode().chamber]));
@@ -1197,7 +1197,7 @@ function reportText(data, r, all = null, vr = null) {
   const pUnit = unitLabel(PRESSURE_UNITS[data.kv_env_P_unit]);
   if (vr && visit.modes.length > 1) {
     out.push('');
-    out.push(L(`Режимы приезда (${visit.modes.length}); подробно ниже — режим ${visit.mode + 1}, строка ${sess.active + 1}:`, `Modes of the visit (${visit.modes.length}); mode ${visit.mode + 1}, row ${sess.active + 1} is detailed below:`));
+    out.push(L(`Режимы аппарата (${visit.modes.length}); подробно ниже — режим ${visit.mode + 1}, строка ${sess.active + 1}:`, `Modes of the unit (${visit.modes.length}); mode ${visit.mode + 1}, row ${sess.active + 1} is detailed below:`));
     visit.modes.forEach((md, m) => {
       const filt = String(md.shared.kv_filter ?? '').trim();
       const b = borrowedText(vr.modes[m]);
@@ -1556,7 +1556,7 @@ export function initKv() {
   });
   $('#kv-btn-add-row').addEventListener('click', addRow);
 
-  // режимы приезда (раздел 1), камера режима (раздел 2), сводка (раздел 9)
+  // режимы аппарата (раздел 1), камера режима (раздел 2), сводка (раздел 9)
   $('#kv-modes').addEventListener('click', (e) => {
     const b = e.target.closest('.kv-mode');
     if (b) selectMode(Number(b.dataset.m));

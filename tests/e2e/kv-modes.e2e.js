@@ -1,4 +1,4 @@
-// Вкладка «kV-рентген»: режимы приезда (раздел 1), камера режима (раздел 2), сводка приезда (раздел 9). Пример с двумя
+// Вкладка «kV-рентген»: режимы аппарата (раздел 1), камера режима (раздел 2), сводка по режимам (раздел 9). Пример с двумя
 // режимами: режим 2 без своих серий берёт k_pol и τ из режима 1; новая камера — k_pol не переносится; добавление и
 // удаление режима и камеры; переход из сводки; протокол со всеми режимами; файл формата 3, файл 0.36 как один режим,
 // черновик; по-английски без кириллицы.
@@ -24,7 +24,7 @@ const cyrLines = async (page) =>
     .split('\n')
     .filter((l) => /[А-Яа-яЁё]/.test(l) && !/Загружен демонстрационный пример/.test(l));
 
-test('kV-рентген: режимы приезда — k_pol и τ из соседнего режима, камеры приезда, сводка, протокол, файл; по-английски', async () => {
+test('kV-рентген: режимы аппарата — k_pol и τ из соседнего режима, камеры для всех режимов, сводка, протокол, файл; по-английски', async () => {
   const { ctx, page, errors } = await openPage(browser);
   await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
   const pause = (ms = 300) => page.waitForTimeout(ms);
@@ -39,7 +39,7 @@ test('kV-рентген: режимы приезда — k_pol и τ из сос
   // пустая вкладка: один режим, удалить нельзя; камера 1; в сводке одна строка
   assert.equal(await chips.count(), 1);
   assert.ok(await page.locator('#kv-btn-del-mode').isHidden());
-  assert.deepEqual(await page.locator('#kv-mode-chamber option').allInnerTexts(), ['Камера 1 — камера не выбрана', '+ новая камера приезда…']);
+  assert.deepEqual(await page.locator('#kv-mode-chamber option').allInnerTexts(), ['Камера 1 — камера не выбрана', '+ новая камера…']);
   assert.equal(await sum.count(), 1);
   assert.equal(await page.locator('#kv-s3').getAttribute('data-tag'), null);
 
@@ -95,10 +95,10 @@ test('kV-рентген: режимы приезда — k_pol и τ из сос
   await page.fill('#kvr1_kv_env_T', '21,7');
   await pause();
 
-  // новая камера приезда для режима 2: модель пустая, электрометр как у камеры 1; k_pol уже не переносится, τ — да
+  // новая камера для режима 2: модель пустая, электрометр как у камеры 1; k_pol уже не переносится, τ — да
   await page.selectOption('#kv-mode-chamber', 'new');
   await pause();
-  assert.deepEqual(await page.locator('#kv-mode-chamber option').allInnerTexts(), ['Камера 1 — PTW 30013 № 0000', 'Камера 2 — камера не выбрана', '+ новая камера приезда…']);
+  assert.deepEqual(await page.locator('#kv-mode-chamber option').allInnerTexts(), ['Камера 1 — PTW 30013 № 0000', 'Камера 2 — камера не выбрана', '+ новая камера…']);
   assert.equal(await page.inputValue('#kv-mode-chamber'), '1');
   assert.equal(await page.inputValue('#kv_ch_model'), '');
   assert.equal(await page.inputValue('#kv_el_model'), SAMPLE_KV.kv_el_model);
@@ -155,7 +155,7 @@ test('kV-рентген: режимы приезда — k_pol и τ из сос
   await page.click('#kv-btn-copy-report');
   await pause();
   const report = await page.evaluate(() => navigator.clipboard.readText());
-  assert.match(report, /Режимы приезда \(2\); подробно ниже — режим 2, строка 2:\nРежим 1: 200 кВ, СПО 1,00 мм Cu, фильтр 0,5 мм Cu \+ 1 мм Al; камера 1 \(PTW 30013 № 0000\)\n {2}1\. Ø 10 см \(стандартный тубус\)/);
+  assert.match(report, /Режимы аппарата \(2\); подробно ниже — режим 2, строка 2:\nРежим 1: 200 кВ, СПО 1,00 мм Cu, фильтр 0,5 мм Cu \+ 1 мм Al; камера 1 \(PTW 30013 № 0000\)\n {2}1\. Ø 10 см \(стандартный тубус\)/);
   assert.match(report, /\nРежим 2: 150 кВ, СПО 0,50 мм Cu, фильтр 0,25 мм Cu \+ 1 мм Al; камера 1 \(PTW 30013 № 0000\); k_pol и τ — из режима 1 \(200 кВ, СПО 1,00 мм Cu\)\n {2}1\. Ø 10 см \(стандартный тубус\), РИП 50 см; .*D = 0,9140 Гр\/мин на 2 г\/см², отклонение \+0,44 %\n/);
   assert.doesNotMatch(report, /\(k_pol из режима/);
   assert.match(report, /Пучок \(режим 2\): 150 кВ/);
@@ -218,7 +218,7 @@ test('kV-рентген: режимы приезда — k_pol и τ из сос
   assert.deepEqual(errors, []);
 });
 
-test('kV-рентген: режимы и сводка приезда на телефоне — без горизонтальной прокрутки страницы', async () => {
+test('kV-рентген: режимы и сводка по режимам на телефоне — без горизонтальной прокрутки страницы', async () => {
   const { page, errors } = await openPage(browser, { mobile: true, viewport: { width: 390, height: 844 } });
   await page.goto(`${server.url}/index.html#kv`);
   await page.waitForSelector('#kv-messages li');
