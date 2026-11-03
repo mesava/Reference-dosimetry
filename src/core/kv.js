@@ -65,6 +65,7 @@ export const KV_DEFAULTS = {
   // пучок
   kv_range: 'low', // 'low' — 10–100 кВ, СПО в мм Al; 'medium' — 80–300 кВ, СПО в мм Cu
   kv_kv: '',
+  kv_ma: '', // ток трубки, мА: для обозначения режима и протокола, в расчёт не входит
   kv_filter: '',
   kv_hvl: '',
   kv_cone_shape: 'circle', // 'circle' | 'square' | 'rect'
@@ -332,6 +333,10 @@ export function computeKv(form) {
       ), null, ['kv_hvl', 'kv_kv']);
       qualityOk = false;
     }
+  }
+  // ток трубки — только для обозначения режима и протокола
+  if (!isBlank(f.kv_ma) && !(parseNumber(f.kv_ma) > 0)) {
+    add('warn', 'common', L('Ток трубки — число миллиампер больше нуля. В расчёт он не входит.', 'The tube current is a number of milliamperes greater than zero. It does not enter the calculation.'), null, 'kv_ma');
   }
 
   // ------------------------------------------------------------ геометрия

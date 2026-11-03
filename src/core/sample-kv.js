@@ -12,6 +12,7 @@ export const SAMPLE_KV = {
 
   kv_range: 'medium',
   kv_kv: '200',
+  kv_ma: '10',
   kv_filter: '0,5 мм Cu + 1 мм Al',
   kv_hvl: '1,00',
   kv_cone_shape: 'circle',
@@ -108,7 +109,7 @@ export const SAMPLE_KV_ROWS = [
 // Второй режим того же аппарата в том же измерении (раздел 1, «Режимы аппарата»): 150 кВ с двумя аппликаторами той же камерой. Серий при
 // обратной полярности и данных ошибки таймера в нём нет — k_pol и τ берутся из режима 1. Значения вымышлены.
 export const SAMPLE_KV_MODE2 = {
-  shared: { kv_kv: '150', kv_filter: '0,25 мм Cu + 1 мм Al', kv_hvl: '0,50' },
+  shared: { kv_kv: '150', kv_ma: '12', kv_filter: '0,25 мм Cu + 1 мм Al', kv_hvl: '0,50' },
   rows: [
     {
       kv_cone_shape: 'circle',

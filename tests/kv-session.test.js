@@ -377,6 +377,7 @@ test('режимы аппарата: новый режим — камера, ф�
   assert.equal(m.shared.kv_range, 'medium');
   assert.equal(m.shared.kv_phantom, 'water');
   assert.equal(m.shared.kv_kv, '');
+  assert.equal(m.shared.kv_ma, '');
   assert.equal(m.shared.kv_hvl, '');
   assert.deepEqual(m.shared.kv_tt, KV_DEFAULTS.kv_tt);
   // ошибка таймера по двум заданиям: задания T₁ и T₂ — как у образца, показания — свои
@@ -404,4 +405,22 @@ test('режимы аппарата: неизменённый режим не п
   const b = computeKvVisit(v);
   assert.equal(b.modes[0].results, a.modes[0].results);
   assert.notEqual(b.modes[1].results, a.modes[1].results);
+});
+
+test('режимы аппарата: ток трубки — поле режима, для протокола; в расчёт не входит, нечисло — предупреждение', () => {
+  assert.ok(KV_MODE_KEYS.includes('kv_ma'));
+  const v = sampleVisit();
+  assert.deepEqual(v.modes.map((md) => md.shared.kv_ma), ['10', '12']);
+  const base = computeKv(SAMPLE_KV);
+  assert.equal(base.flags.kv_ma, undefined);
+  for (const ma of ['', '25', '0,5']) {
+    const r = computeKv({ ...SAMPLE_KV, kv_ma: ma });
+    assert.equal(r.flags.kv_ma, undefined, ma);
+    assert.equal(r.trs.perUnit, base.trs.perUnit);
+  }
+  for (const ma of ['десять', '0', '-5']) {
+    const r = computeKv({ ...SAMPLE_KV, kv_ma: ma });
+    assert.equal(r.flags.kv_ma, 'warn', ma);
+    assert.ok(has(r, 'warn', /Ток трубки — число миллиампер больше нуля/));
+  }
 });

@@ -391,6 +391,18 @@ function modeState(mr, md) {
   return lvl;
 }
 const modeName = (m) => kvModeLabel(visit.modes[m].shared) || L('пучок не задан', 'beam not set');
+/** Пучок режима для протокола: напряжение, ток, СПО и фильтр — что введено. */
+function modeBeamText(f) {
+  const t = (k) => String(f[k] ?? '').trim();
+  const mat = f.kv_range === 'medium' ? 'Cu' : 'Al';
+  const parts = [
+    t('kv_kv') && L(`${t('kv_kv')} кВ`, `${t('kv_kv')} kV`),
+    t('kv_ma') && L(`${t('kv_ma')} мА`, `${t('kv_ma')} mA`),
+    t('kv_hvl') && L(`СПО ${t('kv_hvl')} мм ${mat}`, `HVL ${t('kv_hvl')} mm ${mat}`),
+    t('kv_filter') && L(`фильтр ${t('kv_filter')}`, `filter ${t('kv_filter')}`),
+  ].filter(Boolean);
+  return parts.join(', ') || L('пучок не задан', 'beam not set');
+}
 
 /** Название камеры: модель и серийный номер. */
 function chamberName(ch) {
@@ -407,26 +419,89 @@ function chamberName(ch) {
 /** Номера режимов (с 1), в которых выбрана камера j. */
 const chamberModes = (j) => visit.modes.flatMap((md, m) => (md.chamber === j ? [m + 1] : []));
 
-/** Полоса режимов в разделе 1: кнопка на режим с точкой состояния; удалить можно, пока режимов больше одного. */
-function renderModes(vr) {
-  const chips = visit.modes.map((md, m) => {
+// ------------------------------------------------------------ таблица режимов (раздел 1)
+const modesBody = () => $('#kv-modes');
+/** Варианты списка камер: введённые камеры и «новая камера»; short — без слова «Камера» (в таблице режимов оно в заголовке). */
+const chamberOptions = (cur, short = false) =>
+  visit.chambers.map((ch, j) => `<option value="${j}"${j === cur ? ' selected' : ''}>${short ? j + 1 : esc(L(`Камера ${j + 1}`, `Chamber ${j + 1}`))} — ${esc(chamberName(ch))}</option>`).join('') +
+  `<option value="new">${esc(L('+ новая камера…', '+ new chamber…'))}</option>`;
+
+/** Строка режима: номер с точкой состояния (открывает режим), диапазон, кВ, мА, фильтр, СПО и камера — ввод прямо в таблице. */
+function modeRowHtml(m) {
+  const md = visit.modes[m];
+  const f = md.shared;
+  const on = m === visit.mode;
+  const who = L(`режим ${m + 1}`, `mode ${m + 1}`);
+  const cap = (t) => ` data-cap="${esc(t)}"`;
+  const mat = f.kv_range === 'medium' ? 'Cu' : 'Al';
+  const inp = (key, label, num = true) =>
+    `<input type="text"${num ? ' class="num" inputmode="decimal"' : ''} id="kvm${m}_${key}" data-k="${key}" aria-label="${esc(`${label}, ${who}`)}" value="${esc(f[key] ?? '')}">`;
+  const opt = (v, t) => `<option value="${v}"${f.kv_range === v ? ' selected' : ''}>${esc(t)}</option>`;
+  return `<tr data-mr="${m}"${on ? ' class="active"' : ''}>
+    <td class="no"><button type="button" class="kv-mode${on ? ' active' : ''}" data-m="${m}" aria-pressed="${on}"><span class="st" aria-hidden="true"></span><b>${m + 1}</b></button></td>
+    <td class="rng"${cap(L('Диапазон', 'Range'))}><select id="kvm${m}_kv_range" data-k="kv_range" aria-label="${esc(L(`Диапазон энергий, ${who}`, `Energy range, ${who}`))}">${opt('low', L('низкие', 'low'))}${opt('medium', L('средние', 'medium'))}</select></td>
+    <td class="kv"${cap(L('Напряжение, кВ', 'Voltage, kV'))}>${inp('kv_kv', L('Напряжение на трубке, кВ', 'Tube voltage, kV'))}</td>
+    <td class="ma"${cap(L('Ток, мА', 'Current, mA'))}>${inp('kv_ma', L('Ток трубки, мА', 'Tube current, mA'))}</td>
+    <td class="flt"${cap(L('Фильтр', 'Filter'))}>${inp('kv_filter', L('Фильтр', 'Filter'), false)}</td>
+    <td class="hvl"${cap(L(`СПО, мм ${mat}`, `HVL, mm ${mat}`))}><span class="hvl-in">${inp('kv_hvl', L(`СПО, мм ${mat}`, `HVL, mm ${mat}`))}<span class="u">${mat}</span></span></td>
+    <td class="ch"${cap(L('Камера', 'Chamber'))}><select id="kvm${m}_ch" data-ch aria-label="${esc(L(`Камера, ${who}`, `Chamber, ${who}`))}">${chamberOptions(md.chamber, true)}</select></td>
+  </tr>`;
+}
+
+/** Таблица режимов: строится заново, кроме ввода в ней самой (фокус остаётся в поле); состояние — всегда. */
+function renderModes(vr, rebuild = true) {
+  if (rebuild) {
+    modesBody().innerHTML = visit.modes.map((_, m) => modeRowHtml(m)).join('');
+    localizeDecimals(modesBody());
+  }
+  visit.modes.forEach((md, m) => {
+    const tr = modesBody().querySelector(`tr[data-mr="${m}"]`);
+    if (!tr) return;
     const on = m === visit.mode;
     const lvl = modeState(vr.modes[m], md);
     const tip = { empty: L('строки не заполнены', 'rows are empty'), ok: L('замечаний нет', 'no issues'), warn: L('есть предупреждения', 'there are warnings'), error: L('есть ошибки', 'there are errors') }[lvl];
-    const title = L(`Режим ${m + 1}: ${modeName(m)}; ${tip}`, `Mode ${m + 1}: ${modeName(m)}; ${tip}`);
-    return `<button type="button" class="kv-mode${on ? ' active' : ''}" data-m="${m}" aria-pressed="${on}" title="${esc(title)}" aria-label="${esc(title)}"><span class="st ${lvl}" aria-hidden="true"></span><b>${m + 1}</b> ${esc(modeName(m))}</button>`;
+    const title = L(`Режим ${m + 1}: ${modeName(m)}; ${tip}. Открыть в разделах формы`, `Mode ${m + 1}: ${modeName(m)}; ${tip}. Open in the form sections`);
+    const b = tr.querySelector('.kv-mode');
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    b.querySelector('.st').className = `st ${lvl}`;
+    tr.classList.toggle('active', on);
+    // подсветка полей — по замечаниям выбранной строки режима; у режима без показаний не подсвечивается
+    const r = vr.modes[m].results[md.active] ?? vr.modes[m].results[0];
+    for (const el of tr.querySelectorAll('[data-k]')) {
+      const fl = lvl === 'empty' ? null : r.flags[el.dataset.k];
+      el.classList.toggle('flag-error', fl === 'error');
+      el.classList.toggle('flag-warn', fl === 'warn');
+    }
   });
-  html($('#kv-modes'), chips.join(''));
   $('#kv-btn-del-mode').hidden = visit.modes.length <= 1;
+}
+
+/** Ввод в таблице режимов: значение — в режим; у выбранного режима — и в поле раздела 1. */
+function onModeInput(el) {
+  const m = Number(el.closest('tr[data-mr]')?.dataset.mr);
+  const md = visit.modes[m];
+  const key = el.dataset.k;
+  if (!md || !key) return;
+  md.shared[key] = el.value;
+  if (m === visit.mode) writeDetail(key, el.value);
+  openedFile = null;
+  // диапазон меняет единицу СПО в строке: таблица строится заново, фокус возвращается в список
+  if (key === 'kv_range') {
+    update();
+    $(`#kvm${m}_kv_range`)?.focus();
+    return;
+  }
+  update({ fromModes: true });
 }
 
 /** Выбор камеры режима в разделе 2: введённые камеры и «новая камера». */
 function renderChamberPick() {
   const sel = $('#kv-mode-chamber');
   const cur = mode().chamber;
-  const opts = visit.chambers.map((ch, j) => `<option value="${j}">${esc(L(`Камера ${j + 1}`, `Chamber ${j + 1}`))} — ${esc(chamberName(ch))}</option>`);
-  opts.push(`<option value="new">${esc(L('+ новая камера…', '+ new chamber…'))}</option>`);
-  html(sel, opts.join(''));
+  html(sel, chamberOptions(cur));
   sel.value = String(cur);
   const used = chamberModes(cur);
   $('#kv-btn-del-ch').hidden = visit.chambers.length <= 1 || used.length > 1;
@@ -669,16 +744,23 @@ function deleteMode() {
   setStatus(L(`Режим ${m + 1} удалён.`, `Mode ${m + 1} deleted.`));
 }
 
-/** Камера режима: одна из введённых камер или новая. */
-function pickChamber(value) {
-  if (value === 'new') {
-    visit.chambers.push(newKvChamber(visit.chambers[mode().chamber]));
-    mode().chamber = visit.chambers.length - 1;
-  } else if (visit.chambers[Number(value)]) mode().chamber = Number(value);
+/**
+ * Камера режима m (по умолчанию выбранного): одна из введённых камер или новая. Новая камера открывается в разделе 2
+ * вместе с режимом: там вводятся модель и сертификат.
+ */
+function pickChamber(value, m = visit.mode) {
+  const md = visit.modes[m];
+  if (!md) return;
+  const isNew = value === 'new';
+  if (isNew) {
+    visit.chambers.push(newKvChamber(visit.chambers[md.chamber]));
+    md.chamber = visit.chambers.length - 1;
+    visit.mode = m;
+  } else if (visit.chambers[Number(value)]) md.chamber = Number(value);
   writeForm(rowForm(sess.active));
   openedFile = null;
   update();
-  if (value === 'new') setStatus(L(`Добавлена камера ${mode().chamber + 1}: выберите модель и введите сертификат.`, `Chamber ${mode().chamber + 1} added: select the model and enter the certificate.`));
+  if (isNew) setStatus(L(`Режим ${m + 1}: добавлена камера ${md.chamber + 1}. Выберите модель и введите сертификат в разделе 2.`, `Mode ${m + 1}: chamber ${md.chamber + 1} added. Select the model and enter the certificate in section 2.`));
 }
 
 /** Удаление камеры, выбранной только в этом режиме: режиму назначается первая из оставшихся. */
@@ -1363,17 +1445,16 @@ function reportText(data, r, all = null, vr = null) {
   line(L('Аппарат', 'Machine'), data.kv_machine || '—');
   line(L('Дата', 'Date'), data.kv_date || '—');
   line(L('Измерения выполнили', 'Measured by'), data.kv_staff.filter((s) => s.trim()).join(', ') || '—');
-  line(vr && visit.modes.length > 1 ? L(`Пучок (режим ${visit.mode + 1})`, `Beam (mode ${visit.mode + 1})`) : L('Пучок', 'Beam'), L(`${data.kv_kv || '—'} кВ, СПО ${data.kv_hvl || '—'} мм ${mat}${data.kv_filter ? `, фильтр ${data.kv_filter}` : ''}`, `${data.kv_kv || '—'} kV, HVL ${data.kv_hvl || '—'} mm ${mat}${data.kv_filter ? `, filter ${data.kv_filter}` : ''}`));
+  line(vr && visit.modes.length > 1 ? L(`Пучок (режим ${visit.mode + 1})`, `Beam (mode ${visit.mode + 1})`) : L('Пучок', 'Beam'), L(`${data.kv_kv || '—'} кВ${data.kv_ma ? `, ${data.kv_ma} мА` : ''}, СПО ${data.kv_hvl || '—'} мм ${mat}${data.kv_filter ? `, фильтр ${data.kv_filter}` : ''}`, `${data.kv_kv || '—'} kV${data.kv_ma ? `, ${data.kv_ma} mA` : ''}, HVL ${data.kv_hvl || '—'} mm ${mat}${data.kv_filter ? `, filter ${data.kv_filter}` : ''}`));
   // режимы и строки аппликаторов: коротко все, подробно ниже — выбранная строка выбранного режима
   const pUnit = unitLabel(PRESSURE_UNITS[data.kv_env_P_unit]);
   if (vr && visit.modes.length > 1) {
     out.push('');
     out.push(L(`Режимы аппарата (${visit.modes.length}); подробно ниже — режим ${visit.mode + 1}, строка ${sess.active + 1}:`, `Modes of the unit (${visit.modes.length}); mode ${visit.mode + 1}, row ${sess.active + 1} is detailed below:`));
     visit.modes.forEach((md, m) => {
-      const filt = String(md.shared.kv_filter ?? '').trim();
       const b = borrowedText(vr.modes[m]);
       const ch = L(`камера ${md.chamber + 1} (${chamberName(visit.chambers[md.chamber])})`, `chamber ${md.chamber + 1} (${chamberName(visit.chambers[md.chamber])})`);
-      out.push(L(`Режим ${m + 1}: ${modeName(m)}${filt ? `, фильтр ${filt}` : ''}; ${ch}${b ? `; ${b}` : ''}`, `Mode ${m + 1}: ${modeName(m)}${filt ? `, filter ${filt}` : ''}; ${ch}${b ? `; ${b}` : ''}`));
+      out.push(L(`Режим ${m + 1}: ${modeBeamText(md.shared)}; ${ch}${b ? `; ${b}` : ''}`, `Mode ${m + 1}: ${modeBeamText(md.shared)}; ${ch}${b ? `; ${b}` : ''}`));
       rowsReport(md, vr.modes[m], pUnit).forEach((l) => out.push(l));
     });
     out.push('');
@@ -1625,7 +1706,7 @@ function fileNote(result) {
 /**
  * Пересчёт. opts.fromTable — ввод пришёл из таблицы аппликаторов или выбрана строка: поля формы уже совпадают
  * со строкой, таблица не перерисовывается (фокус остаётся в ней). Иначе поля формы читаются в выбранную строку и
- * таблица строится заново.
+ * таблица строится заново. opts.fromTimer и opts.fromModes — ввод в таблице таймера или режимов: она не перестраивается.
  */
 function update(opts = {}) {
   if (!opts.fromTable) {
@@ -1643,7 +1724,6 @@ function update(opts = {}) {
   const data = normalizeKv(rowForm(sess.active));
   current = { data, result, all, vr };
   if (!opts.fromTable) renderRows(data, result);
-  renderModes(vr);
   renderChamberPick();
   renderSectionTags();
   renderSummary(vr);
@@ -1652,6 +1732,8 @@ function update(opts = {}) {
   renderFlags(ROOT(), result.flags, seriesBox);
   renderReadout(result, data);
   renderRowsState(all);
+  // после renderFlags: он снимает подсветку со всех полей вкладки, таблицы режимов и таймера подсвечивают свои заново
+  renderModes(vr, !opts.fromModes);
   renderTimerState(vr);
   $('#kv-demo-flag').hidden = !isDemo(data);
   renderNotesFlag($('#kv-notes-flag'), data.kv_notes, [SAMPLE_KV.kv_notes, SAMPLE_KV_EN.kv_notes], isDemo(data));
@@ -1708,9 +1790,12 @@ export function initKv() {
   const sheet = $('#kv-sheet');
   const inTable = (el) => !!el?.closest?.('#kv-rows-body');
   const inTimer = (el) => !!el?.closest?.('#kv-timer-body');
+  const inModes = (el) => !!el?.closest?.('#kv-modes');
   sheet.addEventListener('input', (e) => {
     if (inTable(e.target)) return onRowInput(e.target);
     if (inTimer(e.target)) return onTimerInput(e.target);
+    // камера в таблице режимов — по событию change
+    if (inModes(e.target)) return e.target.dataset.ch === undefined ? onModeInput(e.target) : undefined;
     // камера режима — по событию change
     if (e.target.id === 'kv-mode-chamber') return;
     openedFile = null;
@@ -1718,7 +1803,13 @@ export function initKv() {
   });
   sheet.addEventListener('change', (e) => {
     // список формы тубуса в таблице уже обработан по событию input; поля таблицы таймера — тоже
-    if (inTable(e.target) || inTimer(e.target)) return;
+    if (inModes(e.target) && e.target.dataset.ch !== undefined) {
+      const m = Number(e.target.closest('tr[data-mr]').dataset.mr);
+      const isNew = e.target.value === 'new';
+      pickChamber(e.target.value, m);
+      return (isNew ? $('#kv_ch_model') : $(`#kvm${m}_ch`))?.focus();
+    }
+    if (inTable(e.target) || inTimer(e.target) || inModes(e.target)) return;
     if (e.target.id === 'kv-mode-chamber') return pickChamber(e.target.value);
     openedFile = null;
     if (e.target.id === 'kv_ch_model') {

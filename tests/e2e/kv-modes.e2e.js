@@ -32,7 +32,11 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   const sum = page.locator('#kv-sum-body tr');
   const cell = (i, o) => page.locator(`#kv-rows-body tr[data-i="${i}"] [data-o="${o}"]`).innerText();
   const text = (sel) => page.locator(sel).innerText();
-  const chipTexts = async () => (await chips.allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
+  // таблица режимов: номер | кВ | мА | фильтр | СПО | камера
+  const modeRows = () =>
+    page.locator('#kv-modes tr').evaluateAll((trs) =>
+      trs.map((tr) => [tr.querySelector('.kv-mode').textContent.trim(), ...['kv_kv', 'kv_ma', 'kv_filter', 'kv_hvl'].map((k) => tr.querySelector(`[data-k="${k}"]`).value), tr.querySelector('[data-ch]').selectedOptions[0].textContent].join(' | ')),
+    );
 
   await page.goto(`${server.url}/index.html#kv`);
   await page.waitForSelector('#kv-messages li');
@@ -46,7 +50,8 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   // пример: два режима, сводка — все строки обоих
   await page.click('#kv-btn-sample');
   await pause();
-  assert.deepEqual(await chipTexts(), ['1 200 кВ, СПО 1,00 мм Cu', '2 150 кВ, СПО 0,50 мм Cu']);
+  assert.deepEqual(await modeRows(), ['1 | 200 | 10 | 0,5 мм Cu + 1 мм Al | 1,00 | 1 — PTW 30013 № 0000', '2 | 150 | 12 | 0,25 мм Cu + 1 мм Al | 0,50 | 1 — PTW 30013 № 0000']);
+  assert.match(await page.locator('#kv-modes [data-m="0"]').getAttribute('aria-label'), /^Режим 1: 200 кВ, СПО 1,00 мм Cu; замечаний нет\. Открыть в разделах формы$/);
   assert.equal(await page.locator('#kv-modes [data-m="0"]').getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('#kv-modes [data-m="0"] .st').getAttribute('class'), 'st ok');
   assert.equal(await sum.count(), 5);
@@ -130,7 +135,8 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   assert.equal(await page.locator('#kv-rows-body tr').count(), 2);
   assert.equal(await page.inputValue('#kvr1_kv_cone_b'), '8');
   assert.equal(await page.inputValue('#kvr1_kv_M1_0'), '');
-  assert.equal((await chipTexts())[2], '3 пучок не задан');
+  assert.match(await page.locator('#kv-modes [data-m="2"]').getAttribute('aria-label'), /^Режим 3: пучок не задан; строки не заполнены/);
+  assert.equal((await modeRows())[2], '3 |  |  |  |  | 1 — PTW 30013 № 0000');
   assert.equal(await page.locator('#kv-modes [data-m="2"] .st').getAttribute('class'), 'st empty');
   await page.click('#kv-btn-del-mode');
   await pause(100);
@@ -155,10 +161,10 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   await page.click('#kv-btn-copy-report');
   await pause();
   const report = await page.evaluate(() => navigator.clipboard.readText());
-  assert.match(report, /Режимы аппарата \(2\); подробно ниже — режим 2, строка 2:\nРежим 1: 200 кВ, СПО 1,00 мм Cu, фильтр 0,5 мм Cu \+ 1 мм Al; камера 1 \(PTW 30013 № 0000\)\n {2}1\. Ø 10 см \(стандартный тубус\)/);
-  assert.match(report, /\nРежим 2: 150 кВ, СПО 0,50 мм Cu, фильтр 0,25 мм Cu \+ 1 мм Al; камера 1 \(PTW 30013 № 0000\); k_pol и τ — из режима 1 \(200 кВ, СПО 1,00 мм Cu\)\n {2}1\. Ø 10 см \(стандартный тубус\), РИП 50 см; .*D = 0,9140 Гр\/мин на 2 г\/см², отклонение \+0,44 %\n/);
+  assert.match(report, /Режимы аппарата \(2\); подробно ниже — режим 2, строка 2:\nРежим 1: 200 кВ, 10 мА, СПО 1,00 мм Cu, фильтр 0,5 мм Cu \+ 1 мм Al; камера 1 \(PTW 30013 № 0000\)\n {2}1\. Ø 10 см \(стандартный тубус\)/);
+  assert.match(report, /\nРежим 2: 150 кВ, 12 мА, СПО 0,50 мм Cu, фильтр 0,25 мм Cu \+ 1 мм Al; камера 1 \(PTW 30013 № 0000\); k_pol и τ — из режима 1 \(200 кВ, СПО 1,00 мм Cu\)\n {2}1\. Ø 10 см \(стандартный тубус\), РИП 50 см; .*D = 0,9140 Гр\/мин на 2 г\/см², отклонение \+0,44 %\n/);
   assert.doesNotMatch(report, /\(k_pol из режима/);
-  assert.match(report, /Пучок \(режим 2\): 150 кВ/);
+  assert.match(report, /Пучок \(режим 2\): 150 кВ, 12 мА, СПО 0,50 мм Cu, фильтр 0,25 мм Cu \+ 1 мм Al\n/);
   assert.match(report, /τ = 0,0101 мин \(из режима 1 \(200 кВ, СПО 1,00 мм Cu\): в этом режиме не измерялась\)/);
   assert.match(report, /M\(V1, обратная\): в этом режиме не измерялось; k_pol из режима 1/);
 
@@ -204,7 +210,7 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   await page.click('#kv-btn-sample');
   await page.locator('#lang_en').check();
   await pause(600);
-  assert.deepEqual(await chipTexts(), ['1 200 kV, HVL 1.00 mm Cu', '2 150 kV, HVL 0.50 mm Cu']);
+  assert.deepEqual(await modeRows(), ['1 | 200 | 10 | 0.5 mm Cu + 1 mm Al | 1.00 | 1 — PTW 30013 S/N 0000', '2 | 150 | 12 | 0.25 mm Cu + 1 mm Al | 0.50 | 1 — PTW 30013 S/N 0000']);
   assert.equal(await text('#kv-sum-note'), 'Mode 2: kpol and τ from mode 1 (200 kV, HVL 1.00 mm Cu).');
   assert.deepEqual(await cyrLines(page), []);
   await page.click('#kv-modes [data-m="1"]');

@@ -1571,12 +1571,25 @@
       </div>
       <div class="kv-modes-block">
         <h4 class="series-head" id="kv-modes-label">Режимы аппарата</h4>
-        <div class="kv-modes-bar">
-          <div class="kv-modes" id="kv-modes" role="group" aria-labelledby="kv-modes-label" data-i18n-skip></div>
+        <div class="table-wrap">
+          <table class="factors jf-table kv-modes-t" id="kv-modes-table" aria-labelledby="kv-modes-label">
+            <thead><tr>
+              <th class="no">№</th>
+              <th class="rng">Диапазон</th>
+              <th class="kv" title="Напряжение на трубке">кВ</th>
+              <th class="ma" title="Ток трубки">мА</th>
+              <th class="flt">Фильтр</th>
+              <th class="hvl">СПО, мм</th>
+              <th class="ch">Камера</th>
+            </tr></thead>
+            <tbody id="kv-modes" data-i18n-skip></tbody>
+          </table>
+        </div>
+        <div class="row-tools">
           <button type="button" class="link-btn" id="kv-btn-add-mode"><span aria-hidden="true">+</span> Добавить режим</button>
           <button type="button" class="link-btn" id="kv-btn-del-mode" hidden>Удалить режим</button>
         </div>
-        <p class="sub-hint">Режим — напряжение, фильтр и СПО со своими аппликаторами (раздел 4), заданием и ошибкой таймера (раздел 3). Учреждение, аппарат, дата и сотрудники — общие для всех режимов; камеру режима выбирают в разделе 2. Новый режим копирует камеру, фантом и тубусы выбранного, без показаний. Итоги всех режимов — в разделе 9.</p>
+        <p class="sub-hint">Режим — напряжение, ток, фильтр и СПО со своими аппликаторами (раздел 4), заданием и ошибкой таймера (раздел 3) и своей камерой. Режимы можно вводить прямо в таблице; номер режима открывает его в разделах ниже. Камера может быть общей для нескольких режимов или своей («+ новая камера…»), её сертификат вводится в разделе 2. Учреждение, аппарат, дата и сотрудники — общие для всех режимов. Новый режим копирует камеру, фантом и тубусы выбранного, без показаний. Итоги всех режимов — в разделе 9.</p>
       </div>
       <div class="grid subgrid">
         <div class="field span-2">
@@ -1587,8 +1600,9 @@
           </select>
         </div>
         <div class="field"><label for="kv_kv">Напряжение на трубке, кВ</label><input type="text" id="kv_kv" class="num" inputmode="decimal"></div>
-        <div class="field"><label for="kv_hvl" id="kv-lbl-hvl">СПО, мм Al</label><input type="text" id="kv_hvl" class="num" inputmode="decimal"><span class="sub">первый слой половинного ослабления</span></div>
+        <div class="field"><label for="kv_ma">Ток трубки, мА</label><input type="text" id="kv_ma" class="num" inputmode="decimal"><span class="sub">для протокола; в расчёт не входит</span></div>
         <div class="field"><label for="kv_filter">Фильтр</label><input type="text" id="kv_filter" placeholder="2 мм Al"><span class="sub">для протокола; в расчёт не входит</span></div>
+        <div class="field"><label for="kv_hvl" id="kv-lbl-hvl">СПО, мм Al</label><input type="text" id="kv_hvl" class="num" inputmode="decimal"><span class="sub">первый слой половинного ослабления</span></div>
       </div>
       <div class="grid subgrid">
         <div class="field">
