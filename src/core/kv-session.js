@@ -104,13 +104,13 @@ function standardRow(rows, results) {
 }
 
 /** Поля, по которым видно ошибку ввода данных таймера режима (тогда его τ другим режимам передаётся как ошибка). */
-const TIMER_KEYS = ['kv_timer', 'kv_nx_t', 'kv_nx_n', 'kv_nx_M1', 'kv_nx_Mn'];
+const TIMER_KEYS = ['kv_timer', 'kv_nx_t', 'kv_nx_n', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_t1', 'kv_tp_t2', 'kv_tp_R1', 'kv_tp_R2'];
 const bad = (r, keys) => keys.some((k) => r.flags[k] === 'error');
 
 /**
  * Данные ошибки таймера режима: 'own' — свои (облучения, n облучений или известное τ), 'none' — не введены
- * (облучения с разным заданием или n облучений без показаний: τ можно взять из другого режима), 'off' — выбрано
- * «не учитывать», 'window' — заряд накоплен при включённой трубке (τ в итог не входит).
+ * (две точки без показаний, облучения с разным заданием без точек или n облучений без показаний: τ можно взять из
+ * другого режима), 'off' — выбрано «не учитывать», 'window' — заряд накоплен при включённой трубке (τ в итог не входит).
  */
 export function kvTimerState(form) {
   const f = normalizeKv(form);
@@ -118,6 +118,7 @@ export function kvTimerState(form) {
   if (f.kv_timer_mode === 'none') return 'off';
   if (f.kv_timer_mode === 'measured' && [...f.kv_tt, ...f.kv_tm].every(isBlank)) return 'none';
   if (f.kv_timer_mode === 'nexp' && !hasSeries(f.kv_nx_M1) && !hasSeries(f.kv_nx_Mn)) return 'none';
+  if (f.kv_timer_mode === 'twopoint' && !hasSeries(f.kv_tp_R1) && !hasSeries(f.kv_tp_R2)) return 'none';
   return 'own';
 }
 
@@ -182,7 +183,7 @@ export function computeKvSession(sess, ext = {}) {
 // измерена (таймер — свойство аппарата, камера значения не имеет).
 
 /** Поля, общие для всех режимов. */
-export const KV_COMMON_KEYS = ['kv_institution', 'kv_machine', 'kv_date', 'kv_staff', 'kv_notes', 'kv_env_P_unit', 'kv_tol'];
+export const KV_COMMON_KEYS = ['kv_institution', 'kv_machine', 'kv_date', 'kv_staff', 'kv_notes', 'kv_env_P_unit', 'kv_tol', 'kv_tau_tol'];
 /** Поля камеры: камера, сертификат и условия калибровки, электрометр, напряжения и полярность. */
 export const KV_CHAMBER_KEYS = [
   'kv_ch_model', 'kv_cc_maker', 'kv_cc_model', 'kv_cc_type', 'kv_ch_serial', 'kv_foil',
@@ -196,8 +197,8 @@ const COMMON_SET = new Set(KV_COMMON_KEYS);
 const CHAMBER_SET = new Set(KV_CHAMBER_KEYS);
 /** Поля режима: всё, что не строка, не камера и не общее. */
 export const KV_MODE_KEYS = Object.keys(KV_DEFAULTS).filter((k) => !ROW_SET.has(k) && !COMMON_SET.has(k) && !CHAMBER_SET.has(k));
-/** Поля, которые новый режим не копирует из текущего: пучок и данные ошибки таймера у него свои. */
-const MODE_OWN_KEYS = ['kv_kv', 'kv_filter', 'kv_hvl', 'kv_tau', 'kv_tt', 'kv_tm', 'kv_nx_t', 'kv_nx_M1', 'kv_nx_Mn'];
+/** Поля, которые новый режим не копирует из текущего: пучок и данные ошибки таймера у него свои (задания T₁ и T₂ — те же). */
+const MODE_OWN_KEYS = ['kv_kv', 'kv_filter', 'kv_hvl', 'kv_tau', 'kv_tt', 'kv_tm', 'kv_nx_t', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2'];
 /** Поля камеры, которые новая камера копирует из текущей: электрометр, условия сертификата и измерения заряда. */
 const CHAMBER_KEEP_KEYS = ['kv_el_model', 'kv_el_serial', 'kv_kelec', 'kv_T0', 'kv_P0', 'kv_V1', 'kv_V2', 'kv_polarity', 'kv_ks_on', 'kv_rec_trs', 'kv_kleak'];
 
@@ -265,7 +266,7 @@ export function newKvMode(from) {
   const shared = pick(splitKvVisitForm({}).mode, KV_MODE_KEYS);
   if (from) for (const k of KV_MODE_KEYS) if (!MODE_OWN_KEYS.includes(k)) shared[k] = copy(from.shared[k]);
   // известное τ у образца — значение его режима: новый режим без своих данных берёт τ из ближайшего (computeKvVisit)
-  if (shared.kv_timer_mode === 'manual') shared.kv_timer_mode = 'measured';
+  if (shared.kv_timer_mode === 'manual') shared.kv_timer_mode = KV_DEFAULTS.kv_timer_mode;
   const rows = from ? from.rows.map((r) => ({ ...emptyKvRow(r), kv_cone: r.kv_cone, kv_cone_b: r.kv_cone_b, kv_cone_largest: r.kv_cone_largest })) : [emptyKvRow()];
   return { shared, chamber: from ? from.chamber : 0, rows, active: 0 };
 }

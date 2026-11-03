@@ -1,5 +1,5 @@
 // Модуль «kV-рентген»: связывает форму с расчётным ядром kv.js (TRS-398 Rev.1, разд. 8 и 9).
-import { KV_DEFAULTS, normalizeKv } from '../core/kv.js';
+import { KV_DEFAULTS, KV_SET_UNITS, normalizeKv } from '../core/kv.js';
 import {
   emptyKvRow, kvRowLabel, kvRowEmpty, KV_ROW_KEYS, normalizeKvVisit, splitKvVisitForm, kvVisitRowForm, computeKvVisit, newKvMode, newKvChamber,
   kvModeLabel, kvModeFrom } from '../core/kv-session.js';
@@ -23,7 +23,7 @@ const DRAFT_KEY = 'reference-dosimetry.kv.v1';
 // формат 3 (0.37.0): режимы аппарата — общие поля common, камеры chambers, режимы modes со строками аппликаторов, выбранный
 // режим mode; form — плоская форма выбранной строки выбранного режима. Формат 2 (0.36): rows и active одного режима.
 const FILE_TAG = { app: 'reference-dosimetry', module: 'kv', version: 3 };
-const SERIES_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_Mc'];
+const SERIES_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc'];
 const PAIR_KEYS = ['kv_tt', 'kv_tm'];
 const CERT_KEYS = ['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_val'];
 const PROTO_NAME = 'TRS-398 Rev.1';
@@ -500,6 +500,145 @@ function renderSummary(vr) {
   html(note, richText(notes.join(' ')));
 }
 
+// ------------------------------------------------------------ ошибка таймера по режимам (раздел 3)
+const timerBody = () => $('#kv-timer-body');
+/** Ячеек показаний в строке таблицы таймера: не меньше трёх и не меньше введённых (больше — кнопкой «+» выше). */
+const tpCount = (a) => Math.max(3, Array.isArray(a) ? a.length : 0);
+const isTimeUnit = (u) => !!KV_SET_UNITS[u]?.time;
+/** Знаков после запятой у допуска на |τ|: как введено, до двух. */
+const tolDigits = (x) => (Number.isInteger(x) ? 0 : Number.isInteger(Math.round(x * 1e6) / 1e5) ? 1 : 2);
+/** Единица T₁, T₂ и τ режима в таблице: секунды при задании по времени, иначе единица задания. */
+const tpUnit = (f) => (isTimeUnit(f.kv_set_unit) ? L('с', 's') : L(KV_SET_UNITS[f.kv_set_unit]?.label ?? '', KV_SET_UNITS[f.kv_set_unit]?.labelEn ?? ''));
+/** Способ ошибки таймера, данные которого в таблицу не помещаются: что о нём сказать в строке режима. */
+function timerMethodText(f) {
+  switch (f.kv_timer_mode) {
+    case 'measured': return L('серия облучений с разным заданием — данные выше, в разделе 3 этого режима', 'series of exposures with different settings: the data are above, in section 3 of this mode');
+    case 'nexp': return L('одно облучение X против n облучений по X/n — данные выше, в разделе 3 этого режима', 'one exposure X vs. n exposures of X/n: the data are above, in section 3 of this mode');
+    case 'manual': return L('известное значение — выше, в разделе 3 этого режима', 'known value: above, in section 3 of this mode');
+    case 'window': return L('заряд накоплен при включённой трубке: τ в дозу не входит', 'charge collected with the tube on: τ does not enter the dose');
+    default: return L('не учитывается', 'disregarded');
+  }
+}
+
+function timerRowHtml(m) {
+  const f = visit.modes[m].shared;
+  const on = m === visit.mode;
+  const u = tpUnit(f);
+  const who = L(`режим ${m + 1}`, `mode ${m + 1}`);
+  const cap = (t) => ` data-cap="${esc(t)}"`;
+  const inp = (key, value, label, j = null) =>
+    `<input type="text" class="num" inputmode="decimal" id="kvt${m}_${key}${j === null ? '' : `_${j}`}" data-k="${key}"${j === null ? '' : ` data-j="${j}"`} aria-label="${esc(`${label}, ${who}`)}" value="${esc(value ?? '')}">`;
+  const cells = (key, t) => `<span class="m-in">${Array.from({ length: tpCount(f[key]) }, (_, j) => inp(key, f[key]?.[j], L(`Показание при ${t} № ${j + 1}, нКл`, `Reading at ${t} no. ${j + 1}, nC`), j)).join('')}</span>`;
+  const body = f.kv_timer_mode === 'twopoint'
+    ? `<td class="t t1"${cap(`T₁, ${u}`)}>${inp('kv_tp_t1', f.kv_tp_t1, L(`Задание T₁, ${u}`, `Setting T₁, ${u}`))}</td>
+      <td class="r r1"${cap(L('Показания при T₁, нКл', 'Readings at T₁, nC'))}>${cells('kv_tp_R1', 'T₁')}</td>
+      <td class="t t2"${cap(`T₂, ${u}`)}>${inp('kv_tp_t2', f.kv_tp_t2, L(`Задание T₂, ${u}`, `Setting T₂, ${u}`))}</td>
+      <td class="r r2"${cap(L('Показания при T₂, нКл', 'Readings at T₂, nC'))}>${cells('kv_tp_R2', 'T₂')}</td>`
+    : `<td class="other" colspan="4">${esc(timerMethodText(f))}</td>`;
+  return `<tr data-m="${m}"${on ? ' class="active"' : ''}>
+    <td class="no"><button type="button" class="kv-tm-pick" aria-pressed="${on}" aria-label="${esc(L(`Режим ${m + 1}: открыть в разделах формы`, `Mode ${m + 1}: open in the form sections`))}" title="${esc(L('Открыть режим в разделах формы', 'Open the mode in the form sections'))}">${m + 1}</button></td>
+    <td class="mode"${cap(L('Режим', 'Mode'))}>${esc(modeName(m))}</td>
+    ${body}
+    <td class="v tau" data-o="tau"${cap(`τ, ${u}`)}></td>
+    <td class="act"><span class="st" role="img"></span></td>
+  </tr>`;
+}
+
+/** Таблица ошибки таймера по режимам: строится заново, кроме ввода в ней самой (фокус остаётся в поле). */
+function renderTimerTable() {
+  const block = $('#kv-timer-block');
+  block.hidden = visit.modes.length <= 1;
+  if (block.hidden) return;
+  timerBody().innerHTML = visit.modes.map((_, m) => timerRowHtml(m)).join('');
+  localizeDecimals(timerBody());
+}
+
+/** Поля таймера в замечаниях режима: по ним — подсветка полей строки таблицы и её состояние. */
+const TIMER_FLAG_KEYS = ['kv_tp_t1', 'kv_tp_t2', 'kv_tp_R1', 'kv_tp_R2', 'kv_timer', 'kv_nx_t', 'kv_nx_n', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tau', 'kv_timer_mode', 'kv_tau_tol'];
+
+/** Состояние ошибки таймера режима для точки в таблице и подсказка. */
+function timerRowState(m, mr) {
+  const r = mr.results[visit.modes[m].active] ?? mr.results[0];
+  const t = r.timer;
+  const lv = (k) => r.flags[k];
+  const err = TIMER_FLAG_KEYS.some((k) => lv(k) === 'error');
+  const warn = TIMER_FLAG_KEYS.some((k) => lv(k) === 'warn');
+  const st = mr.timer.state;
+  if (st === 'none' && mr.tauMode < 0 && !err) return { lvl: 'empty', tip: L('Показаний ещё нет', 'No readings yet') };
+  if (err) return { lvl: 'error', tip: L(`Ошибка в данных ошибки таймера: см. замечания режима ${m + 1}`, `The timer error data contain an error: see the messages of mode ${m + 1}`) };
+  if (st === 'none') return { lvl: 'empty', tip: L(`Своих показаний нет: τ — из ${kvModeFrom(visit, mr.tauMode)}`, `No readings of its own: τ from ${kvModeFrom(visit, mr.tauMode)}`) };
+  if (st === 'off') return { lvl: 'empty', tip: L('Ошибка таймера не учитывается', 'The timer error is disregarded') };
+  if (st === 'window') return { lvl: 'empty', tip: L('Заряд накоплен при включённой трубке: τ в дозу не входит', 'Charge collected with the tube on: τ does not enter the dose') };
+  const tolTxt = (x) => fmt(x, tolDigits(x));
+  if (t.tol && !t.inTol) return { lvl: 'warn', tip: L(`|τ| больше допуска ${tolTxt(t.tol)} с`, `|τ| exceeds the tolerance of ${tolTxt(t.tol)} s`) };
+  if (warn) return { lvl: 'warn', tip: L(`Есть предупреждения: см. замечания режима ${m + 1}`, `There are warnings: see the messages of mode ${m + 1}`) };
+  return { lvl: 'ok', tip: t.tol ? L(`В допуске ${tolTxt(t.tol)} с`, `Within the tolerance of ${tolTxt(t.tol)} s`) : L('Замечаний нет', 'No issues') };
+}
+
+/** τ, подсветка полей и состояние строк таблицы таймера; итог по допуску — под таблицей. */
+function renderTimerState(vr) {
+  if ($('#kv-timer-block').hidden) return;
+  const over = [];
+  let tol = NaN;
+  vr.modes.forEach((mr, m) => {
+    const tr = timerBody().querySelector(`tr[data-m="${m}"]`);
+    if (!tr) return;
+    const f = visit.modes[m].shared;
+    const r = mr.results[visit.modes[m].active] ?? mr.results[0];
+    const t = r.timer;
+    const { lvl, tip } = timerRowState(m, mr);
+    const time = isTimeUnit(f.kv_set_unit);
+    const v = time ? t.tauS : t.tau;
+    const shown = mr.timer.state === 'own' || mr.tauMode >= 0 ? v : NaN;
+    const from = mr.tauMode >= 0 ? `<small>${esc(L(`из режима ${mr.tauMode + 1}`, `from mode ${mr.tauMode + 1}`))}</small>` : '';
+    html(tr.querySelector('[data-o="tau"]'), Number.isFinite(shown) && lvl !== 'error' ? `${fmtSigned(shown, time ? 2 : 3)} ${esc(tpUnit(f))}${from}` : '—');
+    const stEl = tr.querySelector('.st');
+    stEl.className = `st ${lvl}`;
+    stEl.title = tip;
+    stEl.setAttribute('aria-label', tip);
+    for (const el of tr.querySelectorAll('[data-k]')) {
+      const fl = lvl === 'empty' ? null : r.flags[el.dataset.k];
+      el.classList.toggle('flag-error', fl === 'error');
+      el.classList.toggle('flag-warn', fl === 'warn');
+    }
+    const on = m === visit.mode;
+    tr.classList.toggle('active', on);
+    tr.querySelector('.kv-tm-pick').setAttribute('aria-pressed', String(on));
+    if (t.tol) tol = t.tol;
+    if (t.tol && !t.inTol) over.push(m + 1);
+  });
+  localizeDecimals(timerBody());
+  const note = $('#kv-timer-note');
+  const tolRaw = String(visit.common.kv_tau_tol ?? '').trim();
+  const txt = !tolRaw
+    ? L('Допуск на |τ| не задан (поле «Допуск на |τ|, с» выше): τ не сравнивается с допуском.', 'No |τ| tolerance is set (the "Tolerance on |τ|, s" field above): τ is not compared with a tolerance.')
+    : !Number.isFinite(tol)
+      ? ''
+      : over.length
+        ? L(`Допуск |τ| ≤ ${fmt(tol, tolDigits(tol))} с (по методике учреждения): больше допуска — ${over.length > 1 ? 'режимы' : 'режим'} ${over.join(', ')}.`, `Tolerance |τ| ≤ ${fmt(tol, tolDigits(tol))} s (local procedure): exceeded in ${over.length > 1 ? 'modes' : 'mode'} ${over.join(', ')}.`)
+        : L(`Допуск |τ| ≤ ${fmt(tol, tolDigits(tol))} с (по методике учреждения): у всех режимов со своей τ — в допуске.`, `Tolerance |τ| ≤ ${fmt(tol, tolDigits(tol))} s (local procedure): all modes with their own τ are within it.`);
+  note.hidden = !txt;
+  note.textContent = txt;
+}
+
+/** Ввод в таблице таймера: значение — в режим; у выбранного режима — и в поле раздела 3. */
+function onTimerInput(el) {
+  const m = Number(el.closest('tr[data-m]')?.dataset.m);
+  const md = visit.modes[m];
+  const key = el.dataset.k;
+  if (!md || !key) return;
+  if (el.dataset.j !== undefined) {
+    const j = Number(el.dataset.j);
+    const a = Array.isArray(md.shared[key]) ? [...md.shared[key]] : [];
+    while (a.length <= j) a.push('');
+    a[j] = el.value;
+    md.shared[key] = a;
+  } else md.shared[key] = el.value;
+  if (m === visit.mode) writeDetail(key, md.shared[key]);
+  openedFile = null;
+  update({ fromTimer: true });
+}
+
 /** Переход к режиму m: его камера, пучок и выбранная строка — в разделы формы. */
 function selectMode(m) {
   if (m === visit.mode || !visit.modes[m]) return;
@@ -864,6 +1003,12 @@ function applyVisibility(data, result) {
   $('#kv-lbl-tau').textContent = `τ, ${unit}`;
   $('#kv-lbl-tt').textContent = L(`Задание, ${unit}`, `Setting, ${unit}`);
   $('#kv-lbl-nxt').textContent = L(`Задание одиночного облучения X, ${unit}`, `Single exposure setting X, ${unit}`);
+  // две точки: при задании по времени T₁ и T₂ — в секундах
+  const tpUnit = timeSet ? L('с', 's') : unit;
+  $('#kv-lbl-tp1').textContent = L(`Задание T₁, ${tpUnit}`, `Setting T₁, ${tpUnit}`);
+  $('#kv-lbl-tp2').textContent = L(`Задание T₂, ${tpUnit}`, `Setting T₂, ${tpUnit}`);
+  $('#kv-tp1-sub').textContent = timeSet ? L('короткое, например 6 с', 'short, e.g. 6 s') : L('меньшее задание', 'the smaller setting');
+  $('#kv-tp2-sub').textContent = timeSet ? L('длинное, например 60 с', 'long, e.g. 60 s') : L('большее задание', 'the larger setting');
   $('#kv-lbl-ctrl-set').textContent = windowMode ? L(`Время накопления заряда, ${unit}`, `Charge collection time, ${unit}`) : L(`Задание облучения, ${unit}`, `Exposure setting, ${unit}`);
   const winOpt = $('#kv_timer_mode option[value="window"]');
   if (winOpt) winOpt.disabled = !timeSet && !windowMode;
@@ -1175,6 +1320,32 @@ function rowsReport(md, mr, pUnit) {
   });
 }
 
+/** Ошибка таймера режима m одной строкой протокола: данные, τ и допуск. */
+function timerReportLine(m, mr) {
+  const f = visit.modes[m].shared;
+  const r = mr.results[visit.modes[m].active] ?? mr.results[0];
+  const t = r.timer;
+  const u = tpUnit(f);
+  const time = isTimeUnit(f.kv_set_unit);
+  const cells = (a) => (Array.isArray(a) ? a.filter((v) => String(v).trim() !== '').join('; ') : '');
+  const tauTxt = (v) => `τ = ${fmtSigned(v, time ? 2 : 3)} ${u}`;
+  const tolTxt = t.tol ? (t.inTol ? L(` (в допуске ${fmt(t.tol, tolDigits(t.tol))} с)`, ` (within ${fmt(t.tol, tolDigits(t.tol))} s)`) : L(` (больше допуска ${fmt(t.tol, tolDigits(t.tol))} с)`, ` (exceeds ${fmt(t.tol, tolDigits(t.tol))} s)`)) : '';
+  const v = time ? t.tauS : t.tau;
+  const st = mr.timer.state;
+  let txt;
+  if (st === 'none' && mr.tauMode >= 0) txt = L(`не измерялась; ${tauTxt(v)} из режима ${mr.tauMode + 1}`, `not measured; ${tauTxt(v)} from mode ${mr.tauMode + 1}`);
+  else if (st === 'none') txt = L('не измерялась', 'not measured');
+  else if (st === 'off') txt = L('не учитывалась', 'not accounted for');
+  else if (st === 'window') txt = L('заряд накоплен при включённой трубке, τ в дозу не входит', 'charge collected with the tube on, τ does not enter the dose');
+  else {
+    const how = f.kv_timer_mode === 'twopoint'
+      ? L(`T₁ = ${f.kv_tp_t1} ${u}: ${cells(f.kv_tp_R1) || '—'} нКл; T₂ = ${f.kv_tp_t2} ${u}: ${cells(f.kv_tp_R2) || '—'} нКл`, `T₁ = ${f.kv_tp_t1} ${u}: ${cells(f.kv_tp_R1) || '—'} nC; T₂ = ${f.kv_tp_t2} ${u}: ${cells(f.kv_tp_R2) || '—'} nC`)
+      : f.kv_timer_mode === 'measured' ? L('серия облучений', 'series of exposures') : f.kv_timer_mode === 'nexp' ? L('X против n облучений по X/n', 'X vs. n exposures of X/n') : L('введено', 'entered manually');
+    txt = Number.isFinite(v) && !TIMER_FLAG_KEYS.some((k) => r.flags[k] === 'error') ? `${how}; ${tauTxt(v)}${tolTxt}` : L(`${how}; τ не вычислена (см. замечания)`, `${how}; τ not calculated (see the messages)`);
+  }
+  return L(`Режим ${m + 1} (${modeName(m)}): ${txt}`, `Mode ${m + 1} (${modeName(m)}): ${txt}`);
+}
+
 function reportText(data, r, all = null, vr = null) {
   const out = [];
   const line = (k, v) => out.push(`${k}: ${v}`);
@@ -1205,6 +1376,10 @@ function reportText(data, r, all = null, vr = null) {
       out.push(L(`Режим ${m + 1}: ${modeName(m)}${filt ? `, фильтр ${filt}` : ''}; ${ch}${b ? `; ${b}` : ''}`, `Mode ${m + 1}: ${modeName(m)}${filt ? `, filter ${filt}` : ''}; ${ch}${b ? `; ${b}` : ''}`));
       rowsReport(md, vr.modes[m], pUnit).forEach((l) => out.push(l));
     });
+    out.push('');
+    const tolRaw = String(data.kv_tau_tol ?? '').trim();
+    out.push(tolRaw ? L(`Ошибка таймера по режимам (допуск |τ| ≤ ${tolRaw} с — по методике учреждения):`, `Timer error by mode (tolerance |τ| ≤ ${tolRaw} s, local procedure):`) : L('Ошибка таймера по режимам:', 'Timer error by mode:'));
+    visit.modes.forEach((_, m) => out.push(`  ${timerReportLine(m, vr.modes[m])}`));
     out.push('');
   } else if (all && sess.rows.length > 1) {
     out.push('');
@@ -1254,8 +1429,15 @@ function reportText(data, r, all = null, vr = null) {
   line(L('Условия', 'Conditions'), `T = ${data.kv_env_T} °C, P = ${data.kv_env_P} ${unitLabel(PRESSURE_UNITS[data.kv_env_P_unit])}${String(data.kv_env_H ?? '').trim() ? L(`, относительная влажность ${data.kv_env_H} %`, `, relative humidity ${data.kv_env_H} %`) : ''}`);
   const tm = r.timer;
   const u = i.unitLabel;
+  const tpU = isTimeUnit(data.kv_set_unit) ? L('с', 's') : u;
+  const tolNote = tm.tol ? (tm.inTol ? L(`, в допуске ${fmt(tm.tol, tolDigits(tm.tol))} с`, `, within ${fmt(tm.tol, tolDigits(tm.tol))} s`) : L(`, больше допуска ${fmt(tm.tol, tolDigits(tm.tol))} с`, `, exceeds ${fmt(tm.tol, tolDigits(tm.tol))} s`)) : '';
   const timerTxt =
-    data.kv_timer_mode === 'measured'
+    data.kv_timer_mode === 'twopoint'
+      ? L(
+        `по двум заданиям: T₁ = ${data.kv_tp_t1} ${tpU} (${cells(data.kv_tp_R1)} нКл), T₂ = ${data.kv_tp_t2} ${tpU} (${cells(data.kv_tp_R2)} нКл)${data.kv_set_unit === 'min' && Number.isFinite(tm.tauS) ? `, τ = ${fmtSigned(tm.tauS, 2)} с` : ''}`,
+        `from two settings: T₁ = ${data.kv_tp_t1} ${tpU} (${cells(data.kv_tp_R1)} nC), T₂ = ${data.kv_tp_t2} ${tpU} (${cells(data.kv_tp_R2)} nC)${data.kv_set_unit === 'min' && Number.isFinite(tm.tauS) ? `, τ = ${fmtSigned(tm.tauS, 2)} s` : ''}`,
+      )
+      : data.kv_timer_mode === 'measured'
       ? `${L(`по ${tm.n ?? '—'} облучениям`, `from ${tm.n ?? '—'} exposures`)}: ${data.kv_tt
           .map((t, k) => [t, data.kv_tm[k]])
           .filter(([a, b]) => String(a ?? '').trim() && String(b ?? '').trim())
@@ -1266,7 +1448,7 @@ function reportText(data, r, all = null, vr = null) {
         : data.kv_timer_mode === 'manual'
           ? L('введено', 'entered manually')
           : L('не учитывалась', 'not accounted for');
-  const timerFull = tm.from ? L(`из ${tm.from}: в этом режиме не измерялась`, `from ${tm.from}: not measured in this mode`) : timerTxt;
+  const timerFull = tm.from ? L(`из ${tm.from}: в этом режиме не измерялась`, `from ${tm.from}: not measured in this mode`) : `${timerTxt}${tolNote}`;
   if (data.kv_timer_mode === 'window') {
     line(L('Время', 'Time'), L(`заряд накоплен электрометром за ${data.kv_set} ${u} при включённой трубке; ошибка таймера в результат не входит`, `charge collected by the electrometer over ${data.kv_set} ${u} with the tube on; the timer error does not enter the result`));
   } else line(L('Задание облучения', 'Exposure setting'), `X = ${data.kv_set} ${u}; τ = ${fmt(tm.tau, 4)} ${u} (${timerFull}); X + τ = ${fmt(i.Xeff, 4)} ${u}`);
@@ -1456,6 +1638,7 @@ function update(opts = {}) {
   }
   const vr = computeKvVisit(visit);
   const all = vr.modes[visit.mode];
+  if (!opts.fromTimer) renderTimerTable();
   const result = all.results[sess.active];
   const data = normalizeKv(rowForm(sess.active));
   current = { data, result, all, vr };
@@ -1469,6 +1652,7 @@ function update(opts = {}) {
   renderFlags(ROOT(), result.flags, seriesBox);
   renderReadout(result, data);
   renderRowsState(all);
+  renderTimerState(vr);
   $('#kv-demo-flag').hidden = !isDemo(data);
   renderNotesFlag($('#kv-notes-flag'), data.kv_notes, [SAMPLE_KV.kv_notes, SAMPLE_KV_EN.kv_notes], isDemo(data));
   renderFileNote($('#kv-file-note'), fileNote(result));
@@ -1523,16 +1707,18 @@ export function initKv() {
 
   const sheet = $('#kv-sheet');
   const inTable = (el) => !!el?.closest?.('#kv-rows-body');
+  const inTimer = (el) => !!el?.closest?.('#kv-timer-body');
   sheet.addEventListener('input', (e) => {
     if (inTable(e.target)) return onRowInput(e.target);
+    if (inTimer(e.target)) return onTimerInput(e.target);
     // камера режима — по событию change
     if (e.target.id === 'kv-mode-chamber') return;
     openedFile = null;
     update();
   });
   sheet.addEventListener('change', (e) => {
-    // список формы тубуса в таблице уже обработан по событию input
-    if (inTable(e.target)) return;
+    // список формы тубуса в таблице уже обработан по событию input; поля таблицы таймера — тоже
+    if (inTable(e.target) || inTimer(e.target)) return;
     if (e.target.id === 'kv-mode-chamber') return pickChamber(e.target.value);
     openedFile = null;
     if (e.target.id === 'kv_ch_model') {
@@ -1564,6 +1750,13 @@ export function initKv() {
   $('#kv-btn-add-mode').addEventListener('click', addMode);
   armButton($('#kv-btn-del-mode'), () => L('Удалить режим', 'Delete mode'), () => L(`Точно удалить режим ${visit.mode + 1}?`, `Delete mode ${visit.mode + 1}?`), deleteMode);
   armButton($('#kv-btn-del-ch'), () => L('Удалить камеру', 'Delete chamber'), () => L(`Точно удалить камеру ${mode().chamber + 1}?`, `Delete chamber ${mode().chamber + 1}?`), deleteChamber);
+  timerBody().addEventListener('click', (e) => {
+    const b = e.target.closest('.kv-tm-pick');
+    const m = Number(b?.closest('tr[data-m]')?.dataset.m);
+    if (!b || !visit.modes[m]) return;
+    selectMode(m);
+    timerBody().querySelector(`tr[data-m="${m}"] .kv-tm-pick`)?.focus();
+  });
   $('#kv-sum-body').addEventListener('click', (e) => {
     const b = e.target.closest('.kv-sum-pick');
     const tr = b?.closest('tr[data-m]');

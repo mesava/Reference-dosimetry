@@ -44,9 +44,12 @@ export const SAMPLE_KV = {
 
   kv_set_unit: 'min',
   kv_set: '1,00',
-  kv_timer_mode: 'measured',
-  kv_tt: ['0,50', '1,00', '2,00'],
-  kv_tm: ['11,08', '21,96', '43,68'],
+  kv_timer_mode: 'twopoint',
+  kv_tp_t1: '6',
+  kv_tp_t2: '60',
+  kv_tp_R1: ['2,393', '2,394', '2,393'],
+  kv_tp_R2: ['21,95', '21,95', '21,96'],
+  kv_tau_tol: '3',
 
   kv_V1: '400',
   kv_polarity: '+',

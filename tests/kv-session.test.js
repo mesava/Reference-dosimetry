@@ -379,6 +379,10 @@ test('режимы аппарата: новый режим — камера, ф�
   assert.equal(m.shared.kv_kv, '');
   assert.equal(m.shared.kv_hvl, '');
   assert.deepEqual(m.shared.kv_tt, KV_DEFAULTS.kv_tt);
+  // ошибка таймера по двум заданиям: задания T₁ и T₂ — как у образца, показания — свои
+  assert.equal(m.shared.kv_timer_mode, 'twopoint');
+  assert.deepEqual([m.shared.kv_tp_t1, m.shared.kv_tp_t2], ['6', '60']);
+  assert.deepEqual([m.shared.kv_tp_R1, m.shared.kv_tp_R2], [KV_DEFAULTS.kv_tp_R1, KV_DEFAULTS.kv_tp_R2]);
   assert.equal(m.rows.length, 3);
   assert.deepEqual(m.rows.map(kvRowLabel), ['Ø 10 см', '6 × 8 см', 'Ø 15 см']);
   assert.deepEqual(m.rows[0].kv_M1, KV_DEFAULTS.kv_M1);
@@ -386,7 +390,7 @@ test('режимы аппарата: новый режим — камера, ф�
   assert.equal(m.rows[0].kv_env_T, '21,0');
   // известное τ образца — не для нового режима: он берёт τ из ближайшего режима
   v.modes[0].shared.kv_timer_mode = 'manual';
-  assert.equal(newKvMode(v.modes[0]).shared.kv_timer_mode, 'measured');
+  assert.equal(newKvMode(v.modes[0]).shared.kv_timer_mode, 'twopoint');
   // подпись режима
   assert.equal(kvModeLabel(v.modes[1].shared), '150 кВ, СПО 0,50 мм Cu');
   assert.equal(kvModeLabel(m.shared), '');

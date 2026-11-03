@@ -408,7 +408,8 @@ export const TERMS_EN = {
 <p>The tube does not reach its operating output or switch off instantly, so the actual exposure differs from the set one (by time, monitor dose or MU) by a constant amount τ — the timer error, or end effect. It is not a multiplicative correction: the dose refers to X + τ, where X is the set value.</p>
 <p class="formula">M = Ṁ · (X + τ)</p>
 <ul>
-<li>Several exposures with different settings, e.g. 0.5, 1 and 2 min: straight line M = a·X + b, τ = b/a.</li>
+<li>Two settings T₁ and T₂ (e.g. 6 and 60 s), with several readings at each: τ = (T₂·R̄₁ − T₁·R̄₂)/(R̄₂ − R̄₁).</li>
+<li>Several exposures with different settings, e.g. 0.5, 1 and 2 min: straight line M = a·X + b, τ = b/a. Two points are a special case of this line.</li>
 <li>One exposure X vs. n exposures of X/n: τ = X·(Mₙ − M₁)/(n·M₁ − Mₙ).</li>
 <li>If the charge is collected by the electrometer over an interval when the tube is already at its operating output, the timer error does not enter the result; it must still be known for calculating patient treatment times.</li>
 </ul>

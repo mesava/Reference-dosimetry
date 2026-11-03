@@ -1248,10 +1248,10 @@ table.kv-rows .kv-row-del:disabled { visibility: hidden; }
 .kv-mode b { font: 600 12px var(--font-mono); }
 .kv-mode:hover { border-color: var(--accent); }
 .kv-mode.active { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
-.kv-mode .st, table.kv-sum .st { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--rule); vertical-align: middle; flex: none; }
-.kv-mode .st.ok, table.kv-sum .st.ok { background: var(--ok); }
-.kv-mode .st.warn, table.kv-sum .st.warn { background: var(--warn); }
-.kv-mode .st.error, table.kv-sum .st.error { background: var(--err); }
+.kv-mode .st, table.kv-sum .st, table.kv-timer .st { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--rule); vertical-align: middle; flex: none; }
+.kv-mode .st.ok, table.kv-sum .st.ok, table.kv-timer .st.ok { background: var(--ok); }
+.kv-mode .st.warn, table.kv-sum .st.warn, table.kv-timer .st.warn { background: var(--warn); }
+.kv-mode .st.error, table.kv-sum .st.error, table.kv-timer .st.error { background: var(--err); }
 .kv-ch-pick-grid { padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px dashed var(--rule); }
 .kv-ch-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .kv-ch-pick select { flex: 1 1 18em; min-width: 0; }
@@ -1293,6 +1293,44 @@ table.kv-sum .kv-std { font: 600 10px var(--font-body); color: var(--accent); cu
   .kv-mode { border-color: #999; }
   table.kv-sum .kv-sum-pick { border: 0; background: none; color: inherit; padding: 0; }
   table.kv-sum tbody tr.active td { background: none; }
+}
+/* kV: ошибка таймера по режимам (раздел 3) — строка на режим, показания по двум заданиям вводятся прямо в таблице */
+.kv-timer-block { display: grid; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--rule); }
+.kv-timer-block[hidden] { display: none; }
+.kv-timer-block .sub-hint { margin: 0; }
+table.kv-timer td input[type="text"] { min-width: 3.9em; padding: 3px 4px; }
+table.kv-timer td.t input[type="text"] { min-width: 2.9em; }
+table.kv-timer .m-in { display: flex; gap: 3px; }
+table.kv-timer td.mode { min-width: 7em; }
+table.kv-timer td.other { color: var(--muted); font-size: 12.5px; }
+table.kv-timer td.v { white-space: nowrap; }
+table.kv-timer td.v small { display: block; font: 11px var(--font-body); color: var(--muted); }
+table.kv-timer tbody td { background: var(--sheet); }
+table.kv-timer tbody tr.active td { background: var(--accent-soft); }
+table.kv-timer th.act, table.kv-timer td.act { width: 1.6em; text-align: center; }
+table.kv-timer .kv-tm-pick { min-width: 1.8em; height: 26px; padding: 0 4px; border: 1px solid var(--rule); border-radius: 4px; background: var(--sheet); color: var(--muted); font: 12px var(--font-mono); cursor: pointer; }
+table.kv-timer .kv-tm-pick[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+#kv-timer-note[hidden] { display: none; }
+@media (max-width: 560px) {
+  /* карточка режима: № | режим и состояние | T₁ и показания | T₂ и показания | τ */
+  table.kv-timer tr { grid-template-columns: 2.2em 4.6em minmax(0, 1fr) 1.4em; align-items: start; }
+  table.kv-timer tbody tr.active { background: var(--accent-soft); }
+  table.kv-timer tbody td, table.kv-timer tbody tr.active td { background: none; }
+  table.kv-timer td.no { grid-column: 1; grid-row: 1 / span 4; }
+  table.kv-timer td.mode { grid-column: 2 / span 2; grid-row: 1; white-space: normal; }
+  table.kv-timer td.act { grid-column: 4; grid-row: 1; text-align: right; }
+  table.kv-timer td.t1 { grid-column: 2; grid-row: 2; }
+  table.kv-timer td.r1 { grid-column: 3 / span 2; grid-row: 2; }
+  table.kv-timer td.t2 { grid-column: 2; grid-row: 3; }
+  table.kv-timer td.r2 { grid-column: 3 / span 2; grid-row: 3; }
+  table.kv-timer td.other { grid-column: 2 / span 3; grid-row: 2; }
+  table.kv-timer td.tau { grid-column: 2 / span 3; grid-row: 4; text-align: left; }
+  table.kv-timer td.tau small { display: inline; margin-left: 6px; }
+  table.kv-timer td input[type="text"] { min-width: 0; }
+}
+@media print {
+  table.kv-timer .kv-tm-pick { border: 0; background: none; color: inherit; padding: 0; }
+  table.kv-timer tbody tr.active td { background: none; }
 }
 @media (max-width: 560px) {
   table.kv-rows tr { grid-template-columns: repeat(3, minmax(0, 1fr)); }

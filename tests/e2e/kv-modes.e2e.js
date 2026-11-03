@@ -83,7 +83,7 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   await pause();
   assert.ok(await page.locator('#kv-timer-from').isHidden());
   assert.match(await text('#kv-messages'), /Ошибка таймера не учтена/);
-  await page.selectOption('#kv_timer_mode', 'measured');
+  await page.selectOption('#kv_timer_mode', 'twopoint');
   await pause();
   assert.ok(await page.locator('#kv-timer-from').isVisible());
 

@@ -129,10 +129,18 @@ export const KV_DEFAULTS = {
   // задание облучения и ошибка таймера
   kv_set_unit: 'min', // 'Gy' | 'min' | 's' | 'MU'
   kv_set: '',
-  // 'measured' — серия облучений с разным заданием; 'nexp' — одно облучение X против n облучений по X/n;
-  // 'manual' — известное τ; 'window' — заряд накоплен на интервале при включённой трубке (только для времени); 'none'
-  kv_timer_mode: 'measured',
+  // 'twopoint' — облучения с двумя заданиями T₁ и T₂, по нескольку показаний при каждом; 'measured' — серия облучений
+  // с разным заданием; 'nexp' — одно облучение X против n облучений по X/n; 'manual' — известное τ; 'window' — заряд
+  // накоплен на интервале при включённой трубке (только для времени); 'none'
+  kv_timer_mode: 'twopoint',
   kv_tau: '',
+  // две точки: T₁ и T₂ — в секундах при задании по времени (обычно 6 и 60 с), в единицах задания при Гр и МЕ
+  kv_tp_t1: '',
+  kv_tp_t2: '',
+  kv_tp_R1: ['', '', ''],
+  kv_tp_R2: ['', '', ''],
+  // допуск на |τ|, с — по методике учреждения (в TRS-398 Rev.1 его нет); пусто — без проверки
+  kv_tau_tol: '',
   kv_tt: ['', ''],
   kv_tm: ['', ''],
   kv_nx_t: '',
@@ -163,11 +171,14 @@ export const KV_DEFAULTS = {
   kv_tol: '2',
 };
 
-const CELL_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_Mc'];
+const CELL_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc'];
 const BOOL_KEYS = ['kv_cone_largest', 'kv_foil', 'kv_lab_pol_applied', 'kv_lab_ks_applied', 'kv_ks_on'];
 
 export function normalizeKv(input) {
   const f = { ...KV_DEFAULTS, ...input, protocol: 'trs' };
+  // форма без способа ошибки таймера, но с точками серии (до 0.38.0 серия была способом по умолчанию)
+  const legacySeries = (k) => Array.isArray(input?.[k]) && input[k].some((v) => !isBlank(v));
+  if (!input?.kv_timer_mode && (legacySeries('kv_tt') || legacySeries('kv_tm'))) f.kv_timer_mode = 'measured';
   for (const k of CELL_KEYS) if (!Array.isArray(f[k])) f[k] = isBlank(f[k]) ? ['', '', ''] : String(f[k]).trim().split(/[\s;]+/);
   for (const k of ['kv_tt', 'kv_tm']) if (!Array.isArray(f[k])) f[k] = ['', ''];
   const n = Math.max(1, ...['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_val'].map((k) => (Array.isArray(f[k]) ? f[k].length : 0)));
@@ -182,6 +193,7 @@ export function normalizeKv(input) {
   if (f.kv_cal !== 'nk') f.kv_cal = 'ndw';
   if (!['kq', 'n', 'k', 'co'].includes(f.kv_cert_form)) f.kv_cert_form = 'kq';
   if (!KV_SET_UNITS[f.kv_set_unit]) f.kv_set_unit = 'min';
+  if (!['twopoint', 'measured', 'nexp', 'window', 'manual', 'none'].includes(f.kv_timer_mode)) f.kv_timer_mode = KV_DEFAULTS.kv_timer_mode;
   if (!['circle', 'square', 'rect'].includes(f.kv_cone_shape)) f.kv_cone_shape = 'circle';
   if (f.kv_lab_shape !== 'square') f.kv_lab_shape = 'circle';
   const phantomIds = ['custom', ...KV_PHANTOMS.map((p) => p.id)];
@@ -224,6 +236,26 @@ export function certValue(rows, hvl) {
     rows.map((r) => r.val),
     hvl,
   );
+}
+
+/**
+ * Ошибка таймера по двум заданиям: облучения с заданием T₁ и T₂, средние показания R̄₁ и R̄₂. Показание пропорционально
+ * фактическому заданию, R = Ṁ·(T + τ), откуда τ = (T₂·R̄₁ − T₁·R̄₂)/(R̄₂ − R̄₁) — та же прямая, что у серии облучений, через
+ * две точки. τ — в единицах T.
+ */
+/** Знаков после запятой у допуска: как введено, до двух (3 → «3», 0,5 → «0,5», 0,25 → «0,25»). */
+const tolDigits = (x) => (Number.isInteger(x) ? 0 : Number.isInteger(Math.round(x * 1e6) / 1e5) ? 1 : 2);
+
+export function timerErrorTwoPoint(t1, t2, r1, r2) {
+  if (!(t1 > 0) || !(t2 > 0)) return { error: L('задания T₁ и T₂ должны быть больше нуля', 'settings T₁ and T₂ must be greater than zero') };
+  if (t1 === t2) return { error: L('задания T₁ и T₂ должны различаться', 'settings T₁ and T₂ must differ') };
+  const a = Math.abs(r1);
+  const b = Math.abs(r2);
+  if (!(a > 0) || !(b > 0)) return { error: L('нужны показания при обоих заданиях', 'readings at both settings are required') };
+  const rate = (b - a) / (t2 - t1);
+  if (!(rate > 0)) return { error: L('показание должно расти с заданием: при большем задании оно больше', 'the reading must increase with the setting: it is larger at the larger setting') };
+  // при растущем показании T + τ > 0 при обоих заданиях: T₁ + τ = R̄₁·(T₂ − T₁)/(R̄₂ − R̄₁)
+  return { tau: (t2 * a - t1 * b) / (b - a), rate };
 }
 
 export function computeKv(form) {
@@ -476,6 +508,8 @@ export function computeKv(form) {
   const X = read('kv_set', L(`Задание облучения, ${U.label}`, `Exposure setting, ${U.labelEn}`));
   if (Number.isFinite(X) && X <= 0) add('error', 'common', L('Задание облучения должно быть больше нуля.', 'The exposure setting must be greater than zero.'), null, 'kv_set');
   let tau = 0;
+  // τ вычислена по данным этого режима (не взята из другого и не «не учитывать»)
+  let tauOwn = false;
   let timer = { mode: f.kv_timer_mode, unit: f.kv_set_unit };
   const timerWord = U.time ? L('Ошибка таймера', 'Timer error') : L('Концевой эффект', 'End effect');
   // режим аппарата без своих данных ошибки таймера: τ измерена в другом режиме того же аппарата (kv-session.js
@@ -484,7 +518,10 @@ export function computeKv(form) {
     const c = parseCells(f[k]);
     return c.n === 0 && !c.error;
   };
-  const timerBlank = f.kv_timer_mode === 'measured' ? [...f.kv_tt, ...f.kv_tm].every(isBlank) : f.kv_timer_mode === 'nexp' && noCells('kv_nx_M1') && noCells('kv_nx_Mn');
+  const timerBlank =
+    f.kv_timer_mode === 'measured' ? [...f.kv_tt, ...f.kv_tm].every(isBlank)
+      : f.kv_timer_mode === 'nexp' ? noCells('kv_nx_M1') && noCells('kv_nx_Mn')
+        : f.kv_timer_mode === 'twopoint' && noCells('kv_tp_R1') && noCells('kv_tp_R2');
   const tauFrom = timerBlank && !isBlank(f.kv_tau_from) ? String(f.kv_tau_from) : '';
   if (tauFrom) {
     const v = parseNumber(f.kv_tau_fix);
@@ -505,6 +542,7 @@ export function computeKv(form) {
     }
   } else if (f.kv_timer_mode === 'manual') {
     tau = read('kv_tau', L(`${U.time ? 'Ошибка таймера' : 'Концевой эффект'} τ`, `${U.time ? 'Timer error' : 'End effect'} τ`));
+    tauOwn = Number.isFinite(tau);
   } else if (windowMode) {
     if (U.time) add('info', 'common', L('Заряд накоплен на интервале, когда трубка уже вышла на режим: ошибка таймера в мощность дозы не входит. Все серии, включая контрольные, нужно снимать так же. Для расчёта времени облучения пациентов ошибку таймера всё равно нужно знать.', 'Charge was collected over an interval with the tube already at its operating output, so the timer error does not enter the dose rate. All series, including the check measurements, must be taken the same way. The timer error must still be known for calculating patient treatment times.'), `${REF.trs}, разд. 9.4.2`);
   } else if (f.kv_timer_mode === 'nexp') {
@@ -521,7 +559,28 @@ export function computeKv(form) {
         add('error', 'common', L(`τ = ${ru(r.tau, 3)} ${U.label} неправдоподобно: суммарное показание за n облучений по X/n должно быть близко к показанию за одно облучение X. Проверьте, что Mₙ — сумма за все n облучений, а не среднее за одно.`, `τ = ${ru(r.tau, 3)} ${U.labelEn} is implausible: the total reading for n exposures of X/n should be close to the reading for one exposure X. Check that Mₙ is the sum over all n exposures, not the mean per exposure.`), null, ['kv_nx_M1', 'kv_nx_Mn']);
       } else {
         tau = r.tau;
+        tauOwn = true;
         timer = { ...timer, t: tn, n, M1: Math.abs(A.mean), Mn: Math.abs(B.mean) };
+      }
+    }
+  } else if (f.kv_timer_mode === 'twopoint') {
+    // при задании по времени T₁ и T₂ — в секундах (так меряют ошибку таймера), τ пересчитывается в единицы задания
+    const tUnit = U.time ? 's' : f.kv_set_unit;
+    const tL = U.time ? L('с', 's') : uLabel;
+    const t1 = read('kv_tp_t1', L(`Задание T₁, ${tL}`, `Setting T₁, ${tL}`));
+    const t2 = read('kv_tp_t2', L(`Задание T₂, ${tL}`, `Setting T₂, ${tL}`));
+    const A = readCells('kv_tp_R1', L('Показания при T₁', 'Readings at T₁'));
+    const B = readCells('kv_tp_R2', L('Показания при T₂', 'Readings at T₂'));
+    spread(A, L('при T₁', 'at T₁'), 'kv_tp_R1');
+    spread(B, L('при T₂', 'at T₂'), 'kv_tp_R2');
+    timer = { ...timer, tUnit, t1, t2, R1: A.n > 0 && !A.error ? Math.abs(A.mean) : NaN, R2: B.n > 0 && !B.error ? Math.abs(B.mean) : NaN };
+    if (Number.isFinite(t1) && Number.isFinite(t2) && A.n > 0 && B.n > 0 && !A.error && !B.error) {
+      const r = timerErrorTwoPoint(t1, t2, A.mean, B.mean);
+      if (r.error) add('error', 'common', L(`${timerWord}: ${r.error}.`, `${timerWord}: ${r.error}.`), null, ['kv_tp_t1', 'kv_tp_t2', 'kv_tp_R1', 'kv_tp_R2']);
+      else {
+        tau = U.time && f.kv_set_unit === 'min' ? r.tau / 60 : r.tau;
+        tauOwn = true;
+        timer = { ...timer, tauT: r.tau };
       }
     }
   } else if (f.kv_timer_mode === 'measured') {
@@ -529,6 +588,7 @@ export function computeKv(form) {
     if (r.error) add('error', 'common', L(`${timerWord}: ${r.error}.`, `${timerWord}: ${r.error}.`), null, 'kv_timer');
     else {
       tau = r.tau;
+      tauOwn = true;
       timer = { ...timer, ...r, residualPct: r.n > 2 ? r.residual * 100 : NaN };
       if (r.residual > 0.002) add('warn', 'common', L(`Показания при разных заданиях плохо ложатся на прямую (разброс ${ru(r.residual * 100, 2)} %): повторите облучения.`, `Readings at different settings fit a straight line poorly (residual ${ru(r.residual * 100, 2)} %): repeat the exposures.`), null, 'kv_timer');
     }
@@ -538,6 +598,23 @@ export function computeKv(form) {
       : L('Концевой эффект монитора не учтён: при малых заданиях он может быть заметен.', 'The monitor end effect is not accounted for: it may be noticeable at small settings.'), `${REF.trs}, разд. 9.4.2`, 'kv_timer_mode');
   }
   timer.tau = tau;
+  // τ в секундах и допуск на |τ| (методика учреждения, не TRS-398 Rev.1): только для своего τ, без τ из другого режима
+  if (U.time) timer.tauS = f.kv_set_unit === 'min' ? tau * 60 : tau;
+  const tolRaw = f.kv_tau_tol;
+  if (!isBlank(tolRaw)) {
+    const tol = parseNumber(tolRaw);
+    if (!Number.isFinite(tol) || tol <= 0) add('error', 'common', L('Допуск на ошибку таймера — число секунд больше нуля.', 'The timer error tolerance must be a number of seconds greater than zero.'), null, 'kv_tau_tol');
+    else if (U.time && tauOwn && Number.isFinite(timer.tauS)) {
+      timer.tol = tol;
+      timer.inTol = Math.abs(timer.tauS) <= tol;
+      if (!timer.inTol) {
+        add('warn', 'common', L(
+          `|τ| = ${ru(Math.abs(timer.tauS), 2)} с больше допуска ${ru(tol, tolDigits(tol))} с (раздел 3). Ошибку таймера нужно устранить или уменьшить (обслуживающая организация); пока она есть, её учитывают при задании времени облучения пациентов. Допуск — по методике учреждения: в TRS-398 Rev.1 его нет.`,
+          `|τ| = ${ru(Math.abs(timer.tauS), 2)} s exceeds the tolerance of ${ru(tol, tolDigits(tol))} s (section 3). The timer error should be eliminated or reduced (service provider); while it persists, it must be accounted for when setting patient treatment times. The tolerance follows the local procedure: TRS-398 Rev.1 has none.`,
+        ), null, ['kv_tau_tol', 'kv_timer_mode']);
+      }
+    }
+  }
   const Xeff = X + tau;
   if (Number.isFinite(tau) && Number.isFinite(X) && X > 0) {
     timer.relativePct = (tau / X) * 100;
