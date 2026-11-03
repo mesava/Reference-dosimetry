@@ -24,7 +24,7 @@ const machineName = (m) => kvMachineText(m) || L('аппарат без назв
 const ticked = (m) => m.modes.filter((x) => !unticked.get(m.id)?.has(x.id)).map((x) => x.id);
 /** Во вкладке есть показания (в любом режиме и строке). */
 const hasReadings = (v) =>
-  v.modes.some((md) => md.rows.some((r) => ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_Mc'].some((k) => parseCells(r[k]).n > 0)) || ['kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc'].some((k) => parseCells(md.shared[k]).n > 0));
+  v.modes.some((md) => md.rows.some((r) => ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_Mc'].some((k) => parseCells(r[k]).n > 0)) || ['kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc', 'kv_ln_M1', 'kv_ln_M2', 'kv_ln_M3', 'kv_ln_M4', 'kv_ln_M5', 'kv_rp_M'].some((k) => parseCells(md.shared[k]).n > 0));
 /** Источник СПО режима «Оборудования»: «номинальный» или «измеренный 03.11.2026». */
 const hvlSourceText = (source, date) =>
   source === 'measured' ? L(`измеренный${date ? ` ${dateText(date)}` : ''}`, `measured${date ? ` ${dateText(date)}` : ''}`) : L('номинальный', 'nominal');

@@ -15,6 +15,7 @@ import { refreshSectionNav } from './section-nav.js';
 import { setupKvJournal, renderKvJournal } from './kv-journal-ui.js';
 import { setupKvHvl, renderHvlSheet, renderPlates, readPlates, hvlFieldSub, hvlReportLines } from './kv-hvl-ui.js';
 import { KV_PLATE_KEYS, hvlDecimals } from '../core/kv-hvl.js';
+import { setupKvQa, renderQaSheets, qaPageState, qaReportLines } from './kv-qa-ui.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf, renderCompliance, complianceLine, ctrlErrorText,
@@ -27,7 +28,7 @@ const DRAFT_KEY = 'reference-dosimetry.kv.v1';
 // формат 3 (0.37.0): режимы аппарата — общие поля common, камеры chambers, режимы modes со строками аппликаторов, выбранный
 // режим mode; form — плоская форма выбранной строки выбранного режима. Формат 2 (0.36): rows и active одного режима.
 const FILE_TAG = { app: 'reference-dosimetry', module: 'kv', version: 3 };
-const SERIES_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc', 'kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc'];
+const SERIES_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc', 'kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc', 'kv_ln_M1', 'kv_ln_M2', 'kv_ln_M3', 'kv_ln_M4', 'kv_ln_M5', 'kv_rp_M'];
 const PAIR_KEYS = ['kv_tt', 'kv_tm'];
 const CERT_KEYS = ['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_val'];
 const PROTO_NAME = 'TRS-398 Rev.1';
@@ -206,7 +207,7 @@ const sess = {
 const rowForm = (i) => kvVisitRowForm(visit, visit.mode, i);
 
 // текстовые поля: в них число с запятой или точкой — не число (серийный номер, фильтр), разделитель не меняется
-const TEXT_KEYS = new Set(['kv_institution', 'kv_machine', 'kv_jmachine', 'kv_jmode', 'kv_date', 'kv_staff', 'kv_notes', 'kv_filter', 'kv_ph_name', 'kv_ph_note', 'kv_cc_maker', 'kv_cc_model', 'kv_ch_serial', 'kv_el_model', 'kv_el_serial', 'kv_hl_app', 'kv_pl_name', 'kv_pl_mat']);
+const TEXT_KEYS = new Set(['kv_institution', 'kv_machine', 'kv_jmachine', 'kv_jmode', 'kv_date', 'kv_staff', 'kv_notes', 'kv_filter', 'kv_ph_name', 'kv_ph_note', 'kv_cc_maker', 'kv_cc_model', 'kv_ch_serial', 'kv_el_model', 'kv_el_serial', 'kv_hl_app', 'kv_pl_name', 'kv_pl_mat', 'kv_ln_app', 'kv_rp_app']);
 /**
  * Десятичный разделитель в числах всех режимов, камер и строк — языка интерфейса (поля формы — localizeDecimals; здесь —
  * невыбранные режимы, камеры и строки: их числа видны в подписях режимов, сводке и протоколе).
@@ -524,7 +525,7 @@ function renderSectionTags() {
     else h.removeAttribute('data-tag');
   };
   const mt = visit.modes.length > 1 ? L(` · режим ${visit.mode + 1}`, ` · mode ${visit.mode + 1}`) : '';
-  for (const id of ['kv-sh1', 'kv-s3', 'kv-s4', 'kv-s5', 'kv-s6', 'kv-s7', 'kv-s8']) tag(id, mt);
+  for (const id of ['kv-sh1', 'kv-s3', 'kv-ln1', 'kv-rp1', 'kv-s4', 'kv-s5', 'kv-s6', 'kv-s7', 'kv-s8']) tag(id, mt);
   tag('kv-s2', visit.chambers.length > 1 ? L(` · камера ${mode().chamber + 1}`, ` · chamber ${mode().chamber + 1}`) : '');
 }
 
@@ -812,9 +813,9 @@ function openRow(m, i) {
 // Листы «Линейность» и «Воспроизводимость» пока заготовки. Печать и PDF — все разделы, как раньше.
 const PAGE_KEY = 'reference-dosimetry.kv.page';
 const KV_PAGES = ['modes', 'hvl', 'timer', 'linearity', 'repro', 'dose', 'summary'];
-const WIP_PAGES = new Set(['linearity', 'repro']);
+const WIP_PAGES = new Set();
 /** Листы по выбранному режиму: над ними — строка выбора режима (при двух режимах и больше). */
-const MODE_PAGES = new Set(['hvl', 'timer', 'dose']);
+const MODE_PAGES = new Set(['hvl', 'timer', 'linearity', 'repro', 'dose']);
 const pageOf = (key) => (KV_PAGES.includes(key) ? key : 'modes');
 let page = (() => {
   try {
@@ -898,6 +899,14 @@ function pageState(key) {
     return lvl === 'ok' ? 'done' : lvl;
   }
   const shown = (el) => !el.closest('[hidden]');
+  if (key === 'linearity' || key === 'repro') {
+    // худшее из проверок всех режимов; подсветка полей выбранного режима — поверх
+    const st = qaPageState(current.vr, key);
+    const secs = $$(`#kv-sheet [data-kv-page="${key}"]`);
+    if (st === 'error' || secs.some((sec) => [...sec.querySelectorAll('.flag-error')].some(shown))) return 'error';
+    if (st === 'warn' || secs.some((sec) => [...sec.querySelectorAll('.flag-warn')].some(shown))) return 'warn';
+    return st;
+  }
   let st = 'empty';
   if (key === 'hvl') {
     // лист СПО — худшее из измерений всех режимов (форма показывает только выбранный режим)
@@ -1477,10 +1486,11 @@ function renderReadout(result, data) {
   }));
 
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
-  const scopeName = { common: '', trs: '', depth: L('Пересчёт на поверхность · ', 'Transfer to the surface · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), hvl: L('Измерение СПО · ', 'HVL measurement · ') };
-  // замечания к измерению СПО режима (лист «СПО и k_Q») — среди замечаний строки, по уровню
+  const scopeName = { common: '', trs: '', depth: L('Пересчёт на поверхность · ', 'Transfer to the surface · '), ctrl: L('Контрольные измерения · ', 'Check measurements · '), hvl: L('Измерение СПО · ', 'HVL measurement · '), ln: L('Линейность · ', 'Linearity · '), rp: L('Воспроизводимость · ', 'Reproducibility · ') };
+  // замечания к измерению СПО (лист «СПО и k_Q»), линейности и воспроизводимости режима — среди замечаний строки, по уровню
   const order = { error: 0, warn: 1, info: 2 };
-  const list = [...(current.all?.hvl?.messages ?? []).map((m) => ({ ...m, scope: 'hvl' })), ...result.messages].sort((a, b) => order[a.level] - order[b.level]);
+  const extra = ['hvl', 'ln', 'rp'].flatMap((k) => (current.all?.[k]?.messages ?? []).map((m) => ({ ...m, scope: k })));
+  const list = [...extra, ...result.messages].sort((a, b) => order[a.level] - order[b.level]);
   $('#kv-messages').innerHTML = list.length
     ? list.map((m) => `<li class="${m.level}"><span class="lvl">${scopeName[m.scope] ?? ''}${lvlName[m.level]}</span><span>${richText(m.text)}</span>${m.ref ? `<span class="ref">${esc(refText(m.ref))}</span>` : ''}</li>`).join('')
     : `<li class="info"><span class="lvl">${L('Всё в порядке', 'All clear')}</span><span>${L('Замечаний к введённым данным нет.', 'No issues with the entered data.')}</span></li>`;
@@ -1651,6 +1661,8 @@ function reportText(data, r, all = null, vr = null) {
     hvlLines.forEach((l) => out.push(l));
     out.push('');
   }
+  // линейность и воспроизводимость по режимам (листы «Линейность» и «Воспроизводимость»)
+  if (vr) qaReportLines(visit, vr).forEach((l) => out.push(l));
   const coneTxt =
     data.kv_cone_shape === 'square'
       ? L(`квадратный тубус ${data.kv_cone || '—'} см (круг той же площади Ø ${fmt(i.fClin, 2)} см)`, `square applicator ${data.kv_cone || '—'} cm (circle of equal area, ${fmt(i.fClin, 2)} cm diameter)`)
@@ -1912,9 +1924,10 @@ function update(opts = {}) {
   renderSummary(vr);
   applyVisibility(data, result);
   renderOutputs(ROOT(), result);
-  renderFlags(ROOT(), { ...result.flags, ...all.hvl.flags }, seriesBox);
+  renderFlags(ROOT(), { ...result.flags, ...all.hvl.flags, ...all.ln.flags, ...all.rp.flags }, seriesBox);
   renderReadout(result, data);
   renderHvlSheet(data, vr);
+  renderQaSheets(data, vr);
   html($('#kv-hvl-sub'), richText(hvlFieldSub(all.hvl, result)));
   renderDoseBeam(result, all);
   renderRowsState(all);
@@ -2004,6 +2017,8 @@ export function initKv() {
     chamberName: (j) => L(`${j + 1} — ${chamberName(visit.chambers[j])}`, `${j + 1}: ${chamberName(visit.chambers[j])}`),
     selectMode: (m) => selectMode(m),
   });
+  // листы «Линейность» и «Воспроизводимость»: переход к режиму из таблиц по режимам
+  setupKvQa({ getVisit: () => visit, modeName: (m) => modeName(m), selectMode: (m) => selectMode(m) });
   update();
   if (!draft) setStatus(L('Введите свои данные или нажмите «Загрузить пример» (раздел «Данные»), чтобы посмотреть расчёт на вымышленных значениях.', 'Enter your own data or click "Load example" (the Data panel) to see the calculation on fictitious values.'));
 

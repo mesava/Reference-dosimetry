@@ -11,6 +11,7 @@ import { computeKv, KV_DEFAULTS, KV_SET_UNITS, normalizeKv } from './kv.js';
 import { parseCells, parseNumber, isBlank } from './units.js';
 import { L, getLang } from './i18n.js';
 import { computeKvHvl, KV_HVL_OWN_KEYS, KV_HVL_TOL_KEYS, KV_PLATE_KEYS } from './kv-hvl.js';
+import { computeKvLinearity, computeKvRepro, KV_QA_OWN_KEYS, KV_QA_TOL_KEYS } from './kv-qa.js';
 
 /** Поля строки (аппликатора); остальные поля формы — общие для всех строк. */
 export const KV_ROW_KEYS = [
@@ -184,7 +185,7 @@ export function computeKvSession(sess, ext = {}) {
 // измерена (таймер — свойство аппарата, камера значения не имеет).
 
 /** Поля, общие для всех режимов. */
-export const KV_COMMON_KEYS = ['kv_institution', 'kv_machine', 'kv_jmachine', 'kv_date', 'kv_staff', 'kv_notes', 'kv_env_P_unit', 'kv_tol', 'kv_tau_tol', ...KV_HVL_TOL_KEYS, ...KV_PLATE_KEYS];
+export const KV_COMMON_KEYS = ['kv_institution', 'kv_machine', 'kv_jmachine', 'kv_date', 'kv_staff', 'kv_notes', 'kv_env_P_unit', 'kv_tol', 'kv_tau_tol', ...KV_HVL_TOL_KEYS, ...KV_PLATE_KEYS, ...KV_QA_TOL_KEYS];
 /** Поля камеры: камера, сертификат и условия калибровки, электрометр, напряжения и полярность. */
 export const KV_CHAMBER_KEYS = [
   'kv_ch_model', 'kv_cc_maker', 'kv_cc_model', 'kv_cc_type', 'kv_ch_serial', 'kv_foil',
@@ -199,7 +200,7 @@ const CHAMBER_SET = new Set(KV_CHAMBER_KEYS);
 /** Поля режима: всё, что не строка, не камера и не общее. */
 export const KV_MODE_KEYS = Object.keys(KV_DEFAULTS).filter((k) => !ROW_SET.has(k) && !COMMON_SET.has(k) && !CHAMBER_SET.has(k));
 /** Поля, которые новый режим не копирует из текущего: связь с режимом «Оборудования», пучок и данные ошибки таймера у него свои (задания T₁ и T₂ — те же). */
-const MODE_OWN_KEYS = ['kv_jmode', 'kv_kv', 'kv_ma', 'kv_filter', 'kv_hvl', 'kv_tau', 'kv_tt', 'kv_tm', 'kv_nx_t', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', ...KV_HVL_OWN_KEYS];
+const MODE_OWN_KEYS = ['kv_jmode', 'kv_kv', 'kv_ma', 'kv_filter', 'kv_hvl', 'kv_tau', 'kv_tt', 'kv_tm', 'kv_nx_t', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', ...KV_HVL_OWN_KEYS, ...KV_QA_OWN_KEYS];
 /** Поля камеры, которые новая камера копирует из текущей: электрометр, условия сертификата и измерения заряда. */
 const CHAMBER_KEEP_KEYS = ['kv_el_model', 'kv_el_serial', 'kv_kelec', 'kv_T0', 'kv_P0', 'kv_V1', 'kv_V2', 'kv_polarity', 'kv_ks_on', 'kv_rec_trs', 'kv_kleak'];
 
@@ -334,7 +335,8 @@ function computeMemo(sess, ext) {
  * Расчёт всех режимов: каждый режим — computeKvSession. Возвращает { modes }: modes[m] — результат режима m, измерение
  * СПО режима (hvl — computeKvHvl) и номера режимов, из которых взяты k_pol, k_s и τ (polMode, ksMode, tauMode; −1 —
  * свои или взять неоткуда). Измеренный без ошибок СПО режима с отметкой «в расчёт» (hvl.apply) заменяет СПО из таблицы
- * режимов: округлённый (hvl.used) передаётся в computeKv полем kv_hvl_meas.
+ * режимов: округлённый (hvl.used) передаётся в computeKv полем kv_hvl_meas. Линейность и воспроизводимость режима (ln —
+ * computeKvLinearity, rp — computeKvRepro) в дозу не входят.
  */
 export function computeKvVisit(visit) {
   const n = visit.modes.length;
@@ -366,12 +368,13 @@ export function computeKvVisit(visit) {
     const tauOf = (j) => convertTau(own[j].timer.tau, own[j].timer.unit, unit);
     const tauOk = (j) => own[j].timer.state === 'own' && Number.isFinite(convertTau(1, own[j].timer.unit, unit));
     const tauMode = o.timer.state === 'none' ? nearest(m, tauOk, kvDistance) : -1;
-    if (polMode < 0 && ksMode < 0 && tauMode < 0) return { ...o, polMode, ksMode, tauMode, hvl: hvls[m] };
+    const qa = { hvl: hvls[m], ln: computeKvLinearity(sess[m].shared), rp: computeKvRepro(sess[m].shared) };
+    if (polMode < 0 && ksMode < 0 && tauMode < 0) return { ...o, polMode, ksMode, tauMode, ...qa };
     const ext = {};
     if (polMode >= 0) ext.pol = { from: kvModeFrom(visit, polMode), fix: own[polMode].kpolFix };
     if (ksMode >= 0) ext.ks = { from: kvModeFrom(visit, ksMode), fix: own[ksMode].ksFix };
     if (tauMode >= 0) ext.tau = { from: kvModeFrom(visit, tauMode), fix: tauOf(tauMode) };
-    return { ...computeMemo(sess[m], ext), polMode, ksMode, tauMode, hvl: hvls[m] };
+    return { ...computeMemo(sess[m], ext), polMode, ksMode, tauMode, ...qa };
   });
   return { modes };
 }

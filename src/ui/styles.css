@@ -1496,3 +1496,53 @@ table.kv-plates select.flag-error, table.kv-plates input.flag-error { border-col
   table.kv-hvlq tbody tr.active td { background: none; }
   table.kv-plates td.del, #kv-btn-add-plate { display: none; }
 }
+/* kV: листы «Линейность» и «Воспроизводимость» — задания режима, таблицы по режимам */
+.kv-ln-list { display: grid; margin: 4px 0 8px; }
+.kv-ln-row { display: grid; grid-template-columns: minmax(8em, 11em) minmax(0, 1fr); gap: 6px 16px; align-items: start; padding: 10px 0; border-top: 1px solid var(--rule); }
+.kv-ln-row[hidden] { display: none; }
+.kv-ln-row .kv-ln-x { grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.kv-ln-x .label { font-size: 12px; color: var(--muted); }
+.kv-ln-x output { font: 500 14px var(--font-mono); font-variant-numeric: tabular-nums; margin-right: 8px; }
+.kv-ln-x output .ua, .out-cell output .ua { font-size: 0.8em; color: var(--muted); }
+section[data-kv-page="linearity"] h4.series-head, section[data-kv-page="repro"] h4.series-head { margin-top: 14px; }
+#kv-ln-cl-box[hidden] { display: none; }
+table.kv-ln-cl { font-size: 13px; max-width: 20em; }
+table.kv-ln-cl td.v, table.kv-ln-cl th.v { text-align: right; }
+table.kv-ln-cl tr.sum td { font-weight: 600; }
+table.kv-qaq td small { display: block; font: 11px var(--font-body); color: var(--muted); white-space: nowrap; }
+table.kv-qaq td.v { width: auto; white-space: nowrap; }
+table.kv-qaq td.q { font-size: 12.5px; }
+table.kv-qaq tbody td { background: var(--sheet); }
+table.kv-qaq tbody tr.active td { background: var(--accent-soft); }
+table.kv-qaq th.act, table.kv-qaq td.act { width: 1.6em; text-align: center; }
+table.kv-qaq .st { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--rule); vertical-align: middle; }
+table.kv-qaq .st.ok { background: var(--ok); }
+table.kv-qaq .st.warn { background: var(--warn); }
+table.kv-qaq .st.error { background: var(--err); }
+table.kv-qaq .kv-qa-pick { min-width: 1.8em; height: 26px; padding: 0 4px; border: 1px solid var(--rule); border-radius: 4px; background: var(--sheet); color: var(--muted); font: 12px var(--font-mono); cursor: pointer; }
+table.kv-qaq .kv-qa-pick[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+@media (max-width: 560px) {
+  .kv-ln-row { grid-template-columns: minmax(0, 1fr); }
+  .kv-ln-row .kv-ln-x { grid-column: 1; }
+  /* строка режима: № | режим, состояние | задания или n, M̄, K | отклонение и CL или R и s/M̄ */
+  table.kv-qaq tr { grid-template-columns: 2.2em repeat(3, minmax(0, 1fr)) 1.4em; align-items: start; }
+  table.kv-qaq tbody tr.active { background: var(--accent-soft); }
+  table.kv-qaq tbody td, table.kv-qaq tbody tr.active td { background: none; }
+  table.kv-qaq td.no { grid-column: 1; grid-row: 1 / span 4; }
+  table.kv-qaq td.mode { grid-column: 2 / span 3; grid-row: 1; }
+  table.kv-qaq td.act { grid-column: 5; grid-row: 1; text-align: right; }
+  table.kv-qaq td.q { grid-column: 2 / span 3; grid-row: 2; }
+  table.kv-qaq td.v { text-align: left; }
+  table.kv-qaq td.c-d { grid-column: 2; grid-row: 3; }
+  table.kv-qaq td.c-cl { grid-column: 3; grid-row: 3; }
+  table.kv-qaq td.c-n { grid-column: 2; grid-row: 2; }
+  table.kv-qaq td.c-mean { grid-column: 3; grid-row: 2; }
+  table.kv-qaq td.c-range { grid-column: 2 / span 3; grid-row: 3; }
+  table.kv-qaq td.c-r { grid-column: 2; grid-row: 4; }
+  table.kv-qaq td.c-cv { grid-column: 3; grid-row: 4; }
+}
+@media print {
+  table.kv-qaq .kv-qa-pick { border: 0; background: none; color: inherit; padding: 0; }
+  table.kv-qaq tbody tr.active td { background: none; }
+  .kv-ln-row[hidden] { display: none !important; }
+}

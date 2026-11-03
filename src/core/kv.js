@@ -157,6 +157,27 @@ export const KV_DEFAULTS = {
   kv_pl_t: [],
   kv_pl_u: [],
 
+  // линейность и воспроизводимость выхода (листы «Линейность» и «Воспроизводимость», с 0.44.0; не TRS-398 Rev.1 —
+  // по методике учреждения): аппликатор (для протокола), задания Qᵢ в единице задания режима и серии показаний;
+  // серия воспроизводимости, аппликатор и расстояние; допуски (общие) — пусто, без проверки
+  kv_ln_app: '',
+  kv_ln_q1: '',
+  kv_ln_q2: '',
+  kv_ln_q3: '',
+  kv_ln_q4: '',
+  kv_ln_q5: '',
+  kv_ln_M1: ['', '', ''],
+  kv_ln_M2: ['', '', ''],
+  kv_ln_M3: ['', '', ''],
+  kv_ln_M4: ['', '', ''],
+  kv_ln_M5: ['', '', ''],
+  kv_rp_app: '',
+  kv_rp_dist: '',
+  kv_rp_M: ['', '', '', '', ''],
+  kv_ln_tol: '',
+  kv_ln_cl_tol: '',
+  kv_rp_tol: '',
+
   // задание облучения и ошибка таймера
   kv_set_unit: 'min', // 'Gy' | 'min' | 's' | 'MU'
   kv_set: '',
@@ -202,7 +223,7 @@ export const KV_DEFAULTS = {
   kv_tol: '2',
 };
 
-const CELL_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc', 'kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc'];
+const CELL_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc', 'kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc', 'kv_ln_M1', 'kv_ln_M2', 'kv_ln_M3', 'kv_ln_M4', 'kv_ln_M5', 'kv_rp_M'];
 const BOOL_KEYS = ['kv_cone_largest', 'kv_foil', 'kv_lab_pol_applied', 'kv_lab_ks_applied', 'kv_ks_on', 'kv_hl_apply'];
 const PLATE_KEYS = ['kv_pl_name', 'kv_pl_mat', 'kv_pl_nom', 'kv_pl_t', 'kv_pl_u'];
 
