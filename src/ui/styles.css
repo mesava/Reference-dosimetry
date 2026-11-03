@@ -946,6 +946,9 @@ table.jf-dpp tr.has-m td.ks output.calc { display: block; padding: 6px 2px; }
   table.jf-table td.no { align-self: center; }
   table.jf-table td[data-cap]::before { content: attr(data-cap); display: block; font: 400 11px var(--font-body); color: var(--muted); margin-bottom: 1px; text-align: left; }
   table.jf-table td input[type="text"] { min-width: 0; }
+  table.jkv-apps-t td.no { grid-row: span 2; }
+  table.jkv-apps-t td.v { text-align: left; align-self: center; }
+  table.jkv-apps-t td.del { align-self: center; }
   #jf-points tr td.use { grid-column: 1; grid-row: 2; align-self: center; text-align: center; }
   #jf-points tr td.v { grid-row: 2; font-size: 12.5px; text-align: left; padding-left: 7px; }
   table.jf-dpp tr td.v { text-align: left; padding-left: 7px; }
@@ -1071,6 +1074,22 @@ textarea.curve-data { min-height: 200px; height: 220px; font: 12.5px/1.45 var(--
 .jreport { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 var(--font-mono); background: var(--calc); border: 1px solid var(--rule); border-radius: var(--radius); padding: 10px 12px; margin: 0 0 8px; }
 .jrec button:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
 .jbeam-line.off { opacity: 0.65; }
+/* рентгенотерапевтический аппарат в «Оборудовании»: таблица аппликаторов, режимы, замечания в карточке */
+.jkv-mode { border: 1px solid var(--rule); border-radius: var(--radius); padding: 10px 12px; background: var(--calc); display: grid; gap: 8px; min-width: 0; }
+.jkv-mode > .sub-h { margin: 0; }
+.jkv-mode .row-tools { margin: 0; }
+.jkv-apps { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.jkv-apps .check { font-size: 13.5px; }
+.jkv-size { display: flex; align-items: center; gap: 4px; }
+table.jkv-apps-t th.del, table.jkv-apps-t td.del { width: 5.5em; text-align: right; }
+table.jkv-apps-t td select { box-sizing: border-box; height: 32px; padding: 3px 6px; max-width: 100%; }
+.jmsgs { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
+.jmsgs:empty { display: none; }
+.jmsgs li { position: relative; padding-left: 14px; }
+.jmsgs li::before { content: '•'; position: absolute; left: 2px; }
+.jmsgs li.warn { color: var(--warn); }
+.jmsgs li.error { color: var(--err); }
+.jmsgs li.info { color: var(--muted); }
 /* узкий экран: длинные отметки («не заполнено: …», «калибровка камеры: …») переносятся, а не растягивают карточку */
 .jcard .chip, .jbeam .chip { white-space: normal; max-width: 100%; overflow-wrap: anywhere; border-radius: 10px; }
 .jcards > *, .jbeams > *, .jcard > * { min-width: 0; }

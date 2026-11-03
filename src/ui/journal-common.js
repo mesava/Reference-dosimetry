@@ -78,10 +78,12 @@ export function dueChip(dueDate) {
   return `<span class="chip due ${s.status}">${esc(txt)}</span>`;
 }
 
-/** Варианты списка аппаратов. */
+/** Варианты списка аппаратов с пучками (рентгенотерапевтические — без пучков, их записей в журнале пока нет). */
+export const beamMachines = (j) => j.machines.filter((m) => m.kind !== 'kv');
 export function machineOptions(j, selected = '') {
-  if (!j.machines.length) return `<option value="">${esc(L('— в «Оборудовании» нет аппаратов —', '— no machines in Equipment —'))}</option>`;
-  return j.machines.map((m) => `<option value="${esc(m.id)}"${m.id === selected ? ' selected' : ''}>${esc([m.name || L('без названия', 'unnamed'), m.serial ? `${L('№', 'S/N')} ${m.serial}` : ''].filter(Boolean).join(', '))}</option>`).join('');
+  const list = beamMachines(j);
+  if (!list.length) return `<option value="">${esc(L('— в «Оборудовании» нет аппаратов —', '— no machines in Equipment —'))}</option>`;
+  return list.map((m) => `<option value="${esc(m.id)}"${m.id === selected ? ' selected' : ''}>${esc([m.name || L('без названия', 'unnamed'), m.serial ? `${L('№', 'S/N')} ${m.serial}` : ''].filter(Boolean).join(', '))}</option>`).join('');
 }
 
 /**

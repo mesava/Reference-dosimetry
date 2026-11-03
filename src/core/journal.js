@@ -22,14 +22,17 @@ import { findChamber, chamberLabel } from './chambers.js';
 import { findEChamber, eChamberLabel } from './electron-chambers.js';
 import { parseNumber, isBlank, parseBeamName } from './units.js';
 import { L } from './i18n.js';
+import { normalizeKvMachine } from './kv-machine.js';
 
-/** version — наибольший формат файла, который понимает эта версия калькулятора (2 — с аппаратами ⁶⁰Co). */
-export const JOURNAL_TAG = { app: 'reference-dosimetry', module: 'journal', version: 2 };
+/** version — наибольший формат файла, который понимает эта версия калькулятора (2 — с аппаратами ⁶⁰Co, 3 — с рентгенотерапевтическими). */
+export const JOURNAL_TAG = { app: 'reference-dosimetry', module: 'journal', version: 3 };
 /**
- * Формат файла журнала: 2, если в нём есть аппараты или пучки ⁶⁰Co (прежняя версия страницы сочла бы их фотонами и
- * должна отказаться открыть файл), иначе 1 — такой журнал открывается и прежней версией.
+ * Формат файла журнала: 3, если в нём есть рентгенотерапевтические аппараты (с 0.41.0), 2 — если аппараты или пучки
+ * ⁶⁰Co (прежняя версия страницы сочла бы их ускорителями и должна отказаться открыть файл), иначе 1 — такой журнал
+ * открывается и прежней версией.
  */
-export const journalFormat = (j) => (j.machines.some((m) => m.kind === 'cobalt' || m.beams.some((b) => b.kind === 'cobalt')) ? 2 : 1);
+export const journalFormat = (j) =>
+  j.machines.some((m) => m.kind === 'kv') ? 3 : j.machines.some((m) => m.kind === 'cobalt' || m.beams.some((b) => b.kind === 'cobalt')) ? 2 : 1;
 
 /** Короткий идентификатор записи: префикс, время и случайная часть. */
 export function uid(prefix) {
@@ -189,7 +192,8 @@ const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj && k in ob
  * полярность, лаборатория, № свидетельства (пусто — проверок по ним нет, см. calibrationChecks). */
 export const CHAMBER_DEFAULTS = { id: '', kind: 'photon', form: {}, calDate: '', dueDate: '', notes: '', length: '', calEl: '', calV: '', calPol: '', calLab: '', calCert: '' };
 export const ELECTROMETER_DEFAULTS = { id: '', form: {}, calDate: '', dueDate: '', notes: '' };
-/** kind: 'linac' — ускоритель (пучки фотонов и электронов), 'cobalt' — аппарат ⁶⁰Co. */
+/** kind: 'linac' — ускоритель (пучки фотонов и электронов), 'cobalt' — аппарат ⁶⁰Co, 'kv' — рентгенотерапевтический
+ * (аппликаторы и режимы вместо пучков, core/kv-machine.js). */
 export const MACHINE_DEFAULTS = { id: '', name: '', serial: '', kind: 'linac', notes: '', beams: [] };
 /**
  * kind: 'photon' | 'electron' | 'cobalt'. geoOwn (фотоны и электроны): у пучка своя геометрия калибровки дозы; иначе — как
@@ -223,6 +227,7 @@ export function normalizeJournal(obj) {
   j.electrometers = arr(obj.electrometers).map((e) => withId({ ...ELECTROMETER_DEFAULTS, ...e, form: { ...(e?.form || {}) } }, 'el'));
   j.machines = arr(obj.machines).map((m) => {
     const machine = withId({ ...MACHINE_DEFAULTS, ...m }, 'm');
+    if (machine.kind === 'kv') return normalizeKvMachine(machine);
     machine.beams = arr(m?.beams).map((b) => withId({ ...BEAM_DEFAULTS, ...b, form: { ...(b?.form || {}) } }, 'b'));
     return withCalGeo(machine);
   });
@@ -1154,7 +1159,7 @@ function tabForm(form, kind) {
   if (f.ch_model !== 'CUSTOM') for (const k of PH_CHAMBER_KEYS) if (k.startsWith('cc_')) f[k] = FORM_DEFAULTS[k];
   return f;
 }
-const copyJournal = (j) => ({ ...j, chambers: j.chambers.map((c) => ({ ...c, form: { ...c.form } })), electrometers: j.electrometers.map((e) => ({ ...e, form: { ...e.form } })), machines: j.machines.map((m) => ({ ...m, calGeo: Object.fromEntries(Object.entries(m.calGeo || {}).map(([k, g]) => [k, { ...g }])), beams: m.beams.map((b) => ({ ...b, form: { ...b.form } })) })) });
+const copyJournal = (j) => ({ ...j, chambers: j.chambers.map((c) => ({ ...c, form: { ...c.form } })), electrometers: j.electrometers.map((e) => ({ ...e, form: { ...e.form } })), machines: j.machines.map((m) => (m.kind === 'kv' ? structuredClone(m) : { ...m, calGeo: Object.fromEntries(Object.entries(m.calGeo || {}).map(([k, g]) => [k, { ...g }])), beams: m.beams.map((b) => ({ ...b, form: { ...b.form } })) })) });
 /** Камера формы вкладки: найти в журнале по модели и номеру или добавить (в копии журнала). chForm — поля записи. */
 function matchChamber(journal, chForm, kind) {
   const ch = journal.chambers.find((c) => sameChamber(c.form, chForm, kind));

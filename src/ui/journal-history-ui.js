@@ -8,7 +8,7 @@ import { scatterChart, legendSwatch } from './chart.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
 import { renderSpc, renderCommon, spcMessages, renderChecks, checkSignalMessages } from './journal-spc-ui.js';
 import { journalCsv, checksCsv, csvFileName } from '../core/journal-csv.js';
-import { setupFilePanel, machineOptions, fmtDate, countWord, dayToIso, monthLabel, monthTicks } from './journal-common.js';
+import { setupFilePanel, machineOptions, beamMachines, fmtDate, countWord, dayToIso, monthLabel, monthTicks } from './journal-common.js';
 
 const ROOT = () => $('#module-history');
 let setStatus = () => {};
@@ -238,7 +238,7 @@ function renderControl(j, series) {
 
 function render() {
   const j = getJournal();
-  if (!machineOf(j, machineId)) machineId = j.machines[0]?.id ?? '';
+  if (!beamMachines(j).some((m) => m.id === machineId)) machineId = beamMachines(j)[0]?.id ?? '';
   $('#hs_machine').innerHTML = machineOptions(j, machineId);
   const series = seriesOf(j);
   renderChart(series);

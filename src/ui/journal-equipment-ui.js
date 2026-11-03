@@ -1,5 +1,5 @@
-// Вкладка «Оборудование»: учреждение и подразделение, ускорители с пучками фотонов и электронов, аппараты ⁶⁰Co, электрометры,
-// камеры. Всё хранится в журнале. У пучка здесь — только название (и признак БВФ); мерят во вкладке дозиметрии (пучок
+// Вкладка «Оборудование»: учреждение и подразделение, ускорители с пучками фотонов и электронов, аппараты ⁶⁰Co,
+// рентгенотерапевтические аппараты (аппликаторы и режимы, с 0.41.0), электрометры, камеры. Всё хранится в журнале. У пучка здесь — только название (и признак БВФ); мерят во вкладке дозиметрии (пучок
 // журнала выбирается в её разделе 1, tab-journal-ui.js), настройки пучка редактируются там же и возвращаются в журнал.
 import { L } from '../core/i18n.js';
 import { CHAMBERS, chamberNote, findChamber, lengthSourceText } from '../core/chambers.js';
@@ -14,6 +14,9 @@ import {
   chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable, electronChamberForm, beamKind, cobaltCapable, cobaltChamberForm, myChambersToJournal, orgText, withChamberLength,
   CAL_GEO_KEYS, machineCalGeo, calGeoKey, calGeoText, syncCalGeo,
 } from '../core/journal.js';
+import {
+  newKvApplicator, newKvMachineMode, normalizeKvMachine, applicatorDiameter, applicatorText, kvMachineModeTitle, hvlUnit, kvRefCandidates, kvMachineChecks,
+} from '../core/kv-machine.js';
 import { getMyChambers } from './store.js';
 import { $, esc, fmt, makeStatus, armButton, notifyUpdate, today, richText, currentProtocol, plainSymbols } from './common.js';
 import { localizeDecimals } from './i18n.js';
@@ -32,17 +35,17 @@ const fieldId = (kind, id, path) => `eq-${kind}-${id}-${path.replace(/\./g, '-')
 const bind = (kind, id, path) => `id="${val(fieldId(kind, id, path))}" data-bind="${val(`${kind}|${id}|${path}`)}"`;
 
 /** Поле ввода. */
-function input(kind, id, path, value, { num = false, type = 'text', placeholder = '' } = {}) {
-  return `<input type="${type}" ${bind(kind, id, path)}${num ? ' class="num" inputmode="decimal"' : ''} value="${val(value)}"${placeholder ? ` placeholder="${val(placeholder)}"` : ''}>`;
+function input(kind, id, path, value, { num = false, type = 'text', placeholder = '', aria = '' } = {}) {
+  return `<input type="${type}" ${bind(kind, id, path)}${num ? ' class="num" inputmode="decimal"' : ''} value="${val(value)}"${placeholder ? ` placeholder="${val(placeholder)}"` : ''}${aria ? ` aria-label="${val(aria)}"` : ''}>`;
 }
-function select(kind, id, path, value, options) {
-  return `<select ${bind(kind, id, path)}>${options.map(([v, t]) => `<option value="${val(v)}"${String(v) === String(value ?? '') ? ' selected' : ''}>${esc(plainSymbols(t))}</option>`).join('')}</select>`;
+function select(kind, id, path, value, options, { aria = '' } = {}) {
+  return `<select ${bind(kind, id, path)}${aria ? ` aria-label="${val(aria)}"` : ''}>${options.map(([v, t]) => `<option value="${val(v)}"${String(v) === String(value ?? '') ? ' selected' : ''}>${esc(plainSymbols(t))}</option>`).join('')}</select>`;
 }
 function check(kind, id, path, value, label) {
   return `<label class="check"><input type="checkbox" ${bind(kind, id, path)}${value ? ' checked' : ''}> <span>${label}</span></label>`;
 }
-const field = (label, control, { forId = '', sub = '', cls = '' } = {}) =>
-  `<div class="field ${cls}"><label${forId ? ` for="${val(forId)}"` : ''}>${label}</label>${control}${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;
+const field = (label, control, { forId = '', sub = '', cls = '', live = '' } = {}) =>
+  `<div class="field ${cls}"${live ? ` data-live="${val(live)}"` : ''}><label${forId ? ` for="${val(forId)}"` : ''}>${label}</label>${control}${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;
 
 /** Отметка «не заполнено: …» в заголовке карточки. */
 const missChip = (miss) => (miss.length ? `<span class="chip warn">${richText(L(`не заполнено: ${miss.join(', ')}`, `missing: ${miss.join(', ')}`))}</span>` : '');
@@ -293,7 +296,126 @@ function beamCard(j, m, b) {
   </div>`;
 }
 
+// ------------------------------------------------------------ рентгенотерапевтический аппарат
+// Вместо пучков — аппликаторы (список на аппарат) и режимы: диапазон, напряжение, ток, фильтр, СПО (номинальный или
+// измеренный), камера и электрометр режима, отмеченные аппликаторы и референсный из них (проверка по TRS-398 Rev.1,
+// core/kv-machine.js). Подписи, зависящие от вводимых полей, помечены data-live — их обновляет updateHead без перерисовки.
+const KV_SHAPES_TEXT = () => [['circle', L('круг', 'circle')], ['square', L('квадрат', 'square')], ['rect', L('прямоугольник', 'rectangle')]];
+const KV_RANGES_TEXT = () => [['low', L('низкие энергии (10–100 кВ), СПО в мм Al', 'low energy (10–100 kV), HVL in mm Al')], ['medium', L('средние энергии (80–300 кВ), СПО в мм Cu', 'medium energy (80–300 kV), HVL in mm Cu')]];
+const appName = (a, i) => applicatorText(a) || L(`аппликатор ${i + 1}`, `applicator ${i + 1}`);
+/** Замечания по аппарату kV: строки в карточке (без номера режима — он в заголовке режима). */
+const kvMsgs = (list, live) => `<ul class="jmsgs" data-live="${val(live)}">${list.map((c) => `<li class="${c.level}">${richText(c.short)}</li>`).join('')}</ul>`;
+
+function kvAppRow(m, a, i) {
+  const k = 'kvapp';
+  const d = applicatorDiameter(a);
+  const sizeCap = a.shape === 'circle' ? L('Диаметр, см', 'Diameter, cm') : a.shape === 'square' ? L('Сторона, см', 'Side, cm') : L('Стороны, см', 'Sides, cm');
+  const n = L(`аппликатор ${i + 1}`, `applicator ${i + 1}`);
+  return `<tr>
+    <td class="no">${i + 1}</td>
+    <td data-cap="${esc(L('Обозначение', 'Label'))}">${input(k, a.id, 'name', a.name, { placeholder: 'F10', aria: L(`${n}: обозначение`, `${n}: label`) })}</td>
+    <td data-cap="${esc(L('Форма', 'Shape'))}">${select(k, a.id, 'shape', a.shape, KV_SHAPES_TEXT(), { aria: L(`${n}: форма`, `${n}: shape`) })}</td>
+    <td data-cap="${esc(sizeCap)}"><span class="jkv-size">${input(k, a.id, 'a', a.a, { num: true, aria: `${n}: ${sizeCap}` })}${a.shape === 'rect' ? `<span aria-hidden="true">×</span>${input(k, a.id, 'b', a.b, { num: true, aria: L(`${n}: вторая сторона, см`, `${n}: second side, cm`) })}` : ''}</span></td>
+    <td data-cap="${esc(L('РИП, см', 'SSD, cm'))}">${input(k, a.id, 'ssd', a.ssd, { num: true, aria: L(`${n}: РИП, см`, `${n}: SSD, cm`) })}</td>
+    <td class="v" data-cap="${esc(L('Ø экв., см', 'Eq. Ø, cm'))}" data-live="kvapp-d-${val(a.id)}">${Number.isFinite(d) ? fmt(d, 1) : '—'}</td>
+    <td class="del"><button type="button" class="link-btn danger" data-del="kvapp:${esc(m.id)}:${esc(a.id)}">${esc(L('Удалить', 'Delete'))}</button></td>
+  </tr>`;
+}
+
+/** Подсказка у референсного аппликатора: какой он по TRS-398 Rev.1. */
+function kvRefHint(m, x) {
+  const c = kvRefCandidates(m, x);
+  const byId = new Map(m.applicators.map((a, i) => [a.id, appName(a, i)]));
+  const names = c.ids.map((id) => byId.get(id)).join('; ');
+  if (c.how === 'low') return L('низкие энергии: референсное поле — как при калибровке камеры (TRS-398 Rev.1, табл. 26 и 27), проверяется во вкладке «kV-рентген»', 'low energy: the reference field is as at the chamber calibration (TRS-398 Rev.1, Tables 26 and 27); checked in the kV x-rays tab');
+  if (c.how === 'comparable') return L(`по TRS-398 Rev.1 (табл. 31): ${names} — поле 10 × 10 см, Ø 10 см или сопоставимое`, `by TRS-398 Rev.1 (Table 31): ${names}, a field of 10 × 10 cm, 10 cm in diameter or comparable`);
+  if (c.how === 'largest') return L(`по TRS-398 Rev.1 (табл. 31): ${names} — самый большой квадратный или круглый тубус (10 × 10 см нет)`, `by TRS-398 Rev.1 (Table 31): ${names}, the largest square or circular applicator (there is no 10 × 10 cm one)`);
+  return L('по TRS-398 Rev.1 (табл. 31): поле 10 × 10 см или Ø 10 см, а если все тубусы меньше — самый большой квадратный или круглый; среди отмеченных такого нет', 'by TRS-398 Rev.1 (Table 31): a field of 10 × 10 cm or 10 cm in diameter, or the largest square or circular applicator if all are smaller; none of the ticked ones is');
+}
+
+function kvModeBlock(j, m, x, i, checks) {
+  const k = 'kvmode';
+  const t = kvMachineModeTitle(x);
+  const fid = (path) => fieldId(k, x.id, path);
+  const c = kvRefCandidates(m, x);
+  const ticked = m.applicators.map((a, n) => [a, n]).filter(([a]) => x.applicators.includes(a.id));
+  const refOpts = [['', L('— не выбран —', '— not selected —')], ...ticked.map(([a, n]) => [a.id, `${appName(a, n)}${c.ids.includes(a.id) ? L(' — по Rev.1', ' — by Rev.1') : ''}`])];
+  if (x.refApplicator && !x.applicators.includes(x.refApplicator)) {
+    const n = m.applicators.findIndex((a) => a.id === x.refApplicator);
+    if (n >= 0) refOpts.push([x.refApplicator, L(`${appName(m.applicators[n], n)} — не отмечен у режима`, `${appName(m.applicators[n], n)} — not ticked for the mode`)]);
+  }
+  const chOpts = [['', L('— не выбрана —', '— not selected —')], ...j.chambers.map((ch) => [ch.id, chamberText(ch) || L('камера без названия', 'unnamed chamber')])];
+  if (x.chamberId && !j.chambers.some((ch) => ch.id === x.chamberId)) chOpts.push([x.chamberId, L('— камеры нет в «Оборудовании» —', '— the chamber is not in Equipment —')]);
+  const elOpts = [['', L('— не выбран —', '— not selected —')], ...j.electrometers.map((e) => [e.id, electrometerText(e) || L('электрометр без названия', 'unnamed electrometer')])];
+  if (x.electrometerId && !j.electrometers.some((e) => e.id === x.electrometerId)) elOpts.push([x.electrometerId, L('— электрометра нет в «Оборудовании» —', '— the electrometer is not in Equipment —')]);
+  const apps = m.applicators.length
+    ? m.applicators.map((a, n) => check(k, x.id, `app:${a.id}`, x.applicators.includes(a.id), esc(appName(a, n)))).join('')
+    : `<span class="sub">${esc(L('у аппарата пока нет аппликаторов — добавьте их в таблицу выше', 'the unit has no applicators yet: add them to the table above'))}</span>`;
+  return `<div class="jkv-mode" data-kvmode="${val(x.id)}">
+    <h4 class="sub-h" data-live="kvmode-t-${val(x.id)}">${esc(L(`Режим ${i + 1}`, `Mode ${i + 1}`))}${t ? ` — ${esc(t)}` : ''}</h4>
+    <div class="grid">
+      ${field(L('Напряжение, кВ', 'Voltage, kV'), input(k, x.id, 'kv', x.kv, { num: true }), { forId: fid('kv') })}
+      ${field(L('Ток трубки, мА', 'Tube current, mA'), input(k, x.id, 'ma', x.ma, { num: true }), { forId: fid('ma') })}
+      ${field(L('Фильтр', 'Filter'), input(k, x.id, 'filter', x.filter, { placeholder: x.range === 'low' ? L('2 мм Al', '2 mm Al') : L('0,5 мм Cu + 1 мм Al', '0.5 mm Cu + 1 mm Al') }), { forId: fid('filter') })}
+      ${field(L('Диапазон', 'Range'), select(k, x.id, 'range', x.range, KV_RANGES_TEXT()), { forId: fid('range'), cls: 'span-2' })}
+      ${field(L(`СПО, ${hvlUnit(x.range)}`, `HVL, ${hvlUnit(x.range)}`), input(k, x.id, 'hvl', x.hvl, { num: true }), { forId: fid('hvl'), sub: L('по нему считается k<sub>Q</sub>', 'k<sub>Q</sub> is calculated from it') })}
+      ${field(L('СПО', 'HVL'), select(k, x.id, 'hvlSource', x.hvlSource, [['nominal', L('номинальный', 'nominal')], ['measured', L('измерен', 'measured')]]), { forId: fid('hvlSource'), sub: x.hvlSource === 'measured' ? '' : L('из паспорта или приёмки', 'from the datasheet or acceptance') })}
+      ${x.hvlSource === 'measured' ? field(L('Дата измерения СПО', 'HVL measurement date'), input(k, x.id, 'hvlDate', x.hvlDate, { type: 'date' }), { forId: fid('hvlDate') }) : ''}
+      ${field(L('Обозначение режима', 'Mode label'), input(k, x.id, 'label', x.label, { placeholder: t || L('120 кВ / 10 мА / 2 мм Al', '120 kV / 10 mA / 2 mm Al') }), { forId: fid('label'), sub: L('пусто — по напряжению, току и фильтру', 'blank: from the voltage, current and filter') })}
+      ${field(L('Камера', 'Chamber'), select(k, x.id, 'chamberId', x.chamberId, chOpts), { forId: fid('chamberId'), cls: 'span-2', sub: L('своя у каждого режима; камеры — в разделе 4', 'each mode has its own; chambers are in section 4') })}
+      ${field(L('Электрометр', 'Electrometer'), select(k, x.id, 'electrometerId', x.electrometerId, elOpts), { forId: fid('electrometerId') })}
+    </div>
+    <div class="field"><span class="label">${esc(L('Аппликаторы режима', 'Applicators of the mode'))}</span><div class="jkv-apps" data-live="kvmode-apps-${val(x.id)}">${apps}</div></div>
+    <div class="grid">
+      ${field(L('Референсный аппликатор', 'Reference applicator'), select(k, x.id, 'refApplicator', x.refApplicator, refOpts), { forId: fid('refApplicator'), cls: 'span-2', live: `kvmode-ref-${x.id}`, sub: esc(kvRefHint(m, x)) })}
+      ${field(L('Примечания', 'Notes'), input(k, x.id, 'notes', x.notes), { forId: fid('notes'), cls: 'span-2' })}
+    </div>
+    ${kvMsgs(checks.filter((ch) => ch.modeId === x.id), `kvmode-msgs-${x.id}`)}
+    <div class="row-tools"><button type="button" class="link-btn danger" data-del="kvmode:${esc(m.id)}:${esc(x.id)}">${esc(L('Удалить режим', 'Delete mode'))}</button></div>
+  </div>`;
+}
+
+/** Отметка в заголовке карточки аппарата kV: сколько ошибок или замечаний. */
+function kvChip(checks) {
+  const err = checks.filter((c) => c.level === 'error').length;
+  const warn = checks.filter((c) => c.level === 'warn').length;
+  if (err) return `<span class="chip error">${esc(L(`ошибок: ${err}`, `errors: ${err}`))}</span>`;
+  if (warn) return `<span class="chip warn">${esc(L(`замечаний: ${warn}`, `warnings: ${warn}`))}</span>`;
+  return '';
+}
+
+function kvMachineCard(j, m) {
+  const k = 'machine';
+  const checks = kvMachineChecks(m, j);
+  const hasSessions = j.sessions.some((s) => s.machineId === m.id);
+  return `<div class="jcard jkv" data-card="machine:${esc(m.id)}">
+    <div class="jcard-head"><b>${esc(m.name || L('Новый рентгенотерапевтический аппарат', 'New x-ray therapy unit'))}</b><span class="chips">${kvChip(checks)}<span class="chip none">${esc(L('рентгенотерапевтический аппарат', 'x-ray therapy unit'))}</span></span></div>
+    <div class="grid">
+      ${field(L('Аппарат', 'Machine'), input(k, m.id, 'name', m.name, { placeholder: 'Xstrahl 300' }), { forId: fieldId(k, m.id, 'name') })}
+      ${field(L('Заводской №', 'Serial No.'), input(k, m.id, 'serial', m.serial), { forId: fieldId(k, m.id, 'serial') })}
+      ${field(L('№ рентгеновской трубки', 'X-ray tube No.'), input(k, m.id, 'tube', m.tube), { forId: fieldId(k, m.id, 'tube'), sub: L('после замены трубки СПО режимов меряют заново', 'after a tube replacement the HVLs of the modes are measured again') })}
+      ${field(L('Примечания', 'Notes'), input(k, m.id, 'notes', m.notes), { forId: fieldId(k, m.id, 'notes') })}
+    </div>
+    <h3 class="sub-h">${esc(L('Аппликаторы', 'Applicators'))}</h3>
+    ${m.applicators.length
+      ? `<div class="table-wrap"><table class="factors jf-table jkv-apps-t">
+      <thead><tr><th class="no">№</th><th>${esc(L('Обозначение', 'Label'))}</th><th>${esc(L('Форма', 'Shape'))}</th><th>${esc(L('Размер, см', 'Size, cm'))}</th><th>${esc(L('РИП, см', 'SSD, cm'))}</th><th class="v" title="${esc(L('Диаметр круга той же площади: по нему выбирается референсный аппликатор (TRS-398 Rev.1, табл. 31)', 'Diameter of the circle of the same area: used to choose the reference applicator (TRS-398 Rev.1, Table 31)'))}">${esc(L('Ø экв., см', 'Eq. Ø, cm'))}</th><th class="del"><span class="visually-hidden">${esc(L('Удалить', 'Delete'))}</span></th></tr></thead>
+      <tbody>${m.applicators.map((a, i) => kvAppRow(m, a, i)).join('')}</tbody></table></div>`
+      : `<p class="sub-hint">${esc(L('Аппликаторов пока нет: добавьте все тубусы аппарата, а в режимах отметьте, какие с ними используются.', 'No applicators yet: add all applicators of the unit, then tick in each mode which ones are used with it.'))}</p>`}
+    ${kvMsgs(checks.filter((c) => c.appId), `kvapps-msgs-${m.id}`)}
+    <div class="row-tools"><button type="button" class="link-btn" data-add-kvapp="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить аппликатор', 'Add an applicator'))}</button></div>
+    <h3 class="sub-h">${esc(L('Режимы', 'Modes'))}</h3>
+    <div class="jbeams">${m.modes.map((x, i) => kvModeBlock(j, m, x, i, checks)).join('') || `<p class="sub-hint">${esc(L('Режимов пока нет: режим — напряжение, ток, фильтр и СПО со своей камерой и своими аппликаторами.', 'No modes yet: a mode is a voltage, current, filter and HVL with its own chamber and applicators.'))}</p>`}</div>
+    <div class="row-tools"><button type="button" class="link-btn" data-add-kvmode="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить режим', 'Add a mode'))}</button></div>
+    <p class="sub-hint">${esc(L('Новый режим копирует диапазон, камеру, электрометр и аппликаторы последнего. Подстановка режимов аппарата во вкладку «kV-рентген» — в следующей версии; пока режимы во вкладке вводятся вручную.', 'A new mode copies the range, chamber, electrometer and applicators of the last one. Filling the modes of the unit into the kV x-rays tab comes in the next version; for now the modes are entered in the tab by hand.'))}</p>
+    <div class="row-tools">
+      <button type="button" class="link-btn danger" data-del="machine:${esc(m.id)}"${hasSessions ? ` disabled title="${esc(L('У аппарата есть записи в журнале', 'The machine has records in the journal'))}"` : ''}>${esc(L('Удалить аппарат', 'Delete machine'))}</button>
+    </div>
+  </div>`;
+}
+
 function machineCard(j, m) {
+  if (m.kind === 'kv') return kvMachineCard(j, m);
   const k = 'machine';
   const hasSessions = j.sessions.some((s) => s.machineId === m.id) || (j.plateChecks || []).some((p) => p.machineId === m.id);
   const cobalt = m.kind === 'cobalt';
@@ -391,8 +513,10 @@ function renderReadout() {
   const due = equipmentDue(j, today());
   const wMachines = countWord(j.machines.length, [L('аппарат', 'machine'), L('аппарата', 'machines'), L('аппаратов', 'machines')], ['machine', 'machines']);
   const wBeams = countWord(beams, [L('пучок', 'beam'), L('пучка', 'beams'), L('пучков', 'beams')], ['beam', 'beams']);
+  const kvModes = j.machines.reduce((s, m) => s + (m.kind === 'kv' ? m.modes.length : 0), 0);
+  const kvText = j.machines.some((m) => m.kind === 'kv') ? L(`; режимов рентгенотерапевтических аппаратов: ${kvModes}`, `; x-ray therapy modes: ${kvModes}`) : '';
   $('#eq-result').innerHTML = `<div class="dose-row"><div class="dose-big">${j.machines.length}<small>${esc(wMachines)} · ${beams} ${esc(wBeams)}</small></div>
-    <div class="secondary">${esc(L(`камер: ${j.chambers.length}; электрометров: ${j.electrometers.length}; записей в журнале: ${j.sessions.length}`, `chambers: ${j.chambers.length}; electrometers: ${j.electrometers.length}; records in the journal: ${j.sessions.length}`))}</div></div>`;
+    <div class="secondary">${esc(L(`камер: ${j.chambers.length}; электрометров: ${j.electrometers.length}; записей в журнале: ${j.sessions.length}`, `chambers: ${j.chambers.length}; electrometers: ${j.electrometers.length}; records in the journal: ${j.sessions.length}`) + kvText)}</div></div>`;
   const msgs = [];
   for (const d of due) {
     msgs.push(`<li class="${d.status === 'overdue' ? 'warn' : 'info'}"><span class="lvl">${esc(d.status === 'overdue' ? L('Срок калибровки прошёл', 'Calibration overdue') : L('Срок калибровки подходит', 'Calibration due soon'))}</span><span>${esc(`${d.text}: ${d.status === 'overdue' ? L(`до ${fmtDate(d.dueDate)}`, `until ${fmtDate(d.dueDate)}`) : L(`до ${fmtDate(d.dueDate)}, осталось ${d.days} дн.`, `until ${fmtDate(d.dueDate)}, ${d.days} days left`)}`)}</span></li>`);
@@ -408,6 +532,20 @@ function renderReadout() {
   for (const e of j.electrometers) {
     const miss = electrometerMissing(e);
     if (miss.length) msgs.push(missItem(electrometerText(e) || L('электрометр', 'electrometer'), miss));
+  }
+  // рентгенотерапевтические аппараты: ошибки и замечания по аппликаторам и режимам — одной строкой на аппарат
+  for (const m of j.machines.filter((x) => x.kind === 'kv')) {
+    const list = kvMachineChecks(m, j).filter((c) => c.level !== 'info');
+    if (!list.length) continue;
+    const err = list.some((c) => c.level === 'error');
+    // «режим 1 (…): камера не выбрана, СПО не введён; аппликатор 2: …»
+    const groups = new Map();
+    for (const c of list) {
+      const who = c.text.slice(0, c.text.length - c.short.length - 2);
+      groups.set(who, [...(groups.get(who) || []), c.short]);
+    }
+    const text = [...groups].map(([who, items]) => `${who}: ${items.join(', ')}`).join('; ');
+    msgs.push(`<li class="${err ? 'error' : 'warn'}"><span class="lvl">${esc(m.name || L('Рентгенотерапевтический аппарат', 'X-ray therapy unit'))}</span><span>${richText(text)}</span></li>`);
   }
   $('#eq-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Сроки калибровки заданы и не подходят, у камер и электрометров заполнено всё нужное для расчёта.', 'Calibration due dates are set and not near; chambers and electrometers have what the calculation needs.'))}</span></li>`;
 }
@@ -462,9 +600,10 @@ function updateHead(el) {
   const a = card.querySelector(sel);
   const b = fresh.querySelector(sel);
   if (a && b) a.innerHTML = b.innerHTML;
-  // подписи, зависящие от вводимых полей (у ⁶⁰Co — с чем сравнивается мощность дозы после замены источника)
+  // подписи, зависящие от вводимых полей (у ⁶⁰Co — с чем сравнивается мощность дозы после замены источника; у аппарата
+  // kV — заголовки режимов, списки аппликаторов, референсный аппликатор и замечания)
   for (const live of fresh.querySelectorAll('[data-live]')) {
-    const cur = card.querySelector(`[data-live="${live.dataset.live}"]`);
+    const cur = card.querySelector(`[data-live="${CSS.escape(live.dataset.live)}"]`);
     if (cur) cur.innerHTML = live.innerHTML;
   }
 }
@@ -478,9 +617,23 @@ function onInput(e) {
   const [kind, id, path] = [b.slice(0, b.indexOf('|')), b.slice(b.indexOf('|') + 1, b.lastIndexOf('|')), b.slice(b.lastIndexOf('|') + 1)];
   const value = el.type === 'checkbox' ? el.checked : kind === 'beam' && path === 'geoOwn' ? el.value === 'own' : el.value;
   updateJournal((j) => {
-    const list = kind === 'chamber' ? j.chambers : kind === 'electrometer' ? j.electrometers : kind === 'machine' ? j.machines : j.machines.flatMap((m) => m.beams);
+    const list =
+      kind === 'chamber' ? j.chambers
+        : kind === 'electrometer' ? j.electrometers
+          : kind === 'machine' ? j.machines
+            : kind === 'kvapp' ? j.machines.flatMap((m) => m.applicators || [])
+              : kind === 'kvmode' ? j.machines.flatMap((m) => m.modes || [])
+                : j.machines.flatMap((m) => m.beams);
     const obj = list.find((x) => x.id === id);
     if (!obj) return j;
+    // флажок аппликатора у режима: «app:<id аппликатора>»; снятый референсный перестаёт быть референсным
+    if (kind === 'kvmode' && path.startsWith('app:')) {
+      const aid = path.slice(4);
+      const m = j.machines.find((x) => (x.modes || []).includes(obj));
+      obj.applicators = value ? (m?.applicators || []).map((a) => a.id).filter((x) => x === aid || obj.applicators.includes(x)) : obj.applicators.filter((x) => x !== aid);
+      if (!value && obj.refApplicator === aid) obj.refApplicator = '';
+      return j;
+    }
     const parts = path.split('.');
     let o = obj;
     for (const p of parts.slice(0, -1)) o = o[p] ??= {};
@@ -542,6 +695,8 @@ function remove(what) {
     if (kind === 'chamber' || kind === 'electrometer') {
       const key = kind === 'chamber' ? 'chamberId' : 'electrometerId';
       for (const m of j.machines) for (const x of m.beams) if (x[key] === a) x[key] = '';
+      // у режимов аппаратов kV камера и электрометр снимаются: режим попросит выбрать другие
+      for (const m of j.machines) for (const x of m.modes || []) if (x[key] === a) x[key] = '';
     }
     if (kind === 'chamber') j.chambers = j.chambers.filter((x) => x.id !== a);
     else if (kind === 'electrometer') {
@@ -552,6 +707,18 @@ function remove(what) {
     else if (kind === 'beam') {
       const m = j.machines.find((x) => x.id === a);
       if (m) m.beams = m.beams.filter((x) => x.id !== b);
+    } else if (kind === 'kvapp') {
+      const m = j.machines.find((x) => x.id === a);
+      if (m) {
+        m.applicators = m.applicators.filter((x) => x.id !== b);
+        for (const x of m.modes) {
+          x.applicators = x.applicators.filter((y) => y !== b);
+          if (x.refApplicator === b) x.refApplicator = '';
+        }
+      }
+    } else if (kind === 'kvmode') {
+      const m = j.machines.find((x) => x.id === a);
+      if (m) m.modes = m.modes.filter((x) => x.id !== b);
     }
     return j;
   }, 'equipment');
@@ -601,6 +768,28 @@ function onClick(e) {
       return j;
     }, 'equipment');
     document.getElementById(fieldId('beam', id, 'name'))?.focus();
+  } else if (t.dataset.addKvapp) {
+    // новый аппликатор — с формой и РИП последнего; в режимах, где отмечены все аппликаторы, отмечается и он
+    const m0 = getJournal().machines.find((x) => x.id === t.dataset.addKvapp);
+    const a = newKvApplicator(m0?.applicators.at(-1));
+    updateJournal((j) => {
+      const m = j.machines.find((x) => x.id === t.dataset.addKvapp);
+      if (!m) return j;
+      for (const x of m.modes) if (m.applicators.every((y) => x.applicators.includes(y.id))) x.applicators.push(a.id);
+      m.applicators.push(a);
+      return j;
+    }, 'equipment');
+    document.getElementById(fieldId('kvapp', a.id, 'name'))?.focus();
+  } else if (t.dataset.addKvmode) {
+    // новый режим копирует диапазон, камеру, электрометр и аппликаторы последнего; первый — со всеми аппликаторами
+    const m0 = getJournal().machines.find((x) => x.id === t.dataset.addKvmode);
+    const last = m0?.modes.at(-1) ?? null;
+    const x = newKvMachineMode(last, last ? {} : { applicators: (m0?.applicators || []).map((a) => a.id) });
+    updateJournal((j) => {
+      j.machines.find((y) => y.id === t.dataset.addKvmode)?.modes.push(x);
+      return j;
+    }, 'equipment');
+    document.getElementById(fieldId('kvmode', x.id, 'kv'))?.focus();
   } else if (t.dataset.editTab) {
     const [mid, bid] = t.dataset.editTab.split(':');
     const j = getJournal();
@@ -633,6 +822,13 @@ function onClick(e) {
       return j;
     }, 'equipment');
     focusLast('electrometer');
+  } else if (t.id === 'eq-add-kv') {
+    const id = uid('m');
+    updateJournal((j) => {
+      j.machines.push(normalizeKvMachine({ ...MACHINE_DEFAULTS, id, kind: 'kv' }));
+      return j;
+    }, 'equipment');
+    document.getElementById(fieldId('machine', id, 'name'))?.focus();
   } else if (t.id === 'eq-add-machine' || t.id === 'eq-add-cobalt') {
     updateJournal((j) => {
       j.machines.push({ ...MACHINE_DEFAULTS, id: uid('m'), kind: t.id === 'eq-add-cobalt' ? 'cobalt' : 'linac', calGeo: { photon: machineCalGeo(null, 'photon'), electron: machineCalGeo(null, 'electron') }, beams: [] });
