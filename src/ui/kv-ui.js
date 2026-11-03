@@ -188,7 +188,7 @@ function rowHtml(row, i, n, caps) {
   const active = i === sess.active;
   const cap = (s) => ` data-cap="${esc(s)}"`;
   return `<tr data-i="${i}"${active ? ' class="active"' : ''}>
-    <td class="no"><button type="button" class="kv-row-pick" aria-pressed="${active}" aria-label="${esc(L(`Строка ${i + 1}: показать подробно в разделах ниже`, `Row ${i + 1}: show in detail in the sections below`))}" title="${esc(L('Показать строку подробно в разделах ниже', 'Show the row in detail in the sections below'))}">${i + 1}</button></td>
+    <td class="no"><span class="kv-std" hidden></span><button type="button" class="kv-row-pick" aria-pressed="${active}" aria-label="${esc(L(`Строка ${i + 1}: показать подробно в разделах ниже`, `Row ${i + 1}: show in detail in the sections below`))}" title="${esc(L('Показать строку подробно в разделах ниже', 'Show the row in detail in the sections below'))}">${i + 1}</button></td>
     <td class="cone"${cap(L('Аппликатор, см', 'Applicator, cm'))}><span class="cone-in"><select data-k="kv_cone_shape" id="kvr${i}_kv_cone_shape" aria-label="${esc(`${L('Тубус', 'Applicator')}, ${rowWord(i)}`)}">${opt('circle', 'Ø', L('круглый', 'circular'))}${opt('square', '□', L('квадратный', 'square'))}${opt('rect', '▭', L('прямоугольный', 'rectangular'))}</select>${rowInput(i, 'kv_cone', row.kv_cone, coneLabel(shape))}<span class="x"${rect ? '' : ' hidden'}>×</span>${rowInput(i, 'kv_cone_b', row.kv_cone_b, L('Сторона b, см', 'Side b, cm')).replace('<input ', `<input${rect ? '' : ' hidden'} `)}</span></td>
     <td${cap(L('РИП, см', 'SSD, cm'))}>${rowInput(i, 'kv_ssd', row.kv_ssd, L('РИП, см', 'SSD, cm'))}</td>
     <td${cap(caps.set)}>${rowInput(i, 'kv_set', row.kv_set, caps.set)}</td>
@@ -298,6 +298,33 @@ function onDeleteClick(btn) {
   }, 4000);
 }
 
+/** «строка 1 (Ø 10 см)» — название строки в тексте. */
+const rowName = (j) => {
+  const lab = kvRowLabel(sess.rows[j]);
+  return L(`строка ${j + 1}${lab ? ` (${lab})` : ''}`, `row ${j + 1}${lab ? ` (${lab})` : ''}`);
+};
+/** Откуда стандартный тубус: табл. 31 (средние энергии), 26 (низкие, N_K), 27 (низкие, N_D,w — как при калибровке). */
+const stdRef = (r) => (r.range === 'medium' ? L('табл. 31', 'Table 31') : r.cal === 'nk' ? L('табл. 26', 'Table 26') : L('поле и РИП как при калибровке, табл. 27', 'field and SSD as at calibration, Table 27'));
+
+/**
+ * Соответствие условиям для показа: у нестандартного тубуса при стандартном в таблице — «измерение в нестандартных
+ * условиях (разд. 9.5)» вместо «нестандартные условия, результат нельзя считать референсной дозиметрией».
+ */
+function rowCompliance(all, i) {
+  const r = all?.results[i];
+  if (!r) return null;
+  if (!all.nonRef[i] || r.compliance.status === 'invalid') return r.compliance;
+  return {
+    ...r.compliance,
+    status: 'nonref',
+    title: L('Тубус не стандартный', 'Non-reference applicator'),
+    text: L(
+      `измерение в нестандартных условиях (${PROTO_NAME}, разд. 9.5); референсная доза — по стандартному тубусу, ${rowName(all.stdRow)}`,
+      `a measurement under non-reference conditions (${PROTO_NAME}, Sec. 9.5); the reference dose is from the reference applicator, ${rowName(all.stdRow)}`,
+    ),
+  };
+}
+
 /** Итоги строк в таблице, подсветка полей, состояние строк, источники k_pol и k_s, номер строки у полей разделов. */
 function renderRowsState(all) {
   const n = sess.rows.length;
@@ -345,6 +372,14 @@ function renderRowsState(all) {
     const active = i === sess.active;
     tr.classList.toggle('active', active);
     tr.querySelector('.kv-row-pick').setAttribute('aria-pressed', String(active));
+    // стандартный тубус — метка у номера строки (при одной строке не нужна)
+    const std = tr.querySelector('.kv-std');
+    const isStd = n > 1 && i === all.stdRow;
+    std.hidden = !isStd;
+    if (isStd) {
+      std.textContent = L('ст.', 'ref.');
+      std.title = L(`Стандартный тубус (${stdRef(r)}): по нему референсная доза`, `Reference applicator (${stdRef(r)}): the reference dose is from it`);
+    }
   });
 
   // откуда k_pol и k_s у строк без своих серий
@@ -353,6 +388,13 @@ function renderRowsState(all) {
     return L(`строки ${j + 1}${lab ? ` (${lab})` : ''}`, `row ${j + 1}${lab ? ` (${lab})` : ''}`);
   };
   const notes = [];
+  const r0 = all.results[sess.active];
+  if (n > 1 && all.stdRow >= 0) {
+    notes.push(L(`Стандартный тубус (${stdRef(r0)}) — ${rowName(all.stdRow)}, метка «ст.»: по нему референсная доза.`, `The reference applicator (${stdRef(r0)}) is ${rowName(all.stdRow)}, marked "ref.": the reference dose is from it.`));
+    if (all.nonRef.some(Boolean)) notes.push(L('Тубусы, отличающиеся от него только полем, — измерения в нестандартных условиях (TRS-398 Rev.1, разд. 9.5).', 'Applicators that differ from it only in the field size are measurements under non-reference conditions (TRS-398 Rev.1, Sec. 9.5).'));
+  } else if (n > 1 && r0.range === 'medium') {
+    notes.push(L('Стандартного тубуса в таблице нет: по табл. 31 это поле 10 × 10 см или Ø 10 см, тубус сопоставимого размера или самый большой квадратный или круглый (отметьте «Самый большой тубус аппарата» в разделе 1).', 'There is no reference applicator in the table: by Table 31 it is a 10 × 10 cm or 10 cm diameter field, an applicator of comparable size, or the largest square or circular one (tick "Largest applicator of the unit" in section 1).'));
+  }
   if (n > 1 && all.results.some((r) => r.trs.kpolFrom)) notes.push(L(`k_pol строк без серии при обратной полярности — из ${from(all.polSrc)}.`, `k_pol of the rows without an opposite-polarity series is taken from ${from(all.polSrc)}.`));
   if (n > 1 && all.results.some((r) => r.trs.ksFrom)) notes.push(L(`k_s строк без серии при V₂ — из ${from(all.ksSrc)}.`, `k_s of the rows without a V₂ series is taken from ${from(all.ksSrc)}.`));
   const note = $('#kv-rows-note');
@@ -375,9 +417,10 @@ function renderRowsState(all) {
     const row = sess.rows[sess.active];
     const lab = kvRowLabel(row);
     const ssd = String(row.kv_ssd ?? '').trim();
+    const std = sess.active === all.stdRow;
     of.textContent = L(
-      `Строка ${sess.active + 1} из ${n}${lab ? ` · ${lab}` : ''}${ssd ? ` · РИП ${ssd} см` : ''}`,
-      `Row ${sess.active + 1} of ${n}${lab ? ` · ${lab}` : ''}${ssd ? ` · SSD ${ssd} cm` : ''}`,
+      `Строка ${sess.active + 1} из ${n}${lab ? ` · ${lab}` : ''}${ssd ? ` · РИП ${ssd} см` : ''}${std ? ' · стандартный тубус' : ''}`,
+      `Row ${sess.active + 1} of ${n}${lab ? ` · ${lab}` : ''}${ssd ? ` · SSD ${ssd} cm` : ''}${std ? ' · reference applicator' : ''}`,
     );
   }
 }
@@ -722,7 +765,7 @@ function renderReadout(result, data) {
   const pc = $('#kv-proto-cmp');
   pc.hidden = !result.compare?.kind;
   if (result.compare?.kind) html(pc, protoCmpRow(result));
-  renderCompliance($('#kv-compliance'), result.compliance, PROTO_NAME);
+  renderCompliance($('#kv-compliance'), rowCompliance(current.all, sess.active) ?? result.compliance, PROTO_NAME);
 
   const nr = $('#kv-notrev1-flag');
   nr.hidden = !result.notRev1.length;
@@ -870,8 +913,8 @@ function reportText(data, r, all = null) {
       const from = [t.kpolFrom ? L(`k_pol из ${t.kpolFrom}`, `k_pol from ${t.kpolFrom}`) : '', t.ksFrom ? L(`k_s из ${t.ksFrom}`, `k_s from ${t.ksFrom}`) : ''].filter(Boolean).join(', ');
       out.push(
         L(
-          `  ${k + 1}. ${lab}, РИП ${ssd} см; ${env}; M₁ ${cells(row.kv_M1) || '—'} нКл; k_TP = ${fmt(t.kTP)}; D = ${dose}${dev}${from ? ` (${from})` : ''}`,
-          `  ${k + 1}. ${lab}, SSD ${ssd} cm; ${env}; M₁ ${cells(row.kv_M1) || '—'} nC; k_TP = ${fmt(t.kTP)}; D = ${dose}${dev}${from ? ` (${from})` : ''}`,
+          `  ${k + 1}. ${lab}${k === all.stdRow ? ' (стандартный тубус)' : ''}, РИП ${ssd} см; ${env}; M₁ ${cells(row.kv_M1) || '—'} нКл; k_TP = ${fmt(t.kTP)}; D = ${dose}${dev}${from ? ` (${from})` : ''}`,
+          `  ${k + 1}. ${lab}${k === all.stdRow ? ' (reference applicator)' : ''}, SSD ${ssd} cm; ${env}; M₁ ${cells(row.kv_M1) || '—'} nC; k_TP = ${fmt(t.kTP)}; D = ${dose}${dev}${from ? ` (${from})` : ''}`,
         ),
       );
     });
@@ -981,7 +1024,7 @@ function reportText(data, r, all = null) {
     if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (раздел 7)', 'From check measurements (section 7)'));
     else if (r.ctrl.on) out.push(L('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: в контрольных измерениях (раздел 7) ошибки (см. замечания).', 'RESULT NOT CALCULATED: the check measurements (section 7) contain errors (see Messages).'));
     else describe(x, L('По показанию M₁ раздела 5 (контрольные измерения не введены)', 'From reading M₁ of section 5 (no check measurements entered)'));
-    const cl = complianceLine(r.compliance, PROTO_NAME);
+    const cl = complianceLine((all && rowCompliance(all, sess.active)) ?? r.compliance, PROTO_NAME);
     if (cl) out.push(cl);
   }
   if (r.andreo.citation) out.push(L(`B_w и [μen/ρ]w,air — данные: ${r.andreo.citation}`, `B_w and [μen/ρ]w,air data: ${r.andreo.citation}`));

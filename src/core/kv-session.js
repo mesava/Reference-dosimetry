@@ -5,6 +5,8 @@
 // k_pol и k_s: серии при обратной полярности и при пониженном напряжении V₂ обычно снимают с одним аппликатором
 // режима. Строка без своей серии берёт k_pol (k_s) из первой строки, где серия есть; строка со своей серией считает
 // свой. Значения передаются в computeKv полями kv_pol_from / kv_kpol_fix и kv_ks_from / kv_ks_fix.
+// Стандартный тубус (standardRow): по нему референсная доза; остальные тубусы, отличающиеся от стандартного только
+// полем, — измерения в нестандартных условиях (TRS-398 Rev.1, разд. 9.5), а не отступление от референсных условий.
 import { computeKv, KV_DEFAULTS, normalizeKv } from './kv.js';
 import { parseCells, isBlank } from './units.js';
 import { L } from './i18n.js';
@@ -79,9 +81,33 @@ const hasSeries = (cells) => {
   return s.n > 0 || !!s.error;
 };
 
+/** Условия поля, которыми стандартный тубус отличается от остальных: табл. 31 (средние энергии) и табл. 26 (низкие, N_K). */
+const FIELD_CONDS = ['kvMedField', 'kvLowNkField'];
+const fieldState = (r) => r.compliance?.conditions?.find((c) => FIELD_CONDS.includes(c.id) && c.state !== 'na')?.state;
+
 /**
- * Расчёт всех строк. Возвращает { results, polSrc, ksSrc }: results[i] — результат computeKv строки i,
- * polSrc / ksSrc — номер строки (с 0), из которой берётся k_pol / k_s для строк без своих серий (−1 — нет такой).
+ * Стандартный тубус таблицы (номер строки с 0; −1 — такого нет). Средние энергии (табл. 31): поле 10 × 10 см или Ø 10 см,
+ * тубус сопоставимого размера или самый большой квадратный или круглый; из нескольких таких — с наибольшим РИП (сноска b).
+ * Низкие энергии: N_K — поле по табл. 26 или N_K с поправкой на поле (разд. 8.4.1); N_D,w — поле и РИП как при калибровке
+ * (табл. 27). Пустые строки не рассматриваются.
+ */
+function standardRow(rows, results) {
+  let best = -1;
+  rows.forEach((row, i) => {
+    if (kvRowEmpty(row)) return;
+    const r = results[i];
+    const ok = r.range === 'low' && r.cal === 'ndw' ? r.inputs.sameGeometry === true : fieldState(r) === 'met';
+    if (!ok) return;
+    if (best < 0 || (r.range === 'medium' && r.inputs.ssd > results[best].inputs.ssd)) best = i;
+  });
+  return best;
+}
+
+/**
+ * Расчёт всех строк. Возвращает { results, polSrc, ksSrc, stdRow, nonRef }: results[i] — результат computeKv строки i,
+ * polSrc / ksSrc — номер строки (с 0), из которой берётся k_pol / k_s для строк без своих серий (−1 — нет такой),
+ * stdRow — стандартный тубус (−1 — нет), nonRef[i] — строка i отличается от стандартных условий только полем при
+ * стандартном тубусе в таблице: измерение в нестандартных условиях (разд. 9.5).
  */
 export function computeKvSession(sess) {
   const rows = sess.rows;
@@ -103,7 +129,13 @@ export function computeKvSession(sess) {
     if (needKs) Object.assign(extra, { kv_ks_from: fromText(rows, ksSrc), kv_ks_fix: ksFix });
     results[i] = computeKv({ ...forms[i], ...extra });
   }
-  return { results, polSrc, ksSrc };
+  const stdRow = standardRow(rows, results);
+  const nonRef = results.map((r, i) => {
+    if (stdRow < 0 || i === stdRow || kvRowEmpty(rows[i])) return false;
+    const notmet = (r.compliance?.conditions ?? []).filter((c) => c.state === 'notmet');
+    return notmet.length > 0 && notmet.every((c) => FIELD_CONDS.includes(c.id));
+  });
+  return { results, polSrc, ksSrc, stdRow, nonRef };
 }
 
 /** Строка без данных (для подсказок): ни размера тубуса, ни показаний. */

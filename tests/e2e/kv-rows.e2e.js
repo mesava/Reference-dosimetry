@@ -47,14 +47,25 @@ test('kV-рентген: таблица аппликаторов — строк�
   assert.equal(await cell(1, 'ktp'), '1,0130');
   assert.equal(await page.locator('#kv-rows-h-d').innerText(), 'D, Гр/мин');
   assert.match(await page.locator('#kv-rows-note').innerText(), /kpol строк без серии при обратной полярности — из строки 1 \(Ø 10 см\)/);
+  // стандартный тубус (табл. 31) — Ø 10 см, метка «ст.»; остальные — нестандартные условия по разд. 9.5
+  assert.ok(await page.locator('#kv-rows-body tr[data-i="0"] .kv-std').isVisible());
+  assert.equal(await page.locator('#kv-rows-body tr[data-i="0"] .kv-std').innerText(), 'ст.');
+  assert.ok(await page.locator('#kv-rows-body tr[data-i="1"] .kv-std').isHidden());
+  assert.match(await page.locator('#kv-rows-note').innerText(), /Стандартный тубус \(табл\. 31\) — строка 1 \(Ø 10 см\), метка «ст\.»: по нему референсная доза\. Тубусы, отличающиеся от него только полем, — измерения в нестандартных условиях \(TRS-398 Rev\.1, разд\. 9\.5\)/);
+  assert.match(await page.locator('#kv-compliance').innerText(), /^Референсные условия: отступлений/);
   assert.equal(await page.locator('#kv-rows-body tr[data-i="1"] .st').getAttribute('class'), 'st ok');
-  assert.match(await page.locator('#kv-row-of').innerText(), /^Строка 1 из 3 · Ø 10 см · РИП 50 см$/);
+  assert.match(await page.locator('#kv-row-of').innerText(), /^Строка 1 из 3 · Ø 10 см · РИП 50 см · стандартный тубус$/);
   assert.equal(await page.locator('label[for="kv_env_T"]').getAttribute('data-row'), ' · строка 1');
 
   // ввод в строку 2 выбирает её: поля разделов — её, итог справа — по ней
   await page.click('#kvr1_kv_env_T');
   await pause();
   assert.match(await page.locator('#kv-row-of').innerText(), /^Строка 2 из 3 · 6 × 8 см · РИП 50 см$/);
+  const comp = await page.locator('#kv-compliance').innerText();
+  assert.match(comp, /^Тубус не стандартный: измерение в нестандартных условиях \(TRS-398 Rev\.1, разд\. 9\.5\); референсная доза — по стандартному тубусу, строка 1 \(Ø 10 см\)/);
+  assert.match(comp, /поле 6 × 8 см вместо 10 × 10 см или Ø 10 см/);
+  assert.doesNotMatch(comp, /Нестандартные условия/);
+  assert.equal(await page.locator('#kv-compliance').getAttribute('class'), 'compliance nonref');
   assert.equal(await page.locator('#kvr1_kv_cone_shape').inputValue(), 'rect');
   assert.equal(await page.inputValue('#kv_cone_shape'), 'rect');
   assert.equal(await page.inputValue('#kv_cone_b'), '8');
@@ -109,9 +120,11 @@ test('kV-рентген: таблица аппликаторов — строк�
   await page.click('#kv-btn-copy-report');
   await pause();
   const report = await page.evaluate(() => navigator.clipboard.readText());
-  assert.match(report, /Аппликаторы \(2\); подробно ниже — строка 2:\n {2}1\. Ø 10 см, РИП 50 см; T = 21,0 °C, P = 100,5 кПа; M₁ 21,95; 21,96; 21,95 нКл; k_TP = 1,0116; D = 1,0012 Гр\/мин на 2 г\/см², отклонение \+0,62 %\n {2}2\. 6 × 8 см, РИП 50 см; .*D = 0,9425 Гр\/мин на 2 г\/см², отклонение \+0,59 % \(k_pol из строки 1 \(Ø 10 см\)\)/);
+  assert.match(report, /Аппликаторы \(2\); подробно ниже — строка 2:\n {2}1\. Ø 10 см \(стандартный тубус\), РИП 50 см; T = 21,0 °C, P = 100,5 кПа; M₁ 21,95; 21,96; 21,95 нКл; k_TP = 1,0116; D = 1,0012 Гр\/мин на 2 г\/см², отклонение \+0,62 %\n {2}2\. 6 × 8 см, РИП 50 см; .*D = 0,9425 Гр\/мин на 2 г\/см², отклонение \+0,59 % \(k_pol из строки 1 \(Ø 10 см\)\)/);
 
   assert.match(report, /Условия: T = 21,4 °C/);
+  assert.match(report, /\nТубус не стандартный: измерение в нестандартных условиях \(TRS-398 Rev\.1, разд\. 9\.5\); референсная доза — по стандартному тубусу, строка 1 \(Ø 10 см\): поле 6 × 8 см/);
+  assert.doesNotMatch(report, /НЕСТАНДАРТНЫЕ УСЛОВИЯ/);
   assert.match(report, /M\(V1, обратная\): в этой строке не измерялось; k_pol из строки 1 \(Ø 10 см\)/);
 
   // файл формата 2: строки, выбранная строка и итоги строк; открывается со сверкой по выбранной строке
@@ -160,7 +173,12 @@ test('kV-рентген: таблица аппликаторов — строк�
   assert.equal(await page.locator('#kv-rows-h-d').innerText(), 'D, Gy/min');
   assert.equal(await page.inputValue('#kvr1_kv_env_T'), '21.4');
   assert.match(await page.locator('#kv-rows-note').innerText(), /taken from row 1 \(Ø 10 cm\)/);
-  assert.match(await page.locator('#kv-row-of').innerText(), /^Row 1 of 3/);
+  assert.match(await page.locator('#kv-row-of').innerText(), /^Row 1 of 3 · Ø 10 cm · SSD 50 cm · reference applicator$/);
+  assert.equal(await page.locator('#kv-rows-body tr[data-i="0"] .kv-std').innerText(), 'ref.');
+  await page.click('#kv-rows-body tr[data-i="1"] .kv-row-pick');
+  await pause();
+  assert.match(await page.locator('#kv-compliance').innerText(), /^Non-reference applicator: a measurement under non-reference conditions \(TRS-398 Rev\.1, Sec\. 9\.5\)/);
+  assert.deepEqual(await cyrLines(page), []);
   await page.locator('#lang_ru').check();
   await pause(300);
   assert.deepEqual(errors, []);

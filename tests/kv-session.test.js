@@ -152,3 +152,45 @@ test('подпись строки: круглый, квадратный и пр�
   assert.equal(kvRowLabel({ kv_cone_shape: 'circle', kv_cone: '6' }), 'Ø 6 cm');
   setLang('ru');
 });
+
+test('стандартный тубус: средние энергии — по табл. 31 (сопоставимый с 10 см, из нескольких — с наибольшим РИП)', () => {
+  const sess = sample();
+  const all = computeKvSession(sess);
+  // Ø 10 см — стандартный; 6 × 8 и Ø 15 см отличаются только полем — нестандартные условия, разд. 9.5
+  assert.equal(all.stdRow, 0);
+  assert.deepEqual(all.nonRef, [false, true, true]);
+  assert.deepEqual(all.results.map((r) => r.compliance.status), ['standard', 'nonstandard', 'nonstandard']);
+  // 8 × 10 см (круг Ø 10,09 см) на РИП 60 см — тоже сопоставимый, РИП больше: стандартный он (сноска b)
+  sess.rows.push({ ...sess.rows[0], kv_cone_shape: 'rect', kv_cone: '8', kv_cone_b: '10', kv_ssd: '60' });
+  const b = computeKvSession(sess);
+  assert.equal(b.stdRow, 3);
+  assert.deepEqual(b.nonRef, [false, true, true, false]);
+  // сопоставимого тубуса нет — стандартного нет, отступления остаются отступлениями
+  const small = normalizeKvSession({ form: { ...SAMPLE_KV, ...SAMPLE_KV_ROWS[0] }, rows: [SAMPLE_KV_ROWS[0], SAMPLE_KV_ROWS[1]], active: 0 });
+  const c = computeKvSession(small);
+  assert.equal(c.stdRow, -1);
+  assert.deepEqual(c.nonRef, [false, false]);
+  // «самый большой тубус аппарата» (круглый) — стандартный
+  small.rows[1].kv_cone_largest = true;
+  assert.equal(computeKvSession(small).stdRow, 1);
+  // пустая строка не бывает стандартной и не помечается
+  const e = normalizeKvSession({ form: SAMPLE_KV, rows: [emptyKvRow(SAMPLE_KV), SAMPLE_KV], active: 1 });
+  const ea = computeKvSession(e);
+  assert.equal(ea.stdRow, 1);
+  assert.deepEqual(ea.nonRef, [false, false]);
+});
+
+test('стандартный тубус: низкие энергии N_D,w — поле и РИП как при калибровке (табл. 27), остальные с k_g без отступлений', () => {
+  const form = {
+    ...KV_DEFAULTS, kv_range: 'low', kv_kv: '50', kv_hvl: '1,0', kv_cone: '5', kv_ssd: '30',
+    kv_ch_model: 'PTW23342', kv_foil: true, kv_cal: 'ndw', kv_cert_form: 'k', kv_n: '1,250',
+    kv_cq_kv: ['30', '50', '70'], kv_cq_hvl: ['0,36', '1,0', '2,9'], kv_cq_val: ['1,000', '1,012', '1,025'],
+    kv_lab_f: '3', kv_lab_ssd: '30', kv_env_T: '21', kv_env_P: '100', kv_set: '1', kv_timer_mode: 'manual', kv_tau: '0',
+    kv_M1: ['2,000', '2,001', '1,999'], kv_Mopp: ['2,004', '2,005', '2,003'], kv_phantom: 'pmma', kv_lab_phantom: 'pmma',
+  };
+  const sess = normalizeKvSession({ form, rows: [form, { ...form, kv_cone: '3' }], active: 0 });
+  const all = computeKvSession(sess);
+  assert.equal(all.stdRow, 1);
+  assert.deepEqual(all.nonRef, [false, false]);
+  for (const r of all.results) assert.equal(r.compliance.status, 'standard');
+});

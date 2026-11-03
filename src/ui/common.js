@@ -277,6 +277,10 @@ export function renderCompliance(el, compliance, protoName) {
   if (c.status === 'standard') {
     el.className = 'compliance ok';
     html = `<b>${L('Референсные условия', 'Reference conditions')}</b>: ${esc(L(`отступлений от условий ${protoName} не найдено.`, `no deviations from the ${protoName} conditions were found.`))}`;
+  } else if (c.status === 'nonref') {
+    // kV: тубус не стандартный, стандартный — в той же таблице: измерение в нестандартных условиях, а не отступление
+    el.className = 'compliance nonref';
+    html = `<b>${esc(c.title)}</b>: ${richText(c.text)}.<ul>${c.reasons.map((r) => `<li>${richText(r.text)}</li>`).join('')}</ul>`;
   } else {
     el.className = 'compliance nonstd';
     html =
@@ -314,6 +318,7 @@ export function complianceLine(compliance, protoName) {
   if (c.status === 'standard') {
     return L(`Референсные условия: отступлений от условий ${protoName} не найдено`, `Reference conditions: no deviations from the ${protoName} conditions were found`) + count + unk;
   }
+  if (c.status === 'nonref') return `${c.title}: ${c.text}: ${c.reasons.map((r) => r.text).join('; ')}` + count + unk;
   return (
     L(
       `НЕСТАНДАРТНЫЕ УСЛОВИЯ — результат нельзя считать референсной дозиметрией по ${protoName}: ${c.reasons.map((r) => r.text).join('; ')}`,
