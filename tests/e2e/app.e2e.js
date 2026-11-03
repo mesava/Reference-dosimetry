@@ -1,5 +1,5 @@
 // Страница в браузере: установка как приложение (сервис-воркер, работа без сети, кнопка на «Начале»), автономный файл
-// dist/index.html, раздел «Выход вне допуска: проверка и подстройка», источник ручного k_Q, глубина результата в бюджете
+// dist/index.html, свои шрифты и политика CSP (с 0.49.1), раздел «Выход вне допуска: проверка и подстройка», источник ручного k_Q, глубина результата в бюджете
 // неопределённости, пометка TG-51 как справочного; английский интерфейс этих мест.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -60,6 +60,50 @@ test('автономный файл dist/index.html: без манифеста, 
   assert.equal(await page.locator('link[rel="manifest"]').count(), 0);
   assert.ok(await page.evaluate(() => document.querySelector('link[rel=icon]').href.startsWith('data:image/svg+xml')));
   assert.deepEqual(errors, []);
+});
+
+// встраивание чужого скрипта: политика CSP его не выполняет (событие securitypolicyviolation, скрипт не сработал)
+const INJECT = () =>
+  new Promise((resolve) => {
+    document.addEventListener('securitypolicyviolation', (e) => resolve({ blocked: e.violatedDirective, ran: !!window.__injected }), { once: true });
+    const s = document.createElement('script');
+    s.textContent = 'window.__injected = true';
+    document.head.append(s);
+    setTimeout(() => resolve({ blocked: '', ran: !!window.__injected }), 1000);
+  });
+const fontsOk = () =>
+  document.fonts.ready.then(() => ['400 16px "Golos Text"', '600 16px "Golos Text"', '500 16px "IBM Plex Sans Condensed"', '400 16px "JetBrains Mono"'].map((f) => document.fonts.check(f, 'Аа')));
+
+test('шрифты свои и политика CSP (0.49.1): нет запросов к другим сайтам, чужой встроенный скрипт не выполняется', async () => {
+  const { page, errors } = await openPage(browser, { fakefs: false });
+  const hosts = new Set();
+  page.on('request', (r) => hosts.add(new URL(r.url()).host));
+  await page.goto(`${server.url}/index.html#history`);
+  await page.waitForSelector('#hs_machine');
+  // шрифты нужны странице: загружаем их текстом и ждём
+  await page.evaluate(() => Promise.all(['400 16px "Golos Text"', '600 16px "Golos Text"', '500 16px "IBM Plex Sans Condensed"', '400 16px "JetBrains Mono"'].map((f) => document.fonts.load(f, 'Аа'))));
+  assert.deepEqual(await page.evaluate(fontsOk), [true, true, true, true]);
+  assert.deepEqual([...hosts], [new URL(server.url).host]);
+  assert.match(await page.getAttribute('meta[http-equiv="Content-Security-Policy"]', 'content'), /script-src 'self';/);
+  assert.deepEqual(await page.evaluate(INJECT), { blocked: 'script-src-elem', ran: false });
+  assert.deepEqual(errors.filter((e) => !/Content Security Policy/.test(e)), []);
+});
+
+test('автономный файл dist/index.html: шрифты встроены, скрипт разрешён по хешу, чужой — нет', async () => {
+  const { page, errors } = await openPage(browser, { fakefs: false });
+  const hosts = new Set();
+  page.on('request', (r) => {
+    const u = new URL(r.url());
+    if (u.protocol.startsWith('http')) hosts.add(u.host);
+  });
+  await page.goto(`${pathToFileURL(ROOT).href}dist/index.html#history`);
+  await page.waitForSelector('#hs_machine');
+  await page.evaluate(() => Promise.all(['400 16px "Golos Text"', '600 16px "Golos Text"', '500 16px "IBM Plex Sans Condensed"', '400 16px "JetBrains Mono"'].map((f) => document.fonts.load(f, 'Аа'))));
+  assert.deepEqual(await page.evaluate(fontsOk), [true, true, true, true]);
+  assert.deepEqual([...hosts], []);
+  assert.match(await page.getAttribute('meta[http-equiv="Content-Security-Policy"]', 'content'), /script-src 'sha256-[A-Za-z0-9+/]+=*';.*font-src data:/);
+  assert.deepEqual(await page.evaluate(INJECT), { blocked: 'script-src-elem', ran: false });
+  assert.deepEqual(errors.filter((e) => !/Content Security Policy/.test(e)), []);
 });
 
 test('«Выход вне допуска: проверка и подстройка», источник ручного k_Q; по-английски', async () => {

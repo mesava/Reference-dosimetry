@@ -1,9 +1,10 @@
 // Сборка автономной версии: один HTML-файл со встроенными стилями и скриптом.
 // dist/index.html    — полный документ, открывается двойным щелчком без интернета
-//                      (шрифты тогда заменятся системными);
+//                      (шрифты встроены из fonts/; политика CSP — с хешем встроенного скрипта);
 // dist/artifact.html — то же содержимое без обёртки <html>/<head>/<body>.
 import { build } from 'esbuild';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 
 const root = new URL('../', import.meta.url);
 const read = (p) => readFile(new URL(p, root), 'utf8');
@@ -35,9 +36,28 @@ for (const t of [...pwaTags, iconTag]) if (!html.includes(t)) throw new Error(`i
 const icon = (await read('icons/icon.svg')).replace(/<!--[\s\S]*?-->/g, '').replace(/\s+/g, ' ').trim();
 const iconData = `data:image/svg+xml,${encodeURIComponent(icon)}`;
 
+// шрифты (fonts/fonts.css и woff2 рядом) — встраиваются в файл как data: URL
+const fontsTag = '<link rel="stylesheet" href="fonts/fonts.css">';
+if (!html.includes(fontsTag)) throw new Error('index.html: не найден тег шрифтов');
+let fontsCss = await read('fonts/fonts.css');
+for (const name of new Set([...fontsCss.matchAll(/url\(([\w.-]+\.woff2)\)/g)].map((m) => m[1]))) {
+  const b64 = (await readFile(new URL(`fonts/${name}`, root))).toString('base64');
+  fontsCss = fontsCss.replaceAll(`url(${name})`, `url(data:font/woff2;base64,${b64})`);
+}
+
+// политика CSP: у страницы на сервере скрипт — файлом ('self'), у автономного файла — встроен; разрешается только он
+// (по хешу SHA-256), шрифты — встроенные (data:)
+const cspRe = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/;
+const csp = html.match(cspRe)?.[1];
+if (!csp || !/script-src 'self'/.test(csp) || !/font-src 'self'/.test(csp)) throw new Error('index.html: не найдена политика CSP');
+const jsHash = createHash('sha256').update(js, 'utf8').digest('base64');
+const distCsp = csp.replace("script-src 'self'", `script-src 'sha256-${jsHash}'`).replace("font-src 'self'", 'font-src data:');
+
 const full = pwaTags
   .reduce((h, t) => h.replace(t, ''), html)
+  .replace(cspRe, () => `<meta http-equiv="Content-Security-Policy" content="${distCsp}">`)
   .replace(iconTag, () => `<link rel="icon" href="${iconData}" type="image/svg+xml">`)
+  .replace(fontsTag, () => `<style>\n${fontsCss}</style>`)
   .replace(cssTag, () => `<style>\n${css}</style>`)
   .replace(jsTag, () => `<script>${js}</script>`);
 
@@ -48,7 +68,8 @@ const head = full.match(/<head>([\s\S]*?)<\/head>/)[1];
 const body = full.match(/<body>([\s\S]*?)<\/body>/)[1];
 const headKeep = head
   .split('\n')
-  .filter((l) => !/<meta charset|<meta name="viewport"/.test(l))
+  // политика CSP — только у полного документа: фрагмент встраивается в чужую страницу со своей политикой
+  .filter((l) => !/<meta charset|<meta name="viewport"|<meta http-equiv="Content-Security-Policy"/.test(l))
   .join('\n');
 await writeFile(new URL('dist/artifact.html', root), `${headKeep.trim()}\n${body.trim()}\n`);
 

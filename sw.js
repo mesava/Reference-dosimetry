@@ -1,9 +1,9 @@
 // Сервис-воркер страницы на сервере (GitHub Pages): калькулятор открывается и без интернета, в том числе установленный
-// как приложение. Файлы страницы — сначала из сети (всегда свежая версия), без сети — сохранённая копия; шрифты Google
-// не меняются — из копии, если она есть. Данные (формы, журнал) сервис-воркер не трогает: они в хранилище браузера
+// как приложение. Файлы страницы (и шрифты из fonts/, с 0.49.1 — свои, без запросов к Google) — сначала из сети
+// (всегда свежая версия), без сети — сохранённая копия. Данные (формы, журнал) сервис-воркер не трогает: они в хранилище браузера
 // и в файлах пользователя. У автономного файла dist/index.html сервис-воркера нет.
 const CACHE = 'reference-dosimetry-v1';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png'];
+const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './fonts/fonts.css'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -27,18 +27,10 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  const font = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
-  if (url.origin !== self.location.origin && !font) return;
+  if (url.origin !== self.location.origin) return;
   e.respondWith(
     (async () => {
       const cache = await caches.open(CACHE);
-      if (font) {
-        const hit = await cache.match(req);
-        if (hit) return hit;
-        const res = await fetch(req);
-        if (res.ok || res.type === 'opaque') cache.put(req, res.clone());
-        return res;
-      }
       try {
         const res = await fetch(req);
         if (res.ok) cache.put(req, res.clone());

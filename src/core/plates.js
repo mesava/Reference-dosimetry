@@ -11,7 +11,7 @@
 // (TRS-398 Rev.1, ур. 4 и 9: D = M_Q · N_D,w · k_Q с поправками калибровки в воде), — доза в точке камеры в пластинах, как её
 // считают в рабочих таблицах отделений, — и отношение показаний в пластинах и в воде (разд. 4.2.3).
 import { L } from './i18n.js';
-import { parseNumber, parseCells, isBlank, pressureToKPa } from './units.js';
+import { parseNumber, parseCells, isBlank, pressureToKPa, PRESSURE_UNITS } from './units.js';
 import { temperaturePressure } from './common.js';
 import { TRS_ABS0 } from './trs398.js';
 import { decayFactor } from './cobalt.js';
@@ -65,6 +65,11 @@ export function correctedReading({ M, amount, T, P, P_unit = 'kPa' }, { tauMin =
   const p = parseNumber(P);
   if (!Number.isFinite(t)) errors.push(L('Введите температуру в пластинах у камеры.', 'Enter the temperature in the plates at the chamber.'));
   if (!(p > 0)) errors.push(L('Введите давление.', 'Enter the pressure.'));
+  // единица не из списка (файл другой версии, правленный вручную) — ошибка в замечаниях, а не исключение
+  if (!Object.hasOwn(PRESSURE_UNITS, P_unit)) {
+    const u = String(P_unit ?? '').trim();
+    errors.push(u ? L(`Единица давления «${u}» неизвестна калькулятору: выберите единицу из списка.`, `The pressure unit "${u}" is unknown to the calculator: select a unit from the list.`) : L('Не выбрана единица давления: выберите её из списка.', 'No pressure unit is selected: select one from the list.'));
+  }
   if (errors.length) return { mean: r.mean, n: r.n, relSd: r.relSd, kTP: NaN, perUnit: NaN, errors };
   const kTP = temperaturePressure({ T: t, P: pressureToKPa(p, P_unit), T0: 20, P0: 101.325, abs0: TRS_ABS0 });
   const tau = kind === 'cobalt' && Number.isFinite(tauMin) ? tauMin : 0;
@@ -103,8 +108,9 @@ export function waterReading(j, sessionId, beamId) {
   const m = parseCells(e.form[key]);
   const T = parseNumber(e.form[k.T]);
   const P = parseNumber(e.form[k.P]);
-  if (m.error || !m.n || !(units > 0) || !Number.isFinite(T) || !(P > 0) || !(valueRef > 0)) return null;
-  const kTP = temperaturePressure({ T, P: pressureToKPa(P, e.form[k.PUnit] || 'kPa'), T0: 20, P0: 101.325, abs0: TRS_ABS0 });
+  const PUnit = e.form[k.PUnit] || 'kPa';
+  if (m.error || !m.n || !(units > 0) || !Number.isFinite(T) || !(P > 0) || !(valueRef > 0) || !Object.hasOwn(PRESSURE_UNITS, PUnit)) return null;
+  const kTP = temperaturePressure({ T, P: pressureToKPa(P, PUnit), T0: 20, P0: 101.325, abs0: TRS_ABS0 });
   const Mw = (Math.abs(m.mean) * kTP) / units;
   const ks = tg ? x.Pion : x.ks;
   const kpol = tg ? x.Ppol : x.kpol;

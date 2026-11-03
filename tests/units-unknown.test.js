@@ -53,3 +53,15 @@ for (const [name, compute, sample, keys] of cases) {
     }
   });
 }
+
+test('«В пластинах»: давление в единице не из списка — ошибка в замечаниях, а не исключение', async () => {
+  const { correctedReading } = await import('../src/core/plates.js');
+  const ok = correctedReading({ M: ['10', '10'], amount: '100', T: '20', P: '101,325', P_unit: 'kPa' });
+  assert.deepEqual(ok.errors, []);
+  for (const P_unit of ['bar', 'constructor', '']) {
+    const r = correctedReading({ M: ['10', '10'], amount: '100', T: '20', P: '101,325', P_unit });
+    assert.ok(Number.isNaN(r.kTP));
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], P_unit ? /^Единица давления «.+» неизвестна калькулятору/ : /^Не выбрана единица давления/);
+  }
+});
