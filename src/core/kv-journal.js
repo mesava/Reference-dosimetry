@@ -114,11 +114,11 @@ export function kvVisitFromMachine(j, machine, modeIds, visit) {
   return { visit: { common, chambers, modes, mode: 0 }, noCert: [...new Set(noCert)] };
 }
 
-/** Тот же аппликатор: форма, размер и РИП (числа — по значению). */
-const sameApp = (a, r) =>
+/** Тот же аппликатор: форма, размер и РИП (числа — по значению). a — аппликатор аппарата, r — строка вкладки. */
+export const kvSameApp = (a, r) =>
   a.shape === (r.kv_cone_shape || 'circle') && sameNum(a.a, r.kv_cone) && (a.shape !== 'rect' || sameNum(a.b, r.kv_cone_b)) && (isBlank(a.ssd) && isBlank(r.kv_ssd) ? true : sameNum(a.ssd, r.kv_ssd));
 /** Режим «Оборудования», совпадающий с режимом вкладки по диапазону, напряжению, фильтру и току (если он есть у обоих). */
-const sameMode = (y, s) =>
+export const kvSameMode = (y, s) =>
   y.range === (s.kv_range === 'medium' ? 'medium' : 'low') && sameNum(y.kv, s.kv_kv) && norm(y.filter) === norm(s.kv_filter) && (isBlank(y.ma) || isBlank(s.kv_ma) || sameNum(y.ma, s.kv_ma));
 
 /** Набор пластин вкладки (непустые строки) в виде пластин аппарата. */
@@ -132,20 +132,39 @@ function visitPlates(common) {
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, copy(o[k])]));
 const sameKv = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-/** Камера вкладки → запись камеры журнала (найти по модели и №, иначе добавить); kV-сертификат — в запись. */
-function upsertChamber(j, vc, rep) {
+/** Модель камеры вкладки в журнале: { custom, model, name } (своя камера — «другая» с названием). */
+function chamberModel(vc) {
   const id = str(vc.kv_ch_model);
-  if (!id) return '';
   const custom = id === 'CUSTOM' || id.startsWith('MY:');
-  const model = custom ? 'OTHER' : journalModelOfKv(id);
-  const name = custom ? [vc.kv_cc_maker, vc.kv_cc_model].map((s) => str(s).trim()).filter(Boolean).join(' ') : '';
-  const kv = pick(vc, KV_CERT_KEYS);
-  if (custom) Object.assign(kv, { kv_cc_maker: str(vc.kv_cc_maker), kv_cc_model: str(vc.kv_cc_model), kv_cc_type: vc.kv_cc_type === 'cyl' ? 'cyl' : 'pp' });
+  return { custom, model: custom ? 'OTHER' : journalModelOfKv(id), name: custom ? [vc.kv_cc_maker, vc.kv_cc_model].map((s) => str(s).trim()).filter(Boolean).join(' ') : '' };
+}
+
+/** Запись камеры журнала для камеры вкладки — по модели и № (своя камера — по названию); null — такой нет. */
+export function kvFindChamber(j, vc) {
+  if (!str(vc?.kv_ch_model)) return null;
+  const { custom, model, name } = chamberModel(vc);
   // своя камера вкладки — «другая» камера журнала с тем же названием или камера журнала не из списка вкладки
   // (подставленная своей с названием записи, kvChamberFromRecord): по названию без номера
   const sameCustom = (c) =>
     c.form?.ch_model === 'OTHER' ? norm(c.form?.e_other_name) === norm(name) : !kvModelOfJournal(c.form?.ch_model) && norm(chamberText({ form: { ...c.form, ch_serial: '' } })) === norm(name);
-  let ch = j.chambers.find((c) => norm(c.form?.ch_serial) === norm(vc.kv_ch_serial) && (custom ? !isBlank(c.form?.ch_model) && sameCustom(c) : c.form?.ch_model === model));
+  return j.chambers.find((c) => norm(c.form?.ch_serial) === norm(vc.kv_ch_serial) && (custom ? !isBlank(c.form?.ch_model) && sameCustom(c) : c.form?.ch_model === model)) ?? null;
+}
+
+/** Запись электрометра журнала для камеры вкладки — по модели и №; null — такой нет. */
+export function kvFindElectrometer(j, vc) {
+  const model = str(vc?.kv_el_model).trim();
+  if (!model) return null;
+  return j.electrometers.find((e) => norm(e.form?.el_model) === norm(model) && norm(e.form?.el_serial) === norm(vc.kv_el_serial)) ?? null;
+}
+
+/** Камера вкладки → запись камеры журнала (найти по модели и №, иначе добавить); kV-сертификат — в запись. */
+function upsertChamber(j, vc, rep) {
+  const id = str(vc.kv_ch_model);
+  if (!id) return '';
+  const { custom, model, name } = chamberModel(vc);
+  const kv = pick(vc, KV_CERT_KEYS);
+  if (custom) Object.assign(kv, { kv_cc_maker: str(vc.kv_cc_maker), kv_cc_model: str(vc.kv_cc_model), kv_cc_type: vc.kv_cc_type === 'cyl' ? 'cyl' : 'pp' });
+  let ch = kvFindChamber(j, vc);
   if (!ch) {
     ch = {
       ...CHAMBER_DEFAULTS,
@@ -166,7 +185,7 @@ function upsertChamber(j, vc, rep) {
 function upsertElectrometer(j, vc, rep) {
   const model = str(vc.kv_el_model).trim();
   if (!model) return '';
-  let el = j.electrometers.find((e) => norm(e.form?.el_model) === norm(model) && norm(e.form?.el_serial) === norm(vc.kv_el_serial));
+  let el = kvFindElectrometer(j, vc);
   if (!el) {
     el = { ...ELECTROMETER_DEFAULTS, id: uid('el'), form: { el_model: model, el_serial: str(vc.kv_el_serial), el_kelec: isBlank(vc.kv_kelec) ? '1,000' : str(vc.kv_kelec) } };
     j.electrometers.push(el);
@@ -207,7 +226,7 @@ export function kvMachineFromVisit(j0, visit, { replaceHvl = false } = {}) {
     const ids = [];
     for (const r of md.rows) {
       if (isBlank(r.kv_cone)) continue;
-      let a = m.applicators.find((x) => sameApp(x, r));
+      let a = m.applicators.find((x) => kvSameApp(x, r));
       if (!a) {
         a = { ...newKvApplicator(), shape: ['square', 'rect'].includes(r.kv_cone_shape) ? r.kv_cone_shape : 'circle', a: str(r.kv_cone).trim(), b: r.kv_cone_shape === 'rect' ? str(r.kv_cone_b).trim() : '', ssd: str(r.kv_ssd).trim() };
         m.applicators.push(a);
@@ -215,7 +234,7 @@ export function kvMachineFromVisit(j0, visit, { replaceHvl = false } = {}) {
       }
       if (!ids.includes(a.id)) ids.push(a.id);
     }
-    let x = m.modes.find((y) => y.id === s.kv_jmode && !used.has(y.id)) ?? m.modes.find((y) => !used.has(y.id) && sameMode(y, s));
+    let x = m.modes.find((y) => y.id === s.kv_jmode && !used.has(y.id)) ?? m.modes.find((y) => !used.has(y.id) && kvSameMode(y, s));
     if (x) rep.modesUpdated++;
     else {
       x = newKvMachineMode();
@@ -253,7 +272,7 @@ export function kvMachineFromVisit(j0, visit, { replaceHvl = false } = {}) {
     // аппликаторы режима: отмеченные раньше остаются, тубусы вкладки добавляются; порядок — как у аппарата
     x.applicators = m.applicators.map((a) => a.id).filter((id) => x.applicators.includes(id) || ids.includes(id));
     const std = vr.modes[i]?.stdRow ?? -1;
-    const stdApp = std >= 0 ? m.applicators.find((a) => sameApp(a, md.rows[std])) : null;
+    const stdApp = std >= 0 ? m.applicators.find((a) => kvSameApp(a, md.rows[std])) : null;
     if (stdApp) x.refApplicator = stdApp.id;
     else if (!x.applicators.includes(x.refApplicator)) x.refApplicator = '';
     return x.id;

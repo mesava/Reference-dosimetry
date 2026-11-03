@@ -67,6 +67,8 @@ export const KV_DEFAULTS = {
   // лист «Сводка и протокол» (с 0.45.0): методика измерений и кто проверил протокол — только для протокола
   kv_method: '',
   kv_checker: '',
+  // вид измерения для журнала (с 0.46.0): 'cal' — калибровка, 'check' — проверка выхода
+  kv_rec_mode: 'cal',
 
   // пучок
   kv_range: 'low', // 'low' — 10–100 кВ, СПО в мм Al; 'medium' — 80–300 кВ, СПО в мм Cu
@@ -256,6 +258,7 @@ export function normalizeKv(input) {
   if (!['twopoint', 'measured', 'nexp', 'window', 'manual', 'none'].includes(f.kv_timer_mode)) f.kv_timer_mode = KV_DEFAULTS.kv_timer_mode;
   if (!['circle', 'square', 'rect'].includes(f.kv_cone_shape)) f.kv_cone_shape = 'circle';
   if (f.kv_lab_shape !== 'square') f.kv_lab_shape = 'circle';
+  if (f.kv_rec_mode !== 'check') f.kv_rec_mode = 'cal';
   const phantomIds = ['custom', ...KV_PHANTOMS.map((p) => p.id)];
   for (const k of ['kv_phantom', 'kv_lab_phantom', 'kv_pdd_phantom']) if (!phantomIds.includes(f[k])) f[k] = '';
   return f;

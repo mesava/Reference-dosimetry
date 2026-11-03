@@ -19,6 +19,7 @@ import {
   KV_ONLY_CHAMBERS, findKvOnlyChamber, kvModelOfJournal,
 } from '../core/kv-machine.js';
 import { kvCertText } from '../core/kv-journal.js';
+import { kvModeUsed, kvAppUsed, kvEquipUsed } from '../core/kv-records.js';
 import { getMyChambers } from './store.js';
 import { $, esc, fmt, makeStatus, armButton, notifyUpdate, today, richText, currentProtocol, plainSymbols } from './common.js';
 import { localizeDecimals } from './i18n.js';
@@ -99,7 +100,8 @@ function chamberDims(f) {
 /** Камера или электрометр есть в записях журнала (измерения и проверки второй камерой): такие не удаляются. */
 function usedInRecords(j, key, id) {
   return (j.sessions || []).some((s) => (s.beams || []).some((b) => b[key] === id) || (s.checks || []).some((c) => c[key] === id || (key === 'chamberId' && c.summary?.workChamberId === id)))
-    || (j.plateChecks || []).some((p) => p.binding?.[key] === id);
+    || (j.plateChecks || []).some((p) => p.binding?.[key] === id)
+    || kvEquipUsed(j, key, id);
 }
 const RECORDS_TITLE = () => L('Есть в записях журнала: записи ссылаются на эту запись оборудования (протокол, карты пар камер)', 'Used in journal records: they refer to this equipment entry (report, chamber pair charts)');
 
@@ -317,7 +319,7 @@ const appName = (a, i) => applicatorText(a) || L(`аппликатор ${i + 1}`
 /** Замечания по аппарату kV: строки в карточке (без номера режима — он в заголовке режима). */
 const kvMsgs = (list, live) => `<ul class="jmsgs" data-live="${val(live)}">${list.map((c) => `<li class="${c.level}">${richText(c.short)}</li>`).join('')}</ul>`;
 
-function kvAppRow(m, a, i) {
+function kvAppRow(j, m, a, i) {
   const k = 'kvapp';
   const d = applicatorDiameter(a);
   const sizeCap = a.shape === 'circle' ? L('Диаметр, см', 'Diameter, cm') : a.shape === 'square' ? L('Сторона, см', 'Side, cm') : L('Стороны, см', 'Sides, cm');
@@ -329,7 +331,7 @@ function kvAppRow(m, a, i) {
     <td data-cap="${esc(sizeCap)}"><span class="jkv-size">${input(k, a.id, 'a', a.a, { num: true, aria: `${n}: ${sizeCap}` })}${a.shape === 'rect' ? `<span aria-hidden="true">×</span>${input(k, a.id, 'b', a.b, { num: true, aria: L(`${n}: вторая сторона, см`, `${n}: second side, cm`) })}` : ''}</span></td>
     <td data-cap="${esc(L('РИП, см', 'SSD, cm'))}">${input(k, a.id, 'ssd', a.ssd, { num: true, aria: L(`${n}: РИП, см`, `${n}: SSD, cm`) })}</td>
     <td class="v" data-cap="${esc(L('Ø экв., см', 'Eq. Ø, cm'))}" data-live="kvapp-d-${val(a.id)}">${Number.isFinite(d) ? fmt(d, 1) : '—'}</td>
-    <td class="del"><button type="button" class="link-btn danger" data-del="kvapp:${esc(m.id)}:${esc(a.id)}">${esc(L('Удалить', 'Delete'))}</button></td>
+    <td class="del"><button type="button" class="link-btn danger" data-del="kvapp:${esc(m.id)}:${esc(a.id)}"${kvAppUsed(j, m.id, a.id) ? ` disabled title="${esc(L('Аппликатор есть в записях журнала', 'The applicator is used in journal records'))}"` : ''}>${esc(L('Удалить', 'Delete'))}</button></td>
   </tr>`;
 }
 
@@ -382,7 +384,7 @@ function kvModeBlock(j, m, x, i, checks) {
       ${field(L('Примечания', 'Notes'), input(k, x.id, 'notes', x.notes), { forId: fid('notes'), cls: 'span-2' })}
     </div>
     ${kvMsgs(checks.filter((ch) => ch.modeId === x.id), `kvmode-msgs-${x.id}`)}
-    <div class="row-tools"><button type="button" class="link-btn danger" data-del="kvmode:${esc(m.id)}:${esc(x.id)}">${esc(L('Удалить режим', 'Delete mode'))}</button></div>
+    <div class="row-tools"><button type="button" class="link-btn danger" data-del="kvmode:${esc(m.id)}:${esc(x.id)}"${kvModeUsed(j, m.id, x.id) ? ` disabled title="${esc(L('Режим есть в записях журнала', 'The mode is used in journal records'))}"` : ''}>${esc(L('Удалить режим', 'Delete mode'))}</button></div>
   </div>`;
 }
 
@@ -408,7 +410,7 @@ function kvPlatesText(m) {
 function kvMachineCard(j, m) {
   const k = 'machine';
   const checks = kvMachineChecks(m, j);
-  const hasSessions = j.sessions.some((s) => s.machineId === m.id);
+  const hasSessions = j.sessions.some((s) => s.machineId === m.id) || (j.kvRecords ?? []).some((r) => r.machineId === m.id);
   return `<div class="jcard jkv" data-card="machine:${esc(m.id)}">
     <div class="jcard-head"><b>${esc(m.name || L('Новый рентгенотерапевтический аппарат', 'New x-ray therapy unit'))}</b><span class="chips">${kvChip(checks)}<span class="chip none">${esc(L('рентгенотерапевтический аппарат', 'x-ray therapy unit'))}</span></span></div>
     <div class="grid">
@@ -421,7 +423,7 @@ function kvMachineCard(j, m) {
     ${m.applicators.length
       ? `<div class="table-wrap"><table class="factors jf-table jkv-apps-t">
       <thead><tr><th class="no">№</th><th>${esc(L('Обозначение', 'Label'))}</th><th>${esc(L('Форма', 'Shape'))}</th><th>${esc(L('Размер, см', 'Size, cm'))}</th><th>${esc(L('РИП, см', 'SSD, cm'))}</th><th class="v" title="${esc(L('Диаметр круга той же площади: по нему выбирается референсный аппликатор (TRS-398 Rev.1, табл. 31)', 'Diameter of the circle of the same area: used to choose the reference applicator (TRS-398 Rev.1, Table 31)'))}">${esc(L('Ø экв., см', 'Eq. Ø, cm'))}</th><th class="del"><span class="visually-hidden">${esc(L('Удалить', 'Delete'))}</span></th></tr></thead>
-      <tbody>${m.applicators.map((a, i) => kvAppRow(m, a, i)).join('')}</tbody></table></div>`
+      <tbody>${m.applicators.map((a, i) => kvAppRow(j, m, a, i)).join('')}</tbody></table></div>`
       : `<p class="sub-hint">${esc(L('Аппликаторов пока нет: добавьте все тубусы аппарата, а в режимах отметьте, какие с ними используются.', 'No applicators yet: add all applicators of the unit, then tick in each mode which ones are used with it.'))}</p>`}
     ${kvMsgs(checks.filter((c) => c.appId), `kvapps-msgs-${m.id}`)}
     <div class="row-tools"><button type="button" class="link-btn" data-add-kvapp="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить аппликатор', 'Add an applicator'))}</button></div>
@@ -538,7 +540,7 @@ function renderReadout() {
   const kvModes = j.machines.reduce((s, m) => s + (m.kind === 'kv' ? m.modes.length : 0), 0);
   const kvText = j.machines.some((m) => m.kind === 'kv') ? L(`; режимов рентгенотерапевтических аппаратов: ${kvModes}`, `; x-ray therapy modes: ${kvModes}`) : '';
   $('#eq-result').innerHTML = `<div class="dose-row"><div class="dose-big">${j.machines.length}<small>${esc(wMachines)} · ${beams} ${esc(wBeams)}</small></div>
-    <div class="secondary">${esc(L(`камер: ${j.chambers.length}; электрометров: ${j.electrometers.length}; записей в журнале: ${j.sessions.length}`, `chambers: ${j.chambers.length}; electrometers: ${j.electrometers.length}; records in the journal: ${j.sessions.length}`) + kvText)}</div></div>`;
+    <div class="secondary">${esc(L(`камер: ${j.chambers.length}; электрометров: ${j.electrometers.length}; записей в журнале: ${j.sessions.length + (j.kvRecords?.length ?? 0)}`, `chambers: ${j.chambers.length}; electrometers: ${j.electrometers.length}; records in the journal: ${j.sessions.length + (j.kvRecords?.length ?? 0)}`) + kvText)}</div></div>`;
   const msgs = [];
   for (const d of due) {
     msgs.push(`<li class="${d.status === 'overdue' ? 'warn' : 'info'}"><span class="lvl">${esc(d.status === 'overdue' ? L('Срок калибровки прошёл', 'Calibration overdue') : L('Срок калибровки подходит', 'Calibration due soon'))}</span><span>${esc(`${d.text}: ${d.status === 'overdue' ? L(`до ${fmtDate(d.dueDate)}`, `until ${fmtDate(d.dueDate)}`) : L(`до ${fmtDate(d.dueDate)}, осталось ${d.days} дн.`, `until ${fmtDate(d.dueDate)}, ${d.days} days left`)}`)}</span></li>`);

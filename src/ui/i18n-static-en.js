@@ -1077,4 +1077,8 @@ export const STATIC_EN = {
   "Печать протокола": "Print the report",
   "Протокол в PDF": "Report to PDF",
   "Сводная таблица": "Summary table",
+  // kV-рентген: запись в журнал (0.46.0)
+  "Вид измерения": "Measurement",
+  "для журнала и протокола": "for the journal and the report",
+  "Запись — рентгенотерапевтический аппарат за день: все режимы и листы вкладки «kV-рентген» с итогами по режимам и аппликаторам. «Открыть во вкладке» показывает запись со всеми листами, поправками и замечаниями; «Протокол» — протокол измерений, как на листе «Сводка и протокол».": "A record is an x-ray therapy unit for a day: all modes and sheets of the kV x-rays tab with the results by mode and applicator. “Open in the tab” shows the record with all sheets, corrections and messages; “Report” is the measurement report, as on the Summary and report sheet.",
 };

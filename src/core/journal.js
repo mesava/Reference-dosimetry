@@ -204,7 +204,7 @@ export const BEAM_DEFAULTS = { id: '', kind: 'photon', name: '', chamberId: '', 
 export const SESSION_DEFAULTS = { id: '', machineId: '', date: '', mode: 'cal', protocol: 'trs', staff: [''], notes: '', env: { T: '', P: '', P_unit: 'kPa', H: '' }, beams: [], saved: '' };
 
 export function newJournal() {
-  return { ...JOURNAL_TAG, institution: '', department: '', chambers: [], electrometers: [], machines: [], sessions: [], plateChecks: [] };
+  return { ...JOURNAL_TAG, institution: '', department: '', chambers: [], electrometers: [], machines: [], sessions: [], plateChecks: [], kvRecords: [] };
 }
 
 const arr = (v) => (Array.isArray(v) ? v : []);
@@ -240,6 +240,14 @@ export function normalizeJournal(obj) {
   j.plateChecks = arr(obj.plateChecks)
     .filter((p) => p && typeof p === 'object')
     .map((p) => withId({ ...p, M: arr(p.M), summary: { ...(p.summary || {}) }, binding: { ...(p.binding || {}) } }, 'p'))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  // записи рентгенотерапевтических аппаратов (core/kv-records.js, с 0.46.0): аппарат за день — вкладка kV и итоги
+  j.kvRecords = arr(obj.kvRecords)
+    .filter((r) => r && typeof r === 'object')
+    .map((r) => {
+      const s = r.summary && typeof r.summary === 'object' ? r.summary : {};
+      return withId({ ...r, mode: r.mode === 'check' ? 'check' : 'cal', staff: arr(r.staff), summary: { ...s, modes: arr(s.modes).map((x) => ({ ...x, rows: arr(x?.rows) })) } }, 'kr');
+    })
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
   return j;
 }

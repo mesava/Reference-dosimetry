@@ -5,7 +5,25 @@
 // здесь нет: всё берётся из итогов computeKvVisit; отклонение — D/D_баз − 1, как в разделе 8 и сводке по режимам.
 // Решение о калибровке — по допуску учреждения (в TRS-398 Rev.1 допуска на выход нет).
 import { parseNumber, parseCells, isBlank } from './units.js';
-import { kvRowLabel, kvRowEmpty } from './kv-session.js';
+import { kvRowLabel, kvRowEmpty, kvModeLabel } from './kv-session.js';
+import { KV_CHAMBERS, kvChamberLabel } from './kv-tables.js';
+import { L } from './i18n.js';
+
+/** Режим m вкладки для таблиц и протокола: «200 кВ, СПО 1,00 мм Cu» или «пучок не задан». */
+export const kvModeName = (visit, m) => kvModeLabel(visit.modes[m]?.shared) || L('пучок не задан', 'beam not set');
+
+/** Камера вкладки: модель и серийный номер («PTW 30013 № 1001»). */
+export function kvChamberName(ch) {
+  const id = String(ch?.kv_ch_model ?? '');
+  let name = '';
+  if (id === 'CUSTOM' || id.startsWith('MY:')) name = [ch.kv_cc_maker, ch.kv_cc_model].map((v) => String(v ?? '').trim()).filter(Boolean).join(' ');
+  else if (id) {
+    const c = KV_CHAMBERS.find((x) => x.id === id);
+    name = c ? kvChamberLabel(c) : id;
+  }
+  const sn = String(ch?.kv_ch_serial ?? '').trim();
+  return [name || L('камера не выбрана', 'no chamber selected'), sn ? L(`№ ${sn}`, `S/N ${sn}`) : ''].filter(Boolean).join(' ');
+}
 
 /** Итог строки по контрольным измерениям, если они есть и без ошибок (как в разделе 8). */
 const primaryOf = (x) => (x.ctrl && !x.ctrl.blocked && !x.blocked ? x.ctrl : x);

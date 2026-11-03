@@ -7,10 +7,11 @@ import { esc } from './common.js';
 
 /**
  * bar — элемент плашки; storageKey — ключ в браузере; readForm() — форма вкладки; writeForm(form, withProtocol) —
- * записать форму во вкладку; refresh() — пересчитать вкладку; setStatus(text) — строка состояния вкладки.
+ * записать форму во вкладку; refresh() — пересчитать вкладку; setStatus(text) — строка состояния вкладки;
+ * viewText(title) — текст плашки просмотра, если он у вкладки свой (вкладка kV — запись журнала, а не пучок).
  * Возвращает { show, restore, render, load, setSave }.
  */
-export function makeJournalView({ bar, storageKey, readForm, writeForm, refresh, setStatus }) {
+export function makeJournalView({ bar, storageKey, readForm, writeForm, refresh, setStatus, viewText = null }) {
   let view = null; // { stash, mode: 'edit' | 'view', title, target }
   let save = null; // (target, form, title) => void — запись настроек пучка в журнал (задаёт app.js)
 
@@ -46,7 +47,9 @@ export function makeJournalView({ bar, storageKey, readForm, writeForm, refresh,
     el.innerHTML = `<p>${esc(
       edit
         ? L(`Настройки пучка журнала: ${view.title}. Измените нужное и нажмите «Сохранить в журнал»: в журнал попадут настройки пучка (камера, электрометр, показания и условия — нет).`, `Journal beam settings: ${view.title}. Change what is needed and click "Save to journal": the beam settings go to the journal (the chamber, electrometer, readings and conditions do not).`)
-        : L(`Пучок из журнала: ${view.title}. Здесь видны все поправки и замечания; изменения во вкладке в журнал не попадают.`, `Beam from the journal: ${view.title}. All corrections and messages are shown here; changes in this tab do not go to the journal.`),
+        : viewText
+          ? viewText(view.title)
+          : L(`Пучок из журнала: ${view.title}. Здесь видны все поправки и замечания; изменения во вкладке в журнал не попадают.`, `Beam from the journal: ${view.title}. All corrections and messages are shown here; changes in this tab do not go to the journal.`),
     )}</p><div class="actions">${edit ? `<button type="button" class="primary" data-jv="save">${esc(L('Сохранить в журнал', 'Save to journal'))}</button>` : ''}<button type="button" data-jv="back">${esc(edit ? L('Отмена — вернуть данные вкладки', 'Cancel: restore the tab data') : L('Вернуть прежние данные вкладки', 'Restore the previous tab data'))}</button></div>`;
     el.querySelector('[data-jv="save"]')?.addEventListener('click', () => {
       const f = readForm();

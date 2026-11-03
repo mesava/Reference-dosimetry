@@ -1562,6 +1562,7 @@
       <a href="#kv/dose" data-kv-go="dose">Поглощённая доза</a>
       <a href="#kv/summary" data-kv-go="summary">Сводка и протокол</a>
     </nav>
+    <div class="journal-bar no-print" id="kv-journal-bar" hidden data-i18n-skip></div>
     <div class="kv-modebar" id="kv-modebar" hidden>
       <span class="label" id="kv-modebar-label">Режим</span>
       <div class="kv-modebar-list" id="kv-modebar-list" role="group" aria-labelledby="kv-modebar-label" data-i18n-skip></div>
@@ -1578,6 +1579,8 @@
         <div class="field"><label for="kv_institution">Учреждение</label><div class="combo" data-list="institutions"><input type="text" id="kv_institution"></div></div>
         <div class="field"><label for="kv_machine">Аппарат</label><div class="combo" data-list="machines-kv"><input type="text" id="kv_machine" placeholder="Модель, № трубки"></div></div>
         <div class="field"><label for="kv_date">Дата измерения</label><input type="date" id="kv_date"></div>
+        <div class="field"><label for="kv_rec_mode">Вид измерения</label><select id="kv_rec_mode"><option value="cal">Калибровка</option><option value="check">Проверка выхода</option></select>
+          <span class="sub">для журнала и протокола</span></div>
         <div class="field span-2">
           <span class="label" id="kv-staff-label">Сотрудник, выполняющий измерения</span>
           <div id="kv-staff-list" class="staff-list" data-prefix="kv_staff" role="group" aria-labelledby="kv-staff-label"></div>
@@ -2559,6 +2562,8 @@
       <div class="compliance" id="kv-compliance" hidden></div>
       <p class="sub-hint" id="kv-andreo-cite" hidden></p>
     </section>
+
+    <section class="panel jrec no-print" id="kv-jrec" hidden data-i18n-skip></section>
 
     <section class="panel">
       <h2>Замечания</h2>
@@ -3876,7 +3881,13 @@
       </div>
     </section>
 
-    <section class="step" aria-labelledby="hs-s2">
+    <section class="step hs-kv" aria-labelledby="hs-kv-s2" id="hs-kv-sec" hidden>
+      <header><span class="step-no">2</span><h2 id="hs-kv-s2">Записи журнала</h2>
+        <p class="hint">Запись — рентгенотерапевтический аппарат за день: все режимы и листы вкладки «kV-рентген» с итогами по режимам и аппликаторам. «Открыть во вкладке» показывает запись со всеми листами, поправками и замечаниями; «Протокол» — протокол измерений, как на листе «Сводка и протокол».</p></header>
+      <div id="hs-kv-records" data-i18n-skip></div>
+    </section>
+
+    <section class="step hs-beam" aria-labelledby="hs-s2">
       <header><span class="step-no">2</span><h2 id="hs-s2">Выход по датам</h2>
         <p class="hint">Отклонение дозы от номинального выхода в точке номинала (у ⁶⁰Co — мощности дозы от ожидаемой с поправкой на распад); сплошные значки — калибровка, полые — проверка выхода, пунктир — допуск. Наведите курсор на график, чтобы увидеть значения.</p></header>
       <div class="chart-box" id="hs-chart" data-i18n-skip></div>
@@ -3884,7 +3895,7 @@
       <details class="jsb-more"><summary>Таблица значений</summary><div class="table-wrap" id="hs-table" data-i18n-skip></div></details>
     </section>
 
-    <section class="step" aria-labelledby="hs-s3">
+    <section class="step hs-beam" aria-labelledby="hs-s3">
       <header><span class="step-no">3</span><h2 id="hs-s3">Контрольная карта</h2>
         <p class="hint">Выход одного пучка относительно его обычного уровня: центральная линия и границы ±2σ и ±3σ, где σ — обычный разброс от измерения к измерению. Карта замечает сдвиг или дрейф раньше, чем выход уйдёт за допуск. Отсчёт начинается заново после подстройки ускорителя и после смены камеры, электрометра или их калибровочных коэффициентов.</p></header>
       <div class="field hs-beam-field"><label for="hs_beam">Пучок</label><select id="hs_beam"></select></div>
@@ -3893,7 +3904,7 @@
       <div class="hs-spc-summary" id="hs-spc-summary" data-i18n-skip></div>
     </section>
 
-    <section class="step" aria-labelledby="hs-s4">
+    <section class="step hs-beam" aria-labelledby="hs-s4">
       <header><span class="step-no">4</span><h2 id="hs-s4">Общая часть записей</h2>
         <p class="hint">Запись журнала — пучки аппарата, измеренные за один день в одном режиме, обычно одной камерой и электрометром, с одними термометром и барометром. Отклонение каждого пучка от его обычного уровня (центральной линии его карты) делится на общую для записи часть (медиана по пучкам) и собственную часть пучка. Сдвинулись все пучки вместе — причина скорее общая: дозиметр, термометр, барометр, N<sub>D,w</sub> или мониторная камера ускорителя. Ушёл один пучок — причина в нём.</p></header>
       <div class="chart-box" id="hs-common-chart" data-i18n-skip></div>
@@ -3901,12 +3912,12 @@
       <div class="hs-spc-summary" id="hs-common-summary" data-i18n-skip></div>
     </section>
 
-    <section class="step" aria-labelledby="hs-s5">
+    <section class="step hs-beam" aria-labelledby="hs-s5">
       <header><span class="step-no">5</span><h2 id="hs-s5">k<sub>pol</sub>, k<sub>s</sub> и τ (⁶⁰Co) по калибровкам</h2></header>
       <div class="table-wrap" id="hs-ktable" data-i18n-skip></div>
     </section>
 
-    <section class="step" aria-labelledby="hs-s6">
+    <section class="step hs-beam" aria-labelledby="hs-s6">
       <header><span class="step-no">6</span><h2 id="hs-s6">Записи журнала</h2></header>
       <div id="hs-sessions" data-i18n-skip></div>
       <div class="actions"><button type="button" id="hs-csv">Выгрузить журнал в CSV</button></div>
@@ -3915,7 +3926,7 @@
 
     <section class="step" id="hs-report" hidden data-i18n-skip></section>
 
-    <section class="step" aria-labelledby="hs-s7" id="hs-check-sec" hidden>
+    <section class="step hs-beam" aria-labelledby="hs-s7" id="hs-check-sec" hidden>
       <header><span class="step-no">7</span><h2 id="hs-s7">Контроль дозиметра</h2>
         <p class="hint">Проверки второй камерой (по желанию, во вкладке дозиметрии, раздел «Проверка дозиметра второй камерой»): отношение доз рабочей и второй камеры, (r − 1) в процентах, с центральной линией и границами ±2σ и ±3σ. Сдвиг отношения — изменилась одна из двух систем. Отсчёт начинается заново после смены электрометра или калибровочного коэффициента любой из камер. Разброс отношения — оценка сверху долговременной стабильности рабочего дозиметра; её можно перенести в бюджет неопределённости.</p></header>
       <div class="field hs-beam-field"><label for="hs_check">Пучок и камеры</label><select id="hs_check"></select></div>
@@ -3924,7 +3935,7 @@
       <div class="hs-spc-summary" id="hs-check-summary" data-i18n-skip></div>
       <div class="actions"><button type="button" id="hs-check-unc">Перенести в бюджет неопределённости</button><button type="button" id="hs-check-csv">Выгрузить проверки в CSV</button></div>
     </section>
-    <section class="step" aria-labelledby="hs-s8" id="hs-plates-sec" hidden>
+    <section class="step hs-beam" aria-labelledby="hs-s8" id="hs-plates-sec" hidden>
       <header><span class="step-no">8</span><h2 id="hs-s8">Проверки в пластинах</h2>
         <p class="hint">Проверки выхода в пластинах — не референсные условия: выход относительно калибровки пучка в воде, к которой привязан набор пластин. Контрольная карта каждого пучка — в «Дозиметрии», подраздел «В пластинах».</p></header>
       <div class="table-wrap" id="hs-plates" data-i18n-skip></div>

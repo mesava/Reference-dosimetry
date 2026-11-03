@@ -186,14 +186,18 @@ test('оборудование: рентгенотерапевтический �
   await pause();
   assert.equal(await kvCard(page).locator('.jkv-mode').count(), 1);
 
-  // «Журнал и тренды»: аппарата kV в списке нет (у него нет пучков и записей)
+  // «Журнал и тренды» (с 0.46.0): аппарат kV — в списке отдельной группой, после ускорителей; записей у него пока нет
   await page.click('#eq-add-machine');
   await pause();
   await page.locator('[data-card^="machine:"]:not(.jkv) input[data-bind$="|name"]').fill('Versa HD');
   await pause();
   await page.goto(`${server.url}/index.html#history`);
   await page.waitForSelector('#hs_machine option', { state: 'attached' });
-  assert.deepEqual(await page.locator('#hs_machine option').allTextContents(), ['Versa HD']);
+  assert.deepEqual(await page.locator('#hs_machine option').allTextContents(), ['Versa HD', 'Xstrahl 300']);
+  assert.equal(await page.locator('#hs_machine optgroup').getAttribute('label'), 'Рентгенотерапевтические аппараты');
+  await page.selectOption('#hs_machine', { label: 'Xstrahl 300' });
+  await pause();
+  assert.match(await page.locator('#hs-kv-records').innerText(), /^Записей пока нет: во вкладке «kV-рентген» выберите этот аппарат/);
 
   // по-английски — без кириллицы в карточке (кроме введённых значений)
   await page.goto(`${server.url}/index.html#equipment`);

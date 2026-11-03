@@ -49,9 +49,9 @@ test('kV-рентген: лист «Сводка и протокол» — св�
 
   // протокол: шапка, проверка выхода, итоги листов, заключение
   const head = await rowsText(page, '#kv-prot table.kv-prot-head tr');
-  assert.deepEqual(head.slice(0, 4), ['Дата 15.09.2026', 'Учреждение Пример', 'Аппарат Рентгенотерапевтический аппарат (демо)', 'Условия измерений T 21,0–21,8 °C; относительная влажность 44–45 %; P 100,40–100,50 кПа']);
-  assert.match(head[4], /^Средства измерений камера PTW 30013 № \S+, электрометр .+ \(режимы 1, 2\) фантом: вода$/);
-  assert.equal(head[5], 'Методика измерений TRS-398 Rev.1 (МАГАТЭ, 2024), разд. 9 (средние энергии)');
+  assert.deepEqual(head.slice(0, 5), ['Дата 15.09.2026', 'Учреждение Пример', 'Аппарат Рентгенотерапевтический аппарат (демо)', 'Вид измерения калибровка', 'Условия измерений T 21,0–21,8 °C; относительная влажность 44–45 %; P 100,40–100,50 кПа']);
+  assert.match(head[5], /^Средства измерений камера PTW 30013 № \S+, электрометр .+ \(режимы 1, 2\) фантом: вода$/);
+  assert.equal(head[6], 'Методика измерений TRS-398 Rev.1 (МАГАТЭ, 2024), разд. 9 (средние энергии)');
   assert.deepEqual(await page.locator('#kv-prot h4').allInnerTexts(), ['1. Проверка радиационного выхода (мощность дозы в воде)', '2. Слой половинного ослабления и kQ', '3. Ошибка таймера', '4. Линейность выхода', '5. Воспроизводимость выхода', 'Заключение', 'Примечания']);
   const out = await rowsText(page, '#kv-prot table.kv-prot-out tbody tr');
   assert.equal(out.length, 5);
@@ -84,7 +84,7 @@ test('kV-рентген: лист «Сводка и протокол» — св�
   await page.fill('#kv_method', 'Методика учреждения');
   await page.fill('#kv_checker', 'Руководитель группы');
   await pause();
-  assert.match((await rowsText(page, '#kv-prot table.kv-prot-head tr'))[5], /разд\. 9 \(средние энергии\); Методика учреждения$/);
+  assert.match((await rowsText(page, '#kv-prot table.kv-prot-head tr'))[6], /разд\. 9 \(средние энергии\); Методика учреждения$/);
   assert.deepEqual(await page.locator('#kv-prot table.kv-prot-sign th[scope="row"]').allInnerTexts(), ['Измерения провёл', 'Протокол проверил']);
   assert.equal(await page.locator('#kv-prot table.kv-prot-sign td.sig-name').nth(1).innerText(), 'Руководитель группы');
 

@@ -2,7 +2,7 @@
 import { KV_DEFAULTS, KV_SET_UNITS, normalizeKv } from '../core/kv.js';
 import {
   emptyKvRow, kvRowLabel, kvRowEmpty, KV_ROW_KEYS, normalizeKvVisit, splitKvVisitForm, kvVisitRowForm, computeKvVisit, newKvMode, newKvChamber,
-  kvModeLabel, kvModeFrom } from '../core/kv-session.js';
+  kvModeFrom } from '../core/kv-session.js';
 import { KV_CHAMBERS, kvChamberLabel, KV_PHANTOMS, resolveKvPhantom, kvPhantomStatus } from '../core/kv-tables.js';
 import { TG61_T8_CHAMBER } from '../core/kv-tg61.js';
 import { SAMPLE_KV, SAMPLE_KV_EN, SAMPLE_KV_ROWS, SAMPLE_KV_MODE2, SAMPLE_KV_MODE2_EN } from '../core/sample-kv.js';
@@ -17,6 +17,9 @@ import { setupKvHvl, renderHvlSheet, renderPlates, readPlates, hvlFieldSub, hvlR
 import { KV_PLATE_KEYS, hvlDecimals } from '../core/kv-hvl.js';
 import { setupKvQa, renderQaSheets, qaPageState, qaReportLines } from './kv-qa-ui.js';
 import { setupKvSummary, renderSummarySheets, outputReportLines } from './kv-summary-ui.js';
+import { kvModeName, kvChamberName } from '../core/kv-summary.js';
+import { kvRecModeText } from '../core/kv-records.js';
+import { makeJournalView } from './journal-view.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf, renderCompliance, complianceLine, ctrlErrorText,
@@ -398,7 +401,7 @@ function modeState(mr, md) {
   });
   return lvl;
 }
-const modeName = (m) => kvModeLabel(visit.modes[m].shared) || L('пучок не задан', 'beam not set');
+const modeName = (m) => kvModeName(visit, m);
 /** Пучок режима для протокола: напряжение, ток, СПО и фильтр — что введено. */
 function modeBeamText(f) {
   const t = (k) => String(f[k] ?? '').trim();
@@ -413,17 +416,7 @@ function modeBeamText(f) {
 }
 
 /** Название камеры: модель и серийный номер. */
-function chamberName(ch) {
-  const id = String(ch?.kv_ch_model ?? '');
-  let name = '';
-  if (id === 'CUSTOM' || id.startsWith('MY:')) name = [ch.kv_cc_maker, ch.kv_cc_model].map((v) => String(v ?? '').trim()).filter(Boolean).join(' ');
-  else if (id) {
-    const c = KV_CHAMBERS.find((x) => x.id === id);
-    name = c ? kvChamberLabel(c) : id;
-  }
-  const sn = String(ch?.kv_ch_serial ?? '').trim();
-  return [name || L('камера не выбрана', 'no chamber selected'), sn ? L(`№ ${sn}`, `S/N ${sn}`) : ''].filter(Boolean).join(' ');
-}
+const chamberName = kvChamberName;
 /** Номера режимов (с 1), в которых выбрана камера j. */
 const chamberModes = (j) => visit.modes.flatMap((md, m) => (md.chamber === j ? [m + 1] : []));
 
@@ -1631,6 +1624,7 @@ function reportText(data, r, all = null, vr = null) {
   line(L('Учреждение', 'Institution'), data.kv_institution || '—');
   line(L('Аппарат', 'Machine'), data.kv_machine || '—');
   line(L('Дата', 'Date'), data.kv_date || '—');
+  line(L('Вид измерения', 'Measurement'), kvRecModeText(data.kv_rec_mode));
   line(L('Измерения выполнили', 'Measured by'), data.kv_staff.filter((s) => s.trim()).join(', ') || '—');
   const hvlTxt = i.hvlSource === 'measured' ? L(`${fmt(i.hvl, hvlDecimals(i.hvl))} мм ${mat} (измеренный)`, `${fmt(i.hvl, hvlDecimals(i.hvl))} mm ${mat} (measured)`) : `${data.kv_hvl || '—'} ${L('мм', 'mm')} ${mat}`;
   line(vr && visit.modes.length > 1 ? L(`Пучок (режим ${visit.mode + 1})`, `Beam (mode ${visit.mode + 1})`) : L('Пучок', 'Beam'), L(`${data.kv_kv || '—'} кВ${data.kv_ma ? `, ${data.kv_ma} мА` : ''}, СПО ${hvlTxt}${data.kv_filter ? `, фильтр ${data.kv_filter}` : ''}`, `${data.kv_kv || '—'} kV${data.kv_ma ? `, ${data.kv_ma} mA` : ''}, HVL ${hvlTxt}${data.kv_filter ? `, filter ${data.kv_filter}` : ''}`));
@@ -1949,6 +1943,55 @@ function update(opts = {}) {
   notifyUpdate(ROOT());
 }
 
+/**
+ * Вкладка как файл .json: result — итог выбранной строки выбранного режима (как в файлах до 0.36.0), modeResults —
+ * итоги всех строк всех режимов для сверки при открытии. Так же хранится вкладка в записи журнала kV (с 0.46.0).
+ */
+function payloadObj() {
+  return structuredClone({
+    ...FILE_TAG,
+    ...fileStamp(snapshot(current.result)),
+    modeResults: current.vr.modes.map((mr) => mr.results.map(snapshot)),
+    savedAt: new Date().toISOString(),
+    form: current.data,
+    common: visit.common,
+    chambers: visit.chambers,
+    modes: visit.modes,
+    mode: visit.mode,
+  });
+}
+
+// запись журнала kV во вкладке: прежние данные вкладки откладываются и возвращаются кнопкой на плашке (journal-view.js)
+let viewFile = null;
+const journalView = makeJournalView({
+  bar: () => $('#kv-journal-bar'),
+  storageKey: 'reference-dosimetry.kv.journal-view.v1',
+  readForm: () => ({ version: FILE_TAG.version, ...structuredClone(visit) }),
+  writeForm: (v) => {
+    setVisit(normalizeKvVisit(v));
+    writeForm(rowForm(sess.active));
+  },
+  refresh: () => {
+    // запись журнала сверяется с сохранённым в ней итогом, как открытый файл
+    openedFile = viewFile;
+    viewFile = null;
+    update();
+  },
+  setStatus: (t) => setStatus(t),
+  viewText: (title) => L(
+    `Запись журнала: ${title}. Здесь видны все листы, поправки и замечания. Изменения в журнал не попадают, пока не нажата «Заменить запись в журнале» (панель «Журнал» справа).`,
+    `Journal record: ${title}. All sheets, corrections and messages are shown here. Changes do not go to the journal until “Replace the journal record” is clicked (the Journal panel on the right).`,
+  ),
+});
+
+/** Запись журнала kV во вкладке («Журнал и тренды» → «Открыть во вкладке»): file — вкладка из записи. */
+export function showKvRecord(file, title) {
+  checkFileFormat(file, FILE_TAG);
+  viewFile = file;
+  journalView.show(file, { mode: 'view', title });
+  setStatus(L(`Открыта запись журнала: ${title}.`, `Journal record opened: ${title}.`));
+}
+
 /** Смена языка: списки с переведёнными подписями, подписи ячеек, десятичный разделитель, пересчёт. */
 function refreshForLang() {
   const kept = $$('select', ROOT()).map((sel) => [sel, sel.value]);
@@ -2007,7 +2050,12 @@ export function initKv() {
     },
     status: (t) => setStatus(t),
     isDemo: () => !!current.data && isDemo(current.data),
+    // запись в журнал kV (с 0.46.0): расчёт вкладки и вкладка как файл
+    vr: () => current.vr,
+    file: () => payloadObj(),
   });
+  // запись журнала, открытая во вкладке («Журнал и тренды» → «Открыть во вкладке»): плашка над листами
+  journalView.load();
   // лист «СПО и k_Q»: набор пластин, переход к режиму из таблицы по режимам
   setupKvHvl({
     getVisit: () => visit,
@@ -2026,8 +2074,6 @@ export function initKv() {
   // лист «Сводка и протокол»: сводная таблица и протокол измерений
   setupKvSummary({
     getVisit: () => visit,
-    modeName: (m) => modeName(m),
-    chamberName: (j) => chamberName(visit.chambers[j]),
     openRow: (m, i) => openRow(m, i),
     status: (t) => setStatus(t),
   });
@@ -2205,24 +2251,7 @@ export function initKv() {
     setStatus(L('Форма очищена.', 'The form has been cleared.'));
   });
 
-  // result — итог выбранной строки выбранного режима (как в файлах до 0.36.0), modeResults — итоги всех строк всех
-  // режимов для сверки при открытии
-  const payload = () =>
-    JSON.stringify(
-      {
-        ...FILE_TAG,
-        ...fileStamp(snapshot(current.result)),
-        modeResults: current.vr.modes.map((mr) => mr.results.map(snapshot)),
-        savedAt: new Date().toISOString(),
-        form: current.data,
-        common: visit.common,
-        chambers: visit.chambers,
-        modes: visit.modes,
-        mode: visit.mode,
-      },
-      null,
-      2,
-    );
+  const payload = () => JSON.stringify(payloadObj(), null, 2);
   $('#kv-btn-save').addEventListener('click', () => {
     const name = ['kV', current.data.kv_machine, current.data.kv_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-');
     downloadText(payload(), `dosimetry_${name}.json`);

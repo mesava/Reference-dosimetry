@@ -10,7 +10,7 @@ import { CO_DEFAULTS } from '../core/cobalt.js';
 import { initCobalt, importCobalt, cobaltStatus, applyCobaltPatch, cobaltUncSource, cobaltCurrentForm, showInCobalt, setCobaltJournalSave } from './cobalt-ui.js';
 import { initPhotons, importPhotons, photonsStatus, applyPhotonsPatch, photonsUncSource, photonsCurrentForm, showInPhotons, setPhotonsJournalSave } from './photons-ui.js';
 import { initElectrons, importElectrons, electronsStatus, applyElectronsPatch, electronsUncSource, electronsCurrentForm, showInElectrons, setElectronsJournalSave } from './electrons-ui.js';
-import { initKv, importKv, kvStatus, kvUncSource, kvShown } from './kv-ui.js';
+import { initKv, importKv, kvStatus, kvUncSource, kvShown, showKvRecord } from './kv-ui.js';
 import { initCrossCal, importCrossCal, crossCalStatus, setCrossCalTransfer } from './crosscal-ui.js';
 import { initUncTool, importUncTool, uncToolStatus, setUncSources, applyStability } from './uncertainty-tool-ui.js';
 import { initJaffe, importJaffe, jaffeStatus } from './jaffe-ui.js';
@@ -226,6 +226,12 @@ function initJournalBridges() {
   setHistoryBridge({
     // записанный пучок — во вкладке дозиметрии со всеми поправками (просмотр)
     openInTab: (kind, form, title) => showInTab(kind, form, { mode: 'view', title }),
+    // запись журнала kV — во вкладке «kV-рентген» со всеми листами (прежние данные вкладки возвращаются с плашки)
+    openKv: (file, title) => {
+      switchTo('kv');
+      showKvRecord(file, title);
+      toTop();
+    },
     // оценка стабильности дозиметра по проверкам второй камерой — в бюджет неопределённости
     toBudget: (u, text) => {
       switchTo('uncertainty');

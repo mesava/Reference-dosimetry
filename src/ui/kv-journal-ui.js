@@ -2,12 +2,14 @@
 // аппарата из «Оборудования» (или ручной ввод — разовая проверка), отметка его режимов и «Подставить отмеченные режимы»;
 // «Сохранить аппарат в Оборудование» — режимы, аппликаторы, камеры с kV-сертификатом и электрометры вкладки в журнал
 // (core/kv-journal.js). Данные вкладки (visit) живут в kv-ui.js: сюда приходят функции доступа к ним.
+// С 0.46.0 — панель «Журнал» справа: «Записать в журнал» — измерение аппарата за день (core/kv-records.js).
 import { L } from '../core/i18n.js';
 import { kvMachineModeTitle, applicatorText, hvlUnit } from '../core/kv-machine.js';
 import { kvVisitFromMachine, kvMachineFromVisit, kvSaveText, kvMachineText } from '../core/kv-journal.js';
+import { recordKvVisit, kvRecordOn, kvRecMode, kvRecModeText, kvRecordCounts } from '../core/kv-records.js';
 import { chamberText } from '../core/journal.js';
 import { parseCells } from '../core/units.js';
-import { $, esc, richText, dateText } from './common.js';
+import { $, esc, richText, dateText, today, fmtSigned } from './common.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
 
 let api = null;
@@ -18,6 +20,7 @@ let armedFill = 0;
 let hvlAsk = null;
 let note = '';
 let lastHtml = '';
+let lastRec = '';
 
 const kvMachines = (j) => j.machines.filter((m) => m.kind === 'kv');
 const machineName = (m) => kvMachineText(m) || L('аппарат без названия', 'unnamed unit');
@@ -78,7 +81,7 @@ export function renderKvJournal() {
       : `<p class="jlink-st none">${esc(L('У аппарата нет режимов: заведите их в «Оборудовании» или сохраните туда режимы вкладки.', 'The unit has no modes: add them in Equipment or save the modes of the tab there.'))}</p>`;
   }
   const st = m
-    ? L(`Аппарат журнала: ${machineName(m)}. Подстановка заменяет режимы вкладки отмеченными режимами аппарата — пучок, камера с kV-сертификатом из «Оборудования», электрометр и аппликаторы, без показаний; дата и сотрудники остаются.`, `Journal unit: ${machineName(m)}. Filling in replaces the modes of the tab with the ticked modes of the unit: the beam, the chamber with its kV certificate from Equipment, the electrometer and the applicators, without readings; the date and staff stay.`)
+    ? L(`Аппарат журнала: ${machineName(m)}. Подстановка заменяет режимы вкладки отмеченными режимами аппарата — пучок, камера с kV-сертификатом из «Оборудования», электрометр и аппликаторы, без показаний; дата и сотрудники остаются. Измерение записывается в журнал кнопкой «Записать в журнал» (панель «Журнал» справа).`, `Journal unit: ${machineName(m)}. Filling in replaces the modes of the tab with the ticked modes of the unit: the beam, the chamber with its kV certificate from Equipment, the electrometer and the applicators, without readings; the date and staff stay. The measurement is recorded to the journal with “Record to journal” (the Journal panel on the right).`)
     : ms.length
       ? L('Ручной ввод: вкладка не связана с аппаратом «Оборудования». Выберите аппарат, чтобы подставить его режимы, или сохраните вкладку в «Оборудование» — появится новый аппарат.', 'Manual entry: the tab is not linked to a unit in Equipment. Select a unit to fill in its modes, or save the tab to Equipment as a new unit.')
       : L('В «Оборудовании» рентгенотерапевтических аппаратов нет: вкладка заполняется вручную. «Сохранить аппарат в Оборудование» заведёт аппарат с режимами, аппликаторами и камерами вкладки.', 'There are no x-ray therapy units in Equipment: the tab is filled in by hand. “Save the unit to Equipment” creates a unit with the modes, applicators and chambers of the tab.');
@@ -95,6 +98,74 @@ export function renderKvJournal() {
     lastHtml = html;
     el.innerHTML = html;
   }
+  renderRecord(j, v, m);
+}
+
+/** Почему записать нельзя ('' — можно) и проба записи (без файла вкладки). */
+function recordDry(j, v) {
+  if (api.isDemo()) return { why: L('Открыт демонстрационный пример: в журнал он не записывается.', 'A demonstration example is open: it is not recorded to the journal.'), dry: null };
+  const dry = recordKvVisit(j, { visit: v, vr: api.vr?.(), today: today() });
+  return { why: dry.error ?? '', dry };
+}
+
+/** Панель «Журнал» справа: запись измерения аппарата за день (видна, когда вкладка связана с аппаратом). */
+function renderRecord(j, v, m) {
+  const el = $('#kv-jrec');
+  if (!el) return;
+  if (!v.common.kv_jmachine) {
+    el.hidden = true;
+    el.innerHTML = '';
+    lastRec = '';
+    return;
+  }
+  const { why, dry } = recordDry(j, v);
+  const date = String(v.common.kv_date || '');
+  const old = m && date ? kvRecordOn(j, m.id, date) : null;
+  const n = dry && !dry.error ? kvRecordCounts(dry.record) : null;
+  const what = n
+    ? L(
+      `В запись: режимов ${n.modes}, строк аппликаторов ${n.rows}${n.over.length ? `; вне допуска: ${n.over.length}` : ''}${n.nobase ? `; без базового значения: ${n.nobase}` : ''}.`,
+      `To be recorded: modes ${n.modes}, applicator rows ${n.rows}${n.over.length ? `; out of tolerance: ${n.over.length}` : ''}${n.nobase ? `; without a baseline: ${n.nobase}` : ''}.`,
+    )
+    : '';
+  const html = `<h2>${esc(L('Журнал', 'Journal'))}</h2>
+    <p>${esc([m ? machineName(m) : '—', kvRecModeText(kvRecMode(v)), date ? dateText(date) : L('дата не указана', 'no date')].join(' · '))}</p>
+    ${old ? `<p class="sub-hint">${esc(L(`Запись аппарата за эту дату уже есть в журнале (${kvRecModeText(old.mode)}): она будет заменена.`, `A record of the unit for this date is already in the journal (${kvRecModeText(old.mode)}): it will be replaced.`))}</p>` : ''}
+    ${why ? `<p class="jlink-st warn">${richText(why)}</p>` : what ? `<p class="sub-hint">${esc(what)}</p>` : ''}
+    <div class="actions"><button type="button" class="primary" data-kvr="record"${why ? ' disabled' : ''}>${esc(old ? L('Заменить запись в журнале', 'Replace the journal record') : L('Записать в журнал', 'Record to journal'))}</button></div>
+    <p class="sub-hint">${esc(L('Одна запись — аппарат за день: все режимы, листы и итоги. Записи, протокол и «Открыть во вкладке» — «Журнал» → «Журнал и тренды».', 'One record is the unit for a day: all modes, sheets and results. The records, the report and “Open in the tab” are in Journal → Journal and trends.'))}</p>`;
+  el.hidden = false;
+  if (html !== lastRec) {
+    lastRec = html;
+    el.innerHTML = html;
+  }
+}
+
+function record() {
+  const v = api.getVisit();
+  const { why } = recordDry(getJournal(), v);
+  if (why) {
+    api.status(why);
+    return;
+  }
+  let res = null;
+  updateJournal((j) => {
+    res = recordKvVisit(j, { visit: v, vr: api.vr?.(), file: api.file?.() ?? null, today: today() });
+    return res.error ? j : res.journal;
+  }, 'kv');
+  if (res.error) {
+    api.status(res.error);
+    return;
+  }
+  const m = res.journal.machines.find((x) => x.id === res.record.machineId);
+  const n = kvRecordCounts(res.record);
+  const over = n.over.length
+    ? L(` Вне допуска — требуется калибровка: ${n.over.map((x) => `режим ${x.m + 1}, ${x.label} (${fmtSigned(x.dev, 2)} %)`).join('; ')}.`, ` Out of tolerance, calibration required: ${n.over.map((x) => `mode ${x.m + 1}, ${x.label} (${fmtSigned(x.dev, 2)} %)`).join('; ')}.`)
+    : '';
+  api.status(L(
+    `${res.replaced ? 'Запись в журнале заменена' : 'Измерение записано в журнал'}: ${machineName(m)}, ${dateText(res.record.date)}, ${kvRecModeText(res.record.mode)} — режимов ${n.modes}, строк аппликаторов ${n.rows}.${over} Записи и протокол — «Журнал и тренды»; сохраните журнал в файл, если автосохранение не включено.`,
+    `${res.replaced ? 'The journal record has been replaced' : 'The measurement has been recorded to the journal'}: ${machineName(m)}, ${dateText(res.record.date)}, ${kvRecModeText(res.record.mode)}: modes ${n.modes}, applicator rows ${n.rows}.${over} The records and the report are in Journal and trends; save the journal file if autosave is off.`,
+  ));
 }
 
 function pickMachine(id) {
@@ -159,7 +230,10 @@ function save(replaceHvl = null) {
   api.status(kvSaveText(m, res.report));
 }
 
-/** Подключить блок: a — { getVisit, replaceVisit(visit), setLinks(machineId, modeId(md, i)), status(text), isDemo() }. */
+/**
+ * Подключить блок: a — { getVisit, replaceVisit(visit), setLinks(machineId, modeId(md, i)), status(text), isDemo(), vr(),
+ * file() } — vr — расчёт вкладки, file — вкладка как файл .json (для записи в журнал).
+ */
 export function setupKvJournal(a) {
   api = a;
   const el = $('#kv-jbind');
@@ -188,6 +262,10 @@ export function setupKvJournal(a) {
       hvlAsk = null;
       renderKvJournal();
     }
+  });
+  $('#kv-jrec')?.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-kvr]');
+    if (b && !b.disabled && b.dataset.kvr === 'record') record();
   });
   onJournal(() => renderKvJournal());
   renderKvJournal();

@@ -2,8 +2,10 @@
 // «Сводная» учреждения) и протокол измерений (как форма «Протокол измерений»): шапка, проверка радиационного выхода
 // с решением о калибровке, итоги листов СПО, ошибки таймера, линейности и воспроизводимости, подписи. Протокол
 // печатается отдельно от рабочего листа (body.print-kv-protocol, styles.css). Данные — core/kv-summary.js.
+// С 0.46.0 тот же протокол — у записи журнала kV («Журнал и тренды»): kvProtocolHtml.
 import { L, getLang } from '../core/i18n.js';
-import { kvOutputRows, kvDoseMatrix, kvClimate, kvSheetChecks } from '../core/kv-summary.js';
+import { kvOutputRows, kvDoseMatrix, kvClimate, kvSheetChecks, kvModeName, kvChamberName } from '../core/kv-summary.js';
+import { kvRecMode, kvRecModeText } from '../core/kv-records.js';
 import { hvlDecimals } from '../core/kv-hvl.js';
 import { PRESSURE_UNITS, unitLabel } from '../core/units.js';
 import { $, esc, fmt, fmtSigned, versionText, dateText, printToPdf } from './common.js';
@@ -40,7 +42,7 @@ function renderMatrix(visit, blocks) {
       const unit = b.unit ? `, ${esc(b.unit)}` : '';
       const head = b.modes
         .map((m) => {
-          const name = api.modeName(m);
+          const name = kvModeName(visit, m);
           const u = b.unit ? '' : `<small>${esc(b.units[m])}</small>`;
           return `<th class="v" scope="col"><button type="button" class="kv-svd-mode" data-m="${m}" title="${esc(L('Открыть режим на листе «Поглощённая доза»', 'Open the mode on the Absorbed dose sheet'))}">${m + 1}</button> ${esc(name)}${u}</th>`;
         })
@@ -81,7 +83,7 @@ function devicesHtml(visit, vr) {
     const modes = visit.modes.map((md, m) => (md.chamber === j ? m + 1 : 0)).filter(Boolean);
     const el = [str(ch?.kv_el_model), str(ch?.kv_el_serial) ? L(`№ ${str(ch.kv_el_serial)}`, `S/N ${str(ch.kv_el_serial)}`) : ''].filter(Boolean).join(' ');
     const who = used.length > 1 || visit.modes.length > 1 ? L(` (режим${modes.length > 1 ? 'ы' : ''} ${modes.join(', ')})`, ` (mode${modes.length > 1 ? 's' : ''} ${modes.join(', ')})`) : '';
-    return esc(L(`камера ${api.chamberName(j)}${el ? `, электрометр ${el}` : ''}${who}`, `chamber ${api.chamberName(j)}${el ? `, electrometer ${el}` : ''}${who}`));
+    return esc(L(`камера ${kvChamberName(ch)}${el ? `, электрометр ${el}` : ''}${who}`, `chamber ${kvChamberName(ch)}${el ? `, electrometer ${el}` : ''}${who}`));
   });
   const phantoms = [...new Set(vr.modes.flatMap((mr) => mr.results.map((r) => r.phantom?.clin?.name).filter(Boolean)))];
   if (phantoms.length) items.push(esc(L(`фантом: ${phantoms.join('; ')}`, `phantom: ${phantoms.join('; ')}`)));
@@ -109,7 +111,7 @@ function outputTable(visit, rows) {
           const cls = r.verdict === 'over' ? ' bad' : r.verdict === 'ok' ? ' good' : '';
           const du = u ? '' : ` <small>${esc(r.unit)}</small>`;
           return `<tr${k === 0 ? ' class="grp"' : ''}>
-            ${k === 0 ? `<td class="mode" rowspan="${rs.length}">${m + 1}. ${esc(api.modeName(m))}</td>` : ''}
+            ${k === 0 ? `<td class="mode" rowspan="${rs.length}">${m + 1}. ${esc(kvModeName(visit, m))}</td>` : ''}
             <td>${esc(r.label || '—')}${r.std ? ` <span class="kv-std">${L('ст.', 'ref.')}</span>` : ''}</td>
             <td class="v">${esc(r.ssd || '—')}</td>
             <td>${esc(whereText(r.where))}</td>
@@ -141,23 +143,23 @@ function hvlTable(visit, vr, list) {
     const meas = h.ok ? `${fmt(h.used, hvlDecimals(h.used))} ± ${fmt(h.U, h.U < 0.01 ? 4 : 3)}` : L('не вычислен', 'not calculated');
     const inCalc = Number.isFinite(r.inputs?.hvl) ? `${fmt(r.inputs.hvl, hvlDecimals(r.inputs.hvl))} (${r.inputs.hvlSource === 'measured' ? L('измеренный', 'measured') : L('номинальный', 'nominal')})` : '—';
     const kq = Number.isFinite(r.cert?.value) ? fmt(r.cert.value, r.form?.kv_cert_form === 'n' ? 6 : 4) : '—';
-    return `<tr><td>${h.m + 1}. ${esc(api.modeName(h.m))}</td><td class="v">${esc(h.nominal || '—')} ${esc(u)}</td><td class="v">${meas} ${esc(u)}</td><td class="v">${esc(inCalc)}</td><td class="v">${kq}</td></tr>`;
+    return `<tr><td>${h.m + 1}. ${esc(kvModeName(visit, h.m))}</td><td class="v">${esc(h.nominal || '—')} ${esc(u)}</td><td class="v">${meas} ${esc(u)}</td><td class="v">${esc(inCalc)}</td><td class="v">${kq}</td></tr>`;
   });
   return table([[esc(L('Режим', 'Mode'))], [esc(L('СПО номинальный', 'Nominal HVL')), 1], [esc(L('СПО измеренный ± U (k = 2)', 'Measured HVL ± U (k = 2)')), 1], [esc(L('СПО в расчёте', 'HVL used')), 1], ['k<sub>Q</sub>', 1]], rows);
 }
 
-function timerTable(list) {
+function timerTable(visit, list) {
   const rows = list.map((t) => {
     const time = t.unit === 'min' || t.unit === 's';
     const v = time ? `${fmtSigned(t.tauS, 2)} ${L('с', 's')}` : fmtSigned(t.tau, 3);
     const tol = Number.isFinite(t.tol) && t.tol ? `${tolText(t.tol)} ${L('с', 's')}` : '—';
     const txt = !t.ok ? L('τ не вычислена', 'τ not calculated') : !t.tol ? L('допуск не задан', 'no tolerance set') : t.inTol ? L('в допуске', 'within tolerance') : L('больше допуска', 'exceeds tolerance');
-    return `<tr><td>${t.m + 1}. ${esc(api.modeName(t.m))}</td><td class="v">${t.ok ? v : '—'}</td><td class="v">${tol}</td>${res(t.ok && t.tol && !t.inTol, t.ok && t.tol && t.inTol, txt)}</tr>`;
+    return `<tr><td>${t.m + 1}. ${esc(kvModeName(visit, t.m))}</td><td class="v">${t.ok ? v : '—'}</td><td class="v">${tol}</td>${res(t.ok && t.tol && !t.inTol, t.ok && t.tol && t.inTol, txt)}</tr>`;
   });
   return table([[esc(L('Режим', 'Mode'))], ['τ', 1], [esc(L('Допуск |τ|', 'Tolerance |τ|')), 1], [esc(L('Результат', 'Result'))]], rows);
 }
 
-function lnTable(list, tol) {
+function lnTable(visit, list, tol) {
   const rows = list.map((a) => {
     const u = a.unit ? L(a.unit.label, a.unit.labelEn) : '';
     const q = a.q.length ? `${a.q.map((x) => fmt(x, Number.isInteger(x) ? 0 : x * 10 === Math.round(x * 10) ? 1 : 2)).join('; ')} ${esc(u)}` : '—';
@@ -166,16 +168,16 @@ function lnTable(list, tol) {
     const has = Number.isFinite(tol.d) || Number.isFinite(tol.cl);
     const bad = a.dOver || a.clOver;
     const txt = !a.ok || a.dMax < 0 ? L('не вычислена', 'not calculated') : !has ? L('допуск не задан', 'no tolerance set') : bad ? L('больше допуска', 'exceeds tolerance') : L('в допуске', 'within tolerance');
-    return `<tr><td>${a.m + 1}. ${esc(api.modeName(a.m))}</td><td class="v">${q}</td><td class="v">${d}</td><td class="v">${cl}</td>${res(bad, a.ok && a.dMax >= 0 && has && !bad, txt)}</tr>`;
+    return `<tr><td>${a.m + 1}. ${esc(kvModeName(visit, a.m))}</td><td class="v">${q}</td><td class="v">${d}</td><td class="v">${cl}</td>${res(bad, a.ok && a.dMax >= 0 && has && !bad, txt)}</tr>`;
   });
   return table([[esc(L('Режим', 'Mode'))], [esc(L('Задания', 'Settings')), 1], [esc(L('Отклонение от пропорциональности', 'Deviation from proportionality')), 1], [esc(L('CL наибольший', 'Largest CL')), 1], [esc(L('Результат', 'Result'))]], rows);
 }
 
-function rpTable(list, tol) {
+function rpTable(visit, list, tol) {
   const rows = list.map((b) => {
     const has = Number.isFinite(tol);
     const txt = !b.ok ? L('не вычислена', 'not calculated') : !has ? L('допуск не задан', 'no tolerance set') : b.over ? L('больше допуска', 'exceeds tolerance') : L('в допуске', 'within tolerance');
-    return `<tr><td>${b.m + 1}. ${esc(api.modeName(b.m))}</td><td class="v">${b.n ?? '—'}</td><td class="v">${b.ok ? `${fmt(b.R * 100, 2)} %` : '—'}</td><td class="v">${b.ok ? `${fmt(b.cv * 100, 2)} %` : '—'}</td>${res(b.over, b.ok && has && !b.over, txt)}</tr>`;
+    return `<tr><td>${b.m + 1}. ${esc(kvModeName(visit, b.m))}</td><td class="v">${b.n ?? '—'}</td><td class="v">${b.ok ? `${fmt(b.R * 100, 2)} %` : '—'}</td><td class="v">${b.ok ? `${fmt(b.cv * 100, 2)} %` : '—'}</td>${res(b.over, b.ok && has && !b.over, txt)}</tr>`;
   });
   return table([[esc(L('Режим', 'Mode'))], ['n', 1], ['R = |1 − K<sub>min</sub>/K<sub>max</sub>|', 1], ['s/M̄', 1], [esc(L('Результат', 'Result'))]], rows);
 }
@@ -212,8 +214,8 @@ function signHtml(visit) {
   return `<table class="kv-prot-sign"><tbody>${rows.join('')}</tbody></table>`;
 }
 
-function renderProtocol(visit, vr, rows) {
-  const box = $('#kv-prot');
+/** Протокол измерений (HTML) по данным вкладки: лист «Сводка и протокол» и запись журнала kV. */
+export function kvProtocolHtml(visit, vr, rows = withBase(visit, kvOutputRows(visit, vr))) {
   const c = visit.common;
   const ch = kvSheetChecks(visit, vr, rows);
   const cl = kvClimate(visit);
@@ -228,6 +230,7 @@ function renderProtocol(visit, vr, rows) {
     ${headRow(L('Дата', 'Date'), esc(str(c.kv_date) ? dateText(str(c.kv_date)) : '—'))}
     ${headRow(L('Учреждение', 'Institution'), esc(str(c.kv_institution) || '—'))}
     ${headRow(L('Аппарат', 'Unit'), esc(str(c.kv_machine) || '—'))}
+    ${headRow(L('Вид измерения', 'Measurement'), esc(kvRecModeText(kvRecMode(visit))))}
     ${headRow(L('Условия измерений', 'Conditions'), esc(climate || '—'))}
     ${headRow(L('Средства измерений', 'Measuring equipment'), devicesHtml(visit, vr) || '—')}
     ${headRow(L('Методика измерений', 'Method'), methodHtml(visit, vr))}
@@ -249,12 +252,12 @@ function renderProtocol(visit, vr, rows) {
     );
   }
   if (ch.hvl.length) sec(L('Слой половинного ослабления и k<sub>Q</sub>', 'Half-value layer and k<sub>Q</sub>'), hvlTable(visit, vr, ch.hvl), L('СПО — TRS-398 Rev.1, разд. 8.3.2 и 9.3.2; k<sub>Q</sub> — по сертификату камеры режима.', 'HVL: TRS-398 Rev.1, Sec. 8.3.2 and 9.3.2; k<sub>Q</sub> from the certificate of the mode chamber.'));
-  if (ch.timer.length) sec(esc(L('Ошибка таймера', 'Timer error')), timerTable(ch.timer), esc(L('Допуск — по методике учреждения.', 'Tolerance: local procedure.')));
+  if (ch.timer.length) sec(esc(L('Ошибка таймера', 'Timer error')), timerTable(visit, ch.timer), esc(L('Допуск — по методике учреждения.', 'Tolerance: local procedure.')));
   if (ch.ln.length) {
     const t = [Number.isFinite(ch.lnTol.d) ? L(`отклонение ≤ ${tolText(ch.lnTol.d)} %`, `deviation ≤ ${tolText(ch.lnTol.d)} %`) : '', Number.isFinite(ch.lnTol.cl) ? `CL ≤ ${fmt(ch.lnTol.cl, 4).replace(/0+$/, '').replace(/[,.]$/, '')}` : ''].filter(Boolean).join('; ');
-    sec(esc(L('Линейность выхода', 'Output linearity')), lnTable(ch.ln, ch.lnTol), esc(L(`Не TRS-398 Rev.1 — по методике учреждения${t ? `; допуски: ${t}` : ''}.`, `Not TRS-398 Rev.1, local procedure${t ? `; tolerances: ${t}` : ''}.`)));
+    sec(esc(L('Линейность выхода', 'Output linearity')), lnTable(visit, ch.ln, ch.lnTol), esc(L(`Не TRS-398 Rev.1 — по методике учреждения${t ? `; допуски: ${t}` : ''}.`, `Not TRS-398 Rev.1, local procedure${t ? `; tolerances: ${t}` : ''}.`)));
   }
-  if (ch.rp.length) sec(esc(L('Воспроизводимость выхода', 'Output reproducibility')), rpTable(ch.rp, ch.rpTol), esc(L(`Не TRS-398 Rev.1 — по методике учреждения${Number.isFinite(ch.rpTol) ? `; допуск R ≤ ${tolText(ch.rpTol)} %` : ''}.`, `Not TRS-398 Rev.1, local procedure${Number.isFinite(ch.rpTol) ? `; tolerance R ≤ ${tolText(ch.rpTol)} %` : ''}.`)));
+  if (ch.rp.length) sec(esc(L('Воспроизводимость выхода', 'Output reproducibility')), rpTable(visit, ch.rp, ch.rpTol), esc(L(`Не TRS-398 Rev.1 — по методике учреждения${Number.isFinite(ch.rpTol) ? `; допуск R ≤ ${tolText(ch.rpTol)} %` : ''}.`, `Not TRS-398 Rev.1, local procedure${Number.isFinite(ch.rpTol) ? `; tolerance R ≤ ${tolText(ch.rpTol)} %` : ''}.`)));
   if (n === 0) parts.push(`<p class="sub-hint">${esc(L('Проверок пока нет: протокол заполнится по мере ввода на листах.', 'No checks yet: the protocol fills in as the sheets are filled.'))}</p>`);
   const concl = conclusion(visit, rows, ch);
   if (concl.length) parts.push(`<h4 class="kv-prot-h">${esc(L('Заключение', 'Conclusion'))}</h4><p>${concl.map(esc).join('<br>')}</p>`);
@@ -262,15 +265,19 @@ function renderProtocol(visit, vr, rows) {
   if (notes) parts.push(`<h4 class="kv-prot-h">${esc(L('Примечания', 'Notes'))}</h4><p class="kv-prot-notes">${esc(notes)}</p>`);
   parts.push(signHtml(visit));
   parts.push(`<p class="kv-prot-ver">${esc(L(`Расчёт: калькулятор «Клиническая дозиметрия», ${versionText()}, https://mesava.github.io/Reference-dosimetry/`, `Calculation: Clinical Dosimetry calculator, ${versionText()}, https://mesava.github.io/Reference-dosimetry/`))}</p>`);
-  box.innerHTML = parts.join('');
-  box.lang = getLang();
+  return parts.join('');
 }
+
+/** Строки проверки выхода с базой, как она введена в строке («Сравнить с»). */
+const withBase = (visit, rows) => rows.map((r) => ({ ...r, baseRaw: str(visit.modes[r.m].rows[r.i].kv_ref) }));
 
 /** Лист «Сводка и протокол»: сводная таблица и протокол измерений. */
 export function renderSummarySheets(visit, vr) {
-  const rows = kvOutputRows(visit, vr).map((r) => ({ ...r, baseRaw: str(visit.modes[r.m].rows[r.i].kv_ref) }));
+  const rows = withBase(visit, kvOutputRows(visit, vr));
   renderMatrix(visit, kvDoseMatrix(visit, vr, rows));
-  renderProtocol(visit, vr, rows);
+  const box = $('#kv-prot');
+  box.innerHTML = kvProtocolHtml(visit, vr, rows);
+  box.lang = getLang();
 }
 
 /** Строки протокола текстом: проверка радиационного выхода (итог по всем строкам). */
@@ -305,7 +312,7 @@ function printProtocol(pdf) {
   else window.print();
 }
 
-/** Подключить лист: a — { getVisit, modeName(m), chamberName(j), openRow(m, i), status(text) }. */
+/** Подключить лист: a — { getVisit, openRow(m, i), status(text) }. */
 export function setupKvSummary(a) {
   api = a;
   $('#kv-svd').addEventListener('click', (e) => {
