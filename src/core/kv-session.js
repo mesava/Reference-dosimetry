@@ -185,7 +185,7 @@ export function computeKvSession(sess, ext = {}) {
 // измерена (таймер — свойство аппарата, камера значения не имеет).
 
 /** Поля, общие для всех режимов. */
-export const KV_COMMON_KEYS = ['kv_institution', 'kv_machine', 'kv_jmachine', 'kv_date', 'kv_staff', 'kv_notes', 'kv_env_P_unit', 'kv_tol', 'kv_tau_tol', ...KV_HVL_TOL_KEYS, ...KV_PLATE_KEYS, ...KV_QA_TOL_KEYS];
+export const KV_COMMON_KEYS = ['kv_institution', 'kv_machine', 'kv_jmachine', 'kv_date', 'kv_staff', 'kv_notes', 'kv_method', 'kv_checker', 'kv_env_P_unit', 'kv_tol', 'kv_tau_tol', ...KV_HVL_TOL_KEYS, ...KV_PLATE_KEYS, ...KV_QA_TOL_KEYS];
 /** Поля камеры: камера, сертификат и условия калибровки, электрометр, напряжения и полярность. */
 export const KV_CHAMBER_KEYS = [
   'kv_ch_model', 'kv_cc_maker', 'kv_cc_model', 'kv_cc_type', 'kv_ch_serial', 'kv_foil',

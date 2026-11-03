@@ -64,6 +64,9 @@ export const KV_DEFAULTS = {
   kv_date: '',
   kv_staff: [''],
   kv_notes: '',
+  // лист «Сводка и протокол» (с 0.45.0): методика измерений и кто проверил протокол — только для протокола
+  kv_method: '',
+  kv_checker: '',
 
   // пучок
   kv_range: 'low', // 'low' — 10–100 кВ, СПО в мм Al; 'medium' — 80–300 кВ, СПО в мм Cu

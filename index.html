@@ -2519,6 +2519,26 @@
       <p class="sub-hint" id="kv-sum-note" hidden></p>
     </section>
 
+    <section class="step" aria-labelledby="kv-sv1" data-kv-page="summary" data-nav="Сводная таблица">
+      <header><h2 id="kv-sv1">Мощность дозы по аппликаторам</h2>
+        <p class="hint">Как форма «Сводная»: мощность дозы в воде каждого аппликатора (строки) в каждом режиме (столбцы) — низкие энергии на поверхности, средние на глубине 2 г/см² и, если введена PDD(2 см), на поверхности. Под значением — отклонение от значения для сравнения («Сравнить с» в таблице аппликаторов), если оно задано на этой глубине. Номер режима открывает режим, значение — строку на листе «Поглощённая доза».</p></header>
+      <div class="kv-svd" id="kv-svd" data-i18n-skip></div>
+    </section>
+
+    <section class="step kv-prot-sec" aria-labelledby="kv-pr1" data-kv-page="summary" data-nav="Протокол измерений">
+      <header><h2 id="kv-pr1">Протокол измерений</h2>
+        <p class="hint">Как форма «Протокол измерений»: дата, аппарат, условия, средства измерений и методика; проверка радиационного выхода — измеренная мощность дозы против базового значения («Сравнить с» в таблице аппликаторов) с допуском раздела 8: вне допуска — требуется калибровка; итоги листов «СПО и k<sub>Q</sub>», «Ошибка таймера», «Линейность» и «Воспроизводимость»; заключение и подписи. Протокол печатается отдельно от рабочего листа.</p></header>
+      <div class="grid no-print">
+        <div class="field span-2"><label for="kv_method">Методика измерений</label><input type="text" id="kv_method" placeholder="Методика учреждения; инструкция по эксплуатации аппарата"><span class="sub">для протокола; TRS-398 Rev.1 и раздел указываются сами</span></div>
+        <div class="field span-2"><label for="kv_checker">Протокол проверил</label><input type="text" id="kv_checker" placeholder="Должность, ФИО"><span class="sub">для протокола; измерения провели — сотрудники раздела 1</span></div>
+      </div>
+      <div class="actions kv-prot-actions no-print">
+        <button type="button" id="kv-btn-prot-print">Печать протокола</button>
+        <button type="button" id="kv-btn-prot-pdf" data-standalone>Протокол в PDF</button>
+      </div>
+      <div class="kv-prot" id="kv-prot" data-i18n-skip></div>
+    </section>
+
     <!-- 10 -->
     <section class="step" aria-labelledby="kv-s10" data-optional data-kv-page="summary">
       <header><span class="step-no">10</span><h2 id="kv-s10">Примечания</h2></header>

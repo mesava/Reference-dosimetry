@@ -1546,3 +1546,65 @@ table.kv-qaq .kv-qa-pick[aria-pressed="true"] { border-color: var(--accent); bac
   table.kv-qaq tbody tr.active td { background: none; }
   .kv-ln-row[hidden] { display: none !important; }
 }
+/* kV: лист «Сводка и протокол» — сводная таблица «аппликатор × режим» и протокол измерений (с 0.45.0) */
+.kv-svd-block + .kv-svd-block { margin-top: 14px; }
+table.kv-svd-t { width: auto; min-width: 60%; }
+table.kv-svd-t th[scope="col"] { text-transform: none; letter-spacing: 0; font: 500 12.5px var(--font-body); vertical-align: bottom; }
+table.kv-svd-t th[scope="col"].v { text-align: right; }
+table.kv-svd-t th small, table.kv-svd-t td small { display: block; font: 11px var(--font-body); color: var(--muted); white-space: nowrap; }
+table.kv-svd-t th.app { font: 13px var(--font-body); color: var(--ink); text-transform: none; letter-spacing: 0; white-space: nowrap; }
+table.kv-svd-t td.v { text-align: right; }
+table.kv-svd-t td.empty { color: var(--muted); }
+table.kv-svd-t small.dev.good { color: var(--ok); }
+table.kv-svd-t small.dev.bad { color: var(--err); font-weight: 600; }
+.kv-svd-mode { min-width: 1.8em; height: 24px; padding: 0 4px; border: 1px solid var(--rule); border-radius: 4px; background: var(--sheet); color: var(--muted); font: 12px var(--font-mono); cursor: pointer; }
+.kv-svd-cell { border: 0; background: none; padding: 0; color: inherit; font: inherit; cursor: pointer; text-decoration: underline dotted var(--rule); text-underline-offset: 3px; }
+.kv-svd-cell:hover, .kv-svd-cell:focus-visible { color: var(--accent); }
+.kv-prot-actions { margin: 4px 0 12px; }
+.kv-prot { font-size: 13px; }
+.kv-prot table { border-collapse: collapse; width: 100%; }
+.kv-prot th, .kv-prot td { padding: 4px 6px; border: 1px solid var(--rule); text-align: left; vertical-align: top; }
+.kv-prot th { font: 500 12.5px var(--font-body); color: var(--muted); }
+.kv-prot td.v, .kv-prot th.v { text-align: right; }
+.kv-prot td.v { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kv-prot td small { color: var(--muted); font: 11px var(--font-body); }
+table.kv-prot-head th { width: 13em; }
+.kv-prot-h { margin: 14px 0 6px; font: 600 14px var(--font-display); }
+.kv-prot td.good { color: var(--ok); }
+.kv-prot td.bad { color: var(--err); font-weight: 600; }
+.kv-prot td.mode { font-weight: 500; }
+.kv-prot-note { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+.kv-prot-notes { white-space: pre-wrap; }
+table.kv-prot-sign { margin-top: 18px; width: auto; min-width: 60%; }
+table.kv-prot-sign th, table.kv-prot-sign td { border: 0; padding: 14px 8px 2px 0; }
+table.kv-prot-sign th { width: 11em; color: var(--ink); }
+table.kv-prot-sign td.sig-name { min-width: 16em; border-bottom: 1px solid var(--ink); }
+table.kv-prot-sign td.sig-gap { width: 16px; padding: 0; }
+table.kv-prot-sign td.sig-line { width: 10em; border-bottom: 1px solid var(--ink); }
+table.kv-prot-sign tr.sig-cap td { padding: 1px 0 0; font-size: 10.5px; color: var(--muted); text-align: center; }
+.kv-prot td.verdict { white-space: nowrap; }
+.kv-prot-h { break-after: avoid; }
+.kv-prot-ver { margin-top: 12px; font-size: 11px; color: var(--muted); }
+@media (max-width: 560px) {
+  .kv-prot { overflow-x: auto; }
+  table.kv-prot-head th { width: 8em; }
+  table.kv-prot-sign { min-width: 0; }
+  table.kv-prot-sign th { width: 6em; }
+  table.kv-prot-sign td.sig-name { min-width: 9em; }
+  table.kv-prot-sign td.sig-line { width: 6em; }
+}
+@media print {
+  /* рабочий лист печатается без протокола; протокол — кнопкой «Печать протокола», без остального листа */
+  body:not(.print-kv-protocol) #kv-sheet section.kv-prot-sec { display: none !important; }
+  body.print-kv-protocol #kv-sheet > :not(.kv-prot-sec), body.print-kv-protocol #kv-readout { display: none !important; }
+  body.print-kv-protocol section.kv-prot-sec { display: block !important; border: 0; padding: 0; }
+  body.print-kv-protocol section.kv-prot-sec > header .hint { display: none; }
+  body.print-kv-protocol .sheet { zoom: 1; }
+  .kv-svd-mode, .kv-svd-cell { border: 0; background: none; color: inherit; padding: 0; text-decoration: none; }
+  .kv-prot, .kv-prot th { color: #000; }
+  .kv-prot th, .kv-prot td { border-color: #777; }
+  .kv-prot td.good { color: #000; }
+  .kv-prot td.bad { color: #000; }
+  .kv-prot-note, .kv-prot-ver { color: #333; }
+  .kv-prot table, .kv-prot tr { break-inside: avoid; }
+}

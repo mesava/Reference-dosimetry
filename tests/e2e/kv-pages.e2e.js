@@ -64,7 +64,7 @@ test('kV-рентген: листы — разделы по листам, адр
   // единица задания — под таблицей аппликаторов
   assert.ok(await page.locator('#kv_set_unit').isVisible());
   await kvPage(page, 'summary');
-  assert.deepEqual(await shown(page), ['9', '10']);
+  assert.deepEqual(await shown(page), ['9', 'kv-sv1', 'kv-pr1', '10']);
   assert.ok(await page.locator('#kv-modebar').isHidden());
   // листы «СПО и k_Q», «Линейность» и «Воспроизводимость»: разделы без номеров, строка выбора режима
   await kvPage(page, 'hvl');
@@ -104,9 +104,10 @@ test('kV-рентген: листы — разделы по листам, адр
   assert.ok(await page.locator('#module-kv').isVisible());
   assert.equal(await current(page), 'timer');
 
-  // печать: все разделы рабочего листа (листы СПО, линейности и воспроизводимости — раз их проверки проводили), без ярлыков
+  // печать: все разделы рабочего листа (листы СПО, линейности и воспроизводимости — раз их проверки проводили), без ярлыков;
+  // протокол измерений печатается отдельно (kv-summary.e2e.js)
   await page.emulateMedia({ media: 'print' });
-  assert.deepEqual(await shown(page), ['1', '2', 'kv-sh1', 'kv-sh2', 'kv-sh3', '3', 'kv-ln1', 'kv-ln2', 'kv-rp1', 'kv-rp2', '4', '5', '6', '7', '8', '9', '10']);
+  assert.deepEqual(await shown(page), ['1', '2', 'kv-sh1', 'kv-sh2', 'kv-sh3', '3', 'kv-ln1', 'kv-ln2', 'kv-rp1', 'kv-rp2', '4', '5', '6', '7', '8', '9', 'kv-sv1', '10']);
   assert.ok(await page.locator('#kv-pages').isHidden());
   await page.emulateMedia({ media: 'screen' });
   assert.deepEqual(await shown(page), ['3']);

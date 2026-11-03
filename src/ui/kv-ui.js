@@ -16,6 +16,7 @@ import { setupKvJournal, renderKvJournal } from './kv-journal-ui.js';
 import { setupKvHvl, renderHvlSheet, renderPlates, readPlates, hvlFieldSub, hvlReportLines } from './kv-hvl-ui.js';
 import { KV_PLATE_KEYS, hvlDecimals } from '../core/kv-hvl.js';
 import { setupKvQa, renderQaSheets, qaPageState, qaReportLines } from './kv-qa-ui.js';
+import { setupKvSummary, renderSummarySheets, outputReportLines } from './kv-summary-ui.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf, renderCompliance, complianceLine, ctrlErrorText,
@@ -207,7 +208,7 @@ const sess = {
 const rowForm = (i) => kvVisitRowForm(visit, visit.mode, i);
 
 // текстовые поля: в них число с запятой или точкой — не число (серийный номер, фильтр), разделитель не меняется
-const TEXT_KEYS = new Set(['kv_institution', 'kv_machine', 'kv_jmachine', 'kv_jmode', 'kv_date', 'kv_staff', 'kv_notes', 'kv_filter', 'kv_ph_name', 'kv_ph_note', 'kv_cc_maker', 'kv_cc_model', 'kv_ch_serial', 'kv_el_model', 'kv_el_serial', 'kv_hl_app', 'kv_pl_name', 'kv_pl_mat', 'kv_ln_app', 'kv_rp_app']);
+const TEXT_KEYS = new Set(['kv_institution', 'kv_machine', 'kv_jmachine', 'kv_jmode', 'kv_date', 'kv_staff', 'kv_notes', 'kv_filter', 'kv_ph_name', 'kv_ph_note', 'kv_cc_maker', 'kv_cc_model', 'kv_ch_serial', 'kv_el_model', 'kv_el_serial', 'kv_hl_app', 'kv_pl_name', 'kv_pl_mat', 'kv_ln_app', 'kv_rp_app', 'kv_method', 'kv_checker']);
 /**
  * Десятичный разделитель в числах всех режимов, камер и строк — языка интерфейса (поля формы — localizeDecimals; здесь —
  * невыбранные режимы, камеры и строки: их числа видны в подписях режимов, сводке и протоколе).
@@ -810,7 +811,7 @@ function openRow(m, i) {
 
 // ------------------------------------------------------------ листы вкладки (как ярлыки листов в Excel)
 // Разделы формы разнесены по листам (data-kv-page); виден один лист, у каждого — своя ссылка #kv/<лист>.
-// Листы «Линейность» и «Воспроизводимость» пока заготовки. Печать и PDF — все разделы, как раньше.
+// Печать и PDF — все разделы, как раньше, кроме протокола измерений: он печатается отдельно (лист «Сводка и протокол»).
 const PAGE_KEY = 'reference-dosimetry.kv.page';
 const KV_PAGES = ['modes', 'hvl', 'timer', 'linearity', 'repro', 'dose', 'summary'];
 const WIP_PAGES = new Set();
@@ -1663,6 +1664,8 @@ function reportText(data, r, all = null, vr = null) {
   }
   // линейность и воспроизводимость по режимам (листы «Линейность» и «Воспроизводимость»)
   if (vr) qaReportLines(visit, vr).forEach((l) => out.push(l));
+  // проверка радиационного выхода: база, измерение, отклонение и калибровка по всем строкам (лист «Сводка и протокол»)
+  if (vr) outputReportLines(visit, vr).forEach((l) => out.push(l));
   const coneTxt =
     data.kv_cone_shape === 'square'
       ? L(`квадратный тубус ${data.kv_cone || '—'} см (круг той же площади Ø ${fmt(i.fClin, 2)} см)`, `square applicator ${data.kv_cone || '—'} cm (circle of equal area, ${fmt(i.fClin, 2)} cm diameter)`)
@@ -1922,6 +1925,7 @@ function update(opts = {}) {
   renderChamberPick();
   renderSectionTags();
   renderSummary(vr);
+  renderSummarySheets(visit, vr);
   applyVisibility(data, result);
   renderOutputs(ROOT(), result);
   renderFlags(ROOT(), { ...result.flags, ...all.hvl.flags, ...all.ln.flags, ...all.rp.flags }, seriesBox);
@@ -2019,6 +2023,14 @@ export function initKv() {
   });
   // листы «Линейность» и «Воспроизводимость»: переход к режиму из таблиц по режимам
   setupKvQa({ getVisit: () => visit, modeName: (m) => modeName(m), selectMode: (m) => selectMode(m) });
+  // лист «Сводка и протокол»: сводная таблица и протокол измерений
+  setupKvSummary({
+    getVisit: () => visit,
+    modeName: (m) => modeName(m),
+    chamberName: (j) => chamberName(visit.chambers[j]),
+    openRow: (m, i) => openRow(m, i),
+    status: (t) => setStatus(t),
+  });
   update();
   if (!draft) setStatus(L('Введите свои данные или нажмите «Загрузить пример» (раздел «Данные»), чтобы посмотреть расчёт на вымышленных значениях.', 'Enter your own data or click "Load example" (the Data panel) to see the calculation on fictitious values.'));
 

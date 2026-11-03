@@ -1063,4 +1063,18 @@ export const STATIC_EN = {
   "Все режимы аппарата: число показаний, среднее, K<sub>min</sub> и K<sub>max</sub>, R и s/M̄. Номер режима открывает его.": "All modes of the machine: the number of readings, the mean, K<sub>min</sub> and K<sub>max</sub>, R and s/M̄. The mode number opens it.",
   "Линейность режима": "Linearity of the mode",
   "Воспроизводимость режима": "Reproducibility of the mode",
+  // kV-рентген: лист «Сводка и протокол» — сводная таблица и протокол измерений (0.45.0)
+  "Мощность дозы по аппликаторам": "Dose rate by applicator",
+  "Как форма «Сводная»: мощность дозы в воде каждого аппликатора (строки) в каждом режиме (столбцы) — низкие энергии на поверхности, средние на глубине 2 г/см² и, если введена PDD(2 см), на поверхности. Под значением — отклонение от значения для сравнения («Сравнить с» в таблице аппликаторов), если оно задано на этой глубине. Номер режима открывает режим, значение — строку на листе «Поглощённая доза».": "Like the local summary form: the dose rate in water of each applicator (rows) in each mode (columns), low energies at the surface, medium energies at a depth of 2 g/cm² and, if PDD(2 cm) is entered, at the surface. Below the value is the deviation from the comparison value (“Compare with” in the applicator table), if it is given at this depth. The mode number opens the mode, the value opens the row on the Absorbed dose sheet.",
+  "Протокол измерений": "Measurement report",
+  "Как форма «Протокол измерений»: дата, аппарат, условия, средства измерений и методика; проверка радиационного выхода — измеренная мощность дозы против базового значения («Сравнить с» в таблице аппликаторов) с допуском раздела 8: вне допуска — требуется калибровка; итоги листов «СПО и k<sub>Q</sub>», «Ошибка таймера», «Линейность» и «Воспроизводимость»; заключение и подписи. Протокол печатается отдельно от рабочего листа.": "Like the local measurement report form: date, unit, conditions, measuring equipment and method; the radiation output check, the measured dose rate against the baseline (“Compare with” in the applicator table) with the tolerance of section 8: outside tolerance, calibration is required; the results of the HVL and k<sub>Q</sub>, Timer error, Linearity and Reproducibility sheets; conclusion and signatures. The report is printed separately from the worksheet.",
+  "Методика измерений": "Method of measurement",
+  "Методика учреждения; инструкция по эксплуатации аппарата": "Local procedure; operating manual of the unit",
+  "для протокола; TRS-398 Rev.1 и раздел указываются сами": "for the report; TRS-398 Rev.1 and the section are added automatically",
+  "Протокол проверил": "Checked by",
+  "Должность, ФИО": "Position, name",
+  "для протокола; измерения провели — сотрудники раздела 1": "for the report; measured by: the staff of section 1",
+  "Печать протокола": "Print the report",
+  "Протокол в PDF": "Report to PDF",
+  "Сводная таблица": "Summary table",
 };
