@@ -76,6 +76,9 @@ test('kV-рентген ↔ «Оборудование»: сохранить а�
   assert.equal(await card.locator('.jkv-mode').first().locator('select[data-bind$="|refApplicator"] option:checked').innerText(), 'Ø 10 см, РИП 50 см — по Rev.1');
   const ch = page.locator('[data-card^="chamber:"]');
   assert.match(await ch.innerText(), /kV-сертификат\s+ND,w; NQo и kQ по качествам — 4 точки; СПО 0,20–2,00 мм; поле лаборатории Ø 10 см, РИП 100 см\./);
+  // цилиндрическая камера из табл. 32 — и для kV-рентгена (подпись модели и пометка в списке моделей)
+  assert.match(await ch.locator('.field', { hasText: 'Модель' }).innerText(), /для фотонов, электронов, ⁶⁰Co и kV-рентгена/);
+  assert.match(await ch.locator('select[data-bind$="|form.ch_model"] option:checked').innerText(), /· и для kV-рентгена$/);
   // камера с kV-сертификатом без пучков МВ — N_D,w в ⁶⁰Co не требуется
   assert.doesNotMatch(await ch.locator('.jcard-head').innerText(), /не заполнено/);
   // в списке моделей — камеры только для kV-рентгена

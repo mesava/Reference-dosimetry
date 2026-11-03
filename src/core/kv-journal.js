@@ -122,7 +122,11 @@ function upsertChamber(j, vc, rep) {
   const name = custom ? [vc.kv_cc_maker, vc.kv_cc_model].map((s) => str(s).trim()).filter(Boolean).join(' ') : '';
   const kv = pick(vc, KV_CERT_KEYS);
   if (custom) Object.assign(kv, { kv_cc_maker: str(vc.kv_cc_maker), kv_cc_model: str(vc.kv_cc_model), kv_cc_type: vc.kv_cc_type === 'cyl' ? 'cyl' : 'pp' });
-  let ch = j.chambers.find((c) => c.form?.ch_model === model && norm(c.form?.ch_serial) === norm(vc.kv_ch_serial) && (!custom || norm(c.form?.e_other_name) === norm(name)));
+  // своя камера вкладки — «другая» камера журнала с тем же названием или камера журнала не из списка вкладки
+  // (подставленная своей с названием записи, kvChamberFromRecord): по названию без номера
+  const sameCustom = (c) =>
+    c.form?.ch_model === 'OTHER' ? norm(c.form?.e_other_name) === norm(name) : !kvModelOfJournal(c.form?.ch_model) && norm(chamberText({ form: { ...c.form, ch_serial: '' } })) === norm(name);
+  let ch = j.chambers.find((c) => norm(c.form?.ch_serial) === norm(vc.kv_ch_serial) && (custom ? !isBlank(c.form?.ch_model) && sameCustom(c) : c.form?.ch_model === model));
   if (!ch) {
     ch = {
       ...CHAMBER_DEFAULTS,

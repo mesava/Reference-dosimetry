@@ -173,6 +173,21 @@ test('туда и обратно: вкладка из «Оборудования
   // камера журнала не из списка вкладки — своя с названием записи
   const ph = kvChamberFromRecord({ form: { ch_model: 'PTW31013', ch_serial: '8' } }, null);
   assert.deepEqual([ph.kv_ch_model, ph.kv_cc_model, ph.kv_cc_type, ph.kv_ch_serial], ['CUSTOM', 'PTW 31013', 'cyl', '8']);
+  // и при сохранении находит ту же запись (не заводит «другую» камеру), kV-сертификат — в неё
+  const j3 = journal();
+  j3.chambers.push({ id: 'ch3', form: { ch_model: 'PTW31013', ch_serial: '8' } });
+  j3.machines[0].modes[0].chamberId = 'ch3';
+  const v3 = kvVisitFromMachine(j3, j3.machines[0], ['k50'], normalizeKvVisit(null)).visit;
+  v3.chambers[0].kv_n = '0,0512';
+  const r3 = kvMachineFromVisit(j3, v3);
+  assert.equal(r3.journal.chambers.length, 3);
+  assert.deepEqual(r3.report.chambersAdded, []);
+  assert.deepEqual(r3.report.certSaved, ['PTW 31013 № 8']);
+  assert.equal(r3.journal.chambers[2].kv.kv_n, '0,0512');
+  assert.equal(r3.journal.machines[0].modes[0].chamberId, 'ch3');
+  // обратно — снова своей камерой с тем же названием и сертификатом
+  const back3 = kvChamberFromRecord(r3.journal.chambers[2], null);
+  assert.deepEqual([back3.kv_ch_model, back3.kv_cc_model, back3.kv_cc_type, back3.kv_n], ['CUSTOM', 'PTW 31013', 'cyl', '0,0512']);
   // расчёт вкладки после подстановки идёт (строки считаются)
   assert.equal(computeKvVisit(v).modes.length, 3);
 });
