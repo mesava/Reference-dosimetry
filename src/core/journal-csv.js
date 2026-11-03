@@ -25,6 +25,9 @@ function cell(v, sep) {
   return /["\r\n]/.test(s) || s.includes(sep) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+/** Число и ячейка CSV — и для записей kV (core/kv-trends.js). */
+export { num as csvNum, cell as csvCell };
+
 const kindText = (k) => ({ photon: L('фотоны', 'photons'), electron: L('электроны', 'electrons'), cobalt: '⁶⁰Co' })[k];
 const statusText = (s) => ({ ok: L('в допуске', 'within tolerance'), out: L('вне допуска', 'out of tolerance'), nonominal: L('нет номинала', 'no nominal'), error: L('ошибка', 'error') })[s] ?? '';
 

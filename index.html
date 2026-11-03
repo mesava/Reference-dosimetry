@@ -3881,10 +3881,33 @@
       </div>
     </section>
 
-    <section class="step hs-kv" aria-labelledby="hs-kv-s2" id="hs-kv-sec" hidden>
-      <header><span class="step-no">2</span><h2 id="hs-kv-s2">Записи журнала</h2>
-        <p class="hint">Запись — рентгенотерапевтический аппарат за день: все режимы и листы вкладки «kV-рентген» с итогами по режимам и аппликаторам. «Открыть во вкладке» показывает запись со всеми листами, поправками и замечаниями; «Протокол» — протокол измерений, как на листе «Сводка и протокол».</p></header>
+    <section class="step hs-kv" aria-labelledby="hs-kv-s2" id="hs-kv-out-sec" hidden>
+      <header><span class="step-no">2</span><h2 id="hs-kv-s2">Выход по режимам</h2>
+        <p class="hint">Отклонение мощности дозы стандартного тубуса режима от базы — значения «Сравнить с» строки (с 0.47.0 — по умолчанию из последней калибровки режима); по линии на режим. Сплошные значки — калибровка, полые — проверка выхода, пунктир — допуск. Наведите курсор на график, чтобы увидеть значения; остальные аппликаторы — в сводной ниже.</p></header>
+      <div class="chart-box" id="hs-kv-chart" data-i18n-skip></div>
+      <div class="chart-legend" id="hs-kv-legend" data-i18n-skip></div>
+    </section>
+
+    <section class="step hs-kv" aria-labelledby="hs-kv-s3" id="hs-kv-sum-sec" hidden>
+      <header><span class="step-no">3</span><h2 id="hs-kv-s3">Сводная по датам</h2>
+        <p class="hint">Мощность дозы каждого аппликатора каждого режима по датам, как в форме «Сводная»: низкие энергии — на поверхности, средние — на глубине 2 г/см²; под значением — отклонение от базы. Последние даты справа.</p></header>
+      <label class="check"><input type="checkbox" id="hs_kv_checks"> <span>С проверками выхода (иначе только калибровки)</span></label>
+      <div class="table-wrap" id="hs-kv-sum" data-i18n-skip></div>
+      <div class="actions"><button type="button" id="hs-kv-copy">Скопировать сводную для Excel</button></div>
+    </section>
+
+    <section class="step hs-kv" aria-labelledby="hs-kv-s4" id="hs-kv-mode-sec" hidden>
+      <header><span class="step-no">4</span><h2 id="hs-kv-s4">Режим по датам</h2>
+        <p class="hint">СПО, ошибка таймера τ, k<sub>pol</sub>, k<sub>s</sub>, значение сертификата камеры по СПО, линейность и воспроизводимость режима в каждой записи. Значения из другого режима или из последней калибровки помечены. Их изменение от калибровки к калибровке — ранний признак неполадки трубки, таймера, камеры или электрометра.</p></header>
+      <div class="field"><label for="hs_kv_mode">Режим</label><select id="hs_kv_mode" data-i18n-skip></select></div>
+      <div class="table-wrap" id="hs-kv-mode" data-i18n-skip></div>
+    </section>
+
+    <section class="step hs-kv" aria-labelledby="hs-kv-s5" id="hs-kv-sec" hidden>
+      <header><span class="step-no">5</span><h2 id="hs-kv-s5">Записи журнала</h2>
+        <p class="hint">Запись — измерение рентгенотерапевтического аппарата за день по режимам: режимы и листы вкладки «kV-рентген» с итогами по режимам и аппликаторам. «Открыть во вкладке» показывает запись со всеми листами, поправками и замечаниями; «Протокол» — протокол измерений, как на листе «Сводка и протокол».</p></header>
       <div id="hs-kv-records" data-i18n-skip></div>
+      <div class="actions"><button type="button" id="hs-kv-csv">Выгрузить записи аппарата в CSV</button></div>
     </section>
 
     <section class="step hs-beam" aria-labelledby="hs-s2">

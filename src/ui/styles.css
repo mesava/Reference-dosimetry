@@ -1292,6 +1292,14 @@ table.kv-sum th.act, table.kv-sum td.act { width: 1.6em; text-align: center; }
 table.kv-sum .kv-sum-pick { min-width: 2.4em; height: 26px; padding: 0 4px; border: 1px solid var(--rule); border-radius: 4px; background: var(--sheet); color: var(--muted); font: 12px var(--font-mono); cursor: pointer; }
 table.kv-sum tr.active .kv-sum-pick { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
 table.kv-sum .kv-std { font: 600 10px var(--font-body); color: var(--accent); cursor: help; }
+table.kv-sum-dates .kv-std { font: 600 10px var(--font-body); color: var(--accent); }
+table.kv-sum-dates td.mode { font-weight: 500; }
+table.kv-sum-dates td.kv-sum-check { font-style: italic; }
+/* заголовки таблиц kV в «Журнале и трендах» — без прописных: единицы (мм Cu, τ) и вид записи читаются как есть */
+#hs-kv-mode td.kv-ch { white-space: nowrap; }
+#hs-kv-mode th, #hs-kv-sum th { text-transform: none; letter-spacing: 0; font: 500 12.5px var(--font-body); vertical-align: bottom; }
+#hs-kv-mode td small, #hs-kv-sum td small { font: 11px var(--font-body); }
+#hs-kv-mode td small:not(.st-out), #hs-kv-sum td small:not(.st-out) { color: var(--muted); }
 #kv-sum-note:empty { display: none; }
 @media (max-width: 560px) {
   /* карточка строки: № | режим, камера (у первой строки режима) | аппликатор, РИП, состояние | D, сравнение, отклонение */

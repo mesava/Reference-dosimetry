@@ -11,6 +11,8 @@ import { renderSpc, renderCommon, spcMessages, renderChecks, checkSignalMessages
 import { journalCsv, checksCsv, csvFileName } from '../core/journal-csv.js';
 import { setupFilePanel, beamMachines, fmtDate, countWord, dayToIso, monthLabel, monthTicks } from './journal-common.js';
 import { kvRecordsOf, kvRecordCounts, kvRecModeText, kvJournalInputs } from '../core/kv-records.js';
+import { kvOutputSeries, kvDoseByDate, kvDoseByDateTsv, kvModeHistory, kvTrendModes, kvSrcText, kvRecordsCsv } from '../core/kv-trends.js';
+import { KV_SET_UNITS } from '../core/kv.js';
 import { kvMachineText } from '../core/kv-journal.js';
 import { normalizeKvVisit, computeKvVisit } from '../core/kv-session.js';
 import { kvProtocolHtml } from './kv-summary-ui.js';
@@ -266,9 +268,149 @@ function renderKvReadout(j) {
   $('#hs-mobile-value').textContent = `${kvMachineText(m) || '—'}: ${recs.length}`;
 }
 
-/** Разделы страницы: у рентгенотерапевтического аппарата — только записи kV, у остальных — тренды пучков. */
+
+// ------------------------------------------------------------ рентгенотерапевтический аппарат: тренды (с 0.48.0)
+let kvModeSel = ''; // режим таблицы «Режим по датам»
+let kvChecks = false; // сводная по датам — с проверками выхода
+const kvModeName = (s) => `${s.n ? `${s.n}. ` : ''}${s.title}`;
+const kindShort = (k) => (k === 'check' ? L('проверка', 'check') : L('калибровка', 'calibration'));
+
+/** Выход по режимам: отклонение стандартного тубуса режима от базы по датам, по линии на режим. */
+function renderKvChart(j) {
+  const m = machineOf(j, machineId);
+  const box = $('#hs-kv-chart');
+  const legend = $('#hs-kv-legend');
+  const series = kvOutputSeries(j, m)
+    .map((s) => ({ ...s, pts: s.points.filter((p) => Number.isFinite(p.dev) && Number.isFinite(p.day)) }))
+    .filter((s) => s.pts.length);
+  if (!series.length) {
+    box.innerHTML = `<p class="chart-empty">${esc(L('График появится, когда у записей будет база для сравнения: со второй калибровки режима (база — предыдущая калибровка) или со значением «Сравнить с», введённым во вкладке.', 'The plot appears once the records have a baseline: from the second calibration of a mode (the baseline is the previous calibration) or with a “Compare with” value entered in the tab.'))}</p>`;
+    legend.innerHTML = '';
+    return;
+  }
+  const cls = (i) => `t${(i % 8) + 1}`;
+  const all = series.flatMap((s) => s.pts);
+  const tols = all.map((p) => p.tol).filter(Number.isFinite);
+  const tol = tols.length ? Math.max(...tols) : 2;
+  const yr = Math.max(tol, 2);
+  const days = all.map((p) => p.day);
+  const x0 = Math.min(...days);
+  const x1 = Math.max(...days);
+  const tip = (s, p) => `${kvModeName(s)}, ${p.label}, ${fmtDate(p.date)}: ${fmtSigned(p.dev, 2)} % (${kindShort(p.kind)})`;
+  scatterChart(box, {
+    label: L('Отклонение мощности дозы стандартного тубуса от базы по датам записей', 'Deviation of the reference-applicator dose rate from the baseline by record date'),
+    xLabel: L('Дата измерения', 'Measurement date'),
+    yLabel: L('Отклонение от базы, %', 'Deviation from the baseline, %'),
+    fmt,
+    xFmt: monthLabel,
+    xTicks: monthTicks,
+    xInclude: x0 === x1 ? [x0 - 15, x1 + 15] : [],
+    yInclude: [-yr, yr],
+    aspect: 0.5,
+    series: [
+      ...series.map((s, i) => ({ cls: cls(i), line: true, points: s.pts.map((p) => ({ x: p.day, y: p.dev })) })),
+      ...series.map((s, i) => ({ cls: cls(i), shape: 'circle', points: s.pts.map((p) => ({ x: p.day, y: p.dev, hollow: p.kind === 'check', title: tip(s, p) })) })),
+    ],
+    lines: [
+      { cls: 'aux', a: tol, b: 0, x0: x0 - 400, x1: x1 + 400, dashed: true },
+      { cls: 'aux', a: -tol, b: 0, x0: x0 - 400, x1: x1 + 400, dashed: true },
+    ],
+    notes: [{ x: x0, y: tol, text: `+${fmt(tol, tol % 1 ? 1 : 0)} %`, anchor: 'start' }, { x: x0, y: -tol, text: `−${fmt(tol, tol % 1 ? 1 : 0)} %`, anchor: 'start', below: true }],
+    crosshair: (x) => {
+      let best = days[0];
+      for (const d of days) if (Math.abs(d - x) < Math.abs(best - x)) best = d;
+      const rows = series
+        .map((s, i) => {
+          const p = s.pts.find((q) => q.day === best);
+          return p ? { cls: cls(i), y: p.dev, text: `${kvModeName(s)}: ${fmtSigned(p.dev, 2)} %` } : null;
+        })
+        .filter(Boolean);
+      return rows.length ? { x: best, head: fmtDate(dayToIso(best)), rows } : null;
+    },
+  });
+  legend.innerHTML =
+    series.map((s, i) => `<span class="item">${legendSwatch({ line: true, cls: cls(i) })}<span>${esc(`${kvModeName(s)} — ${s.pts.at(-1).label}`)}</span></span>`).join('') +
+    `<span class="item">${legendSwatch({ cls: 't1', hollow: true })}<span>${esc(L('полый значок — проверка выхода', 'hollow marker: output check'))}</span></span>` +
+    `<span class="item">${legendSwatch({ line: true, dashed: true, cls: 'aux' })}<span>${esc(L('допуск', 'tolerance'))}</span></span>`;
+}
+
+/** Сводная по датам: мощность дозы «режим × аппликатор», колонки — даты (калибровки или все записи). */
+function renderKvSummary(j) {
+  const m = machineOf(j, machineId);
+  const t = kvDoseByDate(j, m, { checks: kvChecks });
+  $('#hs_kv_checks').checked = kvChecks;
+  $('#hs-kv-copy').disabled = !t.rows.length;
+  if (!t.rows.length) {
+    $('#hs-kv-sum').innerHTML = `<p class="sub-hint">${esc(kvChecks || !kvRecordsOf(j, machineId).length ? L('Записей этого аппарата нет.', 'No records for this unit.') : L('Калибровок этого аппарата в журнале нет: отметьте «С проверками выхода», чтобы увидеть проверки.', 'No calibrations of this unit in the journal: tick “Include output checks” to see the checks.'))}</p>`;
+    return;
+  }
+  const kinds = (c) => [...c.kinds].map(kindShort).join(', ');
+  const head = `<tr><th>${esc(L('Режим', 'Mode'))}</th><th>${esc(L('Аппликатор', 'Applicator'))}</th><th class="v">${esc(L('РИП, см', 'SSD, cm'))}</th>${t.cols.map((c) => `<th class="v">${esc(fmtDate(c.date))}${kvChecks ? `<br><small>${esc(kinds(c))}</small>` : ''}</th>`).join('')}</tr>`;
+  const groups = new Map();
+  for (const r of t.rows) groups.set(r.modeId, [...(groups.get(r.modeId) ?? []), r]);
+  const body = [...groups.values()]
+    .map((rs) =>
+      rs
+        .map((r, k) => {
+          const std = Object.values(r.cells).some((c) => c.std);
+          const cells = t.cols
+            .map((c) => {
+              const x = r.cells[c.date];
+              if (!x || !Number.isFinite(x.D)) return '<td class="v">—</td>';
+              const dev = Number.isFinite(x.dev) ? `<br><small class="${x.verdict === 'over' ? 'st-out' : ''}">${esc(`${fmtSigned(x.dev, 2)} %`)}</small>` : '';
+              return `<td class="v${x.kind === 'check' ? ' kv-sum-check' : ''}">${fmt(x.D, 4)}${dev}</td>`;
+            })
+            .join('');
+          return `<tr${k === 0 ? ' class="grp"' : ''}>${k === 0 ? `<td class="mode" rowspan="${rs.length}">${esc(kvModeName(r))}<br><small>${esc(`${r.unit}, ${r.where === 'surface' ? L('на поверхности', 'at the surface') : L('на 2 г/см²', 'at 2 g/cm²')}`)}</small></td>` : ''}<td>${esc(r.label)}${std ? ` <span class="kv-std">${esc(L('ст.', 'ref.'))}</span>` : ''}</td><td class="v">${esc(r.ssd || '—')}</td>${cells}</tr>`;
+        })
+        .join(''),
+    )
+    .join('');
+  $('#hs-kv-sum').innerHTML = `<table class="factors kv-sum-dates"><thead>${head}</thead><tbody>${body}</tbody></table>${kvChecks ? `<p class="sub-hint">${esc(L('Проверки выхода — курсивом.', 'Output checks are in italics.'))}</p>` : ''}`;
+}
+
+/** Значение со своим источником мелким шрифтом: «из калибровки 15.09.2026», «из другого режима». */
+const withSrc = (txt, o) => {
+  const s = o ? kvSrcText(o.src, o.date) : '';
+  return `${txt}${s ? `<br><small>${esc(s)}</small>` : ''}`;
+};
+
+/** Режим по датам: СПО, τ, k_pol, k_s, сертификат, линейность и воспроизводимость режима в каждой записи. */
+function renderKvModeTable(j) {
+  const m = machineOf(j, machineId);
+  const modes = kvTrendModes(j, m);
+  if (!modes.some((x) => x.modeId === kvModeSel)) kvModeSel = modes[0]?.modeId ?? '';
+  $('#hs_kv_mode').innerHTML = modes.map((x) => `<option value="${esc(x.modeId)}"${x.modeId === kvModeSel ? ' selected' : ''}>${esc(kvModeName(x))}</option>`).join('');
+  $('#hs_kv_mode').disabled = !modes.length;
+  const rows = kvModeHistory(j, m, kvModeSel).slice().reverse();
+  if (!rows.length) {
+    $('#hs-kv-mode').innerHTML = `<p class="sub-hint">${esc(L('Записей этого аппарата нет.', 'No records for this unit.'))}</p>`;
+    return;
+  }
+  const mat = rows.find((r) => r.hvl)?.hvl.mat ?? 'Cu';
+  const unitOf = (u) => (KV_SET_UNITS[u] ? L(KV_SET_UNITS[u].label, KV_SET_UNITS[u].labelEn) : u);
+  // камера одна во всех записях режима — над таблицей, а не колонкой
+  const chs = [...new Set(rows.map((r) => r.chamber))];
+  const oneCh = chs.length === 1;
+  const tr = rows.map((r) => {
+    // с неопределённостью — оба с одним числом знаков (3, у U < 0,001 мм — 4)
+    const hd = Number.isFinite(r.hvl?.U) ? (r.hvl.U < 0.001 ? 4 : 3) : r.hvl?.used < 1 ? 3 : 2;
+    const hvlTxt = r.hvl ? `${fmt(r.hvl.used, hd)}${Number.isFinite(r.hvl.U) ? ` ± ${fmt(r.hvl.U, hd)}` : ''}` : '';
+    const hvl = !r.hvl ? '—' : r.hvl.source === 'table' ? `${hvlTxt}<br><small>${esc(L('из таблицы режимов', 'from the modes table'))}</small>` : withSrc(hvlTxt, r.hvl.source === 'journal' ? { src: 'journal', date: r.hvl.date } : null);
+    const tau = r.tau ? withSrc(Number.isFinite(r.tau.s) ? `${fmtSigned(r.tau.s, 2)} ${esc(L('с', 's'))}` : `${fmtSigned(r.tau.v, 3)} ${esc(unitOf(r.tau.unit))}`, r.tau) : '—';
+    const k = (o) => (o ? withSrc(fmt(o.v, 4), o) : '—');
+    const cert = r.cert ? (Number.isFinite(r.cert.kQ) ? fmt(r.cert.kQ, 4) : `${fmt(r.cert.value, 6)}<br><small>N</small>`) : '—';
+    const ln = r.ln ? `${fmt(r.ln.dMax * 100, 2)} %${Number.isFinite(r.ln.clMax) ? `<br><small>CL ${fmt(r.ln.clMax, 4)}</small>` : ''}` : '—';
+    const rp = r.rp ? `${fmt(r.rp.R * 100, 2)} %` : '—';
+    return `<tr><td>${esc(fmtDate(r.date))}</td><td>${esc(kindShort(r.kind))}</td><td class="v">${hvl}</td><td class="v">${tau}</td><td class="v">${k(r.kpol)}</td><td class="v">${k(r.ks)}</td><td class="v">${cert}</td><td class="v${r.ln && (r.ln.dOver || r.ln.clOver) ? ' st-out' : ''}">${ln}</td><td class="v${r.rp?.over ? ' st-out' : ''}">${rp}</td>${oneCh ? '' : `<td class="kv-ch">${esc(r.chamber || '—')}</td>`}</tr>`;
+  });
+  $('#hs-kv-mode').innerHTML = `${oneCh ? `<p class="sub-hint kv-mode-ch">${esc(L(`Камера: ${chs[0] || '—'}`, `Chamber: ${chs[0] || '—'}`))}</p>` : ''}<table class="factors"><thead><tr><th>${esc(L('Дата', 'Date'))}</th><th>${esc(L('Вид', 'Kind'))}</th><th class="v">${esc(L(`СПО, мм ${mat}`, `HVL, mm ${mat}`))}</th><th class="v">τ</th><th class="v">k<sub>pol</sub></th><th class="v">k<sub>s</sub></th><th class="v">${esc(L('k_Q (сертификат)', 'k_Q (certificate)')).replace('k_Q', 'k<sub>Q</sub>')}</th><th class="v">${esc(L('Линейность', 'Linearity'))}</th><th class="v">${esc(L('Воспроизв., R', 'Reprod., R'))}</th>${oneCh ? '' : `<th>${esc(L('Камера', 'Chamber'))}</th>`}</tr></thead><tbody>${tr.join('')}</tbody></table>
+    <p class="sub-hint">${esc(L('СПО — в расчёте (± U при k = 2, если измерен в этой записи); τ — в секундах при задании по времени; линейность — наибольшее отклонение от пропорциональности и CL; воспроизводимость — R = |1 − K_min/K_max|. Новые записи сверху.', 'HVL: as used (± U at k = 2 if measured in this record); τ in seconds for a time setting; linearity: the largest deviation from proportionality and CL; reproducibility: R = |1 − K_min/K_max|. Newest records first.'))}</p>`;
+}
+
+/** Разделы страницы: у рентгенотерапевтического аппарата — разделы kV (выход, сводная, режим по датам, записи), у остальных — тренды пучков. */
 function showSections(kv) {
-  $('#hs-kv-sec').hidden = !kv;
+  for (const s of document.querySelectorAll('#hs-sheet section.hs-kv')) s.hidden = !kv;
   $('#hs-kind-field').hidden = kv || $('#hs-kind-field').hidden;
   for (const s of document.querySelectorAll('#hs-sheet section.hs-beam')) {
     if (kv) s.hidden = true;
@@ -345,6 +487,9 @@ function render() {
   $('#hs_machine').innerHTML = machineSelect(j);
   if (isKv(j)) {
     showSections(true);
+    renderKvChart(j);
+    renderKvSummary(j);
+    renderKvModeTable(j);
     renderKvRecords(j);
     renderKvReadout(j);
     renderReport();
@@ -454,6 +599,31 @@ export function initHistory() {
     const rb = e.target.closest('[data-report]');
     if (rb) showReport(rb.dataset.report);
   });
+  // рентгенотерапевтический аппарат: сводная с проверками, её копия для Excel, режим таблицы, CSV записей
+  $('#hs_kv_checks').addEventListener('change', (e) => {
+    kvChecks = e.target.checked;
+    renderKvSummary(getJournal());
+  });
+  $('#hs-kv-copy').addEventListener('click', () => {
+    const j = getJournal();
+    const m = machineOf(j, machineId);
+    if (!m) return;
+    copyText(kvDoseByDateTsv(kvDoseByDate(j, m, { checks: kvChecks })), L('Сводная скопирована: вставьте её в Excel.', 'The summary has been copied: paste it into Excel.'), setStatus);
+  });
+  $('#hs_kv_mode').addEventListener('change', (e) => {
+    kvModeSel = e.target.value;
+    renderKvModeTable(getJournal());
+  });
+  $('#hs-kv-csv').addEventListener('click', () => {
+    const j = getJournal();
+    const m = machineOf(j, machineId);
+    if (!m || !kvRecordsOf(j, machineId).length) {
+      setStatus(L('Записей этого аппарата нет — выгружать нечего.', 'This unit has no records: nothing to export.'));
+      return;
+    }
+    downloadText(kvRecordsCsv(j, m), csvFileName(j, new Date(), `kV_${kvMachineText(m) || m.id}`.replace(/[^\p{L}\p{N}_.-]+/gu, '-')), 'text/csv;charset=utf-8');
+    setStatus(L('Записи аппарата выгружены в CSV: по строке на аппликатор режима в записи; файл открывается в Excel двойным щелчком.', 'The records of the unit have been exported to CSV, one line per applicator of a mode in a record; the file opens in Excel with a double click.'));
+  });
   $('#hs-kv-records').addEventListener('click', (e) => {
     const o = e.target.closest('[data-kv-open]');
     if (o) {
@@ -486,4 +656,11 @@ export function initHistory() {
     renderChart(series);
     renderControl(getJournal(), series);
   }).observe($('#hs-chart'));
+  let wk = 0;
+  new ResizeObserver(() => {
+    const box = $('#hs-kv-chart');
+    if (!box || box.clientWidth === wk || !box.clientWidth || !isKv(getJournal())) return;
+    wk = box.clientWidth;
+    renderKvChart(getJournal());
+  }).observe($('#hs-kv-chart'));
 }
