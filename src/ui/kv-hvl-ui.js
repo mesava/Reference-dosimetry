@@ -4,6 +4,7 @@
 // функции доступа к ним.
 import { L } from '../core/i18n.js';
 import { kvPlateSet, parseThickness, hvlDecimals, KV_PLATE_KEYS } from '../core/kv-hvl.js';
+import { kvHvlSourceText } from '../core/kv-summary.js';
 import { $, $$, esc, fmt, fmtSigned, richText } from './common.js';
 import { localizeDecimals } from './i18n.js';
 
@@ -194,7 +195,7 @@ function renderHvlTable(vr) {
     const mat = h.mat;
     const on = m === v.mode;
     const meas = h.ok ? `${hvlFmt(h.used)} ± ${uFmt(h.U)}<small>${esc(unitText(mat))}, k = 2</small>` : h.state === 'empty' ? '—' : `<small>${esc(L('не вычислен', 'not calculated'))}</small>`;
-    const used = Number.isFinite(r.inputs.hvl) ? `${hvlFmt(r.inputs.hvl)}<small>${esc(r.inputs.hvlSource === 'measured' ? L('измеренный', 'measured') : L('из таблицы режимов', 'from the modes table'))}</small>` : '—';
+    const used = Number.isFinite(r.inputs.hvl) ? `${hvlFmt(r.inputs.hvl)}<small>${esc(kvHvlSourceText(r.inputs))}</small>` : '—';
     const { lvl, tip } = hvlqState(mr, r);
     const ns = r.cal === 'nk' ? 'N<sub>K,Q</sub>' : 'N<sub>D,w,Q</sub>';
     return `<tr data-m="${m}"${on ? ' class="active"' : ''}>
@@ -252,6 +253,7 @@ export function renderHvlSheet(f, vr) {
 /** Подпись поля «СПО» на листе «Аппарат и режимы»: в расчёте — измеренный. */
 export function hvlFieldSub(h, r) {
   if (h?.apply && r?.inputs?.hvlSource === 'measured') return L(`в расчёте — измеренный на листе «СПО и k_Q»: ${hvlFmt(h.used)} ± ${uFmt(h.U)} мм (k = 2)`, `the calculation uses the one measured on the “HVL and k_Q” sheet: ${hvlFmt(h.used)} ± ${uFmt(h.U)} mm (k = 2)`);
+  if (r?.inputs?.hvlSource === 'journal') return L(`в расчёте — ${hvlFmt(r.inputs.hvl)} мм ${kvHvlSourceText(r.inputs)} (проверка выхода)`, `the calculation uses ${hvlFmt(r.inputs.hvl)} mm ${kvHvlSourceText(r.inputs)} (output check)`);
   if (h?.ok) return L(`первый слой половинного ослабления; измеренный (${hvlFmt(h.used)} мм) в расчёт не взят`, `first half-value layer; the measured one (${hvlFmt(h.used)} mm) is not used`);
   return L('первый слой половинного ослабления', 'first half-value layer');
 }
@@ -285,7 +287,7 @@ export function hvlReportLines(visit, vr) {
     const valName = r.form?.kv_cert_form === 'k' ? 'K' : r.form?.kv_cert_form === 'n' ? (r.cal === 'nk' ? 'N_K' : 'N_D,w') : 'k_Q';
     const ns = r.cal === 'nk' ? 'N_K,Q' : 'N_D,w,Q';
     if (Number.isFinite(r.inputs.hvl)) {
-      const src = r.inputs.hvlSource === 'measured' ? L('измеренный', 'measured') : L('из таблицы режимов', 'from the modes table');
+      const src = kvHvlSourceText(r.inputs);
       parts.push(`${L('в расчёте', 'used')} ${hvlFmt(r.inputs.hvl)} ${u} (${src}): ${valName} = ${Number.isFinite(r.cert?.value) ? fmt(r.cert.value, valName === 'k_Q' || valName === 'K' ? 4 : 6) : '—'}, ${ns} = ${Number.isFinite(r.cert?.NQ) ? fmt(r.cert.NQ, 6) : '—'} ${L('Гр/нКл', 'Gy/nC')}${r.cert?.interp?.extrapolated ? L(' (экстраполяция)', ' (extrapolated)') : ''}`);
     }
     out.push(`  ${L(`Режим ${m + 1}`, `Mode ${m + 1}`)} (${api.modeName(m)}): ${parts.join('; ') || '—'}`);

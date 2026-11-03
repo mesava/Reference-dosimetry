@@ -2,11 +2,12 @@
 // аппарата из «Оборудования» (или ручной ввод — разовая проверка), отметка его режимов и «Подставить отмеченные режимы»;
 // «Сохранить аппарат в Оборудование» — режимы, аппликаторы, камеры с kV-сертификатом и электрометры вкладки в журнал
 // (core/kv-journal.js). Данные вкладки (visit) живут в kv-ui.js: сюда приходят функции доступа к ним.
-// С 0.46.0 — панель «Журнал» справа: «Записать в журнал» — измерение аппарата за день (core/kv-records.js).
+// С 0.46.0 — панель «Журнал» справа: «Записать в журнал» — измерение аппарата за день (core/kv-records.js); с 0.47.0
+// запись по режимам и что взято из последней калибровки режима (база «Сравнить с», при проверке выхода — поправки).
 import { L } from '../core/i18n.js';
 import { kvMachineModeTitle, applicatorText, hvlUnit } from '../core/kv-machine.js';
 import { kvVisitFromMachine, kvMachineFromVisit, kvSaveText, kvMachineText } from '../core/kv-journal.js';
-import { recordKvVisit, kvRecordOn, kvRecMode, kvRecModeText, kvRecordCounts } from '../core/kv-records.js';
+import { recordKvVisit, kvRecMode, kvRecModeText, kvRecordCounts, kvRecordsOn } from '../core/kv-records.js';
 import { chamberText } from '../core/journal.js';
 import { parseCells } from '../core/units.js';
 import { $, esc, richText, dateText, today, fmtSigned } from './common.js';
@@ -108,6 +109,38 @@ function recordDry(j, v) {
   return { why: dry.error ?? '', dry };
 }
 
+const listText = (ms) => ms.map((m) => m + 1).join(', ');
+const modesWord = (ms) => (ms.length > 1 ? L(`режимы ${listText(ms)}`, `modes ${listText(ms)}`) : L(`режим ${listText(ms)}`, `mode ${listText(ms)}`));
+
+/**
+ * Что вкладка берёт из журнала (jx — kvJournalInputs, vr — расчёт): последняя калибровка по режимам — база «Сравнить
+ * с» и, при проверке выхода, k_pol, k_s, τ и СПО; режимы без калибровки в журнале; режимы с другой камерой.
+ */
+function journalText(v, jx, vr) {
+  if (!jx) return '';
+  const byDate = new Map();
+  const none = [];
+  const other = [];
+  jx.modes.forEach((x, m) => {
+    if (!x) return;
+    if (!x.cal) none.push(m);
+    else byDate.set(x.cal.date, [...(byDate.get(x.cal.date) ?? []), m]);
+    if (x.chamberOther && vr?.modes[m] && (vr.modes[m].polSrc < 0 || (vr.modes[m].ksOn && vr.modes[m].ksSrc < 0))) other.push(m);
+  });
+  const check = jx.kind === 'check';
+  const out = [];
+  if (byDate.size) {
+    const cals = [...byDate].map(([d, ms]) => (v.modes.length > 1 ? L(`${dateText(d)} (${modesWord(ms)})`, `${dateText(d)} (${modesWord(ms)})`) : dateText(d))).join('; ');
+    out.push(check
+      ? L(`Из последней калибровки режима: база «Сравнить с», а без своих серий — k_pol, k_s, τ и СПО. Калибровка: ${cals}.`, `From the last calibration of the mode: the “Compare with” baseline and, without series of their own, k_pol, k_s, τ and the HVL. Calibration: ${cals}.`)
+      : L(`База «Сравнить с» — из последней калибровки режима: ${cals}.`, `The “Compare with” baseline is from the last calibration of the mode: ${cals}.`));
+  }
+  // при калибровке без прежних калибровок пометка не нужна: база для первой калибровки — ввод в эксплуатацию
+  if (none.length && check) out.push(L(`Калибровок в журнале раньше этой даты нет: ${modesWord(none)} — база и поправки не подставлены.`, `No calibrations in the journal before this date: ${modesWord(none)}; the baseline and corrections are not filled in.`));
+  if (other.length) out.push(L(`Камера не та, что при калибровке: ${modesWord(other)} — k_pol и k_s из журнала не взяты.`, `The chamber differs from the calibration: ${modesWord(other)}; k_pol and k_s are not taken from the journal.`));
+  return out.join(' ');
+}
+
 /** Панель «Журнал» справа: запись измерения аппарата за день (видна, когда вкладка связана с аппаратом). */
 function renderRecord(j, v, m) {
   const el = $('#kv-jrec');
@@ -120,8 +153,20 @@ function renderRecord(j, v, m) {
   }
   const { why, dry } = recordDry(j, v);
   const date = String(v.common.kv_date || '');
-  const old = m && date ? kvRecordOn(j, m.id, date) : null;
-  const n = dry && !dry.error ? kvRecordCounts(dry.record) : null;
+  const ok = dry && !dry.error;
+  const old = ok && dry.replaced ? dry.replacedModes : null;
+  // заменяется весь день (других режимов за эту дату в журнале не останется) или только часть режимов
+  const day = old ? kvRecordsOn(j, m.id, date) : [];
+  const full = old && kvRecordsOn(dry.journal, m.id, date).length === 1;
+  const kinds = [...new Set(day.map((r) => kvRecModeText(r.mode)))].join(L(' и ', ' and '));
+  const oldText = !old ? ''
+    : full
+      ? (day.length > 1
+        ? L(`Записи аппарата за эту дату уже есть в журнале (${kinds}): они будут заменены.`, `Records of the unit for this date are already in the journal (${kinds}): they will be replaced.`)
+        : L(`Запись аппарата за эту дату уже есть в журнале (${kinds}): она будет заменена.`, `A record of the unit for this date is already in the journal (${kinds}): it will be replaced.`))
+      : L(`За эту дату в журнале уже есть ${modesWord(old)}: ${old.length > 1 ? 'их записи будут заменены' : 'его запись будет заменена'}, другие режимы этого дня останутся.`, `The journal already has ${modesWord(old)} for this date: ${old.length > 1 ? 'their records' : 'its record'} will be replaced, other modes of the day stay.`);
+  const n = ok ? kvRecordCounts(dry.record) : null;
+  const jt = journalText(v, api.jx?.(), api.vr?.());
   const what = n
     ? L(
       `В запись: режимов ${n.modes}, строк аппликаторов ${n.rows}${n.over.length ? `; вне допуска: ${n.over.length}` : ''}${n.nobase ? `; без базового значения: ${n.nobase}` : ''}.`,
@@ -130,10 +175,11 @@ function renderRecord(j, v, m) {
     : '';
   const html = `<h2>${esc(L('Журнал', 'Journal'))}</h2>
     <p>${esc([m ? machineName(m) : '—', kvRecModeText(kvRecMode(v)), date ? dateText(date) : L('дата не указана', 'no date')].join(' · '))}</p>
-    ${old ? `<p class="sub-hint">${esc(L(`Запись аппарата за эту дату уже есть в журнале (${kvRecModeText(old.mode)}): она будет заменена.`, `A record of the unit for this date is already in the journal (${kvRecModeText(old.mode)}): it will be replaced.`))}</p>` : ''}
+    ${oldText ? `<p class="sub-hint">${esc(oldText)}</p>` : ''}
+    ${jt ? `<p class="sub-hint kv-jrec-src">${esc(jt)}</p>` : ''}
     ${why ? `<p class="jlink-st warn">${richText(why)}</p>` : what ? `<p class="sub-hint">${esc(what)}</p>` : ''}
     <div class="actions"><button type="button" class="primary" data-kvr="record"${why ? ' disabled' : ''}>${esc(old ? L('Заменить запись в журнале', 'Replace the journal record') : L('Записать в журнал', 'Record to journal'))}</button></div>
-    <p class="sub-hint">${esc(L('Одна запись — аппарат за день: все режимы, листы и итоги. Записи, протокол и «Открыть во вкладке» — «Журнал» → «Журнал и тренды».', 'One record is the unit for a day: all modes, sheets and results. The records, the report and “Open in the tab” are in Journal → Journal and trends.'))}</p>`;
+    <p class="sub-hint">${esc(L('Запись — измерение аппарата за день по режимам: повторная запись того же дня заменяет только свои режимы. Записи, протокол и «Открыть во вкладке» — «Журнал» → «Журнал и тренды».', 'A record is the measurement of the unit on a day, by mode: recording the same day again replaces only its own modes. The records, the report and “Open in the tab” are in Journal → Journal and trends.'))}</p>`;
   el.hidden = false;
   if (html !== lastRec) {
     lastRec = html;
@@ -163,8 +209,8 @@ function record() {
     ? L(` Вне допуска — требуется калибровка: ${n.over.map((x) => `режим ${x.m + 1}, ${x.label} (${fmtSigned(x.dev, 2)} %)`).join('; ')}.`, ` Out of tolerance, calibration required: ${n.over.map((x) => `mode ${x.m + 1}, ${x.label} (${fmtSigned(x.dev, 2)} %)`).join('; ')}.`)
     : '';
   api.status(L(
-    `${res.replaced ? 'Запись в журнале заменена' : 'Измерение записано в журнал'}: ${machineName(m)}, ${dateText(res.record.date)}, ${kvRecModeText(res.record.mode)} — режимов ${n.modes}, строк аппликаторов ${n.rows}.${over} Записи и протокол — «Журнал и тренды»; сохраните журнал в файл, если автосохранение не включено.`,
-    `${res.replaced ? 'The journal record has been replaced' : 'The measurement has been recorded to the journal'}: ${machineName(m)}, ${dateText(res.record.date)}, ${kvRecModeText(res.record.mode)}: modes ${n.modes}, applicator rows ${n.rows}.${over} The records and the report are in Journal and trends; save the journal file if autosave is off.`,
+    `${res.replaced ? 'Запись в журнале заменена' : 'Измерение записано в журнал'}: ${machineName(m)}, ${dateText(res.record.date)}, ${kvRecModeText(res.record.mode)} — режимов ${n.modes}, строк аппликаторов ${n.rows}.${res.replaced && res.replacedModes.length < n.modes ? ` Заменены прежние данные этого дня: ${modesWord(res.replacedModes)}.` : ''}${over} Записи и протокол — «Журнал и тренды»; сохраните журнал в файл, если автосохранение не включено.`,
+    `${res.replaced ? 'The journal record has been replaced' : 'The measurement has been recorded to the journal'}: ${machineName(m)}, ${dateText(res.record.date)}, ${kvRecModeText(res.record.mode)}: modes ${n.modes}, applicator rows ${n.rows}.${res.replaced && res.replacedModes.length < n.modes ? ` Earlier data of the day replaced: ${modesWord(res.replacedModes)}.` : ''}${over} The records and the report are in Journal and trends; save the journal file if autosave is off.`,
   ));
 }
 
@@ -232,7 +278,7 @@ function save(replaceHvl = null) {
 
 /**
  * Подключить блок: a — { getVisit, replaceVisit(visit), setLinks(machineId, modeId(md, i)), status(text), isDemo(), vr(),
- * file() } — vr — расчёт вкладки, file — вкладка как файл .json (для записи в журнал).
+ * jx(), file() } — vr — расчёт вкладки, jx — значения из журнала (kvJournalInputs), file — вкладка как файл .json.
  */
 export function setupKvJournal(a) {
   api = a;

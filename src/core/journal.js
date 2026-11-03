@@ -241,14 +241,15 @@ export function normalizeJournal(obj) {
     .filter((p) => p && typeof p === 'object')
     .map((p) => withId({ ...p, M: arr(p.M), summary: { ...(p.summary || {}) }, binding: { ...(p.binding || {}) } }, 'p'))
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  // записи рентгенотерапевтических аппаратов (core/kv-records.js, с 0.46.0): аппарат за день — вкладка kV и итоги
+  // записи рентгенотерапевтических аппаратов (core/kv-records.js, с 0.46.0): измерение аппарата в один день — вкладка kV и итоги
   j.kvRecords = arr(obj.kvRecords)
     .filter((r) => r && typeof r === 'object')
     .map((r) => {
       const s = r.summary && typeof r.summary === 'object' ? r.summary : {};
       return withId({ ...r, mode: r.mode === 'check' ? 'check' : 'cal', staff: arr(r.staff), summary: { ...s, modes: arr(s.modes).map((x) => ({ ...x, rows: arr(x?.rows) })) } }, 'kr');
     })
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    // в один день записей может быть несколько (с 0.47.0 — по режимам): по времени записи
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.saved ?? '').localeCompare(String(b.saved ?? '')));
   return j;
 }
 

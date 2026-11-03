@@ -17,14 +17,16 @@ import { setupKvHvl, renderHvlSheet, renderPlates, readPlates, hvlFieldSub, hvlR
 import { KV_PLATE_KEYS, hvlDecimals } from '../core/kv-hvl.js';
 import { setupKvQa, renderQaSheets, qaPageState, qaReportLines } from './kv-qa-ui.js';
 import { setupKvSummary, renderSummarySheets, outputReportLines } from './kv-summary-ui.js';
-import { kvModeName, kvChamberName } from '../core/kv-summary.js';
-import { kvRecModeText } from '../core/kv-records.js';
+import { kvModeName, kvChamberName, kvHvlSourceText } from '../core/kv-summary.js';
+import { kvRecModeText, kvJournalInputs } from '../core/kv-records.js';
+import { kvJournalFrom } from '../core/kv-session.js';
+import { getJournal, onJournal } from './journal-store.js';
 import { makeJournalView } from './journal-view.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf, renderCompliance, complianceLine, ctrlErrorText,
   fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote, notifyUpdate, richText,
-  inlineResultHtml, setInlineResult } from './common.js';
+  inlineResultHtml, setInlineResult, dateText } from './common.js';
 
 // черновик: все режимы { version: 3, common, chambers, modes, mode } (0.36 — { form, rows, active }, до 0.36.0 — плоская
 // форма одного расчёта; старые черновики читаются как один режим)
@@ -523,14 +525,28 @@ function renderSectionTags() {
   tag('kv-s2', visit.chambers.length > 1 ? L(` · камера ${mode().chamber + 1}`, ` · chamber ${mode().chamber + 1}`) : '');
 }
 
-/** Что взято из других режимов: «k_pol и τ — из режима 1 (…)». */
+/** Что взято из журнала (последняя калибровка режима): «k_pol, τ и СПО» и дата; null — ничего. */
+function journalUsed(mr) {
+  const jx = mr.jx;
+  if (!jx) return null;
+  const names = [['pol', 'k_pol'], ['ks', 'k_s'], ['tau', 'τ'], ['hvl', L('СПО', 'HVL')]].filter(([k]) => jx[k]).map(([, n]) => n);
+  if (!names.length) return null;
+  const date = jx.pol?.date ?? jx.ks?.date ?? jx.tau?.date ?? jx.hvl?.date ?? jx.cal?.date ?? '';
+  const and = L(' и ', ' and ');
+  return { names: names.length > 1 ? `${names.slice(0, -1).join(', ')}${and}${names[names.length - 1]}` : names[0], date };
+}
+
+/** Что взято из других режимов и из журнала: «k_pol и τ — из режима 1 (…)», «k_pol и СПО — из калибровки 15.09.2026». */
 function borrowedText(mr) {
   const by = new Map();
   for (const [key, name] of [['polMode', 'k_pol'], ['ksMode', 'k_s'], ['tauMode', 'τ']]) {
     const j = mr[key];
     if (j >= 0) by.set(j, [...(by.get(j) ?? []), name]);
   }
-  return [...by].map(([j, names]) => L(`${names.join(' и ')} — из ${kvModeFrom(visit, j)}`, `${names.join(' and ')} from ${kvModeFrom(visit, j)}`)).join('; ');
+  const out = [...by].map(([j, names]) => L(`${names.join(' и ')} — из ${kvModeFrom(visit, j)}`, `${names.join(' and ')} from ${kvModeFrom(visit, j)}`));
+  const ju = journalUsed(mr);
+  if (ju) out.push(L(`${ju.names} — из ${kvJournalFrom(ju.date)}`, `${ju.names} from ${kvJournalFrom(ju.date)}`));
+  return out.join('; ');
 }
 
 /** Сводка по режимам (раздел 9): все режимы и строки, итог, отклонение и состояние; номер строки открывает её. */
@@ -640,9 +656,12 @@ function timerRowState(m, mr) {
   const err = TIMER_FLAG_KEYS.some((k) => lv(k) === 'error');
   const warn = TIMER_FLAG_KEYS.some((k) => lv(k) === 'warn');
   const st = mr.timer.state;
-  if (st === 'none' && mr.tauMode < 0 && !err) return { lvl: 'empty', tip: L('Показаний ещё нет', 'No readings yet') };
+  if (st === 'none' && mr.tauMode < 0 && !mr.jx?.tau && !err) return { lvl: 'empty', tip: L('Показаний ещё нет', 'No readings yet') };
   if (err) return { lvl: 'error', tip: L(`Ошибка в данных ошибки таймера: см. замечания режима ${m + 1}`, `The timer error data contain an error: see the messages of mode ${m + 1}`) };
-  if (st === 'none') return { lvl: 'empty', tip: L(`Своих показаний нет: τ — из ${kvModeFrom(visit, mr.tauMode)}`, `No readings of its own: τ from ${kvModeFrom(visit, mr.tauMode)}`) };
+  if (st === 'none') {
+    const src = mr.jx?.tau ? kvJournalFrom(mr.jx.tau.date) : kvModeFrom(visit, mr.tauMode);
+    return { lvl: 'empty', tip: L(`Своих показаний нет: τ — из ${src}`, `No readings of its own: τ from ${src}`) };
+  }
   if (st === 'off') return { lvl: 'empty', tip: L('Ошибка таймера не учитывается', 'The timer error is disregarded') };
   if (st === 'window') return { lvl: 'empty', tip: L('Заряд накоплен при включённой трубке: τ в дозу не входит', 'Charge collected with the tube on: τ does not enter the dose') };
   const tolTxt = (x) => fmt(x, tolDigits(x));
@@ -665,8 +684,10 @@ function renderTimerState(vr) {
     const { lvl, tip } = timerRowState(m, mr);
     const time = isTimeUnit(f.kv_set_unit);
     const v = time ? t.tauS : t.tau;
-    const shown = mr.timer.state === 'own' || mr.tauMode >= 0 ? v : NaN;
-    const from = mr.tauMode >= 0 ? `<small>${esc(L(`из режима ${mr.tauMode + 1}`, `from mode ${mr.tauMode + 1}`))}</small>` : '';
+    const shown = mr.timer.state === 'own' || mr.tauMode >= 0 || mr.jx?.tau ? v : NaN;
+    const from = mr.jx?.tau
+      ? `<small>${esc(L(`из калибровки ${dateText(mr.jx.tau.date)}`, `from the calibration of ${dateText(mr.jx.tau.date)}`))}</small>`
+      : mr.tauMode >= 0 ? `<small>${esc(L(`из режима ${mr.tauMode + 1}`, `from mode ${mr.tauMode + 1}`))}</small>` : '';
     html(tr.querySelector('[data-o="tau"]'), Number.isFinite(shown) && lvl !== 'error' ? `${fmtSigned(shown, time ? 2 : 3)} ${esc(tpUnit(f))}${from}` : '—');
     const stEl = tr.querySelector('.st');
     stEl.className = `st ${lvl}`;
@@ -964,6 +985,16 @@ function rowCompliance(all, i) {
   };
 }
 
+/** Поле «Сравнить с» (в таблице или в разделе 8): база из журнала kV — подсказкой в поле и во всплывающей подписи. */
+function refHint(el, r) {
+  if (!el) return;
+  const j = r.cmp.src === 'journal';
+  const ph = j ? fmt(r.cmp.ref, 4) : '';
+  if (el.placeholder !== ph) el.placeholder = ph;
+  const tip = j ? L(`Из калибровки ${dateText(r.cmp.date)} (журнал). Введите число, чтобы сравнить с другим значением.`, `From the calibration of ${dateText(r.cmp.date)} (journal). Enter a number to compare with another value.`) : '';
+  if (el.title !== tip) el.title = tip;
+}
+
 /** Итоги строк в таблице, подсветка полей, состояние строк, источники k_pol и k_s, номер строки у полей разделов. */
 function renderRowsState(all) {
   const n = sess.rows.length;
@@ -986,6 +1017,8 @@ function renderRowsState(all) {
     const devTd = set('dev', fmtSigned(dev, 2));
     devTd.classList.toggle('good', Number.isFinite(dev) && Math.abs(dev) <= tol / 2);
     devTd.classList.toggle('bad', Number.isFinite(dev) && Math.abs(dev) > tol);
+    // «Сравнить с» пусто — база из журнала: значение подсказкой в поле
+    refHint(tr.querySelector('[data-k="kv_ref"]'), r);
 
     const empty = kvRowEmpty(sess.rows[i]);
     const { lvl, tip } = rowState(r, sess.rows[i]);
@@ -1030,6 +1063,15 @@ function renderRowsState(all) {
   // серий нет во всём режиме: k_pol и k_s — из ближайшего по СПО режима с той же камерой
   if (all.polMode >= 0) notes.push(L(`В этом режиме серии при обратной полярности нет: k_pol — из ${kvModeFrom(visit, all.polMode)}, ближайшего по СПО с той же камерой.`, `This mode has no opposite-polarity series: k_pol is taken from ${kvModeFrom(visit, all.polMode)}, the nearest in HVL with the same chamber.`));
   if (all.ksMode >= 0) notes.push(L(`В этом режиме серии при V₂ нет: k_s — из ${kvModeFrom(visit, all.ksMode)}, ближайшего по СПО с той же камерой.`, `This mode has no V₂ series: k_s is taken from ${kvModeFrom(visit, all.ksMode)}, the nearest in HVL with the same chamber.`));
+  // журнал kV: базы строк и, при проверке выхода, поправки — из последней калибровки режима
+  const ju = journalUsed(all);
+  if (ju) notes.push(L(`Проверка выхода: ${ju.names} — из ${kvJournalFrom(ju.date)} (последняя калибровка режима в журнале).`, `Output check: ${ju.names} from ${kvJournalFrom(ju.date)} (the last calibration of the mode in the journal).`));
+  const jb = all.results.filter((r, i) => r.cmp.src === 'journal' && !kvRowEmpty(sess.rows[i]));
+  if (jb.length) {
+    const dates = [...new Set(jb.map((r) => r.cmp.date))].map(dateText).join(', ');
+    notes.push(L(`«Сравнить с» строк без своего значения — мощность дозы того же аппликатора при калибровке ${dates} (журнал): введите число, чтобы сравнить с другим.`, `“Compare with” of the rows without a value of their own is the dose rate of the same applicator at the calibration of ${dates} (journal); enter a number to compare with another value.`));
+  } else if (all.jx && !all.jx.cal) notes.push(L('Калибровок этого режима в журнале раньше даты вкладки нет: базу «Сравнить с» введите вручную.', 'There are no calibrations of this mode in the journal before the date of the tab: enter the “Compare with” baseline by hand.'));
+  if (all.jx?.chamberOther && (all.polSrc < 0 || (all.ksOn && all.ksSrc < 0))) notes.push(L('Камера режима — не та, что при последней калибровке: k_pol и k_s из журнала не подставлены.', 'The chamber of the mode differs from the one at the last calibration: k_pol and k_s are not taken from the journal.'));
   const note = $('#kv-rows-note');
   note.hidden = !notes.length;
   html(note, richText(notes.join(' ')));
@@ -1063,8 +1105,10 @@ function renderRowsState(all) {
 
   // τ из другого режима — пометка в разделе 3
   const tf = $('#kv-timer-from');
-  tf.hidden = all.tauMode < 0;
-  if (all.tauMode >= 0) {
+  tf.hidden = all.tauMode < 0 && !all.jx?.tau;
+  if (all.jx?.tau) {
+    html(tf, richText(L(`Своих данных в этой проверке нет: τ взята из ${kvJournalFrom(all.jx.tau.date)} — последней калибровки режима в журнале. Чтобы не учитывать τ, выберите «не учитывать».`, `This check has no data of its own: τ is taken from ${kvJournalFrom(all.jx.tau.date)}, the last calibration of the mode in the journal. To ignore τ, select "disregard".`)));
+  } else if (all.tauMode >= 0) {
     const time = all.timer.unit === 'min' || all.timer.unit === 's';
     html(tf, richText(time
       ? L(`Своих данных ошибки таймера в этом режиме нет: τ взята из ${kvModeFrom(visit, all.tauMode)} — ближайшего по напряжению режима, где она измерена. Чтобы не учитывать τ, выберите «не учитывать».`, `This mode has no timer error data of its own: τ is taken from ${kvModeFrom(visit, all.tauMode)}, the mode with the nearest voltage where it was measured. To ignore τ, select "disregard".`)
@@ -1095,7 +1139,7 @@ function renderDoseBeam(r, all) {
       : Number.isFinite(t.tauS) ? `τ = ${fmtSigned(t.tauS, 2)} ${L('с', 's')}` : Number.isFinite(t.tau) ? `τ = ${fmtSigned(t.tau, 3)} ${i.unitLabel}` : '';
   const parts = [
     Number.isFinite(i.kv) ? L(`${fmt(i.kv, i.kv % 1 ? 1 : 0)} кВ`, `${fmt(i.kv, i.kv % 1 ? 1 : 0)} kV`) : '',
-    Number.isFinite(i.hvl) ? L(`СПО ${fmt(i.hvl, hvlDecimals(i.hvl))} мм ${r.material} (${i.hvlSource === 'measured' ? 'измеренный' : 'из таблицы режимов'})`, `HVL ${fmt(i.hvl, hvlDecimals(i.hvl))} mm ${r.material} (${i.hvlSource === 'measured' ? 'measured' : 'from the modes table'})`) : '',
+    Number.isFinite(i.hvl) ? L(`СПО ${fmt(i.hvl, hvlDecimals(i.hvl))} мм ${r.material} (${kvHvlSourceText(i)})`, `HVL ${fmt(i.hvl, hvlDecimals(i.hvl))} mm ${r.material} (${kvHvlSourceText(i)})`) : '',
     Number.isFinite(r.cert?.value) ? `${valName} = ${fmt(r.cert.value, form === 'n' ? 6 : 4)}` : '',
     tau,
   ].filter(Boolean);
@@ -1296,6 +1340,10 @@ function applyVisibility(data, result) {
   html($('#kv-nkfs-sub'), L(`стандартное поле — Ø ${std} см; для другого поля — рис. 11 TRS-398 или от лаборатории; пусто — 1`, `standard field: ${std} cm diameter; for another field, from TRS-398 Fig. 11 or the laboratory; empty means 1`));
   $('#kv-lbl-surf').textContent = L(`На поверхности, ${rate}`, `At the surface, ${rate}`);
   $('#kv-lbl-ref').textContent = L(`Значение для сравнения, ${rate}`, `Comparison value, ${rate}`);
+  refHint($('#kv_ref'), result);
+  html($('#kv-ref-sub'), esc(result.cmp.src === 'journal'
+    ? L(`пусто — мощность дозы при калибровке ${dateText(result.cmp.date)} (журнал); можно ввести другое`, `empty: the dose rate at the calibration of ${dateText(result.cmp.date)} (journal); you may enter another value`)
+    : L('при вводе в эксплуатацию или предыдущей калибровке; можно не заполнять', 'at commissioning or at the previous calibration; optional')));
 
   // справочное сравнение с другим протоколом
   html($('#kv-pc-hint'), symText(pcHint(result)));
@@ -1595,7 +1643,8 @@ function timerReportLine(m, mr) {
   const v = time ? t.tauS : t.tau;
   const st = mr.timer.state;
   let txt;
-  if (st === 'none' && mr.tauMode >= 0) txt = L(`не измерялась; ${tauTxt(v)} из режима ${mr.tauMode + 1}`, `not measured; ${tauTxt(v)} from mode ${mr.tauMode + 1}`);
+  if (st === 'none' && mr.jx?.tau) txt = L(`не измерялась; ${tauTxt(v)} из ${kvJournalFrom(mr.jx.tau.date)}`, `not measured; ${tauTxt(v)} from ${kvJournalFrom(mr.jx.tau.date)}`);
+  else if (st === 'none' && mr.tauMode >= 0) txt = L(`не измерялась; ${tauTxt(v)} из режима ${mr.tauMode + 1}`, `not measured; ${tauTxt(v)} from mode ${mr.tauMode + 1}`);
   else if (st === 'none') txt = L('не измерялась', 'not measured');
   else if (st === 'off') txt = L('не учитывалась', 'not accounted for');
   else if (st === 'window') txt = L('заряд накоплен при включённой трубке, τ в дозу не входит', 'charge collected with the tube on, τ does not enter the dose');
@@ -1626,7 +1675,7 @@ function reportText(data, r, all = null, vr = null) {
   line(L('Дата', 'Date'), data.kv_date || '—');
   line(L('Вид измерения', 'Measurement'), kvRecModeText(data.kv_rec_mode));
   line(L('Измерения выполнили', 'Measured by'), data.kv_staff.filter((s) => s.trim()).join(', ') || '—');
-  const hvlTxt = i.hvlSource === 'measured' ? L(`${fmt(i.hvl, hvlDecimals(i.hvl))} мм ${mat} (измеренный)`, `${fmt(i.hvl, hvlDecimals(i.hvl))} mm ${mat} (measured)`) : `${data.kv_hvl || '—'} ${L('мм', 'mm')} ${mat}`;
+  const hvlTxt = i.hvlSource !== 'table' ? L(`${fmt(i.hvl, hvlDecimals(i.hvl))} мм ${mat} (${kvHvlSourceText(i)})`, `${fmt(i.hvl, hvlDecimals(i.hvl))} mm ${mat} (${kvHvlSourceText(i)})`) : `${data.kv_hvl || '—'} ${L('мм', 'mm')} ${mat}`;
   line(vr && visit.modes.length > 1 ? L(`Пучок (режим ${visit.mode + 1})`, `Beam (mode ${visit.mode + 1})`) : L('Пучок', 'Beam'), L(`${data.kv_kv || '—'} кВ${data.kv_ma ? `, ${data.kv_ma} мА` : ''}, СПО ${hvlTxt}${data.kv_filter ? `, фильтр ${data.kv_filter}` : ''}`, `${data.kv_kv || '—'} kV${data.kv_ma ? `, ${data.kv_ma} mA` : ''}, HVL ${hvlTxt}${data.kv_filter ? `, filter ${data.kv_filter}` : ''}`));
   // режимы и строки аппликаторов: коротко все, подробно ниже — выбранная строка выбранного режима
   const pUnit = unitLabel(PRESSURE_UNITS[data.kv_env_P_unit]);
@@ -1729,10 +1778,12 @@ function reportText(data, r, all = null, vr = null) {
   const mean = L('среднее', 'mean');
   line(L('M(V1, обычная), нКл', 'M(V1, normal), nC'), `${cells(data.kv_M1)} → ${mean} ${fmt(Math.abs(i.M1.mean), 4)}`);
   if (i.Mopp.n > 0) line(L('M(V1, обратная), нКл', 'M(V1, opposite), nC'), `${cells(data.kv_Mopp)} → ${mean} ${fmt(Math.abs(i.Mopp.mean), 4)}`);
+  else if (x.kpolFrom && all?.jx?.pol) line(L('M(V1, обратная)', 'M(V1, opposite)'), L(`при проверке выхода не измерялось; k_pol из ${x.kpolFrom}`, `not measured in the output check; k_pol from ${x.kpolFrom}`));
   else if (x.kpolFrom && all?.polMode >= 0) line(L('M(V1, обратная)', 'M(V1, opposite)'), L(`в этом режиме не измерялось; k_pol из ${x.kpolFrom}`, `not measured in this mode; k_pol from ${x.kpolFrom}`));
   else if (x.kpolFrom) line(L('M(V1, обратная)', 'M(V1, opposite)'), L(`в этой строке не измерялось; k_pol из ${x.kpolFrom}`, `not measured in this row; k_pol from ${x.kpolFrom}`));
   else line(L('M(V1, обратная)', 'M(V1, opposite)'), L('не измерялось (k_pol = 1)', 'not measured (k_pol = 1)'));
-  if (data.kv_ks_on && x.ksFrom && all?.ksMode >= 0) line(L('M(V2)', 'M(V2)'), L(`в этом режиме не измерялось; k_s из ${x.ksFrom}`, `not measured in this mode; k_s from ${x.ksFrom}`));
+  if (data.kv_ks_on && x.ksFrom && all?.jx?.ks) line(L('M(V2)', 'M(V2)'), L(`при проверке выхода не измерялось; k_s из ${x.ksFrom}`, `not measured in the output check; k_s from ${x.ksFrom}`));
+  else if (data.kv_ks_on && x.ksFrom && all?.ksMode >= 0) line(L('M(V2)', 'M(V2)'), L(`в этом режиме не измерялось; k_s из ${x.ksFrom}`, `not measured in this mode; k_s from ${x.ksFrom}`));
   else if (data.kv_ks_on && x.ksFrom) line(L('M(V2)', 'M(V2)'), L(`в этой строке не измерялось; k_s из ${x.ksFrom}`, `not measured in this row; k_s from ${x.ksFrom}`));
   else if (data.kv_ks_on) line(L('M(V2), нКл', 'M(V2), nC'), `${cells(data.kv_M2)} → ${mean} ${fmt(Math.abs(i.M2.mean), 4)}`);
   if (r.ctrl.on) line(L('Контрольные измерения M(V1), нКл', 'Check measurements M(V1), nC'), `${cells(data.kv_Mc)} → ${mean} ${fmt(r.ctrl.mean, 4)} ${L('за', 'for')} ${setText(r, r.ctrl.X)}`);
@@ -1880,7 +1931,7 @@ export function kvUncSource() {
 }
 
 // ------------------------------------------------------------ цикл
-let current = { data: null, result: null, all: null, vr: null };
+let current = { data: null, result: null, all: null, vr: null, jx: null };
 
 /**
  * Сверка с открытым файлом: итог выбранной строки выбранного режима с её итогом в файле (формат 3 — modeResults,
@@ -1909,12 +1960,14 @@ function update(opts = {}) {
     md.shared = p.mode;
     md.rows[md.active] = p.row;
   }
-  const vr = computeKvVisit(visit);
+  // журнал kV (с 0.47.0): база «Сравнить с» и, при проверке выхода, k_pol, k_s, τ и СПО — из последней калибровки режима
+  const jx = kvJournalInputs(getJournal(), visit, today());
+  const vr = computeKvVisit(visit, jx);
   const all = vr.modes[visit.mode];
   if (!opts.fromTimer) renderTimerTable();
   const result = all.results[sess.active];
   const data = normalizeKv(rowForm(sess.active));
-  current = { data, result, all, vr };
+  current = { data, result, all, vr, jx };
   if (!opts.fromTable) renderRows(data, result);
   renderChamberPick();
   renderSectionTags();
@@ -1952,6 +2005,8 @@ function payloadObj() {
     ...FILE_TAG,
     ...fileStamp(snapshot(current.result)),
     modeResults: current.vr.modes.map((mr) => mr.results.map(snapshot)),
+    // значения из журнала kV, с которыми посчитана вкладка (протокол записи журнала не меняется вместе с журналом)
+    journal: current.jx ?? null,
     savedAt: new Date().toISOString(),
     form: current.data,
     common: visit.common,
@@ -2052,8 +2107,11 @@ export function initKv() {
     isDemo: () => !!current.data && isDemo(current.data),
     // запись в журнал kV (с 0.46.0): расчёт вкладки и вкладка как файл
     vr: () => current.vr,
+    jx: () => current.jx,
     file: () => payloadObj(),
   });
+  // журнал изменился (запись, удаление, «Оборудование»): базы и значения калибровок — заново
+  onJournal(() => update());
   // запись журнала, открытая во вкладке («Журнал и тренды» → «Открыть во вкладке»): плашка над листами
   journalView.load();
   // лист «СПО и k_Q»: набор пластин, переход к режиму из таблицы по режимам

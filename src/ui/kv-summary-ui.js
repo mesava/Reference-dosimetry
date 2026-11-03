@@ -4,7 +4,7 @@
 // печатается отдельно от рабочего листа (body.print-kv-protocol, styles.css). Данные — core/kv-summary.js.
 // С 0.46.0 тот же протокол — у записи журнала kV («Журнал и тренды»): kvProtocolHtml.
 import { L, getLang } from '../core/i18n.js';
-import { kvOutputRows, kvDoseMatrix, kvClimate, kvSheetChecks, kvModeName, kvChamberName } from '../core/kv-summary.js';
+import { kvOutputRows, kvDoseMatrix, kvClimate, kvSheetChecks, kvModeName, kvChamberName, kvHvlSourceText } from '../core/kv-summary.js';
 import { kvRecMode, kvRecModeText } from '../core/kv-records.js';
 import { hvlDecimals } from '../core/kv-hvl.js';
 import { PRESSURE_UNITS, unitLabel } from '../core/units.js';
@@ -115,7 +115,7 @@ function outputTable(visit, rows) {
             <td>${esc(r.label || '—')}${r.std ? ` <span class="kv-std">${L('ст.', 'ref.')}</span>` : ''}</td>
             <td class="v">${esc(r.ssd || '—')}</td>
             <td>${esc(whereText(r.where))}</td>
-            <td class="v">${esc(r.baseRaw || '—')}</td>
+            <td class="v">${esc(r.baseRaw || '—')}${r.baseDate ? `<small class="kv-base-date">${esc(L(`калибровка ${dateText(r.baseDate)}`, `calibration of ${dateText(r.baseDate)}`))}</small>` : ''}</td>
             <td class="v">${Number.isFinite(r.D) ? fmt(r.D, 4) : '—'}${du}</td>
             <td class="v">±${tolText(r.tol)}</td>
             <td class="v${cls}">${Number.isFinite(r.dev) && r.verdict !== 'error' ? fmtSigned(r.dev, 2) : '—'}</td>
@@ -141,7 +141,7 @@ function hvlTable(visit, vr, list) {
     const r = vr.modes[h.m].results[visit.modes[h.m].active] ?? vr.modes[h.m].results[0];
     const u = h.mat === 'Cu' ? L('мм Cu', 'mm Cu') : L('мм Al', 'mm Al');
     const meas = h.ok ? `${fmt(h.used, hvlDecimals(h.used))} ± ${fmt(h.U, h.U < 0.01 ? 4 : 3)}` : L('не вычислен', 'not calculated');
-    const inCalc = Number.isFinite(r.inputs?.hvl) ? `${fmt(r.inputs.hvl, hvlDecimals(r.inputs.hvl))} (${r.inputs.hvlSource === 'measured' ? L('измеренный', 'measured') : L('номинальный', 'nominal')})` : '—';
+    const inCalc = Number.isFinite(r.inputs?.hvl) ? `${fmt(r.inputs.hvl, hvlDecimals(r.inputs.hvl))} (${kvHvlSourceText(r.inputs, L('номинальный', 'nominal'))})` : '—';
     const kq = Number.isFinite(r.cert?.value) ? fmt(r.cert.value, r.form?.kv_cert_form === 'n' ? 6 : 4) : '—';
     return `<tr><td>${h.m + 1}. ${esc(kvModeName(visit, h.m))}</td><td class="v">${esc(h.nominal || '—')} ${esc(u)}</td><td class="v">${meas} ${esc(u)}</td><td class="v">${esc(inCalc)}</td><td class="v">${kq}</td></tr>`;
   });
@@ -246,8 +246,8 @@ export function kvProtocolHtml(visit, vr, rows = withBase(visit, kvOutputRows(vi
       esc(L('Проверка радиационного выхода (мощность дозы в воде)', 'Radiation output check (dose rate in water)')),
       outputTable(visit, rows),
       L(
-        'Отклонение = D<sub>изм</sub>/D<sub>баз</sub> − 1. D<sub>баз</sub> — значение для сравнения строки (при вводе в эксплуатацию или предыдущей калибровке); допуск — по методике учреждения (в TRS-398 Rev.1 его нет). Вне допуска — требуется калибровка.',
-        'Deviation = D<sub>meas</sub>/D<sub>base</sub> − 1. D<sub>base</sub> is the comparison value of the row (commissioning or the previous calibration); the tolerance follows the local procedure (TRS-398 Rev.1 has none). Outside tolerance, calibration is required.',
+        'Отклонение = D<sub>изм</sub>/D<sub>баз</sub> − 1. D<sub>баз</sub> — значение для сравнения строки (при вводе в эксплуатацию или предыдущей калибровке); с датой — мощность дозы того же аппликатора при последней калибровке режима в журнале. Допуск — по методике учреждения (в TRS-398 Rev.1 его нет). Вне допуска — требуется калибровка.',
+        'Deviation = D<sub>meas</sub>/D<sub>base</sub> − 1. D<sub>base</sub> is the comparison value of the row (commissioning or the previous calibration); with a date, it is the dose rate of the same applicator at the last calibration of the mode in the journal. The tolerance follows the local procedure (TRS-398 Rev.1 has none). Outside tolerance, calibration is required.',
       ),
     );
   }
@@ -268,8 +268,8 @@ export function kvProtocolHtml(visit, vr, rows = withBase(visit, kvOutputRows(vi
   return parts.join('');
 }
 
-/** Строки проверки выхода с базой, как она введена в строке («Сравнить с»). */
-const withBase = (visit, rows) => rows.map((r) => ({ ...r, baseRaw: str(visit.modes[r.m].rows[r.i].kv_ref) }));
+/** Строки проверки выхода с базой: как она введена в строке («Сравнить с») или из журнала kV (с датой калибровки). */
+const withBase = (visit, rows) => rows.map((r) => ({ ...r, baseRaw: r.baseDate && Number.isFinite(r.base) ? fmt(r.base, 4) : str(visit.modes[r.m].rows[r.i].kv_ref) }));
 
 /** Лист «Сводка и протокол»: сводная таблица и протокол измерений. */
 export function renderSummarySheets(visit, vr) {
@@ -282,12 +282,12 @@ export function renderSummarySheets(visit, vr) {
 
 /** Строки протокола текстом: проверка радиационного выхода (итог по всем строкам). */
 export function outputReportLines(visit, vr) {
-  const rows = kvOutputRows(visit, vr);
+  const rows = withBase(visit, kvOutputRows(visit, vr));
   if (!rows.length) return [];
   const V = VERDICT();
   const out = [L('Проверка радиационного выхода (D_изм/D_баз − 1; допуск — по методике учреждения):', 'Radiation output check (D_meas/D_base − 1; tolerance: local procedure):')];
   for (const r of rows) {
-    const base = str(visit.modes[r.m].rows[r.i].kv_ref);
+    const base = r.baseRaw + (r.baseDate ? L(` (калибровка ${dateText(r.baseDate)})`, ` (calibration of ${dateText(r.baseDate)})`) : '');
     const d = Number.isFinite(r.D) ? `${fmt(r.D, 4)} ${r.unit} (${whereText(r.where)})` : '—';
     const dev = Number.isFinite(r.dev) && r.verdict !== 'error' ? `${fmtSigned(r.dev, 2)} %` : '—';
     out.push(L(

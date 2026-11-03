@@ -132,17 +132,24 @@ export function kvTimerState(form) {
  * kpolFix / ksFix — k_pol и k_s режима из его серий (NaN — серии нет или в ней ошибка), timer — { state, unit, tau }:
  * данные ошибки таймера режима (kvTimerState) и его τ (NaN — не вычислена).
  * ext — значения из другого режима той же камеры (computeKvVisit), если в этом режиме своих серий нет:
- * ext.pol / ext.ks = { from, fix } — k_pol / k_s, ext.tau = { from, fix } — τ в единицах задания этого режима.
+ * ext.pol / ext.ks = { from, fix } — k_pol / k_s, ext.tau = { from, fix } — τ в единицах задания этого режима;
+ * journal: true — значение из последней калибровки режима в журнале (проверка выхода, с 0.47.0).
+ * ext.bases[i] = { ref, date } — базовое значение строки i из последней калибровки (журнал kV): идёт в сравнение, если
+ * поле «Сравнить с» строки пустое.
  */
 export function computeKvSession(sess, ext = {}) {
   const rows = sess.rows;
-  const forms = rows.map((_, i) => kvRowForm(sess, i));
+  const forms = rows.map((_, i) => {
+    const f = kvRowForm(sess, i);
+    const b = ext.bases?.[i];
+    return b && b.ref > 0 && isBlank(f.kv_ref) ? { ...f, kv_ref_j: b.ref, kv_ref_jd: b.date } : f;
+  });
   const f0 = normalizeKv(forms[0] ?? sess.shared);
   const polSrc = rows.findIndex((r) => hasSeries(r.kv_Mopp));
   const ksOn = f0.kv_ks_on;
   const ksSrc = ksOn ? rows.findIndex((r) => hasSeries(r.kv_M2)) : -1;
   const state = kvTimerState(f0);
-  const tauExt = ext.tau && state === 'none' ? { kv_tau_from: ext.tau.from, kv_tau_fix: ext.tau.fix } : {};
+  const tauExt = ext.tau && state === 'none' ? { kv_tau_from: ext.tau.from, kv_tau_fix: ext.tau.fix, ...(ext.tau.journal ? { kv_tau_j: true } : {}) } : {};
   // строки-источники считаются первыми: их k_pol и k_s нужны остальным строкам
   const first = new Map();
   const calc = (i) => {
@@ -152,8 +159,8 @@ export function computeKvSession(sess, ext = {}) {
   // значение источника — только если его серия без ошибок (k_s < 1 и k_s > 1,05 — ошибки, их не передаём)
   const kpolFix = polSrc >= 0 && !bad(calc(polSrc), ['kv_Mopp', 'kv_M1', 'kpol']) ? calc(polSrc).trs.kpolRaw : NaN;
   const ksFix = ksSrc >= 0 && !bad(calc(ksSrc), ['kv_M2', 'kv_M1', 'kv_V1', 'kv_V2', 'ks']) ? calc(ksSrc).trs.ksRaw : NaN;
-  const polExt = polSrc < 0 && ext.pol ? { kv_pol_from: ext.pol.from, kv_kpol_fix: ext.pol.fix, kv_pol_mode: true } : null;
-  const ksExt = ksSrc < 0 && ksOn && ext.ks ? { kv_ks_from: ext.ks.from, kv_ks_fix: ext.ks.fix, kv_ks_mode: true } : null;
+  const polExt = polSrc < 0 && ext.pol ? { kv_pol_from: ext.pol.from, kv_kpol_fix: ext.pol.fix, kv_pol_mode: ext.pol.journal ? 'journal' : true } : null;
+  const ksExt = ksSrc < 0 && ksOn && ext.ks ? { kv_ks_from: ext.ks.from, kv_ks_fix: ext.ks.fix, kv_ks_mode: ext.ks.journal ? 'journal' : true } : null;
   const results = rows.map((row, i) => {
     const extra = {};
     if (polSrc >= 0 && polSrc !== i && !hasSeries(row.kv_Mopp)) Object.assign(extra, { kv_pol_from: fromText(rows, polSrc), kv_kpol_fix: kpolFix });
@@ -314,7 +321,7 @@ function kvDistance(a, b) {
   return Number.isFinite(d) ? 5 + d : 1000;
 }
 /** τ в единицах задания to: минуты и секунды пересчитываются, Гр и МЕ — только в те же единицы (иначе NaN). */
-function convertTau(tau, from, to) {
+export function convertTau(tau, from, to) {
   if (from === to) return tau;
   if (KV_SET_UNITS[from]?.time && KV_SET_UNITS[to]?.time) return from === 'min' ? tau * 60 : tau / 60;
   return NaN;
@@ -331,24 +338,44 @@ function computeMemo(sess, ext) {
   return r;
 }
 
+/** «калибровки 15.09.2026» — откуда взято значение из журнала kV (продолжает фразу «взят из …»). */
+export const kvJournalFrom = (date) => {
+  const iso = String(date ?? '');
+  return L(`калибровки ${iso.split('-').reverse().join('.')}`, `the calibration of ${iso}`);
+};
+
 /**
  * Расчёт всех режимов: каждый режим — computeKvSession. Возвращает { modes }: modes[m] — результат режима m, измерение
  * СПО режима (hvl — computeKvHvl) и номера режимов, из которых взяты k_pol, k_s и τ (polMode, ksMode, tauMode; −1 —
  * свои или взять неоткуда). Измеренный без ошибок СПО режима с отметкой «в расчёт» (hvl.apply) заменяет СПО из таблицы
  * режимов: округлённый (hvl.used) передаётся в computeKv полем kv_hvl_meas. Линейность и воспроизводимость режима (ln —
  * computeKvLinearity, rp — computeKvRepro) в дозу не входят.
+ * jx — значения из журнала kV (kvJournalInputs, core/kv-records.js; с 0.47.0): jx.modes[m] = { cal, bases, pol, ks, tau,
+ * hvl } — последняя калибровка режима m. bases — базовые значения строк (поле «Сравнить с» пустое). pol, ks, tau, hvl
+ * есть только у проверки выхода: тогда режим без своих серий берёт k_pol, k_s, τ и СПО из калибровки, а не из соседнего
+ * режима вкладки. Что взято из журнала — modes[m].jx = { cal, pol, ks, tau, hvl } (null — ничего).
  */
-export function computeKvVisit(visit) {
+export function computeKvVisit(visit, jx = null) {
   const n = visit.modes.length;
+  const jm = (m) => jx?.modes?.[m] ?? null;
   const hvls = visit.modes.map((_, m) => computeKvHvl(modeSession(visit, m).shared));
+  // СПО режима: измеренный на листе (в расчёт) или, при проверке выхода, СПО последней калибровки режима
+  const hvlJ = visit.modes.map((_, m) => {
+    const h = jm(m)?.hvl;
+    return !hvls[m].apply && h && h.used > 0 ? h : null;
+  });
   const sess = visit.modes.map((_, m) => {
     const s = modeSession(visit, m);
-    return hvls[m].apply ? { ...s, shared: { ...s.shared, kv_hvl_meas: hvls[m].used } } : s;
+    if (hvls[m].apply) return { ...s, shared: { ...s.shared, kv_hvl_meas: hvls[m].used } };
+    if (hvlJ[m]) return { ...s, shared: { ...s.shared, kv_hvl_meas: hvlJ[m].used, kv_hvl_from: kvJournalFrom(hvlJ[m].date) } };
+    return s;
   });
-  const own = sess.map((s) => computeMemo(s, {}));
+  const baseExt = (m) => (jm(m)?.bases?.some(Boolean) ? { bases: jm(m).bases } : {});
+  const own = sess.map((s, m) => computeMemo(s, baseExt(m)));
   const info = sess.map((s, m) => {
     const f = s.shared;
-    return { range: f.kv_range === 'medium' ? 'medium' : 'low', kv: num(f.kv_kv), hvl: hvls[m].apply ? hvls[m].used : num(f.kv_hvl), chamber: visit.modes[m].chamber };
+    const meas = typeof f.kv_hvl_meas === 'number' ? f.kv_hvl_meas : NaN;
+    return { range: f.kv_range === 'medium' ? 'medium' : 'low', kv: num(f.kv_kv), hvl: Number.isFinite(meas) ? meas : num(f.kv_hvl), chamber: visit.modes[m].chamber };
   });
   const nearest = (m, ok, dist) => {
     let best = -1;
@@ -362,19 +389,31 @@ export function computeKvVisit(visit) {
   };
   const modes = own.map((o, m) => {
     const sameCh = (j) => info[j].chamber === info[m].chamber;
-    const polMode = o.polSrc < 0 ? nearest(m, (j) => sameCh(j) && own[j].polSrc >= 0, hvlDistance) : -1;
-    const ksMode = o.ksOn && o.ksSrc < 0 ? nearest(m, (j) => sameCh(j) && own[j].ksOn && own[j].ksSrc >= 0, hvlDistance) : -1;
     const unit = o.timer.unit;
+    // проверка выхода: значения последней калибровки этого режима — раньше значений соседнего режима вкладки
+    const J = jm(m);
+    const fin = (v) => typeof v === 'number' && Number.isFinite(v);
+    const jPol = o.polSrc < 0 && fin(J?.pol?.v) ? J.pol : null;
+    const jKs = o.ksOn && o.ksSrc < 0 && fin(J?.ks?.v) ? J.ks : null;
+    const jTauV = o.timer.state === 'none' && fin(J?.tau?.v) ? convertTau(J.tau.v, J.tau.unit, unit) : NaN;
+    const jTau = Number.isFinite(jTauV) ? { v: jTauV, date: J.tau.date } : null;
+    const polMode = o.polSrc < 0 && !jPol ? nearest(m, (j) => sameCh(j) && own[j].polSrc >= 0, hvlDistance) : -1;
+    const ksMode = o.ksOn && o.ksSrc < 0 && !jKs ? nearest(m, (j) => sameCh(j) && own[j].ksOn && own[j].ksSrc >= 0, hvlDistance) : -1;
     const tauOf = (j) => convertTau(own[j].timer.tau, own[j].timer.unit, unit);
     const tauOk = (j) => own[j].timer.state === 'own' && Number.isFinite(convertTau(1, own[j].timer.unit, unit));
-    const tauMode = o.timer.state === 'none' ? nearest(m, tauOk, kvDistance) : -1;
+    const tauMode = o.timer.state === 'none' && !jTau ? nearest(m, tauOk, kvDistance) : -1;
     const qa = { hvl: hvls[m], ln: computeKvLinearity(sess[m].shared), rp: computeKvRepro(sess[m].shared) };
-    if (polMode < 0 && ksMode < 0 && tauMode < 0) return { ...o, polMode, ksMode, tauMode, ...qa };
-    const ext = {};
-    if (polMode >= 0) ext.pol = { from: kvModeFrom(visit, polMode), fix: own[polMode].kpolFix };
-    if (ksMode >= 0) ext.ks = { from: kvModeFrom(visit, ksMode), fix: own[ksMode].ksFix };
-    if (tauMode >= 0) ext.tau = { from: kvModeFrom(visit, tauMode), fix: tauOf(tauMode) };
-    return { ...computeMemo(sess[m], ext), polMode, ksMode, tauMode, ...qa };
+    const used = { cal: J?.cal ?? null, pol: jPol ? { v: jPol.v, date: jPol.date } : null, ks: jKs ? { v: jKs.v, date: jKs.date } : null, tau: jTau, hvl: hvlJ[m] ? { used: hvlJ[m].used, U: hvlJ[m].U ?? null, date: hvlJ[m].date } : null };
+    const jxm = J ? used : null;
+    if (polMode < 0 && ksMode < 0 && tauMode < 0 && !jPol && !jKs && !jTau) return { ...o, polMode, ksMode, tauMode, jx: jxm, ...qa };
+    const ext = baseExt(m);
+    if (jPol) ext.pol = { from: kvJournalFrom(jPol.date), fix: jPol.v, journal: true };
+    else if (polMode >= 0) ext.pol = { from: kvModeFrom(visit, polMode), fix: own[polMode].kpolFix };
+    if (jKs) ext.ks = { from: kvJournalFrom(jKs.date), fix: jKs.v, journal: true };
+    else if (ksMode >= 0) ext.ks = { from: kvModeFrom(visit, ksMode), fix: own[ksMode].ksFix };
+    if (jTau) ext.tau = { from: kvJournalFrom(jTau.date), fix: jTau.v, journal: true };
+    else if (tauMode >= 0) ext.tau = { from: kvModeFrom(visit, tauMode), fix: tauOf(tauMode) };
+    return { ...computeMemo(sess[m], ext), polMode, ksMode, tauMode, jx: jxm, ...qa };
   });
   return { modes };
 }

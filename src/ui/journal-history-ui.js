@@ -10,7 +10,7 @@ import { getJournal, updateJournal, onJournal } from './journal-store.js';
 import { renderSpc, renderCommon, spcMessages, renderChecks, checkSignalMessages } from './journal-spc-ui.js';
 import { journalCsv, checksCsv, csvFileName } from '../core/journal-csv.js';
 import { setupFilePanel, beamMachines, fmtDate, countWord, dayToIso, monthLabel, monthTicks } from './journal-common.js';
-import { kvRecordsOf, kvRecordCounts, kvRecModeText } from '../core/kv-records.js';
+import { kvRecordsOf, kvRecordCounts, kvRecModeText, kvJournalInputs } from '../core/kv-records.js';
 import { kvMachineText } from '../core/kv-journal.js';
 import { normalizeKvVisit, computeKvVisit } from '../core/kv-session.js';
 import { kvProtocolHtml } from './kv-summary-ui.js';
@@ -231,9 +231,12 @@ function renderKvRecords(j) {
               return `<li class="${y?.verdict === 'over' ? 'st-out' : ''}"><span>${esc(L(`Режим ${x.m + 1}`, `Mode ${x.m + 1}`))}${x.title ? ` — ${esc(x.title)}` : ''}: ${esc(y ? kvRowText(y) : L('без проверки выхода', 'no output check'))}${more ? ` ${more}` : ''}</span></li>`;
             })
             .join('');
+          // режимы, которые позже в тот же день записаны заново (запись по режимам, с 0.47.0)
+          const gone = (r.summary?.replaced ?? []).map((x) => L(`режим ${x.m + 1}${x.title ? ` (${x.title})` : ''}`, `mode ${x.m + 1}${x.title ? ` (${x.title})` : ''}`));
+          const goneLi = gone.length ? `<li class="kv-rec-gone"><small>${esc(L(`Заменены более поздней записью того же дня: ${gone.join(', ')}.`, `Replaced by a later record of the same day: ${gone.join(', ')}.`))}</small></li>` : '';
           const staff = (r.staff ?? []).filter((s) => String(s).trim());
           return `<li><div><b>${esc(fmtDate(r.date))}</b> · ${esc(kvRecModeText(r.mode))} · ${esc(L(`режимов: ${n.modes}, аппликаторов: ${n.rows}`, `modes: ${n.modes}, applicators: ${n.rows}`))}${over.length ? ` · <span class="st-out">${esc(L(`вне допуска: ${over.join('; ')}`, `out of tolerance: ${over.join('; ')}`))}</span>` : ''}${staff.length ? `<br><small>${esc(staff.join(', '))}</small>` : ''}</div>
-            <ul class="jsess-beams">${lines}</ul>
+            <ul class="jsess-beams">${lines}${goneLi}</ul>
             <div class="row-tools">${r.file ? `<button type="button" class="link-btn" data-kv-open="${esc(r.id)}">${esc(L('Открыть во вкладке', 'Open in the tab'))}</button>` : ''}${r.file ? `<button type="button" class="link-btn" data-report="${esc(r.id)}">${esc(L('Протокол', 'Report'))}</button>` : ''}<button type="button" class="link-btn danger" data-kv-del="${esc(r.id)}">${esc(L('Удалить', 'Delete'))}</button></div></li>`;
         })
         .join('')}</ul>`
@@ -292,7 +295,8 @@ function renderReport() {
     const visit = normalizeKvVisit(kv.file);
     box.hidden = false;
     box.innerHTML = `<header><h2>${esc(L(`Протокол измерений: ${kvTitle(j, kv)}`, `Measurement report: ${kvTitle(j, kv)}`))}</h2></header>
-      <div class="kv-prot">${kvProtocolHtml(visit, computeKvVisit(visit))}</div>
+      ${kv.summary?.replaced?.length ? `<p class="sub-hint no-print">${esc(L(`В протоколе — вся вкладка этой записи; ${kv.summary.replaced.length > 1 ? 'режимы' : 'режим'} ${kv.summary.replaced.map((x) => x.m + 1).join(', ')} позже в тот же день ${kv.summary.replaced.length > 1 ? 'записаны' : 'записан'} заново (см. другую запись).`, `The report shows the whole tab of this record; ${kv.summary.replaced.length > 1 ? 'modes' : 'mode'} ${kv.summary.replaced.map((x) => x.m + 1).join(', ')} ${kv.summary.replaced.length > 1 ? 'were' : 'was'} recorded again later the same day (see the other record).`))}</p>` : ''}
+      <div class="kv-prot">${kvProtocolHtml(visit, computeKvVisit(visit, kv.file.journal ?? kvJournalInputs(j, visit)))}</div>
       <div class="actions no-print"><button type="button" data-rep="pdf">${esc(L('Сохранить в PDF', 'Save as PDF'))}</button><button type="button" data-rep="close">${esc(L('Закрыть', 'Close'))}</button></div>`;
     return;
   }

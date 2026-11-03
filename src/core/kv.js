@@ -370,12 +370,15 @@ export function computeKv(form) {
   // ------------------------------------------------------------ качество пучка
   const kv = read('kv_kv', L('Напряжение на трубке', 'Tube voltage'));
   // СПО, измеренный на листе «СПО и k_Q» (kv_hvl_meas — от computeKvVisit, kv-hvl.js), заменяет СПО из таблицы режимов
+  // при проверке выхода — СПО, измеренный при последней калибровке режима (журнал kV, с 0.47.0: kv_hvl_from — откуда)
   const hvlMeas = typeof f.kv_hvl_meas === 'number' && f.kv_hvl_meas > 0 ? f.kv_hvl_meas : NaN;
+  const hvlFrom = Number.isFinite(hvlMeas) && !isBlank(f.kv_hvl_from) ? String(f.kv_hvl_from) : '';
   const hvlNominal = parseNumber(f.kv_hvl);
   const hvl = Number.isFinite(hvlMeas) ? hvlMeas : read('kv_hvl', L(`СПО, мм ${mat}`, `HVL, mm ${mat}`));
   if (Number.isFinite(hvlMeas)) {
     const was = Number.isFinite(hvlNominal) ? L(` (в таблице режимов — ${ru(hvlNominal, 3)} мм ${mat})`, ` (${ru(hvlNominal, 3)} mm ${mat} in the modes table)`) : '';
-    add('info', 'common', L(`СПО пучка — измеренный на листе «СПО и k_Q»: ${ru(hvl, 3)} мм ${mat}${was}. По нему — k_Q и все величины, зависящие от СПО.`, `The beam HVL is the one measured on the “HVL and k_Q” sheet: ${ru(hvl, 3)} mm ${mat}${was}. k_Q and all HVL-dependent quantities use it.`), `${REF.trs}, разд. ${range === 'low' ? '8.3.2' : '9.3.2'}`);
+    if (hvlFrom) add('info', 'common', L(`СПО пучка — измеренный при ${hvlFrom.replace(/^калибровки/, 'калибровке')}: ${ru(hvl, 3)} мм ${mat}${was}. Проверка выхода: СПО не измеряли, он берётся из последней калибровки режима в журнале.`, `The beam HVL is the one measured at ${hvlFrom}: ${ru(hvl, 3)} mm ${mat}${was}. Output check: the HVL was not measured, it is taken from the last calibration of the mode in the journal.`), `${REF.trs}, разд. ${range === 'low' ? '8.3.2' : '9.3.2'}`);
+    else add('info', 'common', L(`СПО пучка — измеренный на листе «СПО и k_Q»: ${ru(hvl, 3)} мм ${mat}${was}. По нему — k_Q и все величины, зависящие от СПО.`, `The beam HVL is the one measured on the “HVL and k_Q” sheet: ${ru(hvl, 3)} mm ${mat}${was}. k_Q and all HVL-dependent quantities use it.`), `${REF.trs}, разд. ${range === 'low' ? '8.3.2' : '9.3.2'}`);
   }
   let qualityOk = Number.isFinite(kv) && Number.isFinite(hvl);
   if (Number.isFinite(kv) && (kv < 10 || kv > 300)) {
@@ -601,8 +604,13 @@ export function computeKv(form) {
     const v = parseNumber(f.kv_tau_fix);
     if (Number.isFinite(v)) {
       tau = v;
-      timer = { ...timer, from: tauFrom };
-      add('info', 'common', U.time
+      timer = { ...timer, from: tauFrom, ...(f.kv_tau_j ? { journal: true } : {}) };
+      if (f.kv_tau_j) {
+        add('info', 'common', L(
+          `${timerWord} τ = ${ru(tau, 4)} ${U.label} — из ${tauFrom}: при проверке выхода ${U.time ? 'её' : 'его'} можно не измерять, берётся значение последней калибровки режима в журнале.`,
+          `${timerWord} τ = ${ru(tau, 4)} ${U.labelEn} is taken from ${tauFrom}: an output check need not measure it; the value of the last calibration of the mode in the journal is used.`,
+        ), `${REF.trs}, разд. 9.4.2`, 'kv_timer_mode');
+      } else add('info', 'common', U.time
         ? L(
           `τ = ${ru(tau, 4)} ${U.label} взята из ${tauFrom}: в этом режиме ошибку таймера не измеряли. Она зависит от того, как трубка выходит на режим, поэтому берётся из режима с ближайшим напряжением; при возможности измерьте её и здесь.`,
           `τ = ${ru(tau, 4)} ${U.labelEn} is taken from ${tauFrom}: the timer error was not measured in this mode. It depends on how the tube ramps up, so it is taken from the mode with the nearest voltage; if possible, measure it here too.`,
@@ -718,7 +726,12 @@ export function computeKv(form) {
   } else if (polFrom) {
     kpolRaw = parseNumber(f.kv_kpol_fix);
     if (Number.isFinite(kpolRaw)) {
-      add('info', 'common', f.kv_pol_mode
+      add('info', 'common', f.kv_pol_mode === 'journal'
+        ? L(
+          `k_pol = ${ru(kpolRaw, 4)} взят из ${polFrom}: проверка выхода без серии при обратной полярности — поправка из последней калибровки этого режима в журнале (та же камера). При калибровке серию нужно снять заново.`,
+          `k_pol = ${ru(kpolRaw, 4)} is taken from ${polFrom}: an output check without an opposite-polarity series uses the correction from the last calibration of this mode in the journal (the same chamber). At calibration, take the series again.`,
+        )
+        : f.kv_pol_mode
         ? L(
           `k_pol = ${ru(kpolRaw, 4)} взят из ${polFrom}: в этом режиме серии при обратной полярности нет, она снята в другом режиме той же камерой. TRS-398 Rev.1 определяет поправки в пучке пользователя: при возможности снимите серию и в этом режиме.`,
           `k_pol = ${ru(kpolRaw, 4)} is taken from ${polFrom}: this mode has no opposite-polarity series; it was measured in another mode with the same chamber. TRS-398 Rev.1 determines the corrections in the user beam: if possible, take the series in this mode too.`,
@@ -751,7 +764,12 @@ export function computeKv(form) {
     ksRaw = parseNumber(f.kv_ks_fix);
     if (Number.isFinite(ksRaw)) {
       ksEquation = L(`взят из ${ksFrom}`, `taken from ${ksFrom}`);
-      add('info', 'common', f.kv_ks_mode
+      add('info', 'common', f.kv_ks_mode === 'journal'
+        ? L(
+          `k_s = ${ru(ksRaw, 4)} взят из ${ksFrom}: проверка выхода без серии при пониженном напряжении V₂ — поправка из последней калибровки этого режима в журнале (та же камера). При калибровке серию нужно снять заново.`,
+          `k_s = ${ru(ksRaw, 4)} is taken from ${ksFrom}: an output check without a series at the reduced voltage V₂ uses the correction from the last calibration of this mode in the journal (the same chamber). At calibration, take the series again.`,
+        )
+        : f.kv_ks_mode
         ? L(
           `k_s = ${ru(ksRaw, 4)} взят из ${ksFrom}: в этом режиме серии при пониженном напряжении V₂ нет, она снята в другом режиме той же камерой. k_s зависит от мощности дозы: если в этом режиме она заметно выше, снимите серию при V₂ и здесь.`,
           `k_s = ${ru(ksRaw, 4)} is taken from ${ksFrom}: this mode has no series at the reduced voltage V₂; it was measured in another mode with the same chamber. k_s depends on the dose rate: if it is noticeably higher in this mode, take the V₂ series here too.`,
@@ -1023,10 +1041,14 @@ export function computeKv(form) {
   // ------------------------------------------------------------- сравнение с прежним значением
   const cmp = { at: range === 'medium' && f.kv_ref_at === 'surface' ? 'surface' : 'zref' };
   cmp.tolerance = readTolerance(f.kv_tol, { add, parseNumber, isBlank, field: 'kv_tol' });
-  const refVal = parseNumber(f.kv_ref);
+  // поле «Сравнить с» пустое — база из последней калибровки режима в журнале kV (с 0.47.0: kv_ref_j, дата — kv_ref_jd)
+  const refJ = isBlank(f.kv_ref) && typeof f.kv_ref_j === 'number' && f.kv_ref_j > 0 ? f.kv_ref_j : NaN;
+  const refVal = Number.isFinite(refJ) ? refJ : parseNumber(f.kv_ref);
   if (!isBlank(f.kv_ref) && !(refVal > 0)) add('warn', 'common', L('Значение для сравнения должно быть положительным числом в единицах итога.', 'The comparison value must be a positive number in the units of the result.'), null, 'kv_ref');
   if (refVal > 0) {
     cmp.ref = refVal;
+    cmp.src = Number.isFinite(refJ) ? 'journal' : 'manual';
+    if (Number.isFinite(refJ)) cmp.date = String(f.kv_ref_jd ?? '');
     for (const x of [trs, trs.ctrl].filter(Boolean)) {
       const v = cmp.at === 'surface' ? x.perUnitSurf : x.perUnit;
       if (Number.isFinite(v)) x.deviation = (v / refVal - 1) * 100;
@@ -1076,7 +1098,7 @@ export function computeKv(form) {
     compliance,
     notRev1,
     phantom: { clin: phantom, lab: labPhantom, status: phantomStatus, customUsed },
-    inputs: { kv, hvl, hvlSource: Number.isFinite(hvlMeas) ? 'measured' : 'table', hvlNominal, ssd, coneSize, coneB, fClin, fLab, ssdLab, sameGeometry, T, P, H: env.H, T0, P0, V1, V2, kelec, kleak, M1, Mopp, M2, X, Xeff, unit: f.kv_set_unit, unitLabel: uLabel },
+    inputs: { kv, hvl, hvlSource: hvlFrom ? 'journal' : Number.isFinite(hvlMeas) ? 'measured' : 'table', hvlFrom, hvlNominal, ssd, coneSize, coneB, fClin, fLab, ssdLab, sameGeometry, T, P, H: env.H, T0, P0, V1, V2, kelec, kleak, M1, Mopp, M2, X, Xeff, unit: f.kv_set_unit, unitLabel: uLabel },
     timer,
     ctrl,
     depth,

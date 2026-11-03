@@ -12,6 +12,15 @@ import { L } from './i18n.js';
 /** Режим m вкладки для таблиц и протокола: «200 кВ, СПО 1,00 мм Cu» или «пучок не задан». */
 export const kvModeName = (visit, m) => kvModeLabel(visit.modes[m]?.shared) || L('пучок не задан', 'beam not set');
 
+/**
+ * Откуда СПО в расчёте строки (inputs — r.inputs computeKv): «измеренный», «из калибровки 15.09.2026» (журнал kV, проверка
+ * выхода) или table — СПО из таблицы режимов.
+ */
+export function kvHvlSourceText(inputs, table = L('из таблицы режимов', 'from the modes table')) {
+  if (inputs?.hvlSource === 'journal') return L(`из ${inputs.hvlFrom}`, `from ${inputs.hvlFrom}`);
+  return inputs?.hvlSource === 'measured' ? L('измеренный', 'measured') : table;
+}
+
 /** Камера вкладки: модель и серийный номер («PTW 30013 № 1001»). */
 export function kvChamberName(ch) {
   const id = String(ch?.kv_ch_model ?? '');
@@ -42,6 +51,7 @@ const str = (v) => String(v ?? '').trim();
  * аппликатор («Ø 6 см»); ssd — РИП как введён; std — стандартный тубус режима (при нескольких строках); range —
  * 'low' | 'medium'; where — где доза сравнивается ('surface' | 'zref'); unit — единица мощности дозы («Гр/мин»);
  * D — измеренная мощность дозы там, где задано значение для сравнения; base — базовое значение (NaN — не задано);
+ * baseDate — дата калибровки, из которой база взята (журнал kV; '' — введена в поле «Сравнить с» или её нет);
  * dev — отклонение, %; tol — допуск, %; perUnit, perUnitSurf — доза на опорной глубине и на поверхности;
  * verdict — 'ok' (в допуске), 'over' (больше допуска — требуется калибровка), 'nobase' (базового значения нет),
  * 'na' (база на поверхности, а PDD не введена — сравнить не с чем), 'error' (доза не вычислена).
@@ -65,7 +75,7 @@ export function kvOutputRows(visit, vr) {
       out.push({
         m, i, label: kvRowLabel(row), ssd: str(row.kv_ssd), std: md.rows.length > 1 && i === mr.stdRow,
         range: r.range, where: r.range === 'low' || atSurf ? 'surface' : 'zref', unit: x.rateLabel,
-        D, base, dev, tol, verdict,
+        D, base, baseDate: Number.isFinite(base) && r.cmp.src === 'journal' ? String(r.cmp.date ?? '') : '', dev, tol, verdict,
         perUnit: none ? NaN : p.perUnit, perUnitSurf: none ? NaN : p.perUnitSurf,
       });
     });

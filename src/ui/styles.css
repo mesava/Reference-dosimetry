@@ -1568,6 +1568,7 @@ table.kv-svd-t small.dev.bad { color: var(--err); font-weight: 600; }
 .kv-prot td.v, .kv-prot th.v { text-align: right; }
 .kv-prot td.v { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .kv-prot td small { color: var(--muted); font: 11px var(--font-body); }
+.kv-prot td small.kv-base-date { display: block; }
 table.kv-prot-head th { width: 13em; }
 .kv-prot-h { margin: 14px 0 6px; font: 600 14px var(--font-display); }
 .kv-prot td.good { color: var(--ok); }
