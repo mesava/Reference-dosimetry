@@ -123,7 +123,7 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   assert.equal(await page.locator('#kv-mode-chamber option').count(), 2);
   assert.equal(await page.inputValue('#kv_ch_model'), 'PTW30013');
   assert.match(await text('#kv-rows-note'), /kpol — из режима 1/);
-  assert.match(await text('#kv-status'), /Камера 2 удалена; в режиме 2 выбрана камера 1/);
+  assert.match(await text('#kv-status'), /Камера 2 удалена; режим 2 — с камерой 1 \(PTW 30013 № 0000\)\./);
 
   // новый режим: тубусы режима 2 без показаний, пучок пустой; удаляется вторым нажатием
   await page.click('#kv-btn-add-mode');

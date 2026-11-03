@@ -504,7 +504,7 @@ function renderChamberPick() {
   html(sel, chamberOptions(cur));
   sel.value = String(cur);
   const used = chamberModes(cur);
-  $('#kv-btn-del-ch').hidden = visit.chambers.length <= 1 || used.length > 1;
+  $('#kv-btn-del-ch').hidden = visit.chambers.length <= 1;
   const where = used.length > 1 ? L(`Камера ${cur + 1} выбрана в режимах ${used.join(', ')}: поля ниже меняют её во всех этих режимах.`, `Chamber ${cur + 1} is used in modes ${used.join(', ')}: the fields below change it in all of them.`) : '';
   $('#kv-mode-chamber-sub').textContent = [where, L('Новая камера берёт электрометр, T₀, P₀ и напряжения текущей.', 'A new chamber takes the electrometer, T₀, P₀ and voltages of the current one.')].filter(Boolean).join(' ');
 }
@@ -763,16 +763,31 @@ function pickChamber(value, m = visit.mode) {
   if (isNew) setStatus(L(`Режим ${m + 1}: добавлена камера ${md.chamber + 1}. Выберите модель и введите сертификат в разделе 2.`, `Mode ${m + 1}: chamber ${md.chamber + 1} added. Select the model and enter the certificate in section 2.`));
 }
 
-/** Удаление камеры, выбранной только в этом режиме: режиму назначается первая из оставшихся. */
+/** Камера, на которую переходят режимы удаляемой камеры k: первая из оставшихся (номер до удаления). */
+const chamberHeir = (k) => (k === 0 ? 1 : 0);
+/** «режим 2» или «режимы 1, 2, 3». */
+const modesWord = (list) => (list.length > 1 ? L(`режимы ${list.join(', ')}`, `modes ${list.join(', ')}`) : L(`режим ${list[0]}`, `mode ${list[0]}`));
+/** Подтверждение удаления камеры выбранного режима: какие режимы и на какую камеру перейдут. */
+function deleteChamberQuestion() {
+  const k = mode().chamber;
+  const h = chamberHeir(k);
+  const used = chamberModes(k);
+  return L(`Точно удалить камеру ${k + 1}? ${used.length > 1 ? 'Режимы' : 'Режим'} ${used.join(', ')} ${used.length > 1 ? 'перейдут' : 'перейдёт'} на камеру ${h + 1}.`, `Delete chamber ${k + 1}? ${used.length > 1 ? 'Modes' : 'Mode'} ${used.join(', ')} will use chamber ${h + 1}.`);
+}
+/** Удаление камеры выбранного режима (любой, пока камер больше одной): её режимы переходят на первую из оставшихся. */
 function deleteChamber() {
   const k = mode().chamber;
-  if (visit.chambers.length <= 1 || chamberModes(k).length > 1) return;
+  if (visit.chambers.length <= 1) return;
+  const h = chamberHeir(k);
+  const used = chamberModes(k);
   visit.chambers.splice(k, 1);
-  for (const md of visit.modes) md.chamber = md.chamber === k ? 0 : md.chamber > k ? md.chamber - 1 : md.chamber;
+  const nh = h > k ? h - 1 : h;
+  for (const md of visit.modes) md.chamber = md.chamber === k ? nh : md.chamber > k ? md.chamber - 1 : md.chamber;
   writeForm(rowForm(sess.active));
   openedFile = null;
   update();
-  setStatus(L(`Камера ${k + 1} удалена; в режиме ${visit.mode + 1} выбрана камера ${mode().chamber + 1}.`, `Chamber ${k + 1} deleted; mode ${visit.mode + 1} now uses chamber ${mode().chamber + 1}.`));
+  const name = chamberName(visit.chambers[nh]);
+  setStatus(L(`Камера ${k + 1} удалена; ${modesWord(used)} — с камерой ${nh + 1} (${name}).`, `Chamber ${k + 1} deleted; ${modesWord(used)} now ${used.length > 1 ? 'use' : 'uses'} chamber ${nh + 1} (${name}).`));
 }
 
 /** Строка i режима m из сводки: режим и строка выбираются, фокус — на номер строки в таблице раздела 4. */
@@ -1810,6 +1825,9 @@ export function initKv() {
       return (isNew ? $('#kv_ch_model') : $(`#kvm${m}_ch`))?.focus();
     }
     if (inTable(e.target) || inTimer(e.target) || inModes(e.target)) return;
+    // текстовое поле уже пересчитано по событию input; change при уходе из него перестроил бы таблицы, и фокус,
+    // переходящий в таблицу аппликаторов или режимов, потерялся бы
+    if (e.target.matches?.('input[type="text"], textarea')) return;
     if (e.target.id === 'kv-mode-chamber') return pickChamber(e.target.value);
     openedFile = null;
     if (e.target.id === 'kv_ch_model') {
@@ -1840,7 +1858,7 @@ export function initKv() {
   });
   $('#kv-btn-add-mode').addEventListener('click', addMode);
   armButton($('#kv-btn-del-mode'), () => L('Удалить режим', 'Delete mode'), () => L(`Точно удалить режим ${visit.mode + 1}?`, `Delete mode ${visit.mode + 1}?`), deleteMode);
-  armButton($('#kv-btn-del-ch'), () => L('Удалить камеру', 'Delete chamber'), () => L(`Точно удалить камеру ${mode().chamber + 1}?`, `Delete chamber ${mode().chamber + 1}?`), deleteChamber);
+  armButton($('#kv-btn-del-ch'), () => L('Удалить камеру', 'Delete chamber'), deleteChamberQuestion, deleteChamber);
   timerBody().addEventListener('click', (e) => {
     const b = e.target.closest('.kv-tm-pick');
     const m = Number(b?.closest('tr[data-m]')?.dataset.m);

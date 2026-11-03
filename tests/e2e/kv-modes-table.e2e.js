@@ -52,6 +52,10 @@ test('kV-рентген: таблица режимов — ввод в стро�
   await page.fill('#kv_kv', '200');
   await pause();
   assert.equal(await page.inputValue('#kvm0_kv_kv'), '200');
+  // переход из поля раздела 1 в таблицу: фокус остаётся в таблице (уход из поля её не перестраивает)
+  await page.click('#kvm1_kv_kv');
+  await pause();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'kvm1_kv_kv');
   // ток не число — предупреждение и подсветка в обоих местах
   await page.fill('#kv_ma', 'десять');
   await pause();
@@ -81,16 +85,22 @@ test('kV-рентген: таблица режимов — ввод в стро�
   assert.match(await text('#kv-status'), /^Режим 1: добавлена камера 2\. Выберите модель и введите сертификат в разделе 2\./);
   assert.equal(await chamberOf(0), '2 — камера не выбрана');
   assert.equal(await chamberOf(1), '1 — PTW 30013 № 0000');
-  // режим 2 переходит на камеру 2 из таблицы, не переключая режим; затем обратно
+  // режим 2 переходит на камеру 2 из таблицы, не переключая режим
   await page.selectOption('#kvm1_ch', '1');
   await pause();
   assert.equal(await pressed(0), 'true');
   assert.equal(await chamberOf(1), '2 — камера не выбрана');
   assert.equal(await page.evaluate(() => document.activeElement?.id), 'kvm1_ch');
   assert.match(await text('#kv-mode-chamber-sub'), /^Камера 2 выбрана в режимах 1, 2/);
-  await page.selectOption('#kvm1_ch', '0');
-  await page.selectOption('#kvm0_ch', '0');
+  // камеру, выбранную в нескольких режимах, тоже можно удалить: её режимы переходят на оставшуюся
+  assert.ok(await page.locator('#kv-btn-del-ch').isVisible());
+  await page.click('#kv-btn-del-ch');
+  await pause(100);
+  assert.equal(await text('#kv-btn-del-ch'), 'Точно удалить камеру 2? Режимы 1, 2 перейдут на камеру 1.');
+  await page.click('#kv-btn-del-ch');
   await pause();
+  assert.match(await text('#kv-status'), /^Камера 2 удалена; режимы 1, 2 — с камерой 1 \(PTW 30013 № 0000\)\./);
+  assert.ok(await page.locator('#kv-btn-del-ch').isHidden());
   assert.equal(await chamberOf(0), '1 — PTW 30013 № 0000');
   assert.equal(await page.inputValue('#kv_ch_model'), 'PTW30013');
 

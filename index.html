@@ -1558,7 +1558,7 @@
     <!-- 1 -->
     <section class="step" aria-labelledby="kv-s1">
       <header><span class="step-no">1</span><h2 id="kv-s1">Аппарат и пучок</h2>
-        <p class="hint">Качество пучка задают напряжение на трубке и <button type="button" class="term" data-term="hvl">СПО</button>: для низких энергий — в мм Al, для средних — в мм Cu. Можно ввести несколько режимов аппарата: у каждого свой пучок и свои аппликаторы. Тубус и РИП — выбранной строки раздела 4, у каждого аппликатора свои; квадратный и прямоугольный тубус заменяются кругом той же площади.</p></header>
+        <p class="hint">Качество пучка задают напряжение на трубке и <button type="button" class="term" data-term="hvl">СПО</button>: для низких энергий — в мм Al, для средних — в мм Cu. Можно ввести несколько режимов аппарата: у каждого свой пучок и свои аппликаторы (раздел 4).</p></header>
       <div class="grid">
         <div class="field"><label for="kv_institution">Учреждение</label><div class="combo" data-list="institutions"><input type="text" id="kv_institution"></div></div>
         <div class="field"><label for="kv_machine">Аппарат</label><div class="combo" data-list="machines-kv"><input type="text" id="kv_machine" placeholder="Модель, № трубки"></div></div>
@@ -1603,20 +1603,6 @@
         <div class="field"><label for="kv_ma">Ток трубки, мА</label><input type="text" id="kv_ma" class="num" inputmode="decimal"><span class="sub">для протокола; в расчёт не входит</span></div>
         <div class="field"><label for="kv_filter">Фильтр</label><input type="text" id="kv_filter" placeholder="2 мм Al"><span class="sub">для протокола; в расчёт не входит</span></div>
         <div class="field"><label for="kv_hvl" id="kv-lbl-hvl">СПО, мм Al</label><input type="text" id="kv_hvl" class="num" inputmode="decimal"><span class="sub">первый слой половинного ослабления</span></div>
-      </div>
-      <div class="grid subgrid">
-        <div class="field">
-          <label for="kv_cone_shape">Тубус</label>
-          <select id="kv_cone_shape"><option value="circle">круглый</option><option value="square">квадратный</option><option value="rect">прямоугольный</option></select>
-        </div>
-        <div class="field"><label for="kv_cone" id="kv-lbl-cone">Диаметр поля, см</label><input type="text" id="kv_cone" class="num" inputmode="decimal"><span class="sub" id="kv-cone-sub">на конце тубуса</span></div>
-        <div class="field" data-show="kv_cone_shape:rect"><label for="kv_cone_b">Сторона b, см</label><input type="text" id="kv_cone_b" class="num" inputmode="decimal"></div>
-        <div class="field out-cell" data-show="kv_cone_shape:square,rect"><span class="label">Круг той же площади, см</span><output data-out="inputs.fClin" data-digits="2"></output><span class="sub" id="kv-feq-sub">d = 2a/√π</span></div>
-        <div class="field"><label for="kv_ssd">РИП, см</label><input type="text" id="kv_ssd" class="num" inputmode="decimal"><span class="sub">расстояние источник — поверхность (конец тубуса)</span></div>
-        <div class="field" data-show="kv_range:medium">
-          <label class="check"><input type="checkbox" id="kv_cone_largest"> <span>Самый большой тубус аппарата</span></label>
-          <span class="sub">если тубуса 10 см нет (TRS-398, табл. 31)</span>
-        </div>
       </div>
       <div class="grid subgrid" id="kv-phantom-block">
         <div class="field span-2">
@@ -1924,7 +1910,7 @@
     <!-- 4 -->
     <section class="step" aria-labelledby="kv-s4">
       <header><span class="step-no">4</span><h2 id="kv-s4">Аппликаторы</h2>
-        <p class="hint">По строке на каждый аппликатор этого пучка: у строки свои РИП, задание, температура и давление (измерения долгие, условия меняются), показания и значение для сравнения. Пучок, камера, сертификат и ошибка таймера — общие для всех строк режима. Выбранная строка подробно считается в разделах ниже, её поля отмечены там номером строки. Серии при обратной полярности и пониженном напряжении (раздел 5) обычно снимают с одним аппликатором: строка без своих серий берёт k<sub>pol</sub> и k<sub>s</sub> из первой строки, где они есть, а если их нет во всём режиме — из ближайшего по СПО режима с той же камерой.</p></header>
+        <p class="hint">По строке на каждый аппликатор этого пучка: у строки свои тубус, РИП, задание, температура и давление (измерения долгие, условия меняются), показания и значение для сравнения. Пучок, камера, сертификат и ошибка таймера — общие для всех строк режима. Квадратный и прямоугольный тубус заменяются кругом той же площади. Выбранная строка подробно считается в разделах ниже, её поля отмечены там номером строки. Серии при обратной полярности и пониженном напряжении (раздел 5) обычно снимают с одним аппликатором: строка без своих серий берёт k<sub>pol</sub> и k<sub>s</sub> из первой строки, где они есть, а если их нет во всём режиме — из ближайшего по СПО режима с той же камерой.</p></header>
       <div class="table-wrap kv-rows-wrap">
         <table class="factors jf-table kv-rows" id="kv-rows">
           <thead><tr>
@@ -1950,6 +1936,21 @@
         <button type="button" class="link-btn" id="kv-btn-add-row"><span aria-hidden="true">+</span> Добавить аппликатор</button>
       </div>
       <p class="sub-hint" id="kv-rows-note"></p>
+      <div class="grid subgrid kv-row-extra">
+        <div class="kv-row-mirror" hidden>
+          <!-- поля выбранной строки таблицы: вводятся в таблице, здесь — для расчёта выбранной строки -->
+          <select id="kv_cone_shape" tabindex="-1" aria-hidden="true"><option value="circle">круглый</option><option value="square">квадратный</option><option value="rect">прямоугольный</option></select>
+          <input type="text" id="kv_cone" tabindex="-1" aria-hidden="true">
+          <input type="text" id="kv_cone_b" tabindex="-1" aria-hidden="true">
+          <input type="text" id="kv_ssd" tabindex="-1" aria-hidden="true">
+          <span id="kv-lbl-cone"></span><span id="kv-cone-sub"></span>
+        </div>
+        <div class="field out-cell" data-show="kv_cone_shape:square,rect"><span class="label">Круг той же площади, см</span><output data-out="inputs.fClin" data-digits="2"></output><span class="sub" id="kv-feq-sub">d = 2a/√π</span></div>
+        <div class="field" data-show="kv_range:medium">
+          <label class="check"><input type="checkbox" id="kv_cone_largest"> <span>Самый большой тубус аппарата</span></label>
+          <span class="sub">если тубуса 10 см нет (TRS-398, табл. 31)</span>
+        </div>
+      </div>
     </section>
 
     <!-- 5 -->

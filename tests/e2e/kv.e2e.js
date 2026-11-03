@@ -107,8 +107,8 @@ test('kV-рентген: пример, ветки расчёта, пометка
   await page.selectOption('#kv_range', 'low');
   await page.fill('#kv_kv', '50');
   await page.fill('#kv_hvl', '1,0');
-  await page.fill('#kv_cone', '5');
-  await page.fill('#kv_ssd', '30');
+  await page.fill('#kvr0_kv_cone', '5');
+  await page.fill('#kvr0_kv_ssd', '30');
   await page.selectOption('#kv_ch_model', 'PTW23342');
   await page.check('#kv_foil');
   await page.selectOption('#kv_cert_form', 'k');
@@ -129,9 +129,9 @@ test('kV-рентген: пример, ветки расчёта, пометка
   assert.match(await page.locator('#kv-compliance').innerText(), /не найдено/);
 
   // квадратный тубус → круг той же площади
-  await page.selectOption('#kv_cone_shape', 'square');
+  await page.selectOption('#kvr0_kv_cone_shape', 'square');
   await pause();
-  assert.equal(await page.locator('#kv-lbl-cone').innerText(), 'Сторона поля, см');
+  assert.equal(await page.locator('#kvr0_kv_cone').getAttribute('aria-label'), 'Сторона поля, см, строка 1');
   assert.equal(await page.locator('#module-kv output[data-out="inputs.fClin"]').innerText(), '5,64');
   assert.match(await page.locator('#kv-messages').innerText(), /заменено кругом равной площади диаметром 5,64 см/);
 
@@ -144,12 +144,12 @@ test('kV-рентген: пример, ветки расчёта, пометка
 
   // воздушный метод, средние энергии: p_ch по табл. 32, [μen/ρ]z=2 по данным Andreo
   await page.selectOption('#kv_kg_src', 'auto');
-  await page.selectOption('#kv_cone_shape', 'circle');
+  await page.selectOption('#kvr0_kv_cone_shape', 'circle');
   await page.selectOption('#kv_range', 'medium');
   await page.fill('#kv_kv', '200');
   await page.fill('#kv_hvl', '1,0');
-  await page.fill('#kv_cone', '10');
-  await page.fill('#kv_ssd', '50');
+  await page.fill('#kvr0_kv_cone', '10');
+  await page.fill('#kvr0_kv_ssd', '50');
   await page.selectOption('#kv_ch_model', 'PTW30013');
   await page.selectOption('#kv_cal', 'nk');
   await page.selectOption('#kv_cert_form', 'kq');
@@ -353,11 +353,11 @@ test('kV-рентген: прямоугольный тубус, материал
   assert.ok(await page.locator('#kv-ph-custom').isHidden());
 
   // прямоугольный тубус 8 × 10 см → круг той же площади 10,09 см, сопоставим с 10 × 10 см (табл. 31)
-  await page.selectOption('#kv_cone_shape', 'rect');
-  await page.fill('#kv_cone', '8');
-  await page.fill('#kv_cone_b', '10');
+  await page.selectOption('#kvr0_kv_cone_shape', 'rect');
+  await page.fill('#kvr0_kv_cone', '8');
+  await page.fill('#kvr0_kv_cone_b', '10');
   await pause();
-  assert.equal(await page.locator('#kv-lbl-cone').innerText(), 'Сторона a, см');
+  assert.equal(await page.locator('#kvr0_kv_cone').getAttribute('aria-label'), 'Сторона a, см, строка 1');
   assert.equal(await page.locator('#module-kv output[data-out="inputs.fClin"]').innerText(), '10,09');
   assert.equal(await page.locator('#kv-feq-sub').innerText(), 'd = 2√(ab/π)');
   assert.match(await page.locator('#kv-messages').innerText(), /Прямоугольное поле 8 × 10 см заменено кругом равной площади диаметром 10,09 см/);
