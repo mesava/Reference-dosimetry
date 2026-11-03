@@ -4,6 +4,7 @@ import { beamChart, sessionCommon, BEAM_Z } from '../core/journal-spc.js';
 import { checkPairs, checkChart, stabilityNote, CHECK_REF } from '../core/journal-check.js';
 import { BASELINE_POINTS, PROVISIONAL_BELOW, MIN_POINTS, TREND_MIN_POINTS, TREND_MIN_DAYS, controlChart } from '../core/spc.js';
 import { signalText } from '../core/spc-text.js';
+import { kvModeCharts, kvCommon } from '../core/kv-spc.js';
 
 export { signalText };
 import { $, esc, fmt, fmtSigned } from './common.js';
@@ -19,6 +20,7 @@ const reasonText = (r) =>
     manual: L('по отметке «новый отсчёт»', 'by the “new count” mark'),
     factors: L('после того как k_pol и k_s второй камеры стали известны', 'after k_pol and k_s of the second chamber became known'),
     binding: L('после новой привязки пластин к калибровке в воде', 'after a new binding of the plates to a calibration in water'),
+    applicator: L('после смены стандартного тубуса, места сравнения дозы или единицы задания', 'after a change of the reference applicator, the dose comparison point or the setting unit'),
   })[r] ?? '';
 
 const stageText = (p) => (p.stage === 'found' ? L(' (до подстройки)', ' (before adjustment)') : p.stage === 'left' ? L(' (после подстройки)', ' (after adjustment)') : '');
@@ -44,17 +46,17 @@ function segmentLines(chart, xMax) {
 const segmentMarks = (chart) =>
   chart.segments.slice(1).map((seg, i) => ({
     x: chart.points[seg.from].day,
-    label: seg.reason === 'adjust' ? L('подстройка', 'adjustment') : seg.reason === 'equipment' ? L('оборудование', 'equipment') : seg.reason === 'geometry' ? L('геометрия', 'geometry') : seg.reason === 'factors' ? 'k_pol, k_s' : seg.reason === 'binding' ? L('привязка', 'binding') : L('новый отсчёт', 'new count'),
+    label: seg.reason === 'adjust' ? L('подстройка', 'adjustment') : seg.reason === 'equipment' ? L('оборудование', 'equipment') : seg.reason === 'geometry' ? L('геометрия', 'geometry') : seg.reason === 'factors' ? 'k_pol, k_s' : seg.reason === 'binding' ? L('привязка', 'binding') : seg.reason === 'applicator' ? L('тубус', 'applicator') : L('новый отсчёт', 'new count'),
     row: i % 2,
   }));
 
-function drawChart(box, chart, { tol, label, yLabel, pointTitle, check }) {
+function drawChart(box, chart, { tol, label, yLabel, pointTitle, check, extraLines = [], extraNotes = [], yExtra = [] }) {
   const pts = chart.points;
   const days = pts.map((p) => p.day);
   const x0 = Math.min(...days);
   const x1 = Math.max(...days);
   const lim = chart.segments.filter((s) => s.limits).flatMap((s) => [s.cl - 3 * s.sigma, s.cl + 3 * s.sigma]);
-  const yInc = [...lim, ...(Number.isFinite(tol) ? [-tol, tol] : [])];
+  const yInc = [...lim, ...(Number.isFinite(tol) ? [-tol, tol] : []), ...yExtra];
   const regular = pts.filter((p) => !p.signals.length);
   const sig = pts.filter((p) => p.signals.length);
   const point = (p) => ({ x: p.day, y: p.value, hollow: check(p), title: pointTitle(p) });
@@ -79,8 +81,9 @@ function drawChart(box, chart, { tol, label, yLabel, pointTitle, check }) {
     lines: [
       ...segmentLines(chart, x1),
       ...(Number.isFinite(tol) ? [tol, -tol].map((a) => ({ cls: 'aux', a, b: 0, x0: x0 - 400, x1: x1 + 400, dashed: true })) : []),
+      ...extraLines,
     ],
-    notes: Number.isFinite(tol) ? [{ x: x0, y: tol, text: `+${fmt(tol, tol % 1 ? 1 : 0)} %`, anchor: 'start' }, { x: x0, y: -tol, text: `−${fmt(tol, tol % 1 ? 1 : 0)} %`, anchor: 'start', below: true }] : [],
+    notes: [...(Number.isFinite(tol) ? [{ x: x0, y: tol, text: `+${fmt(tol, tol % 1 ? 1 : 0)} %`, anchor: 'start' }, { x: x0, y: -tol, text: `−${fmt(tol, tol % 1 ? 1 : 0)} %`, anchor: 'start', below: true }] : []), ...extraNotes],
   });
 }
 
@@ -110,7 +113,7 @@ function segmentLine(chart, unit = '%') {
   );
 }
 
-function trendLine(chart, tol) {
+function trendLine(chart, tol, { vsBase = '' } = {}) {
   const t = chart.trend;
   const w = chart.trendWait;
   if (!t && w) {
@@ -125,11 +128,13 @@ function trendLine(chart, tol) {
   const f = chart.forecast;
   const sideTxt = (s) => (s > 0 ? `+${fmt(tol, tol % 1 ? 1 : 0)} %` : `−${fmt(tol, tol % 1 ? 1 : 0)} %`);
   let tail = '';
-  if (f?.already) tail = L(` Линия тренда уже за допуском ${sideTxt(f.side)}.`, ` The trend line is already beyond the ${sideTxt(f.side)} tolerance.`);
-  else if (f?.beyond) tail = L(` Если дрейф сохранится, до допуска ${sideTxt(f.side)} — больше трёх лет.`, ` If the drift continues, the ${sideTxt(f.side)} tolerance is more than three years away.`);
+  // vsBase — допуск считается от базы (у kV — от мощности дозы при калибровке vsBase), а не от нуля карты
+  const rel = vsBase ? L(` от базы (${vsBase})`, ` from the baseline (${vsBase})`) : '';
+  if (f?.already) tail = L(` Линия тренда уже за допуском ${sideTxt(f.side)}${rel}.`, ` The trend line is already beyond the ${sideTxt(f.side)} tolerance${rel}.`);
+  else if (f?.beyond) tail = L(` Если дрейф сохранится, до допуска ${sideTxt(f.side)}${rel} — больше трёх лет.`, ` If the drift continues, the ${sideTxt(f.side)} tolerance${rel} is more than three years away.`);
   else if (f) {
     const when = monthYear(Math.round(f.day));
-    tail = L(` Если дрейф сохранится, выход за ${sideTxt(f.side)} — ориентировочно ${when}.`, ` If the drift continues, it will exceed ${sideTxt(f.side)} around ${when}.`);
+    tail = L(` Если дрейф сохранится, выход за ${sideTxt(f.side)}${rel} — ориентировочно ${when}.`, ` If the drift continues, it will exceed ${sideTxt(f.side)}${rel} around ${when}.`);
   }
   return `<span class="spc-warn">${esc(`${head} — ${L('значим.', 'significant.')}`)}</span>${esc(tail)}`;
 }
@@ -409,6 +414,145 @@ export function checkSignalMessages(j, machineId) {
         text: L(`${pair.beamName}, ${pair.workText} / ${pair.secondText}, ${fmtDate(p.date)}: ${p.signals.map(signalText).join('; ')}.`, `${pair.beamName}, ${pair.workText} / ${pair.secondText}, ${fmtDate(p.date)}: ${p.signals.map(signalText).join('; ')}.`),
       });
     }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- рентгенотерапевтический аппарат (с 0.49.0)
+const kvModeName = (s) => `${s.n ? `${s.n}. ` : ''}${s.title}`;
+
+const kvHelpHtml = () => `<details class="jsb-more"><summary>${esc(L('Как читать карту', 'How to read the chart'))}</summary><p class="sub-hint">${esc(
+  L(
+    `Точка — мощность дозы стандартного тубуса режима в записи журнала относительно первой записи отсчёта, %. У ускорителя отклонение считают от номинального выхода; у рентгенотерапевтического аппарата база — мощность дозы при последней калибровке, и она меняется с каждой калибровкой, хотя выход трубки при этом не меняется. Поэтому карта следит за самим выходом трубки сквозь калибровки, а допуск показан полосой вокруг базы последней записи (пунктир): точки внутри полосы — в допуске относительно последней калибровки. Сигнал — ещё не выход за допуск, а повод разобраться: выход, вероятно, изменился не случайно. Сначала проверьте само измерение (установку, термометр и барометр, камеру и электрометр) и повторите его; если сигнал подтвердился — ищите причину в аппарате (трубка, генератор, таймер, фильтр). Сигналы: точка за 3σ — резкий скачок; накопленная сумма (CUSUM, k = 0,5σ, h = 5σ) — небольшой устойчивый сдвиг около 1σ. Наблюдения (справка): 2 из 3 точек за 2σ по одну сторону и 8 точек подряд по одну сторону — возможный сдвиг уровня; 6 точек подряд растут или убывают — возможный дрейф (старение трубки). σ = MR̄/1,128, где MR̄ — средний размах соседних записей. Границы считаются по первым ${BASELINE_POINTS} записям отсчёта и дальше не меняются; точки за 3σ в их расчёт не входят; пока записей меньше ${PROVISIONAL_BELOW}, границы предварительные. Тренд — наклон прямой по записям текущего отсчёта; прогноз — когда линия тренда выйдет из полосы допуска, только если наклон значим (критерий Стьюдента, 95 %). Полый значок — проверка выхода, квадрат — точка с сигналом. Источники: Western Electric Statistical Quality Control Handbook (1956); Montgomery D C, Introduction to Statistical Quality Control; Pawlicki T и др., Med Phys 32 (2005) 2777.`,
+    `A point is the dose rate of the mode's reference applicator in a journal record relative to the first record of the count, %. For a linac the deviation is taken from the nominal output; for an X-ray therapy unit the baseline is the dose rate at the last calibration, and it changes with every calibration although the tube output does not. So the chart follows the tube output itself through calibrations, and the tolerance is shown as a band around the baseline of the last record (dashed): points inside the band are within tolerance relative to the last calibration. A signal is not yet an out-of-tolerance result but a reason to investigate: the output has probably changed not by chance. First check the measurement itself (setup, thermometer and barometer, chamber and electrometer) and repeat it; if the signal is confirmed, look for the cause in the unit (tube, generator, timer, filter). Signals: a point beyond 3σ is a sudden jump; the cumulative sum (CUSUM, k = 0.5σ, h = 5σ) catches a small sustained shift of about 1σ. Observations (for information): 2 of 3 points beyond 2σ on one side and 8 points in a row on one side suggest a level shift; 6 points in a row increasing or decreasing suggest a drift (tube ageing). σ = MR̄/1.128, where MR̄ is the mean range of adjacent records. The limits are based on the first ${BASELINE_POINTS} records of the count and do not change afterwards; points beyond 3σ are left out of them; while there are fewer than ${PROVISIONAL_BELOW} records, the limits are provisional. The trend is the slope of a line through the records of the current count; the forecast (when the trend line leaves the tolerance band) is shown only if the slope is significant (Student's test, 95%). Hollow marker: an output check; square: a point with a signal. Sources: Western Electric Statistical Quality Control Handbook (1956); Montgomery D C, Introduction to Statistical Quality Control; Pawlicki T et al., Med Phys 32 (2005) 2777.`,
+  ),
+)}</p></details>`;
+
+/**
+ * Контрольная карта выбранного режима kV-аппарата. charts — kvModeCharts; возвращает id показанного режима.
+ */
+export function renderKvSpc(charts, modeId) {
+  const sel = $('#hs_kv_spc_mode');
+  const box = $('#hs-kv-spc-chart');
+  const legend = $('#hs-kv-spc-legend');
+  const summary = $('#hs-kv-spc-summary');
+  const withData = charts.filter((c) => c.chart.points.length);
+  const chosen = withData.find((c) => c.modeId === modeId) ?? withData[0] ?? null;
+  sel.innerHTML = withData.length ? withData.map((c) => `<option value="${esc(c.modeId)}"${c === chosen ? ' selected' : ''}>${esc(kvModeName(c))}</option>`).join('') : '<option value="">—</option>';
+  sel.disabled = withData.length < 2;
+  if (!chosen) {
+    box.innerHTML = `<p class="chart-empty">${esc(L('Карта появится, когда у режима будут записи с мощностью дозы стандартного тубуса.', 'The chart appears once the mode has records with the dose rate of the reference applicator.'))}</p>`;
+    legend.innerHTML = '';
+    summary.innerHTML = '';
+    return '';
+  }
+  const { chart } = chosen;
+  const { tol, band } = chart;
+  const last = chart.points.at(-1);
+  const x1 = last.day;
+  const baseTxt = band ? (band.baseDate ? L(`калибровка ${fmtDate(band.baseDate)}`, `calibration of ${fmtDate(band.baseDate)}`) : L('введена во вкладке', 'entered in the tab')) : '';
+  const tolTxt = `${fmt(tol, tol % 1 ? 1 : 0)} %`;
+  const bandLines = band
+    ? [
+        { cls: 'aux', a: band.hi, b: 0, x0: band.fromDay, x1: Math.max(x1, band.fromDay + 1) + 30, dashed: true },
+        { cls: 'aux', a: band.lo, b: 0, x0: band.fromDay, x1: Math.max(x1, band.fromDay + 1) + 30, dashed: true },
+      ]
+    : [];
+  const bandNotes = band ? [{ x: band.fromDay, y: band.hi, text: `+${tolTxt}`, anchor: 'start' }, { x: band.fromDay, y: band.lo, text: `−${tolTxt}`, anchor: 'start', below: true }] : [];
+  drawChart(box, chart, {
+    tol: NaN,
+    label: L(`Контрольная карта: ${kvModeName(chosen)}`, `Control chart: ${kvModeName(chosen)}`),
+    yLabel: L('Выход, % от начала отсчёта', 'Output, % from the count start'),
+    check: (p) => p.mode === 'check',
+    pointTitle: (p) => `${fmtDate(p.date)}, ${p.label}: ${fmt(p.D, 4)} ${p.unit} (${fmtSigned(p.value, 2)} %)${Number.isFinite(p.z) ? `, ${fmtSigned(p.z, 1)}σ` : ''}${pointRules(p)}`,
+    extraLines: bandLines,
+    extraNotes: bandNotes,
+    yExtra: band ? [band.hi, band.lo] : [],
+  });
+  legend.innerHTML = legendHtml([
+    [{ cls: 't1' }, L('мощность дозы ст. тубуса (полый — проверка выхода)', 'reference-applicator dose rate (hollow: output check)')],
+    [{ cls: 'sig', shape: 'square' }, L('сигнал карты', 'chart signal')],
+    [{ line: true, cls: 'cl' }, L('центральная линия', 'centre line')],
+    [{ line: true, cls: 'lim2' }, '±2σ'],
+    [{ line: true, cls: 'lim3', dashed: true }, '±3σ'],
+    ...(band ? [[{ line: true, cls: 'aux', dashed: true }, L(`допуск от базы (${baseTxt})`, `tolerance from the baseline (${baseTxt})`)]] : []),
+  ]);
+  const ref = chart.points[chart.current.from];
+  const refLine = esc(L(
+    `Стандартный тубус: ${last.label}. 0 % — ${fmt(ref.D, 4)} ${ref.unit} (${fmtDate(ref.date)}, первая запись отсчёта).${band ? ` База последней записи — ${fmt(band.base, 4)} ${ref.unit} (${baseTxt}), на карте ${fmtSigned(band.level, 2)} %.` : ' У последней записи базы нет — полосы допуска на карте нет.'}`,
+    `Reference applicator: ${last.label}. 0 % is ${fmt(ref.D, 4)} ${ref.unit} (${fmtDate(ref.date)}, the first record of the count).${band ? ` The baseline of the last record is ${fmt(band.base, 4)} ${ref.unit} (${baseTxt}), ${fmtSigned(band.level, 2)} % on the chart.` : ' The last record has no baseline, so there is no tolerance band on the chart.'}`,
+  ));
+  summary.innerHTML = `<p>${refLine}</p><p>${segmentLine(chart)}</p>${chart.trend || chart.trendWait ? `<p>${trendLine(chart, tol, { vsBase: baseTxt })}</p>` : ''}${signalsHtml(chart, () => '', L('Сигналов нет: выход режима меняется в пределах обычного разброса.', 'No signals: the output of the mode varies within its usual scatter.'))}${kvHelpHtml()}`;
+  return chosen.modeId;
+}
+
+/** Общая часть режимов kV-аппарата по датам. charts — kvModeCharts. Возвращает kvCommon. */
+export function renderKvCommon(j, machine, charts) {
+  const box = $('#hs-kv-common-chart');
+  const legend = $('#hs-kv-common-legend');
+  const summary = $('#hs-kv-common-summary');
+  const res = kvCommon(j, machine, charts);
+  const name = (id) => {
+    const c = charts.find((x) => x.modeId === id);
+    return c ? kvModeName(c) : '—';
+  };
+  const withData = charts.filter((c) => c.chart.points.length);
+  if (withData.length < 2 || !res.rows.length) {
+    box.innerHTML = `<p class="chart-empty">${esc(
+      withData.length < 2
+        ? L('Общую часть можно выделить, когда в журнале есть хотя бы два режима аппарата.', 'The common part can be found once the journal has at least two modes of the unit.')
+        : L(`График появится, когда хотя бы у двух режимов будет не меньше ${MIN_POINTS} записей отсчёта.`, `The plot appears once at least two modes have ${MIN_POINTS} or more records in their count.`),
+    )}</p>`;
+    legend.innerHTML = '';
+    summary.innerHTML = '';
+    return res;
+  }
+  const chart = res.chart;
+  drawChart(box, chart, {
+    tol: NaN,
+    label: L('Общая часть отклонений режимов по датам', 'Common part of the mode deviations by date'),
+    yLabel: L('Общая часть, %', 'Common part, %'),
+    check: () => false,
+    pointTitle: (p) => `${fmtDate(p.date)}: ${fmtSigned(p.value, 2)} % (${L('режимов', 'modes')}: ${p.n})${pointRules(p)}`,
+  });
+  legend.innerHTML = legendHtml([
+    [{ cls: 't1' }, L('общая часть дня', 'common part of the day')],
+    [{ cls: 'sig', shape: 'square' }, L('сигнал', 'signal')],
+    [{ line: true, cls: 'cl' }, L('центральная линия', 'centre line')],
+    [{ line: true, cls: 'lim2' }, '±2σ'],
+    [{ line: true, cls: 'lim3', dashed: true }, '±3σ'],
+  ]);
+  const last = res.rows.at(-1);
+  const own = last.beams.map((b) => `${name(b.beamId)} ${fmtSigned(b.e, 2)} %`).join(', ');
+  const lines = [esc(L(`Последний день (${fmtDate(last.date)}): общая часть ${fmtSigned(last.value, 2)} % по ${last.n} режимам; собственные части: ${own}.`, `Last day (${fmtDate(last.date)}): common part ${fmtSigned(last.value, 2)}% over ${last.n} modes; own parts: ${own}.`))];
+  const lone = last.beams.filter((b) => Math.abs(b.z) > BEAM_Z);
+  if (last.signals.length) {
+    lines.push(`<span class="spc-warn">${esc(L(
+      `Сдвинулись все режимы вместе (${last.signals.map(signalText).join('; ')}). Сначала проверьте дозиметрию: термометр и барометр и их поверку, камеру, кабель и электрометр, сертификат камеры. Если дозиметрия в порядке — общая часть аппарата: генератор, трубка, таймер.`,
+      `All modes shifted together (${last.signals.map(signalText).join('; ')}). First check the dosimetry: the thermometer and barometer and their calibration, the chamber, cable and electrometer, the chamber certificate. If the dosimetry is fine, look at the common part of the unit: generator, tube, timer.`,
+    ))}</span>`);
+  }
+  if (lone.length) {
+    lines.push(`<span class="spc-warn">${esc(L(
+      `Отдельно от других ушёл ${lone.map((b) => `${name(b.beamId)} (${fmtSigned(b.e, 2)} %, ${fmtSigned(b.z, 1)}σ)`).join(', ')}: причина скорее в самом режиме (фильтр, напряжение, ток).`,
+      `Apart from the others, ${lone.map((b) => `${name(b.beamId)} (${fmtSigned(b.e, 2)}%, ${fmtSigned(b.z, 1)}σ)`).join(', ')} moved: the cause is more likely in the mode itself (filter, voltage, current).`,
+    ))}</span>`);
+  }
+  if (!last.signals.length && !lone.length) lines.push(esc(L('Общая часть и собственные части режимов — в пределах обычного разброса.', 'The common part and the modes’ own parts are within their usual scatter.')));
+  summary.innerHTML = `${lines.map((x) => `<p>${x}</p>`).join('')}${chart.current?.limits ? `<p>${segmentLine(chart)}</p>` : ''}${signalsHtml(chart)}`;
+  return res;
+}
+
+/** Замечания справа: сигналы последних записей режимов и общей части. */
+export function kvSpcMessages(charts, common) {
+  const out = [];
+  for (const c of charts) {
+    const p = c.chart.points.at(-1);
+    if (p?.signals.length) out.push({ level: 'warn', head: L('Контрольная карта', 'Control chart'), text: `${kvModeName(c)}, ${fmtDate(p.date)}: ${p.signals.map(signalText).join('; ')}.` });
+  }
+  const last = common?.rows.at(-1);
+  if (last?.signals.length) {
+    out.push({ level: 'warn', head: L('Общая часть режимов', 'Common part of the modes'), text: L(`${fmtDate(last.date)}: ${fmtSigned(last.value, 2)} % — сдвинулись все режимы вместе; сначала проверьте дозиметрию.`, `${fmtDate(last.date)}: ${fmtSigned(last.value, 2)}% — all modes shifted together; check the dosimetry first.`) });
   }
   return out;
 }

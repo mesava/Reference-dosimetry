@@ -292,8 +292,11 @@ export function recordKvVisit(j, { visit, today = localToday(), vr = computeKvVi
     changed.set(r.id, left.length ? { ...r, summary: trimSummary(r.summary, left) } : null);
   }
   const whole = [...changed].find(([, v]) => v === null)?.[0];
+  // отметка «новый отсчёт карты» заменяемой записи остаётся у новой (как у сеансов ускорителей)
+  const mark = whole && (j.kvRecords ?? []).find((x) => x.id === whole)?.spcRestart;
   const record = {
     id: whole ?? uid('kr'),
+    ...(mark ? { spcRestart: true } : {}),
     machineId: machine.id,
     date,
     mode: kvRecMode(visit),

@@ -9,6 +9,7 @@ import { applicatorSize } from './kv-machine.js';
 import { kvRecordsOf, kvRecordOrder, kvRecModeText } from './kv-records.js';
 import { kvMachineText } from './kv-journal.js';
 import { csvNum, csvCell } from './journal-csv.js';
+import { signalText } from './spc-text.js';
 
 const str = (v) => (v === undefined || v === null ? '' : String(v)).trim();
 const fin = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -66,7 +67,7 @@ function modeEntries(j, machineId, modeId, kind = '') {
 }
 
 /** Строка стандартного тубуса режима в записи: отмеченная «ст.», иначе референсный аппликатор режима аппарата, иначе первая. */
-function stdRowOf(machine, modeId, x) {
+export function kvStdRow(machine, modeId, x) {
   const rows = x.rows ?? [];
   const ref = machine.modes.find((y) => y.id === modeId)?.refApplicator;
   return rows.find((y) => y.std) ?? (ref ? rows.find((y) => y.applicatorId === ref) : null) ?? rows[0] ?? null;
@@ -82,7 +83,7 @@ export function kvOutputSeries(j, machine) {
     ...md,
     points: modeEntries(j, machine.id, md.modeId)
       .map(({ rec, x }) => {
-        const y = stdRowOf(machine, md.modeId, x);
+        const y = kvStdRow(machine, md.modeId, x);
         if (!y) return null;
         return {
           date: rec.date,
@@ -184,9 +185,10 @@ const verdictText = (v) => ({ ok: L('в допуске', 'within tolerance'), ov
 /**
  * Записи kV аппарата в CSV для Excel: по строке на аппликатор режима в записи — дата, вид, режим, аппликатор, мощность
  * дозы, база (и дата калибровки, если из журнала), отклонение, допуск, решение, k_pol, k_s, τ, СПО, k_Q, камера,
- * сотрудники. Разделитель и десятичный знак — по языку (как журнал ускорителей, core/journal-csv.js).
+ * сотрудники, сигналы контрольной карты режима (у стандартного тубуса; signals — core/kv-spc.js kvChartSignals).
+ * Разделитель и десятичный знак — по языку (как журнал ускорителей, core/journal-csv.js).
  */
-export function kvRecordsCsv(j, machine) {
+export function kvRecordsCsv(j, machine, signals = new Map()) {
   const en = getLang() === 'en';
   const sep = en ? ',' : ';';
   const dec = en ? '.' : ',';
@@ -195,7 +197,7 @@ export function kvRecordsCsv(j, machine) {
     L('Аппликатор', 'Applicator'), L('РИП, см', 'SSD, cm'), L('Стандартный тубус', 'Reference applicator'), L('Мощность дозы', 'Dose rate'), L('Единица', 'Unit'), L('Где', 'Where'),
     L('База', 'Baseline'), L('База — калибровка', 'Baseline calibration'), L('Отклонение, %', 'Deviation, %'), L('Допуск, %', 'Tolerance, %'), L('Калибровка', 'Calibration'),
     'k_pol', L('k_pol откуда', 'k_pol from'), 'k_s', L('k_s откуда', 'k_s from'), L('τ', 'τ'), L('Единица τ', 'τ unit'), L('τ откуда', 'τ from'),
-    L('СПО в расчёте, мм', 'HVL used, mm'), L('Материал', 'Material'), L('СПО откуда', 'HVL from'), 'k_Q', L('Камера', 'Chamber'), L('Сотрудники', 'Staff'),
+    L('СПО в расчёте, мм', 'HVL used, mm'), L('Материал', 'Material'), L('СПО откуда', 'HVL from'), 'k_Q', L('Камера', 'Chamber'), L('Сотрудники', 'Staff'), L('Контрольная карта', 'Control chart'),
   ];
   const srcCsv = (o) => (!o ? '' : o.src === 'journal' ? kvSrcText('journal', o.date) : o.src === 'mode' ? kvSrcText('mode') : L('измерен', 'measured'));
   const lines = [head.map((h) => csvCell(h, sep)).join(sep)];
@@ -203,13 +205,16 @@ export function kvRecordsCsv(j, machine) {
   for (const r of kvRecordsOf(j, machine.id).slice().sort(kvRecordOrder)) {
     for (const x of r.summary?.modes ?? []) {
       const hvlSrc = x.hvl?.source === 'journal' ? kvSrcText('journal', x.hvl.date) : x.hvl?.source === 'measured' ? L('измерен', 'measured') : L('из таблицы режимов', 'from the modes table');
+      const sg = signals.get(`${r.id}|${x.modeId}`);
+      const std = kvStdRow(machine, x.modeId, x);
+      const rules = sg ? [...sg.signals.map(signalText), ...sg.watch.map((k) => L(`наблюдение: ${signalText(k)}`, `observation: ${signalText(k)}`))].join('; ') : '';
       for (const y of x.rows ?? []) {
         const row = [
           name, r.date, kvRecModeText(r.mode), kvModeTitleOf(x), str(x.kv), str(x.ma), str(x.filter),
           kvAppLabel(machine, y), str(y.ssd), y.std ? L('да', 'yes') : '', csvNum(y.D, 5, dec), kvRateUnit(x.setUnit), whereText(y.where),
           csvNum(y.base, 5, dec), str(y.baseDate), csvNum(y.verdict === 'error' ? NaN : y.dev, 3, dec), csvNum(y.tol, 1, dec), verdictText(y.verdict),
           csvNum(x.kpol?.v, 5, dec), srcCsv(x.kpol), csvNum(x.ks?.v, 5, dec), srcCsv(x.ks), csvNum(x.tau?.v, 5, dec), str(x.tau?.unit), srcCsv(x.tau),
-          csvNum(x.hvl?.used, 3, dec), x.hvl?.mat ?? '', hvlSrc, csvNum(x.cert?.kQ, 4, dec), str(x.chamber), (r.staff ?? []).join(', '),
+          csvNum(x.hvl?.used, 3, dec), x.hvl?.mat ?? '', hvlSrc, csvNum(x.cert?.kQ, 4, dec), str(x.chamber), (r.staff ?? []).join(', '), y === std ? rules : '',
         ];
         lines.push(row.map((v) => csvCell(v, sep)).join(sep));
       }

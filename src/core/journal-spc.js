@@ -27,24 +27,23 @@ export const median = (arr) => {
 export const BEAM_Z = 3;
 
 /**
- * Общая часть сеансов аппарата по пучкам beamIds (обычно — одного вида: фотоны, электроны или ⁶⁰Co).
- * В сеансе учитываются пучки, у карты которых в этот момент есть границы (не меньше 5 сеансов отсчёта); нужно хотя бы
- * два таких пучка. Сеанс с подстройкой ускорителя берётся по значениям до подстройки — относительно прежнего уровня.
- * Возвращает { chart, rows, charts }: rows — точки карты общей части (value = c, %) с beams: [{ beamId, d, e, z, sigma }].
+ * Общая часть записей по картам charts (Map id → карта ряда): keys — записи по порядку [{ key, date }], точка карты
+ * относится к записи, если её поле field равно key. В записи учитываются ряды, у карты которых в этот момент есть границы
+ * (не меньше 5 записей отсчёта); нужно хотя бы два таких ряда. Запись с подстройкой ускорителя берётся по значениям до
+ * подстройки — относительно прежнего уровня. Возвращает { chart, rows, charts }: rows — точки карты общей части
+ * (value = c, %; поле field — key) с beams: [{ beamId, d, e, z, sigma }] (beamId — id ряда).
  */
-export function sessionCommon(j, machineId, beamIds) {
-  const charts = new Map(beamIds.map((id) => [id, beamChart(j, machineId, id)]));
+export function commonOf(charts, keys, field) {
   const rows = [];
-  for (const s of j.sessions) {
-    if (s.machineId !== machineId) continue;
+  for (const { key, date } of keys) {
     const beams = [];
     let restart = '';
     let day = NaN;
     for (const [beamId, ch] of charts) {
-      const p = ch.points.find((q) => q.sessionId === s.id);
+      const p = ch.points.find((q) => q[field] === key);
       if (!p) continue;
       day = p.day;
-      if (p.restart && (p.reason === 'equipment' || p.reason === 'geometry' || p.reason === 'manual')) restart = p.reason;
+      if (p.restart && ['equipment', 'geometry', 'applicator', 'manual'].includes(p.reason)) restart = p.reason;
       const seg = ch.segments[p.segment];
       if (!seg?.limits) continue;
       beams.push({ beamId, d: p.value - seg.cl, sigma: seg.sigma });
@@ -55,8 +54,18 @@ export function sessionCommon(j, machineId, beamIds) {
       b.e = b.d - c;
       b.z = b.e / b.sigma;
     }
-    rows.push({ sessionId: s.id, date: s.date, day, value: c, n: beams.length, beams, restart: !!restart && rows.length > 0, reason: restart || undefined });
+    rows.push({ [field]: key, date, day, value: c, n: beams.length, beams, restart: !!restart && rows.length > 0, reason: restart || undefined });
   }
   const chart = controlChart(rows);
   return { chart, rows: chart.points, charts };
+}
+
+/**
+ * Общая часть сеансов аппарата по пучкам beamIds (обычно — одного вида: фотоны, электроны или ⁶⁰Co): commonOf по
+ * сеансам аппарата; у строк — sessionId.
+ */
+export function sessionCommon(j, machineId, beamIds) {
+  const charts = new Map(beamIds.map((id) => [id, beamChart(j, machineId, id)]));
+  const keys = j.sessions.filter((s) => s.machineId === machineId).map((s) => ({ key: s.id, date: s.date }));
+  return commonOf(charts, keys, 'sessionId');
 }

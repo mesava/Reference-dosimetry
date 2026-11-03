@@ -7,7 +7,8 @@ import { $, esc, fmt, fmtSigned, today, makeStatus, armButton, notifyUpdate, ric
 import { sessionReportText } from './journal-report.js';
 import { scatterChart, legendSwatch } from './chart.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
-import { renderSpc, renderCommon, spcMessages, renderChecks, checkSignalMessages } from './journal-spc-ui.js';
+import { renderSpc, renderCommon, spcMessages, renderChecks, checkSignalMessages, renderKvSpc, renderKvCommon, kvSpcMessages } from './journal-spc-ui.js';
+import { kvModeCharts, kvChartSignals } from '../core/kv-spc.js';
 import { journalCsv, checksCsv, csvFileName } from '../core/journal-csv.js';
 import { setupFilePanel, beamMachines, fmtDate, countWord, dayToIso, monthLabel, monthTicks } from './journal-common.js';
 import { kvRecordsOf, kvRecordCounts, kvRecModeText, kvJournalInputs } from '../core/kv-records.js';
@@ -237,9 +238,10 @@ function renderKvRecords(j) {
           const gone = (r.summary?.replaced ?? []).map((x) => L(`режим ${x.m + 1}${x.title ? ` (${x.title})` : ''}`, `mode ${x.m + 1}${x.title ? ` (${x.title})` : ''}`));
           const goneLi = gone.length ? `<li class="kv-rec-gone"><small>${esc(L(`Заменены более поздней записью того же дня: ${gone.join(', ')}.`, `Replaced by a later record of the same day: ${gone.join(', ')}.`))}</small></li>` : '';
           const staff = (r.staff ?? []).filter((s) => String(s).trim());
-          return `<li><div><b>${esc(fmtDate(r.date))}</b> · ${esc(kvRecModeText(r.mode))} · ${esc(L(`режимов: ${n.modes}, аппликаторов: ${n.rows}`, `modes: ${n.modes}, applicators: ${n.rows}`))}${over.length ? ` · <span class="st-out">${esc(L(`вне допуска: ${over.join('; ')}`, `out of tolerance: ${over.join('; ')}`))}</span>` : ''}${staff.length ? `<br><small>${esc(staff.join(', '))}</small>` : ''}</div>
+          return `<li><div><b>${esc(fmtDate(r.date))}</b> · ${esc(kvRecModeText(r.mode))} · ${esc(L(`режимов: ${n.modes}, аппликаторов: ${n.rows}`, `modes: ${n.modes}, applicators: ${n.rows}`))}${over.length ? ` · <span class="st-out">${esc(L(`вне допуска: ${over.join('; ')}`, `out of tolerance: ${over.join('; ')}`))}</span>` : ''}${staff.length ? `<br><small>${esc(staff.join(', '))}</small>` : ''}
+            ${r.spcRestart ? `<small class="chip">${esc(L('с этой записи — новый отсчёт контрольной карты', 'a new control-chart count starts here'))}</small>` : ''}</div>
             <ul class="jsess-beams">${lines}${goneLi}</ul>
-            <div class="row-tools">${r.file ? `<button type="button" class="link-btn" data-kv-open="${esc(r.id)}">${esc(L('Открыть во вкладке', 'Open in the tab'))}</button>` : ''}${r.file ? `<button type="button" class="link-btn" data-report="${esc(r.id)}">${esc(L('Протокол', 'Report'))}</button>` : ''}<button type="button" class="link-btn danger" data-kv-del="${esc(r.id)}">${esc(L('Удалить', 'Delete'))}</button></div></li>`;
+            <div class="row-tools">${r.file ? `<button type="button" class="link-btn" data-kv-open="${esc(r.id)}">${esc(L('Открыть во вкладке', 'Open in the tab'))}</button>` : ''}${r.file ? `<button type="button" class="link-btn" data-report="${esc(r.id)}">${esc(L('Протокол', 'Report'))}</button>` : ''}<button type="button" class="link-btn" data-kv-spc="${esc(r.id)}" title="${esc(L('Например, после ремонта или замены трубки: до и после — разные ряды.', 'For example, after a repair or replacement of the tube: before and after are different series.'))}">${esc(r.spcRestart ? L('Убрать новый отсчёт карты', 'Remove the new chart count') : L('Новый отсчёт карты', 'New chart count'))}</button><button type="button" class="link-btn danger" data-kv-del="${esc(r.id)}">${esc(L('Удалить', 'Delete'))}</button></div></li>`;
         })
         .join('')}</ul>`
     : `<p class="sub-hint">${esc(L('Записей пока нет: во вкладке «kV-рентген» выберите этот аппарат (лист «Аппарат и режимы», блок «Журнал отделения»), измерьте и нажмите «Записать в журнал» (панель «Журнал» справа).', 'No records yet: in the kV x-rays tab select this unit (the Machine and modes sheet, the Department journal block), measure and click “Record to journal” (the Journal panel on the right).'))}</p>`;
@@ -251,7 +253,7 @@ function renderKvRecords(j) {
   }
 }
 
-function renderKvReadout(j) {
+function renderKvReadout(j, ctl = null) {
   const m = machineOf(j, machineId);
   const recs = kvRecordsOf(j, machineId);
   const last = recs.at(-1);
@@ -264,6 +266,7 @@ function renderKvReadout(j) {
   if (lastCal && dayNumber(today()) - dayNumber(lastCal.date) > 365) msgs.push(`<li class="info"><span class="lvl">${esc(L('Калибровка', 'Calibration'))}</span><span>${esc(L(`Последняя калибровка аппарата — больше года назад (${fmtDate(lastCal.date)}).`, `The unit's last calibration was more than a year ago (${fmtDate(lastCal.date)}).`))}</span></li>`);
   const nr = [...new Set(recs.flatMap((r) => r.summary?.notRev1 ?? []))];
   if (nr.length) msgs.push(`<li class="warn"><span class="lvl">${esc(L('Не по TRS-398 Rev.1', 'Not TRS-398 Rev.1'))}</span><span>${esc(L(`В записях есть расчёт не по TRS-398 Rev.1: ${nr.join('; ')}.`, `The records include calculations not according to TRS-398 Rev.1: ${nr.join('; ')}.`))}</span></li>`);
+  if (ctl) for (const x of kvSpcMessages(ctl.charts, ctl.common)) msgs.push(`<li class="${x.level}"><span class="lvl">${esc(x.head)}</span><span>${esc(x.text)}</span></li>`);
   $('#hs-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Сроки калибровки камер и электрометров заданы и не подходят.', 'Chamber and electrometer calibrations are within their dates.'))}</span></li>`;
   $('#hs-mobile-value').textContent = `${kvMachineText(m) || '—'}: ${recs.length}`;
 }
@@ -271,6 +274,7 @@ function renderKvReadout(j) {
 
 // ------------------------------------------------------------ рентгенотерапевтический аппарат: тренды (с 0.48.0)
 let kvModeSel = ''; // режим таблицы «Режим по датам»
+let kvSpcSel = ''; // режим контрольной карты
 let kvChecks = false; // сводная по датам — с проверками выхода
 const kvModeName = (s) => `${s.n ? `${s.n}. ` : ''}${s.title}`;
 const kindShort = (k) => (k === 'check' ? L('проверка', 'check') : L('калибровка', 'calibration'));
@@ -332,6 +336,15 @@ function renderKvChart(j) {
     series.map((s, i) => `<span class="item">${legendSwatch({ line: true, cls: cls(i) })}<span>${esc(`${kvModeName(s)} — ${s.pts.at(-1).label}`)}</span></span>`).join('') +
     `<span class="item">${legendSwatch({ cls: 't1', hollow: true })}<span>${esc(L('полый значок — проверка выхода', 'hollow marker: output check'))}</span></span>` +
     `<span class="item">${legendSwatch({ line: true, dashed: true, cls: 'aux' })}<span>${esc(L('допуск', 'tolerance'))}</span></span>`;
+}
+
+/** Контрольная карта режима и общая часть режимов (core/kv-spc.js): { charts, common }. */
+function renderKvControl(j) {
+  const m = machineOf(j, machineId);
+  const charts = kvModeCharts(j, m);
+  kvSpcSel = renderKvSpc(charts, kvSpcSel);
+  const common = renderKvCommon(j, m, charts);
+  return { charts, common };
 }
 
 /** Сводная по датам: мощность дозы «режим × аппликатор», колонки — даты (калибровки или все записи). */
@@ -488,10 +501,11 @@ function render() {
   if (isKv(j)) {
     showSections(true);
     renderKvChart(j);
+    const ctl = renderKvControl(j);
     renderKvSummary(j);
     renderKvModeTable(j);
     renderKvRecords(j);
-    renderKvReadout(j);
+    renderKvReadout(j, ctl);
     renderReport();
     notifyUpdate(ROOT());
     return;
@@ -610,6 +624,10 @@ export function initHistory() {
     if (!m) return;
     copyText(kvDoseByDateTsv(kvDoseByDate(j, m, { checks: kvChecks })), L('Сводная скопирована: вставьте её в Excel.', 'The summary has been copied: paste it into Excel.'), setStatus);
   });
+  $('#hs_kv_spc_mode').addEventListener('change', (e) => {
+    kvSpcSel = e.target.value;
+    renderKvSpc(kvModeCharts(getJournal(), machineOf(getJournal(), machineId)), kvSpcSel);
+  });
   $('#hs_kv_mode').addEventListener('change', (e) => {
     kvModeSel = e.target.value;
     renderKvModeTable(getJournal());
@@ -621,7 +639,7 @@ export function initHistory() {
       setStatus(L('Записей этого аппарата нет — выгружать нечего.', 'This unit has no records: nothing to export.'));
       return;
     }
-    downloadText(kvRecordsCsv(j, m), csvFileName(j, new Date(), `kV_${kvMachineText(m) || m.id}`.replace(/[^\p{L}\p{N}_.-]+/gu, '-')), 'text/csv;charset=utf-8');
+    downloadText(kvRecordsCsv(j, m, kvChartSignals(j, m)), csvFileName(j, new Date(), `kV_${kvMachineText(m) || m.id}`.replace(/[^\p{L}\p{N}_.-]+/gu, '-')), 'text/csv;charset=utf-8');
     setStatus(L('Записи аппарата выгружены в CSV: по строке на аппликатор режима в записи; файл открывается в Excel двойным щелчком.', 'The records of the unit have been exported to CSV, one line per applicator of a mode in a record; the file opens in Excel with a double click.'));
   });
   $('#hs-kv-records').addEventListener('click', (e) => {
@@ -636,6 +654,14 @@ export function initHistory() {
           setStatus(err.message);
         }
       }
+      return;
+    }
+    const sp = e.target.closest('[data-kv-spc]');
+    if (sp) {
+      const id = sp.dataset.kvSpc;
+      const on = !(getJournal().kvRecords ?? []).find((x) => x.id === id)?.spcRestart;
+      updateJournal((jj) => ({ ...jj, kvRecords: (jj.kvRecords ?? []).map((x) => (x.id === id ? { ...x, spcRestart: on } : x)) }), 'history');
+      setStatus(on ? L('С этой записи контрольные карты режимов начинают новый отсчёт.', 'The control charts of the modes start a new count from this record.') : L('Отметка нового отсчёта снята.', 'The new count mark has been removed.'));
       return;
     }
     const rb = e.target.closest('[data-report]');
@@ -662,5 +688,6 @@ export function initHistory() {
     if (!box || box.clientWidth === wk || !box.clientWidth || !isKv(getJournal())) return;
     wk = box.clientWidth;
     renderKvChart(getJournal());
+    renderKvControl(getJournal());
   }).observe($('#hs-kv-chart'));
 }
