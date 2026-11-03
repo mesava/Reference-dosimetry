@@ -183,7 +183,7 @@ export function computeKvSession(sess, ext = {}) {
 // измерена (таймер — свойство аппарата, камера значения не имеет).
 
 /** Поля, общие для всех режимов. */
-export const KV_COMMON_KEYS = ['kv_institution', 'kv_machine', 'kv_date', 'kv_staff', 'kv_notes', 'kv_env_P_unit', 'kv_tol', 'kv_tau_tol'];
+export const KV_COMMON_KEYS = ['kv_institution', 'kv_machine', 'kv_jmachine', 'kv_date', 'kv_staff', 'kv_notes', 'kv_env_P_unit', 'kv_tol', 'kv_tau_tol'];
 /** Поля камеры: камера, сертификат и условия калибровки, электрометр, напряжения и полярность. */
 export const KV_CHAMBER_KEYS = [
   'kv_ch_model', 'kv_cc_maker', 'kv_cc_model', 'kv_cc_type', 'kv_ch_serial', 'kv_foil',
@@ -197,8 +197,8 @@ const COMMON_SET = new Set(KV_COMMON_KEYS);
 const CHAMBER_SET = new Set(KV_CHAMBER_KEYS);
 /** Поля режима: всё, что не строка, не камера и не общее. */
 export const KV_MODE_KEYS = Object.keys(KV_DEFAULTS).filter((k) => !ROW_SET.has(k) && !COMMON_SET.has(k) && !CHAMBER_SET.has(k));
-/** Поля, которые новый режим не копирует из текущего: пучок и данные ошибки таймера у него свои (задания T₁ и T₂ — те же). */
-const MODE_OWN_KEYS = ['kv_kv', 'kv_ma', 'kv_filter', 'kv_hvl', 'kv_tau', 'kv_tt', 'kv_tm', 'kv_nx_t', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2'];
+/** Поля, которые новый режим не копирует из текущего: связь с режимом «Оборудования», пучок и данные ошибки таймера у него свои (задания T₁ и T₂ — те же). */
+const MODE_OWN_KEYS = ['kv_jmode', 'kv_kv', 'kv_ma', 'kv_filter', 'kv_hvl', 'kv_tau', 'kv_tt', 'kv_tm', 'kv_nx_t', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2'];
 /** Поля камеры, которые новая камера копирует из текущей: электрометр, условия сертификата и измерения заряда. */
 const CHAMBER_KEEP_KEYS = ['kv_el_model', 'kv_el_serial', 'kv_kelec', 'kv_T0', 'kv_P0', 'kv_V1', 'kv_V2', 'kv_polarity', 'kv_ks_on', 'kv_rec_trs', 'kv_kleak'];
 

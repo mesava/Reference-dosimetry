@@ -58,6 +58,9 @@ export const KV_DEFAULTS = {
 
   kv_institution: '',
   kv_machine: '',
+  // связь с «Оборудованием» (с 0.42.0): id рентгенотерапевтического аппарата журнала и, у режима, id его режима; пусто — ручной ввод
+  kv_jmachine: '',
+  kv_jmode: '',
   kv_date: '',
   kv_staff: [''],
   kv_notes: '',

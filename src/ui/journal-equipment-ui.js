@@ -16,7 +16,9 @@ import {
 } from '../core/journal.js';
 import {
   newKvApplicator, newKvMachineMode, normalizeKvMachine, applicatorDiameter, applicatorText, kvMachineModeTitle, hvlUnit, kvRefCandidates, kvMachineChecks,
+  KV_ONLY_CHAMBERS, findKvOnlyChamber,
 } from '../core/kv-machine.js';
+import { kvCertText } from '../core/kv-journal.js';
 import { getMyChambers } from './store.js';
 import { $, esc, fmt, makeStatus, armButton, notifyUpdate, today, richText, currentProtocol, plainSymbols } from './common.js';
 import { localizeDecimals } from './i18n.js';
@@ -52,20 +54,21 @@ const missChip = (miss) => (miss.length ? `<span class="chip warn">${richText(L(
 
 // ------------------------------------------------------------ камеры
 const OTHER_MAKER = 'other';
-/** Производители камер: из базы фотонов и плоскопараллельных камер базы электронов. */
-const chamberMakers = () => [...new Set([...CHAMBERS.map((c) => c.maker), ...E_CHAMBERS.filter((c) => c.type === 'pp').map((c) => c.maker)])];
+/** Производители камер: из базы фотонов, плоскопараллельных камер базы электронов и камер только для kV-рентгена. */
+const chamberMakers = () => [...new Set([...CHAMBERS.map((c) => c.maker), ...E_CHAMBERS.filter((c) => c.type === 'pp').map((c) => c.maker), ...KV_ONLY_CHAMBERS.map((c) => c.maker)])];
 /** Производитель камеры записи: выбранный в карточке или по модели; «Другая», своя — 'other'. */
 function chamberMakerOf(c) {
   const m = c.form?.ch_model ?? '';
   if (m === 'OTHER' || m === 'CUSTOM' || String(m).startsWith('MY:')) return OTHER_MAKER;
-  return findChamber(m)?.maker ?? findEChamber(m)?.maker ?? c.maker ?? '';
+  return findChamber(m)?.maker ?? findEChamber(m)?.maker ?? findKvOnlyChamber(m)?.maker ?? c.maker ?? '';
 }
 /** Модели камер производителя: камеры базы фотонов, затем плоскопараллельные (для электронов и ⁶⁰Co). */
 function chamberModels(maker) {
   if (maker === OTHER_MAKER) return [];
   const cyl = CHAMBERS.filter((c) => c.maker === maker).map((c) => [c.id, `${c.model}${c.note ? ` — ${plainSymbols(chamberNote(c))}` : ''}`]);
   const pp = E_CHAMBERS.filter((c) => c.type === 'pp' && c.maker === maker).map((c) => [c.id, `${c.model} — ${L('плоскопараллельная, для электронов и ⁶⁰Co', 'plane-parallel, for electrons and ⁶⁰Co')}`]);
-  return [...cyl, ...pp];
+  const kv = KV_ONLY_CHAMBERS.filter((c) => c.maker === maker).map((c) => [c.id, `${c.model} — ${L('плоскопараллельная, для kV-рентгена (низкие энергии)', 'plane-parallel, for kV x-rays (low energy)')}`]);
+  return [...cyl, ...pp, ...kv];
 }
 function makerOptions(makers, cur, otherText) {
   return [`<option value="">${esc(L('— производитель —', '— manufacturer —'))}</option>`, ...makers.map((m) => `<option value="${esc(m)}"${m === cur ? ' selected' : ''}>${esc(m)}</option>`), `<option value="${OTHER_MAKER}"${cur === OTHER_MAKER ? ' selected' : ''}>${esc(otherText)}</option>`].join('');
@@ -109,6 +112,8 @@ function chamberCard(c, j = getJournal()) {
   const phCross = ph && f.ch_cal_route === 'cross';
   const elCross = el && f.e_cal_route === 'cross';
   const uses = chamberUses(j, c.id);
+  const kvOnly = !!findKvOnlyChamber(f.ch_model);
+  const kvText = kvCertText(c.kv);
   // N_D,w в ⁶⁰Co нужен, если хоть для одного вида пучков камера калибруется в ⁶⁰Co, если она выбрана у пучка ⁶⁰Co
   // (или модель ещё не выбрана)
   const needNdw = isBlank(f.ch_model) || (ph && !phCross) || (el && !elCross) || uses.cobalt;
@@ -118,7 +123,7 @@ function chamberCard(c, j = getJournal()) {
     <div class="jcard-head"><b>${esc(chamberText(c) || L('Новая камера', 'New chamber'))}</b><span class="chips">${missChip(chamberMissing(c, uses, 'trs'))}${dueChip(c.dueDate)}</span></div>
     <div class="grid">
       ${field(L('Производитель', 'Manufacturer'), `<select ${bind(k, c.id, 'maker')}>${makerOptions(chamberMakers(), maker, L('Другая или своя камера', 'Other or custom chamber'))}</select>`, { forId: fieldId(k, c.id, 'maker') })}
-      ${maker ? field(L('Модель', 'Model'), `<select ${bind(k, c.id, 'form.ch_model')}>${chamberModelOptions(maker, f.ch_model)}</select>`, { forId: fieldId(k, c.id, 'form.ch_model'), sub: [custom ? esc([f.cc_maker, f.cc_model].filter(Boolean).join(' ')) : '', ph && el ? esc(L('для фотонов, электронов и ⁶⁰Co', 'for photons, electrons and ⁶⁰Co')) : el ? esc(L('для электронов и ⁶⁰Co', 'for electrons and ⁶⁰Co')) : ph ? esc(L('для фотонов и ⁶⁰Co', 'for photons and ⁶⁰Co')) : '', esc(chamberDims(f))].filter(Boolean).join(' · ') }) : ''}
+      ${maker ? field(L('Модель', 'Model'), `<select ${bind(k, c.id, 'form.ch_model')}>${chamberModelOptions(maker, f.ch_model)}</select>`, { forId: fieldId(k, c.id, 'form.ch_model'), sub: [custom ? esc([f.cc_maker, f.cc_model].filter(Boolean).join(' ')) : '', ph && el ? esc(L('для фотонов, электронов и ⁶⁰Co', 'for photons, electrons and ⁶⁰Co')) : el ? esc(L('для электронов и ⁶⁰Co', 'for electrons and ⁶⁰Co')) : ph ? esc(L('для фотонов и ⁶⁰Co', 'for photons and ⁶⁰Co')) : kvOnly ? esc(L('для kV-рентгена', 'for kV x-rays')) : '', esc(chamberDims(f))].filter(Boolean).join(' · ') }) : ''}
       ${field(L('Заводской №', 'Serial No.'), input(k, c.id, 'form.ch_serial', f.ch_serial), { forId: fieldId(k, c.id, 'form.ch_serial') })}
       ${ph && !custom ? field(L('Длина полости, мм', 'Cavity length, mm'), input(k, c.id, 'length', c.length, { num: true, placeholder: Number.isFinite(findChamber(f.ch_model)?.lengthMm) ? fmt(findChamber(f.ch_model).lengthMm, 1) : '' }), { forId: fieldId(k, c.id, 'length'), sub: Number.isFinite(findChamber(f.ch_model)?.lengthMm) ? L(`для k<sub>vol</sub> в пучках БВФ; пусто — из базы (${lengthSourceText(findChamber(f.ch_model))})`, `for k<sub>vol</sub> in FFF beams; blank: from the database (${lengthSourceText(findChamber(f.ch_model))})`) : L('для k<sub>vol</sub> в пучках БВФ: в базе длины нет — возьмите из паспорта камеры', 'for k<sub>vol</sub> in FFF beams: the database has no length; take it from the chamber datasheet') }) : ''}
       ${other
@@ -159,6 +164,8 @@ function chamberCard(c, j = getJournal()) {
       ${field(L('Полярность при калибровке', 'Calibration polarity'), select(k, c.id, 'calPol', c.calPol, [['', L('— не указана —', '— not given —')], ['+', L('положительная (+)', 'positive (+)')], ['-', L('отрицательная (−)', 'negative (−)')]]), { forId: fieldId(k, c.id, 'calPol') })}
       ${field(L('Примечания', 'Notes'), input(k, c.id, 'notes', c.notes), { forId: fieldId(k, c.id, 'notes'), cls: 'span-2' })}
     </div>
+    ${kvText || kvOnly ? `<h4 class="sub-h">${esc(L('kV-сертификат', 'kV certificate'))}</h4>
+    <p class="sub-hint">${kvText ? `${richText(kvText)}. ` : esc(L('Пока не введён. ', 'Not entered yet. '))}${esc(L('Вводится во вкладке «kV-рентген» на листе «Аппарат и режимы» и сохраняется в запись камеры кнопкой «Сохранить аппарат в Оборудование»; при выборе аппарата во вкладке подставляется вместе с камерой.', 'It is entered in the kV x-rays tab on the Machine and modes sheet and saved to the chamber record with “Save the unit to Equipment”; when the unit is selected in the tab it is filled in with the chamber.'))}</p>` : ''}
     <div class="row-tools"><button type="button" class="link-btn danger" data-del="chamber:${esc(c.id)}"${usedInRecords(j, 'chamberId', c.id) ? ` disabled title="${esc(RECORDS_TITLE())}"` : ''}>${esc(L('Удалить камеру', 'Delete chamber'))}</button></div>
   </div>`;
 }
@@ -407,7 +414,7 @@ function kvMachineCard(j, m) {
     <h3 class="sub-h">${esc(L('Режимы', 'Modes'))}</h3>
     <div class="jbeams">${m.modes.map((x, i) => kvModeBlock(j, m, x, i, checks)).join('') || `<p class="sub-hint">${esc(L('Режимов пока нет: режим — напряжение, ток, фильтр и СПО со своей камерой и своими аппликаторами.', 'No modes yet: a mode is a voltage, current, filter and HVL with its own chamber and applicators.'))}</p>`}</div>
     <div class="row-tools"><button type="button" class="link-btn" data-add-kvmode="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить режим', 'Add a mode'))}</button></div>
-    <p class="sub-hint">${esc(L('Новый режим копирует диапазон, камеру, электрометр и аппликаторы последнего. Подстановка режимов аппарата во вкладку «kV-рентген» — в следующей версии; пока режимы во вкладке вводятся вручную.', 'A new mode copies the range, chamber, electrometer and applicators of the last one. Filling the modes of the unit into the kV x-rays tab comes in the next version; for now the modes are entered in the tab by hand.'))}</p>
+    <p class="sub-hint">${esc(L('Новый режим копирует диапазон, камеру, электрометр и аппликаторы последнего. Во вкладке «kV-рентген» аппарат выбирается на листе «Аппарат и режимы»: отмеченные режимы подставляются с камерой, её kV-сертификатом, электрометром и аппликаторами, а измеренное возвращается сюда кнопкой «Сохранить аппарат в Оборудование».', 'A new mode copies the range, chamber, electrometer and applicators of the last one. In the kV x-rays tab the unit is selected on the Machine and modes sheet: the ticked modes are filled in with the chamber, its kV certificate, the electrometer and the applicators, and the measured data come back here with “Save the unit to Equipment”.'))}</p>
     <div class="row-tools">
       <button type="button" class="link-btn danger" data-del="machine:${esc(m.id)}"${hasSessions ? ` disabled title="${esc(L('У аппарата есть записи в журнале', 'The machine has records in the journal'))}"` : ''}>${esc(L('Удалить аппарат', 'Delete machine'))}</button>
     </div>
@@ -643,7 +650,7 @@ function onInput(e) {
     // другой производитель — модель выбирается заново (у «другого» электрометра своё название сохраняется)
     if (kind === 'chamber' && path === 'maker') {
       const cur = obj.form.ch_model ?? '';
-      const keep = value === OTHER_MAKER ? cur === 'OTHER' || cur === 'CUSTOM' : findChamber(cur)?.maker === value || findEChamber(cur)?.maker === value;
+      const keep = value === OTHER_MAKER ? cur === 'OTHER' || cur === 'CUSTOM' : findChamber(cur)?.maker === value || findEChamber(cur)?.maker === value || findKvOnlyChamber(cur)?.maker === value;
       if (!keep) obj.form.ch_model = value === OTHER_MAKER ? 'OTHER' : '';
     }
     if (kind === 'electrometer' && path === 'maker') {

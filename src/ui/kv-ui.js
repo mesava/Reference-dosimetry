@@ -12,6 +12,7 @@ import { PRESSURE_UNITS, NDW_UNITS, unitLabel, dec, parseCells } from '../core/u
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, renderPairs, readPairs, setupPairs } from './widgets.js';
 import { refreshSectionNav } from './section-nav.js';
+import { setupKvJournal, renderKvJournal } from './kv-journal-ui.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
   renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf, renderCompliance, complianceLine, ctrlErrorText,
@@ -201,7 +202,7 @@ const sess = {
 const rowForm = (i) => kvVisitRowForm(visit, visit.mode, i);
 
 // текстовые поля: в них число с запятой или точкой — не число (серийный номер, фильтр), разделитель не меняется
-const TEXT_KEYS = new Set(['kv_institution', 'kv_machine', 'kv_date', 'kv_staff', 'kv_notes', 'kv_filter', 'kv_ph_name', 'kv_ph_note', 'kv_cc_maker', 'kv_cc_model', 'kv_ch_serial', 'kv_el_model', 'kv_el_serial']);
+const TEXT_KEYS = new Set(['kv_institution', 'kv_machine', 'kv_jmachine', 'kv_jmode', 'kv_date', 'kv_staff', 'kv_notes', 'kv_filter', 'kv_ph_name', 'kv_ph_note', 'kv_cc_maker', 'kv_cc_model', 'kv_ch_serial', 'kv_el_model', 'kv_el_serial']);
 /**
  * Десятичный разделитель в числах всех режимов, камер и строк — языка интерфейса (поля формы — localizeDecimals; здесь —
  * невыбранные режимы, камеры и строки: их числа видны в подписях режимов, сводке и протоколе).
@@ -1872,6 +1873,7 @@ function update(opts = {}) {
   renderTimerState(vr);
   renderModeBar();
   renderPageStates();
+  renderKvJournal();
   $('#kv-demo-flag').hidden = !isDemo(data);
   renderNotesFlag($('#kv-notes-flag'), data.kv_notes, [SAMPLE_KV.kv_notes, SAMPLE_KV_EN.kv_notes], isDemo(data));
   renderFileNote($('#kv-file-note'), fileNote(result));
@@ -1921,6 +1923,24 @@ export function initKv() {
   localizeDemo(SAMPLE_KV, SAMPLE_KV_EN);
   localizeDemo(SAMPLE_KV_MODE2.shared, SAMPLE_KV_MODE2_EN);
   localizeVisitDemo();
+  // блок «Журнал отделения»: аппарат из «Оборудования», подстановка режимов, «Сохранить аппарат в Оборудование»
+  setupKvJournal({
+    getVisit: () => visit,
+    replaceVisit: (v) => {
+      setVisit(v);
+      writeForm(rowForm(sess.active));
+      openedFile = null;
+      update();
+    },
+    setLinks: (machineId, modeId) => {
+      visit.common.kv_jmachine = machineId;
+      visit.modes.forEach((md, i) => (md.shared.kv_jmode = modeId(md, i)));
+      writeForm(rowForm(sess.active));
+      update();
+    },
+    status: (t) => setStatus(t),
+    isDemo: () => !!current.data && isDemo(current.data),
+  });
   update();
   if (!draft) setStatus(L('Введите свои данные или нажмите «Загрузить пример» (раздел «Данные»), чтобы посмотреть расчёт на вымышленных значениях.', 'Enter your own data or click "Load example" (the Data panel) to see the calculation on fictitious values.'));
 

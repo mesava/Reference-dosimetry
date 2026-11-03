@@ -22,7 +22,8 @@ import { findChamber, chamberLabel } from './chambers.js';
 import { findEChamber, eChamberLabel } from './electron-chambers.js';
 import { parseNumber, isBlank, parseBeamName } from './units.js';
 import { L } from './i18n.js';
-import { normalizeKvMachine } from './kv-machine.js';
+import { normalizeKvMachine, findKvOnlyChamber } from './kv-machine.js';
+import { kvChamberLabel } from './kv-tables.js';
 
 /** version — наибольший формат файла, который понимает эта версия калькулятора (2 — с аппаратами ⁶⁰Co, 3 — с рентгенотерапевтическими). */
 export const JOURNAL_TAG = { app: 'reference-dosimetry', module: 'journal', version: 3 };
@@ -117,8 +118,9 @@ export function chamberUses(j, chamberId) {
 export const photonCapable = (cf) => !!findChamber(cf?.ch_model) || cf?.ch_model === 'CUSTOM' || String(cf?.ch_model || '').startsWith('MY:');
 /** Камеру можно взять для электронов: она есть в базе вкладки «Электроны», «другая» или своя (цилиндрическая). */
 export const electronCapable = (cf) => !!findEChamber(cf?.ch_model) || cf?.ch_model === 'OTHER' || cf?.ch_model === 'CUSTOM';
-/** Камеру можно взять для ⁶⁰Co: любую — в пучке ⁶⁰Co допускаются и цилиндрические, и плоскопараллельные (TRS-398, разд. 5.2.1). */
-export const cobaltCapable = (cf) => !isBlank(cf?.ch_model);
+/** Камеру можно взять для ⁶⁰Co: любую — в пучке ⁶⁰Co допускаются и цилиндрические, и плоскопараллельные (TRS-398, разд. 5.2.1);
+ * кроме камер только для kV-рентгена (мягкое излучение: PTW 23342, 23344, 34013). */
+export const cobaltCapable = (cf) => !isBlank(cf?.ch_model) && !findKvOnlyChamber(cf.ch_model);
 
 /** Запись камеры → поля камеры вкладки «Электроны». */
 export function electronChamberForm(cf = {}) {
@@ -362,7 +364,7 @@ export function chamberText(c) {
     ? [f.cc_maker, f.cc_model].filter((s) => !isBlank(s)).join(' ') || L('своя камера', 'custom chamber')
     : f.ch_model === 'OTHER'
       ? String(f.e_other_name || '').trim() || L('другая камера', 'other chamber')
-      : findChamber(f.ch_model) ? chamberLabel(findChamber(f.ch_model)) : findEChamber(f.ch_model) ? eChamberLabel(findEChamber(f.ch_model)) : String(f.ch_model || '—');
+      : findChamber(f.ch_model) ? chamberLabel(findChamber(f.ch_model)) : findEChamber(f.ch_model) ? eChamberLabel(findEChamber(f.ch_model)) : findKvOnlyChamber(f.ch_model) ? kvChamberLabel(findKvOnlyChamber(f.ch_model)) : String(f.ch_model || '—');
   return [model, isBlank(f.ch_serial) ? '' : `${L('№', 'S/N')} ${f.ch_serial}`].filter(Boolean).join(' ');
 }
 /** Свидетельство о калибровке камеры для протокола: «свидетельство № 123 от 12.03.2026, ВНИИФТРИ». */
@@ -389,6 +391,9 @@ export function electrometerText(e) {
 export function chamberMissing(c, uses = null, protocol = '') {
   const f = c?.form || {};
   if (isBlank(f.ch_model)) return [L('модель', 'model')];
+  // камера для kV-рентгена (только kV или с kV-сертификатом и без пучков МВ и ⁶⁰Co): N_D,w в ⁶⁰Co ей не нужен
+  const used = uses && (uses.photon || uses.electron || uses.cobalt);
+  if (!used && (findKvOnlyChamber(f.ch_model) || c.kv)) return f.ch_model === 'OTHER' && isBlank(f.e_other_name) ? [L('название', 'name')] : [];
   const u = uses && (uses.photon || uses.electron || uses.cobalt) ? uses : photonCapable(f) ? { photon: true } : { electron: true };
   const ph = !!u.photon && photonCapable(f);
   const el = !!u.electron && electronCapable(f);

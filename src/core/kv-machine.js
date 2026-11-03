@@ -6,6 +6,9 @@
 // и 27, и проверяются во вкладке).
 import { parseNumber, isBlank, ru } from './units.js';
 import { L } from './i18n.js';
+import { KV_CHAMBERS } from './kv-tables.js';
+import { findChamber } from './chambers.js';
+import { findEChamber } from './electron-chambers.js';
 
 const str = (v) => (v === undefined || v === null ? '' : String(v));
 const arr = (v) => (Array.isArray(v) ? v : []);
@@ -13,6 +16,19 @@ const rid = (prefix) => `${prefix}${Date.now().toString(36)}${Math.random().toSt
 
 export const KV_SHAPES = ['circle', 'square', 'rect'];
 export const KV_RANGES = ['low', 'medium'];
+// ------------------------------------------------------------ модели камер: вкладка kV ↔ запись камеры журнала
+/** id камеры вкладки kV → id записи камеры журнала (база фотонов) там, где они разные. */
+const KV_TO_JOURNAL = { 'IBA-FC65-G': 'FC65G', 'IBA-FC65-P': 'FC65P', 'EXR-A12': 'A12' };
+const JOURNAL_TO_KV = Object.fromEntries(Object.entries(KV_TO_JOURNAL).map(([k, v]) => [v, k]));
+/** Камера только для kV-рентгена — её нет в базах фотонов и электронов (PTW 23342, 23344, 34013); null — не такая. */
+export const findKvOnlyChamber = (id) =>
+  !id || KV_TO_JOURNAL[id] || findChamber(id) || findEChamber(id) ? null : KV_CHAMBERS.find((c) => c.id === id) ?? null;
+export const KV_ONLY_CHAMBERS = KV_CHAMBERS.filter((c) => findKvOnlyChamber(c.id));
+/** Модель записи журнала для камеры вкладки kV. */
+export const journalModelOfKv = (id) => KV_TO_JOURNAL[id] ?? id;
+/** Модель вкладки kV для записи журнала; пусто — камеры нет в списке вкладки. */
+export const kvModelOfJournal = (id) => JOURNAL_TO_KV[id] ?? (KV_CHAMBERS.some((c) => c.id === id && !KV_TO_JOURNAL[c.id]) ? id : '');
+
 /** Аппликатор: name — обозначение на тубусе («F30»), shape, a (диаметр или сторона, см), b (вторая сторона), ssd (РИП, см). */
 export const KV_APPLICATOR_DEFAULTS = { id: '', name: '', shape: 'circle', a: '', b: '', ssd: '' };
 /**
@@ -159,8 +175,12 @@ export function kvMachineChecks(machine, j = null) {
     if (isBlank(m.hvl)) add('warn', L('СПО не введён: без него k_Q не определить', 'the HVL is not entered: k_Q cannot be determined without it'));
     else if (!(num(m.hvl) > 0)) add('error', L('СПО — число миллиметров больше нуля', 'the HVL is a number of millimetres greater than zero'));
     if (m.hvlSource === 'measured' && isBlank(m.hvlDate)) add('info', L('СПО измерен: укажите дату измерения', 'the HVL is measured: enter the date of the measurement'));
+    const ch = j?.chambers.find((c) => c.id === m.chamberId);
     if (!m.chamberId) add('warn', L('камера не выбрана', 'no chamber selected'));
-    else if (j && !j.chambers.some((c) => c.id === m.chamberId)) add('error', L('камеры нет в «Оборудовании»', 'the chamber is not in Equipment'));
+    else if (j && !ch) add('error', L('камеры нет в «Оборудовании»', 'the chamber is not in Equipment'));
+    else if (ch && !(ch.kv && (!isBlank(ch.kv.kv_n) || arr(ch.kv.kv_cq_val).some((v) => !isBlank(v))))) {
+      add('info', L('у камеры нет kV-сертификата: он вводится во вкладке «kV-рентген» и сохраняется в запись камеры кнопкой «Сохранить аппарат в Оборудование»', 'the chamber has no kV certificate: it is entered in the kV x-rays tab and saved to the chamber record with “Save the unit to Equipment”'));
+    }
     if (!m.applicators.length) add('warn', L('не отмечено ни одного аппликатора', 'no applicators are ticked'));
     if (!m.refApplicator) {
       if (m.applicators.length) add('warn', L('референсный аппликатор не выбран', 'the reference applicator is not selected'));

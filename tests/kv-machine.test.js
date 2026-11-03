@@ -91,7 +91,7 @@ test('референсный аппликатор по TRS-398 Rev.1, табл. 
 
 test('замечания по аппарату kV', () => {
   const apps = [app('f3', '3', '30'), app('f10', '10', '50'), { id: 'bad', name: 'X', shape: 'rect', a: '5', b: '', ssd: 'ноль' }, { id: 'e', name: '', shape: 'circle', a: '', ssd: '' }];
-  const j = { chambers: [{ id: 'ch1' }] };
+  const j = { chambers: [{ id: 'ch1', kv: { kv_n: '45,1' } }, { id: 'ch2' }] };
   const texts = (m) => kvMachineChecks(unit(apps, [m]), j).map((c) => `${c.level}: ${c.short}`);
   const ok = mode({ applicators: ['f3', 'f10'], refApplicator: 'f10' });
   // аппликаторы: размер и РИП
@@ -114,6 +114,8 @@ test('замечания по аппарату kV', () => {
   assert.ok(texts({ ...ok, hvlSource: 'measured' }).includes('info: СПО измерен: укажите дату измерения'));
   assert.equal(texts({ ...ok, hvlSource: 'measured', hvlDate: '2026-10-01' }).filter((t) => /дату/.test(t)).length, 0);
   assert.ok(texts({ ...ok, chamberId: '' }).includes('warn: камера не выбрана'));
+  // камера без kV-сертификата — справка: он вводится во вкладке и сохраняется в запись камеры
+  assert.ok(texts({ ...ok, chamberId: 'ch2' }).some((t) => /^info: у камеры нет kV-сертификата/.test(t)));
   assert.ok(texts({ ...ok, chamberId: 'ch9' }).includes('error: камеры нет в «Оборудовании»'));
   assert.ok(texts({ ...ok, applicators: [], refApplicator: '' }).includes('warn: не отмечено ни одного аппликатора'));
   // в полном тексте — номер и обозначение режима

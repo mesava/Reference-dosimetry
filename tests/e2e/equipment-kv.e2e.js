@@ -112,7 +112,9 @@ test('оборудование: рентгенотерапевтический �
   await modeBox(page, 0).locator('select[data-bind$="|refApplicator"]').selectOption({ index: 3 });
   await modeBox(page, 0).locator('select[data-bind$="|chamberId"]').selectOption({ index: 1 });
   await pause();
-  assert.equal(await modeBox(page, 0).locator('.jmsgs li').count(), 0);
+  // у камеры нет kV-сертификата — только справка
+  assert.deepEqual(await modeBox(page, 0).locator('.jmsgs li').evaluateAll((li) => li.map((x) => x.className)), ['info']);
+  assert.match(await modeBox(page, 0).locator('.jmsgs').innerText(), /у камеры нет kV-сертификата/);
   assert.equal(await kvCard(page).locator('.jcard-head .chip.warn, .jcard-head .chip.error').count(), 0);
 
   // ввод названия аппликатора обновляет флажки и список референсного без потери фокуса
@@ -131,7 +133,7 @@ test('оборудование: рентгенотерапевтический �
   assert.match(await modeBox(page, 0).locator('.jmsgs').innerText(), /СПО измерен: укажите дату измерения/);
   await modeBox(page, 0).locator('input[data-bind$="|hvlDate"]').fill('2026-10-01');
   await pause();
-  assert.equal(await modeBox(page, 0).locator('.jmsgs li').count(), 0);
+  assert.doesNotMatch(await modeBox(page, 0).locator('.jmsgs').innerText(), /укажите дату/);
 
   // второй режим копирует камеру и аппликаторы; низкие энергии
   await kvCard(page).locator('[data-add-kvmode]').click();
