@@ -63,6 +63,8 @@ export function makeCombo(wrapper, { onPick } = {}) {
     return menu.innerHTML !== '';
   };
   const open = (filter) => {
+    // поле только для чтения (во вкладке kV — значение из «Оборудования») список не открывает
+    if (input.readOnly || input.disabled) return close();
     if (render(filter)) {
       menu.hidden = false;
       input.setAttribute('aria-expanded', 'true');

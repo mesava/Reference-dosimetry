@@ -22,7 +22,7 @@ import { setupKvSummary, renderSummarySheets, outputReportLines } from './kv-sum
 import { kvModeName, kvChamberName, kvHvlSourceText } from '../core/kv-summary.js';
 import { kvRecModeText, kvJournalInputs } from '../core/kv-records.js';
 import { kvJournalFrom } from '../core/kv-session.js';
-import { getJournal, onJournal } from './journal-store.js';
+import { getJournal, onJournal, updateJournal } from './journal-store.js';
 import { makeJournalView } from './journal-view.js';
 import {
   $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
@@ -519,16 +519,99 @@ function onModeInput(el) {
   update({ fromModes: true });
 }
 
-/** Выбор камеры режима в разделе 2: введённые камеры и «новая камера». */
+/**
+ * Камера режима в разделе 2 (с 0.50.0 — только показывается): «Режим 2 — камера 1: PTW 30013 № 0000». Камеру режима
+ * выбирают в столбце «Камера» таблицы режимов (раздел 1), у режима из «Оборудования» — в «Оборудовании».
+ */
 function renderChamberPick() {
-  const sel = $('#kv-mode-chamber');
   const cur = mode().chamber;
-  html(sel, chamberOptions(cur));
-  sel.value = String(cur);
+  const linked = modeLinked(visit.mode);
+  const ch = visit.chambers.length > 1 ? L(`камера ${cur + 1}: `, `chamber ${cur + 1}: `) : '';
+  $('#kv-mode-chamber').textContent = L(`Режим ${visit.mode + 1} — ${ch}${chamberName(visit.chambers[cur])}`, `Mode ${visit.mode + 1}: ${ch}${chamberName(visit.chambers[cur])}`);
   const used = chamberModes(cur);
-  $('#kv-btn-del-ch').hidden = visit.chambers.length <= 1;
+  $('#kv-btn-del-ch').hidden = visit.chambers.length <= 1 || linked;
   const where = used.length > 1 ? L(`Камера ${cur + 1} выбрана в режимах ${used.join(', ')}: поля ниже меняют её во всех этих режимах.`, `Chamber ${cur + 1} is used in modes ${used.join(', ')}: the fields below change it in all of them.`) : '';
-  $('#kv-mode-chamber-sub').textContent = [where, L('Новая камера берёт электрометр, T₀, P₀ и напряжения текущей.', 'A new chamber takes the electrometer, T₀, P₀ and voltages of the current one.')].filter(Boolean).join(' ');
+  // у режима из «Оборудования» откуда камера — в отметке ниже (applyLock); «раздел 4» — раздел «Оборудования»
+  html($('#kv-mode-chamber-sub'), linked
+    ? `<span data-sec-target="equipment">${esc(L('Выбирается в «Оборудовании», раздел 4, «Камеры режимов».', 'Selected in Equipment, section 4, Chambers of the modes.'))}</span>`
+    : esc([where, L('Камера режима выбирается в столбце «Камера» таблицы режимов (раздел 1); там же «+ новая камера…» — она берёт электрометр, T₀, P₀ и напряжения текущей.', 'The chamber of the mode is selected in the Chamber column of the modes table (section 1); “+ new chamber…” is there too: it takes the electrometer, T₀, P₀ and voltages of the current one.')].filter(Boolean).join(' ')));
+}
+
+// ------------------------------------------------------------ связь с «Оборудованием»: постоянное только показывается
+// С 0.50.0: у режима, подставленного из аппарата «Оборудования», пучок (диапазон, кВ, мА, фильтр, номинальный СПО),
+// камера с kV-сертификатом и аппликаторы правятся там, во вкладке поля закрыты. Электрометр (на день измерений),
+// задания, показания и всё измеренное вводятся как обычно. Без аппарата из «Оборудования» вкладка работает как раньше.
+/** Аппарат «Оборудования», с которым связана вкладка; null — ручной ввод (или аппарата в журнале нет). */
+function linkedMachine() {
+  const id = visit.common.kv_jmachine;
+  return id ? getJournal().machines.find((x) => x.kind === 'kv' && x.id === id) ?? null : null;
+}
+/** Режим m вкладки подставлен из режима аппарата «Оборудования» (и такой режим там есть). */
+function modeLinked(m, mach = linkedMachine()) {
+  const id = visit.modes[m]?.shared.kv_jmode;
+  return !!(mach && id && mach.modes.some((x) => x.id === id));
+}
+const LOCK_BEAM = ['kv_range', 'kv_kv', 'kv_ma', 'kv_filter', 'kv_hvl'];
+const LOCK_CHAMBER = [
+  'kv_ch_model', 'kv_cc_maker', 'kv_cc_model', 'kv_cc_type', 'kv_ch_serial', 'kv_foil', 'kv_cal', 'kv_qo', 'kv_cal_depth', 'kv_cert_form', 'kv_n', 'kv_n_unit',
+  'kv_lab_shape', 'kv_lab_f', 'kv_lab_ssd', 'kv_lab_phantom', 'kv_T0', 'kv_P0', 'kv_lab_pol_applied', 'kv_lab_kpol', 'kv_lab_ks_applied', 'kv_lab_ks',
+];
+const LOCK_ROW = ['kv_cone_shape', 'kv_cone', 'kv_cone_b', 'kv_ssd'];
+const LOCK_TITLE = () => L('Из «Оборудования»: правится там', 'From Equipment: edited there');
+/** Поле закрыто для правки: текстовое — только для чтения, список, флажок и кнопка — недоступны. */
+function lockEl(el, on) {
+  if (!el) return;
+  if (el.tagName === 'INPUT' && el.type === 'text') el.readOnly = on;
+  else el.disabled = on;
+  el.classList.toggle('locked', on);
+  if (on) el.title = LOCK_TITLE();
+  else if (el.title === LOCK_TITLE()) el.removeAttribute('title');
+}
+/** Закрыть постоянное у режимов из «Оборудования» (таблица режимов, разделы 1, 2 и 4) и показать, где оно правится. */
+function applyLock() {
+  const mach = linkedMachine();
+  const cur = modeLinked(visit.mode, mach);
+  for (const k of [...LOCK_BEAM, ...LOCK_CHAMBER, ...LOCK_ROW]) lockEl(document.getElementById(k), cur);
+  for (const el of $$('#kv-cert-rows input, #kv-cert-rows select')) lockEl(el, cur);
+  for (const el of $$('[data-kv-preset]')) lockEl(el, cur);
+  lockEl($('#kv-cert-add'), cur);
+  $('#kv-cert-remove').disabled = cur || $$('#kv-cert-rows .pair-row').length <= 1;
+  for (const tr of $$('#kv-modes tr[data-mr]')) {
+    const on = modeLinked(Number(tr.dataset.mr), mach);
+    for (const el of tr.querySelectorAll('[data-k], [data-ch]')) lockEl(el, on);
+  }
+  for (const el of $$(LOCK_ROW.map((k) => `#kv-rows-body [data-k="${k}"]`).join(', '))) lockEl(el, cur);
+  lockEl($('#kv-btn-add-row'), cur);
+  lockEl($('#kv-btn-add-mode'), !!mach);
+  const eq = `<a href="#equipment" data-module="equipment">${esc(L('«Оборудования»', 'Equipment'))}</a>`;
+  // ссылки «раздел N» в этих пояснениях — на разделы «Оборудования»
+  const eqSec = (t) => `<span data-sec-target="equipment">${esc(t)}</span>`;
+  const chNote = $('#kv-ch-lock');
+  chNote.hidden = !cur;
+  if (cur) html(chNote, L(`Камера и kV-сертификат — из ${eq} (${eqSec('раздел 4, карточка камеры')}): здесь они только показываются. Электрометр, напряжения и полярность можно задать на день измерений. Пересчёт СПО по DIN 6809-4 из окна пересчёта записывается в kV-сертификат камеры.`, `The chamber and the kV certificate come from ${eq} (${eqSec('section 4, the chamber card')}): here they are only shown. The electrometer, voltages and polarity can be set for the day of measurement. The DIN 6809-4 HVL conversion chosen in the conversion window is saved to the kV certificate of the chamber.`));
+  const rowNote = $('#kv-rows-lock');
+  rowNote.hidden = !cur;
+  if (cur) html(rowNote, L(`Аппликаторы режима — из ${eq} (${eqSec('раздел 2, аппарат')}): форма, размер и РИП здесь не правятся; лишнюю строку можно удалить.`, `The applicators of the mode come from ${eq} (${eqSec('section 2, the unit')}): the shape, size and SSD are not edited here; an unneeded row can be deleted.`));
+}
+
+/**
+ * «Подставить в расчёт» / «Не пересчитывать» и флажок пересчёта СПО по DIN 6809-4 у режима из «Оборудования»: выбор —
+ * часть kV-сертификата камеры, он записывается и в её запись журнала.
+ */
+function syncDinToJournal() {
+  const mach = linkedMachine();
+  if (!modeLinked(visit.mode, mach)) return;
+  const x = mach.modes.find((y) => y.id === mode().shared.kv_jmode);
+  const on = !!$('#kv_cq_din').checked;
+  let done = false;
+  updateJournal((j) => {
+    const ch = j.chambers.find((c) => c.id === x?.chamberId);
+    if (!ch || !!ch.kv?.kv_cq_din === on) return j;
+    ch.kv = { ...(ch.kv ?? {}), kv_cq_din: on };
+    done = true;
+    return j;
+  }, 'kv');
+  if (done) setStatus(L(`Пересчёт СПО по DIN 6809-4 ${on ? 'включён' : 'выключен'} и записан в kV-сертификат камеры в «Оборудовании». Сохраните журнал в файл.`, `The DIN 6809-4 HVL conversion is ${on ? 'on' : 'off'} and saved to the kV certificate of the chamber in Equipment. Save the journal to the file.`));
 }
 
 /** Номер режима и камеры у заголовков разделов 2–8, если их несколько. */
@@ -2240,6 +2323,7 @@ function setDinUse(on) {
   $('#kv-din-dialog').close();
   openedFile = null;
   update();
+  syncDinToJournal();
 }
 
 function setupDinDialog() {
@@ -2310,6 +2394,7 @@ function update(opts = {}) {
   renderRowsState(all);
   // после renderFlags: он снимает подсветку со всех полей вкладки, таблицы режимов и таймера подсвечивают свои заново
   renderModes(vr, !opts.fromModes);
+  applyLock();
   renderTimerState(vr);
   renderModeBar();
   renderPageStates();
@@ -2480,8 +2565,6 @@ export function initKv() {
     if (inTimer(e.target)) return onTimerInput(e.target);
     // камера в таблице режимов — по событию change
     if (inModes(e.target)) return e.target.dataset.ch === undefined ? onModeInput(e.target) : undefined;
-    // камера режима — по событию change
-    if (e.target.id === 'kv-mode-chamber') return;
     openedFile = null;
     update();
   });
@@ -2497,7 +2580,6 @@ export function initKv() {
     // текстовое поле уже пересчитано по событию input; change при уходе из него перестроил бы таблицы, и фокус,
     // переходящий в таблицу аппликаторов или режимов, потерялся бы
     if (e.target.matches?.('input[type="text"], textarea')) return;
-    if (e.target.id === 'kv-mode-chamber') return pickChamber(e.target.value);
     openedFile = null;
     if (e.target.id === 'kv_ch_model') {
       const id = e.target.value;
@@ -2505,6 +2587,7 @@ export function initKv() {
       else if (id === 'CUSTOM') fillCustomFields(null);
     }
     update();
+    if (e.target.id === 'kv_cq_din') syncDinToJournal();
   });
 
   // таблица аппликаторов: ввод в строку выбирает её, номер строки — тоже; × удаляет строку

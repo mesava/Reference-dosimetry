@@ -85,7 +85,7 @@ test('kV-рентген: запись в журнал, «Журнал и тре�
   assert.ok(await page.locator('#hs-chart').isHidden());
   const item = page.locator('#hs-kv-records .jsessions > li').first();
   assert.match(await item.innerText(), /^15\.09\.2026 · проверка выхода · режимов: 2, аппликаторов: 5 · вне допуска: режим 1, 6 × 8 см \(\+3,57 %\)/);
-  assert.match(await item.innerText(), /Режим 1 — 200 кВ, СПО 1,00 мм Cu: Ø 10 см \(ст\.\) 1,0012 Гр\/мин \(\+0,62 %\) аппликаторов 3/);
+  assert.match(await item.innerText(), /Режим 1 — 200 кВ, СПО 1,000 мм Cu: Ø 10 см \(ст\.\) 1,0012 Гр\/мин \(\+0,62 %\) аппликаторов 3/);
   assert.match(await page.locator('#hs-result').innerText(), /^Xstrahl 300\nвне допуска: 1\n1запись\nпоследняя: 15\.09\.2026; последняя калибровка: —$/);
 
   // протокол записи — как на листе «Сводка и протокол»

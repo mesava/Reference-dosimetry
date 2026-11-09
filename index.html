@@ -1606,7 +1606,7 @@
           <button type="button" class="link-btn" id="kv-btn-add-mode"><span aria-hidden="true">+</span> Добавить режим</button>
           <button type="button" class="link-btn" id="kv-btn-del-mode" hidden>Удалить режим</button>
         </div>
-        <p class="sub-hint">Режим — напряжение, ток, фильтр и СПО со своими аппликаторами (раздел 4), ошибкой таймера (раздел 3) и своей камерой. Режимы можно вводить прямо в таблице; номер режима выбирает его для листов «Ошибка таймера» и «Поглощённая доза» (там режим выбирается и строкой над листом). Камера может быть общей для нескольких режимов или своей («+ новая камера…»), её сертификат вводится в разделе 2. Учреждение, аппарат, дата и сотрудники — общие для всех режимов. Новый режим копирует камеру, фантом и тубусы выбранного, без показаний. Итоги всех режимов — в разделе 9.</p>
+        <p class="sub-hint">Режим — напряжение, ток, фильтр и СПО со своими аппликаторами (раздел 4), ошибкой таймера (раздел 3) и своей камерой. Режимы можно вводить прямо в таблице; номер режима выбирает его для листов «Ошибка таймера» и «Поглощённая доза» (там режим выбирается и строкой над листом). Камера может быть общей для нескольких режимов или своей («+ новая камера…» в столбце «Камера»), её сертификат вводится в разделе 2; у режима из «Оборудования» камеру и сертификат задают там, в карточке камеры и таблице «Камеры режимов». Учреждение, аппарат, дата и сотрудники — общие для всех режимов. Новый режим копирует камеру, фантом и тубусы выбранного, без показаний. Итоги всех режимов — в разделе 9.</p>
       </div>
       <div class="grid subgrid">
         <div class="field span-2">
@@ -1644,14 +1644,15 @@
         <p class="hint">Камера калибруется в рентгеновских пучках тех же качеств, что и клинические: общий k<sub>Q</sub> по типу камеры для kV-рентгена не допускается. Значения сертификата вводятся таблицей по качествам; для пучка значение интерполируется линейно по ln(СПО). Камеры с сертификатами вводятся один раз для всех режимов: каждый режим выбирает свою, k<sub>Q</sub> берётся по СПО режима.</p></header>
       <div class="grid two kv-ch-pick-grid">
         <div class="field span-all">
-          <label for="kv-mode-chamber">Камера режима</label>
+          <span class="label">Камера режима</span>
           <div class="inline kv-ch-pick">
-            <select id="kv-mode-chamber" data-i18n-skip></select>
+            <b id="kv-mode-chamber" data-i18n-skip></b>
             <button type="button" class="link-btn" id="kv-btn-del-ch" hidden>Удалить камеру</button>
           </div>
-          <span class="sub" id="kv-mode-chamber-sub"></span>
+          <span class="sub" id="kv-mode-chamber-sub" data-i18n-skip></span>
         </div>
       </div>
+      <p class="jlink-st ok kv-lock-note" id="kv-ch-lock" hidden data-i18n-skip></p>
       <div class="grid two">
         <div class="field span-all">
           <label for="kv_ch_model">Ионизационная камера</label>
@@ -2297,6 +2298,7 @@
       <div class="row-tools">
         <button type="button" class="link-btn" id="kv-btn-add-row"><span aria-hidden="true">+</span> Добавить аппликатор</button>
       </div>
+      <p class="jlink-st ok kv-lock-note" id="kv-rows-lock" hidden data-i18n-skip></p>
       <p class="sub-hint" id="kv-rows-note"></p>
       <div class="grid subgrid kv-row-extra">
         <div class="kv-row-mirror" hidden>
@@ -3860,7 +3862,7 @@
 
     <section class="step" aria-labelledby="eq-s2">
       <header><span class="step-no">2</span><h2 id="eq-s2">Аппараты и пучки</h2>
-        <p class="hint">Пучки, которые есть на аппарате: название (у фотонов — признак БВФ). Мерить — во вкладке дозиметрии: в разделе 1 выбирается пучок журнала, подставляются его настройки, камера и электрометр. Настройки пучка (геометрия, напряжения, МЕ, номинал, пересчёт на d<sub>max</sub>, способ k<sub>Q</sub>, у ⁶⁰Co — источник и ошибка таймера) задаются кнопкой «Настройки пучка — во вкладке…» или «Сохранить настройки пучка в журнал» во вкладке. У рентгенотерапевтического аппарата вместо пучков — аппликаторы и режимы: напряжение, ток, фильтр, СПО, камера режима, отмеченные аппликаторы и референсный из них (проверяется по TRS-398 Rev.1).</p></header>
+        <p class="hint">Пучки, которые есть на аппарате: название (у фотонов — признак БВФ). Мерить — во вкладке дозиметрии: в разделе 1 выбирается пучок журнала, подставляются его настройки, камера и электрометр. Настройки пучка (геометрия, напряжения, МЕ, номинал, пересчёт на d<sub>max</sub>, способ k<sub>Q</sub>, у ⁶⁰Co — источник и ошибка таймера) задаются кнопкой «Настройки пучка — во вкладке…» или «Сохранить настройки пучка в журнал» во вкладке. У рентгенотерапевтического аппарата вместо пучков — аппликаторы и режимы: напряжение, ток, фильтр, СПО, отмеченные аппликаторы и стандартный из них (проверяется по TRS-398 Rev.1); камера режима выбирается в разделе 4.</p></header>
       <div id="eq-machines" class="jcards" data-i18n-skip></div>
       <div class="row-tools"><button type="button" class="link-btn" id="eq-add-machine"><span aria-hidden="true">+</span> Добавить ускоритель</button><button type="button" class="link-btn" id="eq-add-cobalt"><span aria-hidden="true">+</span> Добавить аппарат ⁶⁰Co</button><button type="button" class="link-btn" id="eq-add-kv"><span aria-hidden="true">+</span> Добавить рентгенотерапевтический аппарат</button></div>
     </section>
@@ -3873,9 +3875,10 @@
 
     <section class="step" aria-labelledby="eq-s4">
       <header><span class="step-no">4</span><h2 id="eq-s4">Камеры</h2>
-        <p class="hint">N<sub>D,w</sub>, T₀, P₀ и k<sub>лаб</sub> — из свидетельства о калибровке (поверке). Одна запись камеры служит фотонам, электронам и ⁶⁰Co. Срок «действует до» нужен для напоминаний.</p></header>
+        <p class="hint">N<sub>D,w</sub>, T₀, P₀ и k<sub>лаб</sub> — из свидетельства о калибровке (поверке), у камеры для kV-рентгена — kV-сертификат. Одна запись камеры служит всем пучкам, для которых отмечено «Применение»: МВ фотоны и ⁶⁰Co, электроны, kV-рентген. Срок «действует до» нужен для напоминаний.</p></header>
       <div id="eq-chambers" class="jcards" data-i18n-skip></div>
       <div class="row-tools"><button type="button" class="link-btn" id="eq-add-chamber"><span aria-hidden="true">+</span> Добавить камеру</button><span id="eq-mine" data-i18n-skip></span></div>
+      <div id="eq-kv-modes" class="jkv-mch" data-i18n-skip></div>
     </section>
   </form>
 

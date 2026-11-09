@@ -83,7 +83,7 @@ test('kV-рентген: база «Сравнить с» из последне�
   assert.equal(await items.count(), 3);
   assert.match(await items.nth(0).innerText(), /^20\.10\.2026 · проверка выхода · режимов: 1, аппликаторов: 2/);
   assert.match(await items.nth(1).innerText(), /^20\.10\.2026 · проверка выхода · режимов: 1, аппликаторов: 3/);
-  assert.match(await items.nth(1).innerText(), /Заменены более поздней записью того же дня: режим 2 \(150 кВ, СПО 0,50 мм Cu\)\./);
+  assert.match(await items.nth(1).innerText(), /Заменены более поздней записью того же дня: режим 2 \(150 кВ, СПО 0,500 мм Cu\)\./);
   // протокол прежней записи — с пометкой о замене
   await items.nth(1).locator('[data-report]').click();
   await pause();

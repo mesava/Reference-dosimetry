@@ -57,7 +57,7 @@ test('kV-рентген: «Журнал и тренды» — выход по р
   const legend = await page.locator('#hs-kv-legend .item').allInnerTexts();
   assert.equal(legend.length, 4);
   assert.match(legend[0], /^1\. \d+ кВ, СПО [\d,]+ мм (Cu|Al) — Ø 10 см$/);
-  assert.match(legend[1], /^2\. 150 кВ, СПО 0,50 мм Cu — Ø 10 см$/);
+  assert.match(legend[1], /^2\. 150 кВ, СПО 0,500 мм Cu — Ø 10 см$/);
   assert.match(legend[2], /полый значок — проверка выхода/);
 
   // 3. сводная по датам: только калибровки, затем с проверками

@@ -4,9 +4,11 @@
 // (core/kv-journal.js). Данные вкладки (visit) живут в kv-ui.js: сюда приходят функции доступа к ним.
 // С 0.46.0 — панель «Журнал» справа: «Записать в журнал» — измерение аппарата за день (core/kv-records.js); с 0.47.0
 // запись по режимам и что взято из последней калибровки режима (база «Сравнить с», при проверке выхода — поправки).
+// С 0.50.0 постоянное режимов из «Оборудования» во вкладке только показывается: «Сохранить измеренное в Оборудование»
+// возвращает туда СПО, а «Обновить из Оборудования» подтягивает изменённые там пучок, камеру и kV-сертификат.
 import { L } from '../core/i18n.js';
 import { kvMachineModeTitle, applicatorText, hvlUnit } from '../core/kv-machine.js';
-import { kvVisitFromMachine, kvMachineFromVisit, kvSaveText, kvMachineText } from '../core/kv-journal.js';
+import { kvVisitFromMachine, kvMachineFromVisit, kvSaveText, kvMachineText, kvRefreshFromMachine } from '../core/kv-journal.js';
 import { recordKvVisit, kvRecMode, kvRecModeText, kvRecordCounts, kvRecordsOn } from '../core/kv-records.js';
 import { chamberText } from '../core/journal.js';
 import { parseCells } from '../core/units.js';
@@ -82,8 +84,13 @@ export function renderKvJournal() {
         <div class="row-tools"><button type="button" class="link-btn${armedFill ? ' danger-armed' : ''}" data-kvj="fill"${t.size ? '' : ' disabled'}>${esc(armedFill ? L('Нажмите ещё раз: показания вкладки заменятся', 'Click again: the tab readings will be replaced') : L('Подставить отмеченные режимы', 'Fill in the ticked modes'))}</button></div>`
       : `<p class="jlink-st none">${esc(L('У аппарата нет режимов: заведите их в «Оборудовании» или сохраните туда режимы вкладки.', 'The unit has no modes: add them in Equipment or save the modes of the tab there.'))}</p>`;
   }
+  // режимы из «Оборудования», у которых там изменились пучок, камера или kV-сертификат
+  const fresh = m ? kvRefreshFromMachine(j, m, v) : null;
+  const refresh = fresh?.changed
+    ? `<p class="jlink-st warn">${esc(L('В «Оборудовании» изменились пучок, камера или kV-сертификат режимов вкладки.', 'The beam, chamber or kV certificate of the tab modes changed in Equipment.'))} <button type="button" class="link-btn" data-kvj="refresh">${esc(L('Обновить из «Оборудования»', 'Update from Equipment'))}</button> ${esc(L('— показания и электрометр останутся.', 'The readings and the electrometer stay.'))}</p>`
+    : '';
   const st = m
-    ? L(`Аппарат журнала: ${machineName(m)}. Подстановка заменяет режимы вкладки отмеченными режимами аппарата — пучок, камера с kV-сертификатом из «Оборудования», электрометр и аппликаторы, без показаний; дата и сотрудники остаются. Измерение записывается в журнал кнопкой «Записать в журнал» (панель «Журнал» справа).`, `Journal unit: ${machineName(m)}. Filling in replaces the modes of the tab with the ticked modes of the unit: the beam, the chamber with its kV certificate from Equipment, the electrometer and the applicators, without readings; the date and staff stay. The measurement is recorded to the journal with “Record to journal” (the Journal panel on the right).`)
+    ? L(`Аппарат журнала: ${machineName(m)}. Подстановка заменяет режимы вкладки отмеченными режимами аппарата — пучок, камера с kV-сертификатом и аппликаторы из «Оборудования» (во вкладке они только показываются и правятся в «Оборудовании»), электрометр — при калибровке камеры; без показаний, дата и сотрудники остаются. Измерение записывается в журнал кнопкой «Записать в журнал» (панель «Журнал» справа).`, `Journal unit: ${machineName(m)}. Filling in replaces the modes of the tab with the ticked modes of the unit: the beam, the chamber with its kV certificate and the applicators from Equipment (in the tab they are only shown and are edited in Equipment), the electrometer at the chamber calibration; without readings, the date and staff stay. The measurement is recorded to the journal with “Record to journal” (the Journal panel on the right).`)
     : ms.length
       ? L('Ручной ввод: вкладка не связана с аппаратом «Оборудования». Выберите аппарат, чтобы подставить его режимы, или сохраните вкладку в «Оборудование» — появится новый аппарат.', 'Manual entry: the tab is not linked to a unit in Equipment. Select a unit to fill in its modes, or save the tab to Equipment as a new unit.')
       : L('В «Оборудовании» рентгенотерапевтических аппаратов нет: вкладка заполняется вручную. «Сохранить аппарат в Оборудование» заведёт аппарат с режимами, аппликаторами и камерами вкладки.', 'There are no x-ray therapy units in Equipment: the tab is filled in by hand. “Save the unit to Equipment” creates a unit with the modes, applicators and chambers of the tab.');
@@ -93,9 +100,10 @@ export function renderKvJournal() {
     : '';
   const html = `<div class="jbind-row"><span class="jlink-h">${esc(L('Журнал отделения', 'Department journal'))}</span>${sel}</div>
     ${body}
-    <p class="jlink-st ${m ? 'ok' : 'none'}">${richText(st)}</p>${note ? `<p class="jlink-st warn">${richText(note)}</p>` : ''}
+    <p class="jlink-st ${m ? 'ok' : 'none'}">${richText(st)}</p>${note ? `<p class="jlink-st warn" data-sec-target="equipment">${richText(note)}</p>` : ''}
+    ${refresh}
     ${ask}
-    <div class="row-tools"><button type="button" class="link-btn" data-kvj="save"${hvlAsk ? ' disabled' : ''}>${esc(m ? L(`Сохранить аппарат в «Оборудование» (${m.name || L('без названия', 'unnamed')})`, `Save the unit to Equipment (${m.name || 'unnamed'})`) : L('Сохранить аппарат в «Оборудование»', 'Save the unit to Equipment'))}</button></div>`;
+    <div class="row-tools"><button type="button" class="link-btn" data-kvj="save"${hvlAsk ? ' disabled' : ''}>${esc(m ? L(`Сохранить измеренное в «Оборудование» (${m.name || L('без названия', 'unnamed')})`, `Save the measured data to Equipment (${m.name || 'unnamed'})`) : L('Сохранить аппарат в «Оборудование»', 'Save the unit to Equipment'))}</button></div>`;
   if (html !== lastHtml) {
     lastHtml = html;
     el.innerHTML = html;
@@ -246,11 +254,24 @@ function fill() {
   const res = kvVisitFromMachine(j, m, ids, v);
   if (!res) return;
   note = res.noCert.length
-    ? L(`kV-сертификата в «Оборудовании» нет у камеры ${res.noCert.join(', ')}: введите его в разделе 2 и сохраните аппарат в «Оборудование» — в следующий раз он подставится.`, `No kV certificate in Equipment for ${res.noCert.join(', ')}: enter it in section 2 and save the unit to Equipment; next time it will be filled in.`)
+    ? L(`kV-сертификата в «Оборудовании» нет у камеры ${res.noCert.join(', ')}: введите его в карточке камеры («Оборудование», раздел 4), затем нажмите здесь «Обновить из «Оборудования»».`, `No kV certificate in Equipment for ${res.noCert.join(', ')}: enter it in the chamber card (Equipment, section 4), then click “Update from Equipment” here.`)
     : '';
   api.replaceVisit(res.visit);
   const n = res.visit.modes.length;
-  api.status(L(`Подставлены режимы аппарата «${machineName(m)}»: ${n}. Пучок, камера, электрометр и аппликаторы — из «Оборудования»; показания вводятся на листе «Поглощённая доза».`, `Modes of the unit “${machineName(m)}” filled in: ${n}. The beam, chamber, electrometer and applicators come from Equipment; the readings are entered on the Absorbed dose sheet.`));
+  api.status(L(`Подставлены режимы аппарата «${machineName(m)}»: ${n}. Пучок, камера с kV-сертификатом и аппликаторы — из «Оборудования» и правятся там; электрометр можно заменить на день измерений; показания вводятся на листе «Поглощённая доза».`, `Modes of the unit “${machineName(m)}” filled in: ${n}. The beam, the chamber with its kV certificate and the applicators come from Equipment and are edited there; the electrometer can be replaced for the day; the readings are entered on the Absorbed dose sheet.`));
+}
+
+/** «Обновить из Оборудования»: пучок, камера и kV-сертификат режимов из «Оборудования» — по нынешним данным там. */
+function refreshFromMachine() {
+  const j = getJournal();
+  const v = api.getVisit();
+  const m = kvMachines(j).find((x) => x.id === v.common.kv_jmachine);
+  if (!m) return;
+  const res = kvRefreshFromMachine(j, m, v);
+  note = '';
+  if (!res.changed) return;
+  api.replaceVisit(res.visit);
+  api.status(L('Пучок, камера и kV-сертификат режимов обновлены из «Оборудования»; показания, задания и электрометр остались.', 'The beam, chamber and kV certificate of the modes are updated from Equipment; the readings, settings and electrometer stay.'));
 }
 
 function save(replaceHvl = null) {
@@ -274,6 +295,9 @@ function save(replaceHvl = null) {
   note = '';
   api.setLinks(res.machineId, (md, i) => res.modeIds[i] ?? '');
   const m = res.journal.machines.find((x) => x.id === res.machineId);
+  // вкладка теперь связана с аппаратом: её постоянное — как в «Оборудовании» (например, СПО режима — сохранённый измеренный)
+  const fresh = kvRefreshFromMachine(getJournal(), m, api.getVisit());
+  if (fresh.changed) api.replaceVisit(fresh.visit);
   api.status(kvSaveText(m, res.report));
 }
 
@@ -302,6 +326,7 @@ export function setupKvJournal(a) {
     if (!b || b.disabled) return;
     const k = b.dataset.kvj;
     if (k === 'fill') fill();
+    else if (k === 'refresh') refreshFromMachine();
     else if (k === 'save') save();
     else if (k === 'save-hvl') save(true);
     else if (k === 'save-keep') save(false);

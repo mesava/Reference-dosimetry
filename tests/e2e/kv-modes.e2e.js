@@ -49,7 +49,11 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   // пустая вкладка: один режим, удалить нельзя; камера 1; в сводке одна строка
   assert.equal(await chips.count(), 1);
   assert.ok(await page.locator('#kv-btn-del-mode').isHidden());
-  assert.deepEqual(await page.locator('#kv-mode-chamber option').allInnerTexts(), ['Камера 1 — камера не выбрана', '+ новая камера…']);
+  // камера режима в разделе 2 только показывается (с 0.50.0): выбирается в столбце «Камера» таблицы режимов
+  assert.equal(await page.locator('select#kv-mode-chamber').count(), 0);
+  assert.equal(await text('#kv-mode-chamber'), 'Режим 1 — камера не выбрана');
+  assert.match(await text('#kv-mode-chamber-sub'), /^Камера режима выбирается в столбце «Камера» таблицы режимов \(раздел 1\); там же «\+ новая камера…»/);
+  assert.deepEqual(await page.locator('#kvm0_ch option').allInnerTexts(), ['1 — камера не выбрана', '+ новая камера…']);
   assert.equal(await sum.count(), 1);
   assert.equal(await page.locator('#kv-s3').getAttribute('data-tag'), null);
 
@@ -112,10 +116,10 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
 
   // новая камера для режима 2: модель пустая, электрометр как у камеры 1; k_pol уже не переносится, τ — да
   await kvPage(page, 'modes');
-  await page.selectOption('#kv-mode-chamber', 'new');
+  await page.selectOption('#kvm1_ch', 'new');
   await pause();
-  assert.deepEqual(await page.locator('#kv-mode-chamber option').allInnerTexts(), ['Камера 1 — PTW 30013 № 0000', 'Камера 2 — камера не выбрана', '+ новая камера…']);
-  assert.equal(await page.inputValue('#kv-mode-chamber'), '1');
+  assert.deepEqual(await page.locator('#kvm1_ch option').allInnerTexts(), ['1 — PTW 30013 № 0000', '2 — камера не выбрана', '+ новая камера…']);
+  assert.equal(await text('#kv-mode-chamber'), 'Режим 2 — камера 2: камера не выбрана');
   assert.equal(await page.inputValue('#kv_ch_model'), '');
   assert.equal(await page.inputValue('#kv_el_model'), SAMPLE_KV.kv_el_model);
   assert.equal(await page.locator('#kv-s2').getAttribute('data-tag'), ' · камера 2');
@@ -128,10 +132,11 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   // удаление камеры — вторым нажатием; режиму 2 снова назначается камера 1
   await page.click('#kv-btn-del-ch');
   await pause(100);
-  assert.equal(await page.locator('#kv-mode-chamber option').count(), 3);
+  assert.equal(await page.locator('#kvm1_ch option').count(), 3);
   await page.click('#kv-btn-del-ch');
   await pause();
-  assert.equal(await page.locator('#kv-mode-chamber option').count(), 2);
+  assert.equal(await page.locator('#kvm1_ch option').count(), 2);
+  assert.equal(await text('#kv-mode-chamber'), 'Режим 2 — PTW 30013 № 0000');
   assert.equal(await page.inputValue('#kv_ch_model'), 'PTW30013');
   assert.match(await text('#kv-rows-note'), /kpol — из режима 1/);
   assert.match(await text('#kv-status'), /Камера 2 удалена; режим 2 — с камерой 1 \(PTW 30013 № 0000\)\./);
@@ -142,7 +147,8 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   assert.equal(await chips.count(), 3);
   assert.equal(await page.evaluate(() => document.activeElement?.id), 'kv_kv');
   assert.equal(await page.inputValue('#kv_kv'), '');
-  assert.equal(await page.inputValue('#kv-mode-chamber'), '0');
+  assert.equal(await page.inputValue('#kvm2_ch'), '0');
+  assert.equal(await text('#kv-mode-chamber'), 'Режим 3 — PTW 30013 № 0000');
   assert.equal(await page.locator('#kv-rows-body tr').count(), 2);
   assert.equal(await page.inputValue('#kvr1_kv_cone_b'), '8');
   assert.equal(await page.inputValue('#kvr1_kv_M1_0'), '');

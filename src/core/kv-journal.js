@@ -6,9 +6,13 @@
 // заменяется значением вкладки, только если пользователь согласился. Расчёта здесь нет.
 // С 0.43.0: СПО, измеренный на листе «СПО и k_Q» и взятый в расчёт режима, записывается в режим как измеренный (с датой
 // измерения) — вместо номинального только с согласия пользователя; набор пластин для СПО хранится с аппаратом.
+// С 0.50.0 «Оборудование» — источник постоянных данных: kV-сертификат вводится в карточке камеры, камера режима — в
+// таблице «Камеры режимов», электрометр — «Электрометр при калибровке» камеры. Режимы вкладки, подставленные из
+// «Оборудования», при сохранении возвращают туда только измеренное (СПО и набор пластин); вкладка без связи с аппаратом
+// по-прежнему заводит или дополняет аппарат целиком.
 import { KV_CHAMBER_KEYS, newKvMode, newKvChamber, emptyKvRow, computeKvVisit } from './kv-session.js';
 import { normalizeKvMachine, newKvApplicator, newKvMachineMode, kvRefCandidates, journalModelOfKv, kvModelOfJournal } from './kv-machine.js';
-import { uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, orgText, chamberText, electrometerText } from './journal.js';
+import { uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, orgText, chamberText, electrometerText, chamberUse } from './journal.js';
 import { findEChamber } from './electron-chambers.js';
 import { parseNumber, isBlank, dec } from './units.js';
 import { hvlText } from './kv-hvl.js';
@@ -32,8 +36,32 @@ const CHAMBER_ID_KEYS = ['kv_ch_model', 'kv_cc_maker', 'kv_cc_model', 'kv_cc_typ
  */
 export const KV_CERT_KEYS = KV_CHAMBER_KEYS.filter((k) => !CHAMBER_ID_KEYS.includes(k));
 
+/**
+ * Поля kV-сертификата, которые вводятся в карточке камеры «Оборудования» (с 0.50.0): вид коэффициента, Q_o и глубина,
+ * форма записи, N, таблица качеств и пересчёт СПО по DIN, условия лаборатории, фольга, T₀ и P₀, поправки лаборатории.
+ * Остальные поля KV_CERT_KEYS (напряжения, полярность, рекомбинация, утечка, гильза TG-61) — условия измерения: их
+ * задают во вкладке.
+ */
+export const KV_CERT_FORM_KEYS = [
+  'kv_cal', 'kv_qo', 'kv_cal_depth', 'kv_cert_form', 'kv_n', 'kv_n_unit', 'kv_cq_kv', 'kv_cq_hvl', 'kv_cq_mat', 'kv_cq_val', 'kv_cq_din',
+  'kv_lab_shape', 'kv_lab_f', 'kv_lab_ssd', 'kv_lab_phantom', 'kv_foil', 'kv_T0', 'kv_P0', 'kv_lab_pol_applied', 'kv_lab_kpol', 'kv_lab_ks_applied', 'kv_lab_ks',
+];
+
 /** Есть ли в kV-сертификате записи камеры калибровочный коэффициент или таблица качеств. */
 export const hasKvCert = (kv) => !!kv && (!isBlank(kv.kv_n) || (Array.isArray(kv.kv_cq_val) && kv.kv_cq_val.some((v) => !isBlank(v))));
+
+/**
+ * Электрометр режима аппарата: «Электрометр при калибровке» камеры режима (src 'cal'), иначе электрометр, которым режим
+ * мерили во вкладке последний раз (до 0.50.0 — выбранный у режима; src 'last'); { el: null, src: '' } — нет ни того,
+ * ни другого (электрометр вводится во вкладке).
+ */
+export function kvModeElectrometer(j, x) {
+  const ch = j.chambers.find((c) => c.id === x?.chamberId);
+  const cal = ch?.calEl ? j.electrometers.find((e) => e.id === ch.calEl) : null;
+  if (cal) return { el: cal, src: 'cal' };
+  const last = x?.electrometerId ? j.electrometers.find((e) => e.id === x.electrometerId) : null;
+  return last ? { el: last, src: 'last' } : { el: null, src: '' };
+}
 
 /** Аппарат текстом для поля «Аппарат» вкладки: «Xstrahl 300, № 123». */
 export const kvMachineText = (m) => [str(m?.name).trim(), isBlank(m?.serial) ? '' : `№ ${str(m.serial).trim()}`].filter(Boolean).join(', ');
@@ -68,7 +96,8 @@ export function kvChamberFromRecord(ch, el, base = null) {
 /**
  * Вкладка с отмеченными режимами аппарата machine журнала j. visit — текущие данные вкладки: из её выбранного режима
  * берутся фантом, единица задания и способ ошибки таймера, из строки — задание, из камеры — поля, которых нет в записи;
- * дата, сотрудники и примечания сохраняются. Режимы с одной камерой и одним электрометром делят камеру вкладки.
+ * дата, сотрудники и примечания сохраняются. Электрометр режима — kvModeElectrometer. Режимы с одной камерой и одним
+ * электрометром делят камеру вкладки.
  * Строки режима — отмеченные аппликаторы (выбрана строка референсного); у самого большого тубуса (табл. 31, когда
  * 10 × 10 см нет) — отметка «самый большой тубус аппарата». Возвращает { visit, noCert } — noCert: камеры без kV-сертификата.
  */
@@ -82,10 +111,10 @@ export function kvVisitFromMachine(j, machine, modeIds, visit) {
   const index = new Map();
   const noCert = [];
   const modes = picked.map((x) => {
-    const key = `${x.chamberId}|${x.electrometerId}`;
+    const el = kvModeElectrometer(j, x).el;
+    const key = `${x.chamberId}|${el?.id ?? ''}`;
     if (!index.has(key)) {
       const ch = j.chambers.find((c) => c.id === x.chamberId) ?? null;
-      const el = j.electrometers.find((e) => e.id === x.electrometerId) ?? null;
       index.set(key, chambers.length);
       chambers.push(kvChamberFromRecord(ch, el, base));
       if (ch && !hasKvCert(ch.kv)) noCert.push(chamberText(ch));
@@ -112,6 +141,35 @@ export function kvVisitFromMachine(j, machine, modeIds, visit) {
     common.kv_pl_u = machine.plates.map((p) => p.u);
   }
   return { visit: { common, chambers, modes, mode: 0 }, noCert: [...new Set(noCert)] };
+}
+
+/**
+ * Режимы вкладки, подставленные из аппарата machine, — по нынешнему «Оборудованию» (с 0.50.0): пучок (диапазон, кВ, мА,
+ * фильтр, номинальный СПО) и камера режима с kV-сертификатом; электрометр, напряжения и полярность камеры вкладки,
+ * строки аппликаторов, задания и показания остаются. Режимы с одной камерой вкладки, у которых в «Оборудовании» теперь
+ * разные камеры, получают свои камеры вкладки. Возвращает { visit, changed } — changed: что-то изменилось.
+ */
+export function kvRefreshFromMachine(j, machine, visit) {
+  const v = structuredClone(visit);
+  const keep = ['kv_el_model', 'kv_el_serial', 'kv_kelec', 'kv_V1', 'kv_V2', 'kv_polarity', 'kv_ks_on', 'kv_rec_trs', 'kv_kleak', 'kv_tg61_sleeve', 'kv_tg61_sleeve_t'];
+  const owner = new Map(); // камера вкладки → id камеры «Оборудования», которая в ней теперь
+  v.modes.forEach((md) => {
+    const x = machine.modes.find((y) => y.id === md.shared.kv_jmode);
+    if (!x) return;
+    Object.assign(md.shared, { kv_range: x.range === 'medium' ? 'medium' : 'low', kv_kv: str(x.kv), kv_ma: str(x.ma), kv_filter: str(x.filter), kv_hvl: str(x.hvl) });
+    const ch = j.chambers.find((c) => c.id === x.chamberId);
+    if (!ch) return;
+    if (owner.has(md.chamber) && owner.get(md.chamber) !== ch.id) {
+      v.chambers.push(structuredClone(v.chambers[md.chamber]));
+      md.chamber = v.chambers.length - 1;
+    }
+    owner.set(md.chamber, ch.id);
+    const cur = v.chambers[md.chamber];
+    v.chambers[md.chamber] = { ...kvChamberFromRecord(ch, null, cur), ...pick(cur, keep) };
+  });
+  // десятичная запятая или точка (вкладка на английском показывает точку) — не изменение
+  const same = (o) => JSON.stringify(o, (k, x) => (typeof x === 'string' ? x.replace(/(\d),(\d)/g, '$1.$2') : x));
+  return { visit: v, changed: same(v) !== same(visit) };
 }
 
 /** Тот же аппликатор: форма, размер и РИП (числа — по значению). a — аппликатор аппарата, r — строка вкладки. */
@@ -166,17 +224,22 @@ function upsertChamber(j, vc, rep) {
   if (custom) Object.assign(kv, { kv_cc_maker: str(vc.kv_cc_maker), kv_cc_model: str(vc.kv_cc_model), kv_cc_type: vc.kv_cc_type === 'cyl' ? 'cyl' : 'pp' });
   let ch = kvFindChamber(j, vc);
   if (!ch) {
+    // камера, добавленная из вкладки kV, отмечена только для kV-рентгена
     ch = {
       ...CHAMBER_DEFAULTS,
       id: uid('ch'),
       form: { ch_model: model, ch_serial: str(vc.kv_ch_serial), ch_ndw: '', ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', ch_T0: '20', ch_P0: '101,325', ...(custom ? { e_other_name: name, e_other_type: vc.kv_cc_type === 'cyl' ? 'cyl' : 'pp' } : {}) },
       kv,
+      use: { photon: false, electron: false, kv: true },
     };
     j.chambers.push(ch);
     rep.chambersAdded.push(chamberText(ch));
-  } else if (!sameKv(ch.kv, kv)) {
-    ch.kv = kv;
-    rep.certSaved.push(chamberText(ch));
+  } else {
+    if (!chamberUse(ch, j).kv) ch.use = { ...chamberUse(ch, j), kv: true };
+    if (!sameKv(ch.kv, kv)) {
+      ch.kv = kv;
+      rep.certSaved.push(chamberText(ch));
+    }
   }
   return ch.id;
 }
@@ -196,15 +259,18 @@ function upsertElectrometer(j, vc, rep) {
 
 /**
  * «Сохранить аппарат в Оборудование»: журнал j0 с аппаратом вкладки (связанным — по kv_jmachine, иначе по названию,
- * иначе новым). Режим вкладки находит свой режим «Оборудования» по kv_jmode или по пучку (иначе добавляется): пучок —
- * из вкладки; СПО — тоже, если в «Оборудовании» его нет или replaceHvl (иначе расхождение — в report.hvl); камера и
- * электрометр — записи журнала (найденные или добавленные, kV-сертификат — в запись камеры); аппликаторы строк
- * добавляются к аппарату и отмечаются у режима; референсный — стандартный тубус вкладки, если он определён.
- * Возвращает { journal, machineId, modeIds (по режимам вкладки), report }.
+ * иначе новым). Режим, подставленный из «Оборудования» (вкладка связана с этим аппаратом, kv_jmode — его режим),
+ * возвращает только измеренное: СПО (как ниже) и электрометр, которым мерили (если он есть в «Оборудовании»; он
+ * подставится, когда у камеры не указан электрометр при калибровке) — пучок, камера с kV-сертификатом и аппликаторы
+ * правятся в «Оборудовании» (с 0.50.0). Другой режим вкладки находит свой режим «Оборудования» по пучку (иначе
+ * добавляется): пучок — из вкладки; СПО — тоже, если в «Оборудовании» его нет или replaceHvl (иначе расхождение — в
+ * report.hvl); камера и электрометр — записи журнала (найденные или добавленные, kV-сертификат — в запись камеры);
+ * аппликаторы строк добавляются к аппарату и отмечаются у режима; стандартный — стандартный тубус вкладки, если он
+ * определён. Возвращает { journal, machineId, modeIds (по режимам вкладки), report }.
  */
 export function kvMachineFromVisit(j0, visit, { replaceHvl = false } = {}) {
   const j = structuredClone(j0);
-  const rep = { machineAdded: false, modesAdded: 0, modesUpdated: 0, appsAdded: 0, chambersAdded: [], certSaved: [], electrometersAdded: [], hvl: [], hvlMeasured: 0, platesSaved: 0 };
+  const rep = { machineAdded: false, modesAdded: 0, modesUpdated: 0, modesLinked: 0, appsAdded: 0, chambersAdded: [], certSaved: [], electrometersAdded: [], hvl: [], hvlMeasured: 0, platesSaved: 0 };
   const name = str(visit.common.kv_machine).trim();
   let m = j.machines.find((x) => x.kind === 'kv' && x.id === visit.common.kv_jmachine)
     ?? (name ? j.machines.find((x) => x.kind === 'kv' && (norm(x.name) === norm(name) || norm(kvMachineText(x)) === norm(name))) : null);
@@ -214,38 +280,15 @@ export function kvMachineFromVisit(j0, visit, { replaceHvl = false } = {}) {
     rep.machineAdded = true;
   }
   const vr = computeKvVisit(visit);
-  const plates = visitPlates(visit.common);
-  if (plates.length && JSON.stringify(plates) !== JSON.stringify(m.plates ?? [])) {
-    m.plates = plates;
-    rep.platesSaved = plates.length;
-  }
   const date = str(visit.common.kv_date);
-  const used = new Set();
-  const modeIds = visit.modes.map((md, i) => {
-    const s = md.shared;
-    const ids = [];
-    for (const r of md.rows) {
-      if (isBlank(r.kv_cone)) continue;
-      let a = m.applicators.find((x) => kvSameApp(x, r));
-      if (!a) {
-        a = { ...newKvApplicator(), shape: ['square', 'rect'].includes(r.kv_cone_shape) ? r.kv_cone_shape : 'circle', a: str(r.kv_cone).trim(), b: r.kv_cone_shape === 'rect' ? str(r.kv_cone_b).trim() : '', ssd: str(r.kv_ssd).trim() };
-        m.applicators.push(a);
-        rep.appsAdded++;
-      }
-      if (!ids.includes(a.id)) ids.push(a.id);
-    }
-    let x = m.modes.find((y) => y.id === s.kv_jmode && !used.has(y.id)) ?? m.modes.find((y) => !used.has(y.id) && kvSameMode(y, s));
-    if (x) rep.modesUpdated++;
-    else {
-      x = newKvMachineMode();
-      m.modes.push(x);
-      rep.modesAdded++;
-    }
-    used.add(x.id);
-    Object.assign(x, { range: s.kv_range === 'medium' ? 'medium' : 'low', kv: str(s.kv_kv), ma: str(s.kv_ma), filter: str(s.kv_filter) });
-    // СПО режима: измеренный на листе «СПО и k_Q» (если взят в расчёт) или из таблицы режимов
-    const h = vr.modes[i]?.hvl;
+  /**
+   * СПО режима x: измеренный на листе «СПО и k_Q» (если взят в расчёт, h — его итог) или из таблицы режимов (s.kv_hvl).
+   * Пустой в «Оборудовании» — записывается; другой — только при replaceHvl (расхождение — в report.hvl); тот же
+   * измеренный заново — с новой датой. onlyMeasured — режим из «Оборудования»: значение таблицы режимов не возвращается.
+   */
+  const saveHvl = (x, h, s, i, onlyMeasured = false) => {
     const measured = !!h?.apply;
+    if (onlyMeasured && !measured) return;
     const now = measured ? dec(hvlText(h.used)) : str(s.kv_hvl);
     const setHvl = () => {
       x.hvl = now;
@@ -264,6 +307,49 @@ export function kvMachineFromVisit(j0, visit, { replaceHvl = false } = {}) {
       rep.hvl.push({ mode: i, was: x.hvl, now, source: x.hvlSource, sourceDate: x.hvlDate, measured, range: x.range });
       if (replaceHvl) setHvl();
     } else if (measured && (x.hvlSource !== 'measured' || x.hvlDate !== date)) setHvl(); // то же значение — измерен заново
+  };
+  const plates = visitPlates(visit.common);
+  if (plates.length && JSON.stringify(plates) !== JSON.stringify(m.plates ?? [])) {
+    m.plates = plates;
+    rep.platesSaved = plates.length;
+  }
+  const used = new Set();
+  const linkedMachine = m.id === visit.common.kv_jmachine;
+  // режимы «Оборудования», на которые ссылаются режимы вкладки: другие режимы вкладки их не занимают
+  const reserved = new Set(linkedMachine ? visit.modes.map((md) => md.shared.kv_jmode).filter((id) => !isBlank(id) && m.modes.some((y) => y.id === id)) : []);
+  const modeIds = visit.modes.map((md, i) => {
+    const s = md.shared;
+    // режим из «Оборудования»: постоянное не меняется, только СПО и электрометр дня
+    const lx = linkedMachine && !isBlank(s.kv_jmode) ? m.modes.find((y) => y.id === s.kv_jmode && !used.has(y.id)) : null;
+    if (lx) {
+      used.add(lx.id);
+      rep.modesLinked++;
+      saveHvl(lx, vr.modes[i]?.hvl, s, i, true);
+      const el = kvFindElectrometer(j, visit.chambers[md.chamber] ?? {});
+      if (el) lx.electrometerId = el.id;
+      return lx.id;
+    }
+    const ids = [];
+    for (const r of md.rows) {
+      if (isBlank(r.kv_cone)) continue;
+      let a = m.applicators.find((x) => kvSameApp(x, r));
+      if (!a) {
+        a = { ...newKvApplicator(), shape: ['square', 'rect'].includes(r.kv_cone_shape) ? r.kv_cone_shape : 'circle', a: str(r.kv_cone).trim(), b: r.kv_cone_shape === 'rect' ? str(r.kv_cone_b).trim() : '', ssd: str(r.kv_ssd).trim() };
+        m.applicators.push(a);
+        rep.appsAdded++;
+      }
+      if (!ids.includes(a.id)) ids.push(a.id);
+    }
+    let x = m.modes.find((y) => !used.has(y.id) && !reserved.has(y.id) && kvSameMode(y, s));
+    if (x) rep.modesUpdated++;
+    else {
+      x = newKvMachineMode();
+      m.modes.push(x);
+      rep.modesAdded++;
+    }
+    used.add(x.id);
+    Object.assign(x, { range: s.kv_range === 'medium' ? 'medium' : 'low', kv: str(s.kv_kv), ma: str(s.kv_ma), filter: str(s.kv_filter) });
+    saveHvl(x, vr.modes[i]?.hvl, s, i);
     const vc = visit.chambers[md.chamber] ?? {};
     const chId = upsertChamber(j, vc, rep);
     if (chId) x.chamberId = chId;
@@ -287,6 +373,7 @@ export function kvSaveText(m, rep) {
     rep.machineAdded ? L(`добавлен аппарат «${name}»`, `the unit “${name}” added`) : '',
     rep.modesAdded ? L(`режимов добавлено: ${rep.modesAdded}`, `modes added: ${rep.modesAdded}`) : '',
     rep.modesUpdated ? L(`режимов обновлено: ${rep.modesUpdated}`, `modes updated: ${rep.modesUpdated}`) : '',
+    rep.modesLinked ? L(`у режимов из «Оборудования» (${rep.modesLinked}) пучок, камера и аппликаторы не менялись — они правятся в «Оборудовании»`, `the modes from Equipment (${rep.modesLinked}) keep their beam, chamber and applicators: these are edited in Equipment`) : '',
     rep.appsAdded ? L(`аппликаторов добавлено: ${rep.appsAdded}`, `applicators added: ${rep.appsAdded}`) : '',
     rep.chambersAdded.length ? L(`камеры добавлены: ${rep.chambersAdded.join(', ')}`, `chambers added: ${rep.chambersAdded.join(', ')}`) : '',
     rep.certSaved.length ? L(`kV-сертификат записан в камеры: ${rep.certSaved.join(', ')}`, `kV certificate saved to the chambers: ${rep.certSaved.join(', ')}`) : '',

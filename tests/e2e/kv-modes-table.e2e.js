@@ -79,7 +79,7 @@ test('kV-рентген: таблица режимов — ввод в стро�
   await page.selectOption('#kvm0_ch', 'new');
   await pause();
   assert.equal(await pressed(0), 'true');
-  assert.equal(await page.inputValue('#kv-mode-chamber'), '1');
+  assert.equal(await text('#kv-mode-chamber'), 'Режим 1 — камера 2: камера не выбрана');
   assert.equal(await page.inputValue('#kv_ch_model'), '');
   assert.equal(await page.evaluate(() => document.activeElement?.id), 'kv_ch_model');
   assert.match(await text('#kv-status'), /^Режим 1: добавлена камера 2\. Выберите модель и введите сертификат в разделе 2\./);

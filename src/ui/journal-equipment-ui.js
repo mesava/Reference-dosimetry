@@ -12,13 +12,15 @@ import { CO_DEFAULTS, normalizeCobalt } from '../core/cobalt.js';
 import {
   uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, saveBeamSettings, equipmentDue, equipmentNoDue,
   chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable, electronChamberForm, beamKind, cobaltCapable, cobaltChamberForm, myChambersToJournal, orgText, withChamberLength,
-  CAL_GEO_KEYS, machineCalGeo, calGeoKey, calGeoText, syncCalGeo,
+  CAL_GEO_KEYS, machineCalGeo, calGeoKey, calGeoText, syncCalGeo, chamberUse, chamberUseSet, kvChamberInModes,
 } from '../core/journal.js';
 import {
   newKvApplicator, newKvMachineMode, normalizeKvMachine, applicatorDiameter, applicatorText, kvMachineModeTitle, hvlUnit, kvRefCandidates, kvMachineChecks,
-  KV_ONLY_CHAMBERS, findKvOnlyChamber, kvModelOfJournal, kvChamberFitsRange,
+  KV_ONLY_CHAMBERS, findKvOnlyChamber, kvModelOfJournal, kvChamberFitsRange, journalChamberType,
 } from '../core/kv-machine.js';
-import { kvCertText } from '../core/kv-journal.js';
+import { kvCertText, hasKvCert, kvModeElectrometer, KV_CERT_FORM_KEYS } from '../core/kv-journal.js';
+import { KV_DEFAULTS } from '../core/kv.js';
+import { KV_PHANTOMS } from '../core/kv-tables.js';
 import { kvModeUsed, kvAppUsed, kvEquipUsed } from '../core/kv-records.js';
 import { getMyChambers } from './store.js';
 import { $, esc, fmt, makeStatus, armButton, notifyUpdate, today, richText, currentProtocol, plainSymbols } from './common.js';
@@ -105,24 +107,133 @@ function usedInRecords(j, key, id) {
 }
 const RECORDS_TITLE = () => L('Есть в записях журнала: записи ссылаются на эту запись оборудования (протокол, карты пар камер)', 'Used in journal records: they refer to this equipment entry (report, chamber pair charts)');
 
+/** Камера выбрана в режимах аппаратов kV или есть в их записях: применение «kV-рентген» не снимается. */
+const kvUsedBy = (j, id) => kvChamberInModes(j, id) || kvEquipUsed(j, 'chamberId', id);
+
+/** «Применение» камеры: флажки МВ фотоны и ⁶⁰Co, электроны, kV-рентген (те, для которых годится модель). */
+function useField(j, c, use, uses) {
+  const f = c.form || {};
+  const box = (key, text, can, used) => {
+    if (!can) return '';
+    const lock = use[key] && used;
+    return `<label class="check"><input type="checkbox" ${bind('chamber', c.id, `use.${key}`)}${use[key] ? ' checked' : ''}${lock ? ` disabled title="${esc(L('Камерой уже мерили или она выбрана в режимах: применение не снимается', 'The chamber has been used or is selected in modes: the use cannot be cleared'))}"` : ''}> <span>${esc(text)}</span></label>`;
+  };
+  const boxes = [
+    box('photon', photonCapable(f) ? L('МВ фотоны и ⁶⁰Co', 'MV photons and ⁶⁰Co') : '⁶⁰Co', cobaltCapable(f), uses.photon || uses.cobalt),
+    box('electron', L('электроны', 'electrons'), electronCapable(f), uses.electron),
+    box('kv', L('kV-рентген', 'kV x-rays'), true, kvUsedBy(j, c.id)),
+  ].join('');
+  const sub = chamberUseSet(c)
+    ? L('поля ниже — только для отмеченного; списки камер во вкладках — тоже', 'the fields below are only for what is ticked; so are the chamber lists in the tabs')
+    : L('отмечено по модели и по тому, где камерой мерили; поля ниже — только для отмеченного', 'ticked from the model and from where the chamber was used; the fields below are only for what is ticked');
+  return `<div class="field span-all"><span class="label">${esc(L('Применение', 'Use'))}</span><div class="jkv-apps">${boxes}</div><span class="sub">${esc(sub)}</span></div>`;
+}
+
+/** kV-сертификат камеры: значение поля или по умолчанию (как во вкладке «kV-рентген»). */
+const kvv = (c, key) => (c.kv && key in c.kv ? c.kv[key] : KV_DEFAULTS[key]);
+/** Новый kV-сертификат записи камеры: поля карточки по умолчанию. */
+const kvCertDefaults = () => Object.fromEntries(KV_CERT_FORM_KEYS.map((key) => [key, structuredClone(KV_DEFAULTS[key])]));
+const CERT_COLS = ['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_mat', 'kv_cq_val'];
+/** Строк в таблице качеств сертификата (не меньше одной). */
+const certRows = (kv) => Math.max(1, ...CERT_COLS.map((key) => (Array.isArray(kv?.[key]) ? kv[key].length : 0)));
+/** Столбцы таблицы качеств одной длины n. */
+function ensureCertRows(kv, n) {
+  for (const key of CERT_COLS) {
+    const a = Array.isArray(kv[key]) ? [...kv[key]] : [];
+    while (a.length < n) a.push('');
+    kv[key] = a;
+  }
+}
+const phantomOptions = () => [
+  ['', L('— не указан —', '— not specified —')],
+  ...KV_PHANTOMS.map((p) => [p.id, p.name()]),
+  ['custom', L('свой материал (описан во вкладке «kV-рентген», раздел 1)', 'custom material (described in the kV x-rays tab, section 1)')],
+];
+
+/**
+ * kV-сертификат в карточке камеры (с 0.50.0; до того — только во вкладке «kV-рентген»): вид коэффициента, Q_o и глубина
+ * (средние энергии, цилиндрическая камера), форма записи, N, таблица качеств с металлом СПО, пересчёт по DIN 6809-4,
+ * условия лаборатории, T₀ и P₀, фольга (плоскопараллельная), поправки лаборатории. Во вкладку подставляется вместе с
+ * камерой режима и там только показывается.
+ */
+function kvCertBlock(j, c) {
+  const k = 'chamber';
+  const id = c.id;
+  const p = (key) => `kv.${key}`;
+  const fid = (key) => fieldId(k, id, p(key));
+  const v = (key) => kvv(c, key);
+  const pp = journalChamberType(c) === 'pp';
+  const ndw = v('kv_cal') !== 'nk';
+  const form = v('kv_cert_form');
+  const table = ['kq', 'n', 'k'].includes(form);
+  const co = ndw && !pp && v('kv_qo') === 'co60';
+  const ns = ndw ? 'D,w' : 'K';
+  const units = Object.entries(NDW_UNITS).map(([u, x]) => [u, unitLabel(x)]);
+  const nLabel = form === 'k' ? L('N<sub>Д</sub>', 'N<sub>D</sub>') : form === 'co' ? 'N<sub>D,w</sub> (⁶⁰Co)' : `N<sub>${ns},Qo</sub>`;
+  const valLabel = form === 'n' ? `N<sub>${ns}</sub>` : form === 'k' ? 'K' : co ? 'k<sub>Q,M</sub>' : 'k<sub>Q</sub>';
+  const n = certRows(c.kv ?? KV_DEFAULTS);
+  const cell = (key, i, label) => {
+    const arr = v(key);
+    return `<input type="text" class="num" inputmode="decimal" ${bind(k, id, `${p(key)}.${i}`)} value="${val(Array.isArray(arr) ? arr[i] : '')}" aria-label="${val(`${label}, ${L('качество', 'quality')} ${i + 1}`)}">`;
+  };
+  const mats = v('kv_cq_mat');
+  const metal = (i) => select(k, id, `${p('kv_cq_mat')}.${i}`, Array.isArray(mats) ? mats[i] ?? '' : '', [['', L('как у пучка', 'as the beam')], ['Al', 'Al'], ['Cu', 'Cu']], { aria: L(`Металл СПО, качество ${i + 1}`, `HVL metal, quality ${i + 1}`) });
+  const rows = Array.from({ length: n }, (_, i) => `<tr><td class="no">${i + 1}</td><td data-cap="${esc(L('кВ', 'kV'))}">${cell('kv_cq_kv', i, L('Напряжение, кВ', 'Voltage, kV'))}</td><td data-cap="${esc(L('СПО, мм', 'HVL, mm'))}">${cell('kv_cq_hvl', i, L('СПО, мм', 'HVL, mm'))}</td><td data-cap="${esc(L('Металл', 'Metal'))}">${metal(i)}</td><td data-cap="${esc(plainSymbols(valLabel.replace(/<\/?sub>/g, '')))}">${cell('kv_cq_val', i, L('Значение из сертификата', 'Certificate value'))}</td></tr>`).join('');
+  const anyMetal = Array.isArray(mats) && mats.some((x) => x === 'Al' || x === 'Cu');
+  const text = kvCertText(c.kv);
+  const box = (key, label) => check(k, id, p(key), !!v(key), label);
+  return `<h4 class="sub-h">${esc(L('kV-сертификат', 'kV certificate'))}</h4>
+    <p class="sub-hint" data-live="kvcert-${val(id)}">${richText(text ? `${text}. ` : L('Пока не введён. ', 'Not entered yet. '))}${esc(L('Калибровка в рентгеновских пучках: подставляется во вкладку «kV-рентген» вместе с камерой режима и там только показывается.', 'Calibration in x-ray beams: it is filled in to the kV x-rays tab with the chamber of the mode and only shown there.'))}</p>
+    <div class="grid">
+      ${field(L('Калибровочный коэффициент', 'Calibration coefficient'), select(k, id, p('kv_cal'), v('kv_cal'), [['ndw', L('N_D,w — поглощённая доза в воде', 'N_D,w: absorbed dose to water')], ['nk', L('N_K — воздушная керма в свободном воздухе', 'N_K: air kerma in free air')]]), { forId: fid('kv_cal'), cls: 'span-2' })}
+      ${field(L('Как записан сертификат', 'How the certificate is written'), select(k, id, p('kv_cert_form'), form, [['kq', L('N при Qo и k_Q по качествам', 'N at Qo and k_Q by quality')], ['n', L('N по качествам', 'N by quality')], ['k', L('N_Д и множитель K по качествам (поверка)', 'N_D and factor K by quality (verification)')], ['co', L('только N_D,w в ⁶⁰Co: k_Q = 1 (не по Rev.1 и DIN)', 'N_D,w in ⁶⁰Co only: k_Q = 1 (not by Rev.1 or DIN)')]]), { forId: fid('kv_cert_form'), cls: 'span-2' })}
+      ${ndw && !pp ? field(L('Опорное качество Q<sub>o</sub>', 'Reference quality Q<sub>o</sub>'), select(k, id, p('kv_qo'), v('kv_qo'), [['kv', L('рентгеновское', 'x-ray')], ['co60', '⁶⁰Co']]), { forId: fid('kv_qo'), sub: L('для средних энергий', 'for medium energies') }) : ''}
+      ${ndw && !pp && table ? field(L('Глубина калибровки', 'Calibration depth'), select(k, id, p('kv_cal_depth'), v('kv_cal_depth'), [['2', L('2 г/см² (TRS-398 Rev.1)', '2 g/cm² (TRS-398 Rev.1)')], ['5', L('5 см (DIN 6809-4, k_z = 1; не по TRS-398 Rev.1)', '5 cm (DIN 6809-4, k_z = 1; not by TRS-398 Rev.1)')]]), { forId: fid('kv_cal_depth'), sub: L('средние энергии: на какой глубине в воде получены коэффициенты', 'medium energies: the depth in water of the coefficients') }) : ''}
+      ${['kq', 'k', 'co'].includes(form) ? `${field(nLabel, input(k, id, p('kv_n'), v('kv_n'), { num: true, placeholder: '0,04530' }), { forId: fid('kv_n') })}
+        ${field(L('Единица N', 'Unit of N'), select(k, id, p('kv_n_unit'), v('kv_n_unit'), units), { forId: fid('kv_n_unit') })}` : ''}
+    </div>
+    ${table ? `<div class="table-wrap"><table class="factors jf-table jkv-cert-t" aria-label="${esc(L('Качества пучка из сертификата', 'Beam qualities from the certificate'))}">
+      <thead><tr><th class="no">№</th><th>${esc(L('кВ', 'kV'))}</th><th>${esc(L('СПО, мм', 'HVL, mm'))}</th><th>${esc(L('Металл', 'Metal'))}</th><th>${valLabel}</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <div class="row-tools"><button type="button" class="link-btn" data-kvcert-add="${esc(id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить качество', 'Add a quality'))}</button><button type="button" class="link-btn" data-kvcert-del="${esc(id)}"${n <= 1 ? ' disabled' : ''}>${esc(L('Убрать последнее', 'Remove the last one'))}</button></div>
+    <p class="sub-hint">${esc(L('Строка — качество из сертификата: напряжение (для записи), СПО с металлом, как в сертификате, и значение. «Как у пучка» — металл СПО режима (низкие энергии — Al, средние — Cu). В интерполяцию идут строки в том же металле, что СПО пучка (TRS-398 Rev.1, разд. 9.4.4).', 'Each row is a quality from the certificate: the voltage (for the record), the HVL with its metal as in the certificate, and the value. “As the beam” is the HVL metal of the mode (low energies: Al, medium: Cu). Only rows in the same metal as the beam HVL are used in the interpolation (TRS-398 Rev.1, Sec. 9.4.4).'))}</p>
+    ${anyMetal || v('kv_cq_din') ? `<div class="field">${box('kv_cq_din', esc(L('Пересчитать СПО строк в другом металле по DIN 6809-4 (справочно, не по TRS-398 Rev.1)', 'Convert the HVL of rows in the other metal with DIN 6809-4 (for reference, not by TRS-398 Rev.1)')))}<span class="sub">${esc(L('как считается и насколько это точно — окно «Пересчёт СПО Al ↔ Cu» во вкладке «kV-рентген», раздел 2', 'how it is calculated and how accurate it is: the “HVL conversion Al ↔ Cu” window in the kV x-rays tab, section 2'))}</span></div>` : ''}` : ''}
+    <div class="grid">
+      ${ndw && table ? `${field(L('Поле в лаборатории', 'Laboratory field'), select(k, id, p('kv_lab_shape'), v('kv_lab_shape'), [['circle', L('круглое', 'circular')], ['square', L('квадратное', 'square')]]), { forId: fid('kv_lab_shape') })}
+        ${field(v('kv_lab_shape') === 'square' ? L('Сторона, см', 'Side, cm') : L('Диаметр, см', 'Diameter, cm'), input(k, id, p('kv_lab_f'), v('kv_lab_f'), { num: true }), { forId: fid('kv_lab_f') })}
+        ${field(L('РИП в лаборатории, см', 'Laboratory SSD, cm'), input(k, id, p('kv_lab_ssd'), v('kv_lab_ssd'), { num: true }), { forId: fid('kv_lab_ssd'), sub: L('для k<sub>g</sub>, если клинические поле и РИП другие', 'for k<sub>g</sub> if the clinical field and SSD differ') })}
+        ${field(L('Фантом при калибровке', 'Phantom at calibration'), select(k, id, p('kv_lab_phantom'), v('kv_lab_phantom'), phantomOptions()), { forId: fid('kv_lab_phantom'), sub: L('низкие энергии: камера калибруется вместе с фантомом (TRS-398 Rev.1, разд. 8.2.2)', 'low energies: the chamber is calibrated together with the phantom (TRS-398 Rev.1, Sec. 8.2.2)') })}` : ''}
+      ${field(L('T₀ сертификата, °C', 'Certificate T₀, °C'), input(k, id, p('kv_T0'), v('kv_T0'), { num: true }), { forId: fid('kv_T0') })}
+      ${field(L('P₀ сертификата, кПа', 'Certificate P₀, kPa'), input(k, id, p('kv_P0'), v('kv_P0'), { num: true }), { forId: fid('kv_P0') })}
+      ${pp ? `<div class="field span-2">${box('kv_foil', esc(L('Фольга 0,2 мм на окне камеры', '0.2 mm foil on the chamber window')))}<span class="sub">${esc(L('выше 40 кВ — та же, с которой камера калибровалась (TRS-398, разд. 8.2.1)', 'above 40 kV, the same one the chamber was calibrated with (TRS-398, Sec. 8.2.1)'))}</span></div>` : ''}
+      <div class="field">${box('kv_lab_pol_applied', esc(L('Лаборатория внесла поправку на полярность', 'The laboratory applied the polarity correction')))}</div>
+      ${v('kv_lab_pol_applied') ? '' : field(L('k<sub>pol</sub> в пучке лаборатории', 'k<sub>pol</sub> in the laboratory beam'), input(k, id, p('kv_lab_kpol'), v('kv_lab_kpol'), { num: true }), { forId: fid('kv_lab_kpol') })}
+      <div class="field">${box('kv_lab_ks_applied', esc(L('Лаборатория внесла поправку на рекомбинацию', 'The laboratory applied the recombination correction')))}</div>
+      ${v('kv_lab_ks_applied') ? '' : field(L('k<sub>s</sub> при калибровке', 'k<sub>s</sub> at calibration'), input(k, id, p('kv_lab_ks'), v('kv_lab_ks'), { num: true }), { forId: fid('kv_lab_ks') })}
+    </div>`;
+}
+
 function chamberCard(c, j = getJournal()) {
   const f = c.form || {};
   const k = 'chamber';
   const custom = f.ch_model === 'CUSTOM';
   const other = f.ch_model === 'OTHER';
-  const ph = photonCapable(f);
-  const el = electronCapable(f);
+  const uses = chamberUses(j, c.id);
+  // «Применение» (с 0.50.0): поля — только отмеченного; пока не отмечено — по модели и по тому, где камерой мерили
+  const use = chamberUse(c, j);
+  const ph = use.photon && photonCapable(f);
+  const el = use.electron && electronCapable(f);
+  const coOnly = use.photon && !photonCapable(f) && cobaltCapable(f);
   const phCross = ph && f.ch_cal_route === 'cross';
   const elCross = el && f.e_cal_route === 'cross';
-  const uses = chamberUses(j, c.id);
+  const mv = isBlank(f.ch_model) || ph || el || coOnly || uses.cobalt;
   // камера из списка вкладки kV: плоскопараллельная только для kV или цилиндрическая из табл. 32 (её калибруют и в рентгене)
   const kvCapable = !!kvModelOfJournal(f.ch_model);
-  const kvText = kvCertText(c.kv);
-  const forWhat = [ph && L('фотонов', 'photons'), el && L('электронов', 'electrons'), (ph || el) && '⁶⁰Co', kvCapable && L('kV-рентгена', 'kV x-rays')].filter(Boolean);
+  const forWhat = [photonCapable(f) && L('фотонов', 'photons'), electronCapable(f) && L('электронов', 'electrons'), cobaltCapable(f) && '⁶⁰Co', kvCapable && L('kV-рентгена', 'kV x-rays')].filter(Boolean);
   const forText = forWhat.length ? L(`для ${forWhat.length > 1 ? `${forWhat.slice(0, -1).join(', ')} и ${forWhat.at(-1)}` : forWhat[0]}`, `for ${forWhat.length > 1 ? `${forWhat.slice(0, -1).join(', ')} and ${forWhat.at(-1)}` : forWhat[0]}`) : '';
   // N_D,w в ⁶⁰Co нужен, если хоть для одного вида пучков камера калибруется в ⁶⁰Co, если она выбрана у пучка ⁶⁰Co
   // (или модель ещё не выбрана)
-  const needNdw = isBlank(f.ch_model) || (ph && !phCross) || (el && !elCross) || uses.cobalt;
+  const needNdw = isBlank(f.ch_model) || (ph && !phCross) || (el && !elCross) || coOnly || uses.cobalt;
   const units = Object.entries(NDW_UNITS).map(([v, u]) => [v, unitLabel(u)]);
   const maker = chamberMakerOf(c);
   return `<div class="jcard" data-card="chamber:${esc(c.id)}">
@@ -131,6 +242,7 @@ function chamberCard(c, j = getJournal()) {
       ${field(L('Производитель', 'Manufacturer'), `<select ${bind(k, c.id, 'maker')}>${makerOptions(chamberMakers(), maker, L('Другая или своя камера', 'Other or custom chamber'))}</select>`, { forId: fieldId(k, c.id, 'maker') })}
       ${maker ? field(L('Модель', 'Model'), `<select ${bind(k, c.id, 'form.ch_model')}>${chamberModelOptions(maker, f.ch_model)}</select>`, { forId: fieldId(k, c.id, 'form.ch_model'), sub: [custom ? esc([f.cc_maker, f.cc_model].filter(Boolean).join(' ')) : '', esc(forText), esc(chamberDims(f))].filter(Boolean).join(' · ') }) : ''}
       ${field(L('Заводской №', 'Serial No.'), input(k, c.id, 'form.ch_serial', f.ch_serial), { forId: fieldId(k, c.id, 'form.ch_serial') })}
+      ${isBlank(f.ch_model) ? '' : useField(j, c, use, uses)}
       ${ph && !custom ? field(L('Длина полости, мм', 'Cavity length, mm'), input(k, c.id, 'length', c.length, { num: true, placeholder: Number.isFinite(findChamber(f.ch_model)?.lengthMm) ? fmt(findChamber(f.ch_model).lengthMm, 1) : '' }), { forId: fieldId(k, c.id, 'length'), sub: Number.isFinite(findChamber(f.ch_model)?.lengthMm) ? L(`для k<sub>vol</sub> в пучках БВФ; пусто — из базы (${lengthSourceText(findChamber(f.ch_model))})`, `for k<sub>vol</sub> in FFF beams; blank: from the database (${lengthSourceText(findChamber(f.ch_model))})`) : L('для k<sub>vol</sub> в пучках БВФ: в базе длины нет — возьмите из паспорта камеры', 'for k<sub>vol</sub> in FFF beams: the database has no length; take it from the chamber datasheet') }) : ''}
       ${other
         ? `${field(L('Название', 'Name'), input(k, c.id, 'form.e_other_name', f.e_other_name), { forId: fieldId(k, c.id, 'form.e_other_name') })}
@@ -156,8 +268,8 @@ function chamberCard(c, j = getJournal()) {
           ${field(L('(k<sub>Qecal</sub>·N<sub>D,w</sub>)<sub>pp</sub> — электроны (Report 385)', '(k<sub>Qecal</sub>·N<sub>D,w</sub>)<sub>pp</sub>: electrons (Report 385)'), input(k, c.id, 'form.e_cross_kn', f.e_cross_kn, { num: true }), { forId: fieldId(k, c.id, 'form.e_cross_kn'), sub: L('ур. 5; для TG-51', 'Eq. 5; for TG-51') })}
           ${field(L('Единицы', 'Units'), select(k, c.id, 'form.e_cross_kn_unit', f.e_cross_kn_unit || 'Gy/nC', units), { forId: fieldId(k, c.id, 'form.e_cross_kn_unit') })}`
         : ''}
-      ${field('T₀, °C', input(k, c.id, 'form.ch_T0', f.ch_T0 ?? '20', { num: true }), { forId: fieldId(k, c.id, 'form.ch_T0') })}
-      ${field(L('P₀, кПа', 'P₀, kPa'), input(k, c.id, 'form.ch_P0', f.ch_P0 ?? '101,325', { num: true }), { forId: fieldId(k, c.id, 'form.ch_P0') })}
+      ${mv ? field('T₀, °C', input(k, c.id, 'form.ch_T0', f.ch_T0 ?? '20', { num: true }), { forId: fieldId(k, c.id, 'form.ch_T0') }) : ''}
+      ${mv ? field(L('P₀, кПа', 'P₀, kPa'), input(k, c.id, 'form.ch_P0', f.ch_P0 ?? '101,325', { num: true }), { forId: fieldId(k, c.id, 'form.ch_P0') }) : ''}
     </div>
     <h4 class="sub-h">${esc(L('Свидетельство о калибровке', 'Calibration certificate'))}</h4>
     <div class="grid">
@@ -170,8 +282,7 @@ function chamberCard(c, j = getJournal()) {
       ${field(L('Полярность при калибровке', 'Calibration polarity'), select(k, c.id, 'calPol', c.calPol, [['', L('— не указана —', '— not given —')], ['+', L('положительная (+)', 'positive (+)')], ['-', L('отрицательная (−)', 'negative (−)')]]), { forId: fieldId(k, c.id, 'calPol') })}
       ${field(L('Примечания', 'Notes'), input(k, c.id, 'notes', c.notes), { forId: fieldId(k, c.id, 'notes'), cls: 'span-2' })}
     </div>
-    ${kvText || kvCapable ? `<h4 class="sub-h">${esc(L('kV-сертификат', 'kV certificate'))}</h4>
-    <p class="sub-hint">${kvText ? `${richText(kvText)}. ` : esc(L('Пока не введён. ', 'Not entered yet. '))}${esc(L('Вводится во вкладке «kV-рентген» на листе «Аппарат и режимы» и сохраняется в запись камеры кнопкой «Сохранить аппарат в Оборудование»; при выборе аппарата во вкладке подставляется вместе с камерой.', 'It is entered in the kV x-rays tab on the Machine and modes sheet and saved to the chamber record with “Save the unit to Equipment”; when the unit is selected in the tab it is filled in with the chamber.'))}</p>` : ''}
+    ${use.kv ? kvCertBlock(j, c) : ''}
     <div class="row-tools"><button type="button" class="link-btn danger" data-del="chamber:${esc(c.id)}"${usedInRecords(j, 'chamberId', c.id) ? ` disabled title="${esc(RECORDS_TITLE())}"` : ''}>${esc(L('Удалить камеру', 'Delete chamber'))}</button></div>
   </div>`;
 }
@@ -359,12 +470,9 @@ function kvModeBlock(j, m, x, i, checks) {
     const n = m.applicators.findIndex((a) => a.id === x.refApplicator);
     if (n >= 0) refOpts.push([x.refApplicator, L(`${appName(m.applicators[n], n)} — не отмечен у режима`, `${appName(m.applicators[n], n)} — not ticked for the mode`)]);
   }
-  // средним энергиям плоскопараллельная камера не предлагается (TRS-398 Rev.1, разд. 9.2.1); уже выбранная остаётся с пометкой
-  const chName = (ch) => chamberText(ch) || L('камера без названия', 'unnamed chamber');
-  const chOpts = [['', L('— не выбрана —', '— not selected —')], ...j.chambers.filter((ch) => kvChamberFitsRange(ch, x.range) || ch.id === x.chamberId).map((ch) => [ch.id, kvChamberFitsRange(ch, x.range) ? chName(ch) : L(`${chName(ch)} — не для средних энергий`, `${chName(ch)}: not for medium energies`)])];
-  if (x.chamberId && !j.chambers.some((ch) => ch.id === x.chamberId)) chOpts.push([x.chamberId, L('— камеры нет в «Оборудовании» —', '— the chamber is not in Equipment —')]);
-  const elOpts = [['', L('— не выбран —', '— not selected —')], ...j.electrometers.map((e) => [e.id, electrometerText(e) || L('электрометр без названия', 'unnamed electrometer')])];
-  if (x.electrometerId && !j.electrometers.some((e) => e.id === x.electrometerId)) elOpts.push([x.electrometerId, L('— электрометра нет в «Оборудовании» —', '— the electrometer is not in Equipment —')]);
+  // камера режима выбирается в разделе 4 (таблица «Камеры режимов»), здесь — только показывается
+  const ch = j.chambers.find((y) => y.id === x.chamberId);
+  const chLine = !x.chamberId ? L('не выбрана', 'not selected') : ch ? chamberText(ch) || L('камера без названия', 'unnamed chamber') : L('камеры нет в «Оборудовании»', 'the chamber is not in Equipment');
   const apps = m.applicators.length
     ? m.applicators.map((a, n) => check(k, x.id, `app:${a.id}`, x.applicators.includes(a.id), esc(appName(a, n)))).join('')
     : `<span class="sub">${esc(L('у аппарата пока нет аппликаторов — добавьте их в таблицу выше', 'the unit has no applicators yet: add them to the table above'))}</span>`;
@@ -379,8 +487,7 @@ function kvModeBlock(j, m, x, i, checks) {
       ${field(L('СПО', 'HVL'), select(k, x.id, 'hvlSource', x.hvlSource, [['nominal', L('номинальный', 'nominal')], ['measured', L('измерен', 'measured')]]), { forId: fid('hvlSource'), sub: x.hvlSource === 'measured' ? '' : L('из паспорта или приёмки', 'from the datasheet or acceptance') })}
       ${x.hvlSource === 'measured' ? field(L('Дата измерения СПО', 'HVL measurement date'), input(k, x.id, 'hvlDate', x.hvlDate, { type: 'date' }), { forId: fid('hvlDate') }) : ''}
       ${field(L('Обозначение режима', 'Mode label'), input(k, x.id, 'label', x.label, { placeholder: t || L('120 кВ / 10 мА / 2 мм Al', '120 kV / 10 mA / 2 mm Al'), livePh: `kvmode-label-${x.id}` }), { forId: fid('label'), sub: L('пусто — по напряжению, току и фильтру', 'blank: from the voltage, current and filter') })}
-      ${field(L('Камера', 'Chamber'), select(k, x.id, 'chamberId', x.chamberId, chOpts), { forId: fid('chamberId'), cls: 'span-2', sub: L('своя у каждого режима; камеры — в разделе 4', 'each mode has its own; chambers are in section 4') })}
-      ${field(L('Электрометр', 'Electrometer'), select(k, x.id, 'electrometerId', x.electrometerId, elOpts), { forId: fid('electrometerId') })}
+      <div class="field span-2"><span class="label">${esc(L('Камера', 'Chamber'))}</span><span class="jkv-ch" data-live="kvmode-ch-${val(x.id)}">${esc(chLine)}</span><span class="sub">${esc(L('выбирается в разделе 4, «Камеры режимов»; электрометр — «Электрометр при калибровке» камеры', 'selected in section 4, Chambers of the modes; the electrometer is the “Electrometer at calibration” of the chamber'))}</span></div>
     </div>
     <div class="field"><span class="label">${esc(L('Аппликаторы режима', 'Applicators of the mode'))}</span><div class="jkv-apps" data-live="kvmode-apps-${val(x.id)}">${apps}</div></div>
     <div class="grid">
@@ -432,10 +539,10 @@ function kvMachineCard(j, m) {
     ${kvMsgs(checks.filter((c) => c.appId), `kvapps-msgs-${m.id}`)}
     <div class="row-tools"><button type="button" class="link-btn" data-add-kvapp="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить аппликатор', 'Add an applicator'))}</button></div>
     <h3 class="sub-h">${esc(L('Режимы', 'Modes'))}</h3>
-    <div class="jbeams">${m.modes.map((x, i) => kvModeBlock(j, m, x, i, checks)).join('') || `<p class="sub-hint">${esc(L('Режимов пока нет: режим — напряжение, ток, фильтр и СПО со своей камерой и своими аппликаторами.', 'No modes yet: a mode is a voltage, current, filter and HVL with its own chamber and applicators.'))}</p>`}</div>
+    <div class="jbeams">${m.modes.map((x, i) => kvModeBlock(j, m, x, i, checks)).join('') || `<p class="sub-hint">${esc(L('Режимов пока нет: режим — напряжение, ток, фильтр и СПО со своими аппликаторами; камера режима выбирается в разделе 4.', 'No modes yet: a mode is a voltage, current, filter and HVL with its own applicators; the chamber of the mode is selected in section 4.'))}</p>`}</div>
     <div class="row-tools"><button type="button" class="link-btn" data-add-kvmode="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить режим', 'Add a mode'))}</button></div>
     <p class="sub-hint jkv-plates">${richText(kvPlatesText(m))}</p>
-    <p class="sub-hint">${esc(L('Новый режим копирует диапазон, камеру, электрометр и аппликаторы последнего. Во вкладке «kV-рентген» аппарат выбирается на листе «Аппарат и режимы»: отмеченные режимы подставляются с камерой, её kV-сертификатом, электрометром и аппликаторами, а измеренное возвращается сюда кнопкой «Сохранить аппарат в Оборудование».', 'A new mode copies the range, chamber, electrometer and applicators of the last one. In the kV x-rays tab the unit is selected on the Machine and modes sheet: the ticked modes are filled in with the chamber, its kV certificate, the electrometer and the applicators, and the measured data come back here with “Save the unit to Equipment”.'))}</p>
+    <p class="sub-hint">${esc(L('Новый режим копирует диапазон, камеру и аппликаторы последнего. Во вкладке «kV-рентген» аппарат выбирается на листе «Аппарат и режимы»: отмеченные режимы подставляются с камерой, её kV-сертификатом, электрометром и аппликаторами и там только показываются; измеренный СПО возвращается сюда кнопкой «Сохранить измеренное в Оборудование».', 'A new mode copies the range, chamber and applicators of the last one. In the kV x-rays tab the unit is selected on the Machine and modes sheet: the ticked modes are filled in with the chamber, its kV certificate, the electrometer and the applicators and are only shown there; the measured HVL comes back here with “Save the measured data to Equipment”.'))}</p>
     <div class="row-tools">
       <button type="button" class="link-btn danger" data-del="machine:${esc(m.id)}"${hasSessions ? ` disabled title="${esc(L('У аппарата есть записи в журнале', 'The machine has records in the journal'))}"` : ''}>${esc(L('Удалить аппарат', 'Delete machine'))}</button>
     </div>
@@ -517,11 +624,49 @@ function importMine() {
 }
 
 // ------------------------------------------------------------ отрисовка
+/**
+ * «Камеры режимов» (раздел 4, с 0.50.0): у каждого режима рентгенотерапевтических аппаратов — своя камера; электрометр —
+ * «Электрометр при калибровке» камеры (иначе последний электрометр режима во вкладке). Средним энергиям плоскопараллельная
+ * камера не предлагается (TRS-398 Rev.1, разд. 9.2.1); уже выбранная остаётся с пометкой. Камеры, не отмеченные для
+ * kV-рентгена, — отдельной группой: при выборе отметка ставится сама.
+ */
+function kvModeChambersHtml(j) {
+  const ms = j.machines.filter((m) => m.kind === 'kv' && m.modes.length);
+  if (!ms.length) return '';
+  const chName = (ch) => chamberText(ch) || L('камера без названия', 'unnamed chamber');
+  const opt = (v, t, cur) => `<option value="${val(v)}"${v === cur ? ' selected' : ''}>${esc(t)}</option>`;
+  const row = (m, x, i) => {
+    const t = kvMachineModeTitle(x);
+    const cur = x.chamberId;
+    const fits = j.chambers.filter((ch) => !isBlank(ch.form?.ch_model) && kvChamberFitsRange(ch, x.range));
+    const mine = fits.filter((ch) => chamberUse(ch, j).kv);
+    const other = fits.filter((ch) => !chamberUse(ch, j).kv);
+    const ch = j.chambers.find((y) => y.id === cur);
+    const extra = cur && !fits.includes(ch)
+      ? opt(cur, ch ? L(`${chName(ch)} — не для средних энергий`, `${chName(ch)}: not for medium energies`) : L('— камеры нет в «Оборудовании» —', '— the chamber is not in Equipment —'), cur)
+      : '';
+    const sel = `<select ${bind('kvmode', x.id, 'chamberId')} aria-label="${val(L(`Камера: ${m.name || 'аппарат'}, режим ${i + 1}`, `Chamber: ${m.name || 'unit'}, mode ${i + 1}`))}">${opt('', L('— не выбрана —', '— not selected —'), cur)}${mine.map((c) => opt(c.id, chName(c), cur)).join('')}${other.length ? `<optgroup label="${val(L('другие камеры — будут отмечены для kV-рентгена', 'other chambers: will be ticked for kV x-rays'))}">${other.map((c) => opt(c.id, chName(c), cur)).join('')}</optgroup>` : ''}${extra}</select>`;
+    const e = kvModeElectrometer(j, x);
+    const elText = e.el
+      ? `${esc(electrometerText(e.el) || L('электрометр без названия', 'unnamed electrometer'))}<span class="sub">${esc(e.src === 'cal' ? L('при калибровке камеры', 'at the chamber calibration') : L('последний во вкладке: у камеры не указан электрометр при калибровке', 'the last one in the tab: the chamber has no electrometer at calibration'))}</span>`
+      : `—<span class="sub">${esc(ch ? L('укажите «Электрометр при калибровке» у камеры или введите электрометр во вкладке', 'enter the “Electrometer at calibration” of the chamber or the electrometer in the tab') : '')}</span>`;
+    const certText = !ch ? '—' : hasKvCert(ch.kv) ? esc(L('есть', 'entered')) : `<span class="warn-t">${esc(L('нет — введите в карточке камеры', 'none: enter it in the chamber card'))}</span>`;
+    const bad = ch && !kvChamberFitsRange(ch, x.range) ? `<span class="sub error-t">${esc(L('плоскопараллельная камера не для средних энергий (TRS-398 Rev.1, разд. 9.2.1)', 'a plane-parallel chamber is not for medium energies (TRS-398 Rev.1, Sec. 9.2.1)'))}</span>` : '';
+    return `<tr><td data-cap="${esc(L('Аппарат', 'Unit'))}">${esc(m.name || L('без названия', 'unnamed'))}</td><td data-cap="${esc(L('Режим', 'Mode'))}">${esc(L(`${i + 1}`, `${i + 1}`))}${t ? ` — ${esc(t)}` : ''}<span class="sub">${esc(x.range === 'medium' ? L('средние энергии', 'medium energy') : L('низкие энергии', 'low energy'))}</span></td><td data-cap="${esc(L('Камера', 'Chamber'))}">${sel}${bad}</td><td data-cap="${esc(L('Электрометр', 'Electrometer'))}">${elText}</td><td data-cap="${esc(L('kV-сертификат', 'kV certificate'))}">${certText}</td></tr>`;
+  };
+  return `<h3 class="sub-h" id="eq-kv-modes-h">${esc(L('Камеры режимов', 'Chambers of the modes'))}</h3>
+    <p class="sub-hint">${esc(L('Камера каждого режима рентгенотерапевтических аппаратов (раздел 2). Её kV-сертификат вводится в карточке камеры выше, электрометр — «Электрометр при калибровке» камеры; во вкладке «kV-рентген» электрометр можно заменить на день измерений.', 'The chamber of each mode of the x-ray therapy units (section 2). Its kV certificate is entered in the chamber card above, the electrometer is the “Electrometer at calibration” of the chamber; in the kV x-rays tab the electrometer can be replaced for the day of measurement.'))}</p>
+    <div class="table-wrap"><table class="factors jf-table jkv-mch-t" aria-labelledby="eq-kv-modes-h">
+      <thead><tr><th>${esc(L('Аппарат', 'Unit'))}</th><th>${esc(L('Режим', 'Mode'))}</th><th>${esc(L('Камера', 'Chamber'))}</th><th>${esc(L('Электрометр', 'Electrometer'))}</th><th>${esc(L('kV-сертификат', 'kV certificate'))}</th></tr></thead>
+      <tbody>${ms.map((m) => m.modes.map((x, i) => row(m, x, i)).join('')).join('')}</tbody></table></div>`;
+}
+
 function render() {
   const j = getJournal();
   $('#eq_institution').value = j.institution || '';
   $('#eq_department').value = j.department || '';
   $('#eq-chambers').innerHTML = j.chambers.map((c) => chamberCard(c, j)).join('') || `<p class="sub-hint">${esc(L('Камер пока нет.', 'No chambers yet.'))}</p>`;
+  $('#eq-kv-modes').innerHTML = kvModeChambersHtml(j);
   $('#eq-electrometers').innerHTML = j.electrometers.map(electrometerCard).join('') || `<p class="sub-hint">${esc(L('Электрометров пока нет.', 'No electrometers yet.'))}</p>`;
   for (const m of j.machines) for (const kind of Object.keys(CAL_GEO_KEYS)) geoSeen.set(`${m.id}|${kind}`, calGeoKey(kind, machineCalGeo(m, kind)));
   $('#eq-machines').innerHTML = j.machines.map((m) => machineCard(j, m)).join('') || `<p class="sub-hint">${esc(L('Аппаратов пока нет.', 'No machines yet.'))}</p>`;
@@ -628,8 +773,28 @@ function updateHead(el) {
   const a = card.querySelector(sel);
   const b = fresh.querySelector(sel);
   if (a && b) a.innerHTML = b.innerHTML;
-  // подписи, зависящие от вводимых полей (у ⁶⁰Co — с чем сравнивается мощность дозы после замены источника; у аппарата
-  // kV — заголовки режимов, списки аппликаторов, референсный аппликатор и замечания)
+  copyLive(card, fresh);
+  // камеры, электрометры и режимы аппаратов kV связаны: таблица «Камеры режимов» (раздел 4), камера режима и замечания
+  // режимов (нет kV-сертификата) обновляются по вводу
+  const kvm = j.machines.filter((m) => m.kind === 'kv');
+  if (!kvm.length || !(kind === 'chamber' || kind === 'electrometer' || kvm.some((m) => m.id === id))) return;
+  const box = $('#eq-kv-modes');
+  if (box && !box.contains(document.activeElement)) {
+    box.innerHTML = kvModeChambersHtml(j);
+    localizeDecimals(box);
+  }
+  if (kind === 'machine') return;
+  for (const m of kvm) {
+    const mc = ROOT().querySelector(`[data-card="machine:${CSS.escape(m.id)}"]`);
+    tmp.innerHTML = machineCard(j, m);
+    if (mc && tmp.firstElementChild) copyLive(mc, tmp.firstElementChild);
+  }
+}
+
+/** Подписи карточки card, зависящие от вводимых полей, — из её свежей разметки fresh. */
+function copyLive(card, fresh) {
+  // подписи data-live (у ⁶⁰Co — с чем сравнивается мощность дозы после замены источника; у аппарата kV — заголовки
+  // режимов, камера режима, списки аппликаторов, референсный аппликатор и замечания; у камеры — kV-сертификат коротко)
   for (const live of fresh.querySelectorAll('[data-live]')) {
     const cur = card.querySelector(`[data-live="${CSS.escape(live.dataset.live)}"]`);
     if (cur) cur.innerHTML = live.innerHTML;
@@ -665,6 +830,28 @@ function onInput(e) {
       const m = j.machines.find((x) => (x.modes || []).includes(obj));
       obj.applicators = value ? (m?.applicators || []).map((a) => a.id).filter((x) => x === aid || obj.applicators.includes(x)) : obj.applicators.filter((x) => x !== aid);
       if (!value && obj.refApplicator === aid) obj.refApplicator = '';
+      return j;
+    }
+    // «Применение» камеры: отмеченное в карточке запоминается целиком (до того — по модели и по тому, где мерили)
+    if (kind === 'chamber' && path.startsWith('use.')) {
+      obj.use = { ...chamberUse(obj, j), [path.slice(4)]: !!value };
+      return j;
+    }
+    // kV-сертификат камеры (с 0.50.0): первый ввод заводит его с полями по умолчанию; столбцы таблицы качеств — одной длины
+    if (kind === 'chamber' && path.startsWith('kv.')) {
+      if (!obj.kv) obj.kv = kvCertDefaults();
+      const cell = /^kv\.(kv_cq_(?:kv|hvl|mat|val))\.(\d+)$/.exec(path);
+      if (cell) {
+        ensureCertRows(obj.kv, Math.max(certRows(obj.kv), Number(cell[2]) + 1));
+        obj.kv[cell[1]][Number(cell[2])] = value;
+      } else obj.kv[path.slice(3)] = value;
+      return j;
+    }
+    // камера режима (таблица «Камеры режимов»): камера, у которой применение отмечено без kV, получает отметку kV
+    if (kind === 'kvmode' && path === 'chamberId') {
+      obj.chamberId = value;
+      const ch = j.chambers.find((c) => c.id === value);
+      if (ch && chamberUseSet(ch) && !ch.use.kv) ch.use = { ...ch.use, kv: true };
       return j;
     }
     const parts = path.split('.');
@@ -813,6 +1000,21 @@ function onClick(e) {
       return j;
     }, 'equipment');
     document.getElementById(fieldId('kvapp', a.id, 'name'))?.focus();
+  } else if (t.dataset.kvcertAdd || t.dataset.kvcertDel) {
+    // таблица качеств kV-сертификата в карточке камеры: строка в конец или убрать последнюю
+    const id = t.dataset.kvcertAdd || t.dataset.kvcertDel;
+    const add = !!t.dataset.kvcertAdd;
+    updateJournal((j) => {
+      const c = j.chambers.find((x) => x.id === id);
+      if (!c) return j;
+      if (!c.kv) c.kv = kvCertDefaults();
+      const n = certRows(c.kv);
+      ensureCertRows(c.kv, n);
+      if (add) for (const key of CERT_COLS) c.kv[key].push('');
+      else if (n > 1) for (const key of CERT_COLS) c.kv[key].length = n - 1;
+      return j;
+    }, 'equipment');
+    if (add) document.getElementById(fieldId('chamber', id, `kv.kv_cq_kv.${certRows(getJournal().chambers.find((x) => x.id === id)?.kv) - 1}`))?.focus();
   } else if (t.dataset.addKvmode) {
     // новый режим копирует диапазон, камеру, электрометр и аппликаторы последнего; первый — со всеми аппликаторами
     const m0 = getJournal().machines.find((x) => x.id === t.dataset.addKvmode);

@@ -90,7 +90,7 @@ test('режимы аппарата во вкладку: пучок, камер�
   assert.equal(kvVisitFromMachine(j, j.machines[0], [], v0), null);
 });
 
-test('«Сохранить аппарат в Оборудование»: новый аппарат из ручного ввода, затем обновление по связи', () => {
+test('«Сохранить аппарат в Оборудование»: новый аппарат из ручного ввода, затем по связи — только измеренное', () => {
   const j = normalizeJournal({ ...JOURNAL_TAG });
   const v = normalizeKvVisit({ ...SAMPLE_KV, kv_machine: 'Xstrahl 300' });
   // второй режим: 120 кВ с той же камерой
@@ -124,52 +124,84 @@ test('«Сохранить аппарат в Оборудование»: нов�
   assert.deepEqual(res.modeIds, m.modes.map((x) => x.id));
   assert.match(kvSaveText(m, res.report), /^Аппарат «Xstrahl 300» сохранён в «Оборудование»: добавлен аппарат «Xstrahl 300»; режимов добавлено: 2; аппликаторов добавлено: 1; камеры добавлены: PTW 30013 № 0000; электрометры добавлены: Электрометр \(демо\); измеренный СПО записан в режимов: 1; набор пластин для СПО сохранён \(6\)\. Сохраните журнал в файл\.$/);
 
-  // повторно — по связи: режимы обновляются, новый тубус добавляется к аппарату и к режиму, прежние отметки остаются
+  // повторно — по связи (режимы из «Оборудования», 0.50.0): пучок, камера с kV-сертификатом и аппликаторы правятся
+  // в «Оборудовании» и отсюда не меняются; возвращается только измеренное — СПО с листа «СПО и k_Q» — и электрометр дня
   const j1 = res.journal;
-  v.common.kv_jmachine = m.id;
-  v.modes.forEach((md, i) => (md.shared.kv_jmode = res.modeIds[i]));
-  v.modes[0].shared.kv_ma = '12';
-  v.modes[0].rows.push({ ...v.modes[0].rows[0], kv_cone: '6', kv_cone_shape: 'square', kv_M1: ['', '', ''] });
-  v.modes[1].shared.kv_hvl = '0,32';
-  const r2 = kvMachineFromVisit(j1, v);
+  const vl = structuredClone(v);
+  vl.common.kv_jmachine = m.id;
+  vl.modes.forEach((md, i) => (md.shared.kv_jmode = res.modeIds[i]));
+  vl.modes[0].shared.kv_ma = '12';
+  vl.modes[0].rows.push({ ...vl.modes[0].rows[0], kv_cone: '6', kv_cone_shape: 'square', kv_M1: ['', '', ''] });
+  vl.modes[1].shared.kv_hvl = '0,32';
+  vl.chambers[0].kv_n = '0,04600';
+  vl.common.kv_date = '2026-11-10';
+  const r2 = kvMachineFromVisit(j1, vl);
   const m1 = r2.journal.machines[0];
   assert.equal(r2.journal.machines.length, 1);
-  assert.deepEqual([r2.report.machineAdded, r2.report.modesAdded, r2.report.modesUpdated, r2.report.appsAdded], [false, 0, 2, 1]);
-  assert.deepEqual(r2.report.chambersAdded, []);
-  assert.deepEqual(r2.report.certSaved, [], 'сертификат тот же — не перезаписывается');
-  assert.equal(m1.modes[0].ma, '12');
-  assert.equal(m1.modes[0].applicators.length, 2);
-  assert.equal(m1.modes[1].applicators.length, 1);
-  // СПО другой: без согласия не меняется, расхождение — в отчёте
-  assert.deepEqual(r2.report.hvl, [{ mode: 1, was: '0,30', now: '0,32', source: 'nominal', sourceDate: '', measured: false, range: 'medium' }]);
-  assert.equal(r2.report.platesSaved, 0, 'набор тот же — не перезаписывается');
+  assert.deepEqual([r2.report.machineAdded, r2.report.modesAdded, r2.report.modesUpdated, r2.report.modesLinked, r2.report.appsAdded], [false, 0, 0, 2, 0]);
+  assert.deepEqual([r2.report.chambersAdded, r2.report.certSaved, r2.report.electrometersAdded], [[], [], []]);
+  assert.deepEqual(r2.modeIds, res.modeIds);
+  assert.equal(m1.modes[0].ma, '10', 'ток — из «Оборудования»');
+  assert.equal(m1.applicators.length, 1);
+  assert.equal(m1.modes[0].applicators.length, 1);
+  assert.equal(r2.journal.chambers[0].kv.kv_n, SAMPLE_KV.kv_n, 'kV-сертификат — из карточки камеры');
+  // СПО: из таблицы режимов не возвращается (без вопроса), измеренный на листе — с новой датой
+  assert.deepEqual(r2.report.hvl, []);
+  assert.equal(r2.report.hvlMeasured, 1);
+  assert.deepEqual([m1.modes[0].hvl, m1.modes[0].hvlSource, m1.modes[0].hvlDate], ['1,000', 'measured', '2026-11-10']);
   assert.equal(m1.modes[1].hvl, '0,30');
-  assert.equal(kvMachineFromVisit(j1, v, { replaceHvl: true }).journal.machines[0].modes[1].hvl, '0,32');
-  // новый сертификат камеры записывается в её запись
-  v.chambers[0].kv_n = '0,04600';
-  const r3 = kvMachineFromVisit(j1, v);
-  assert.deepEqual(r3.report.certSaved, ['PTW 30013 № 0000']);
-  assert.equal(r3.journal.chambers[0].kv.kv_n, '0,04600');
+  // электрометр дня запоминается у режима
+  assert.ok(m1.modes.every((x) => x.electrometerId === r2.journal.electrometers[0].id));
+  assert.match(kvSaveText(m1, r2.report), /у режимов из «Оборудования» \(2\) пучок, камера и аппликаторы не менялись — они правятся в «Оборудовании»; измеренный СПО записан в режимов: 1\./);
+  // без связи (ручной ввод) — по названию аппарата и пучку: режимы обновляются, новый тубус добавляется к аппарату и
+  // к режиму, прежние отметки остаются
+  const vu = structuredClone(vl);
+  vu.common.kv_jmachine = '';
+  vu.modes.forEach((md) => (md.shared.kv_jmode = ''));
+  vu.chambers[0].kv_n = SAMPLE_KV.kv_n;
+  // другой ток — другой режим аппарата
+  assert.equal(kvMachineFromVisit(j1, vu).report.modesAdded, 1);
+  vu.modes[0].shared.kv_ma = '10';
+  const r3 = kvMachineFromVisit(j1, vu);
+  const m3 = r3.journal.machines[0];
+  assert.deepEqual([r3.report.machineAdded, r3.report.modesAdded, r3.report.modesUpdated, r3.report.modesLinked, r3.report.appsAdded], [false, 0, 2, 0, 1]);
+  assert.deepEqual(r3.report.certSaved, [], 'сертификат тот же — не перезаписывается');
+  assert.equal(m3.modes[0].applicators.length, 2);
+  assert.equal(m3.modes[1].applicators.length, 1);
+  // СПО другой: без согласия не меняется, расхождение — в отчёте
+  assert.deepEqual(r3.report.hvl, [{ mode: 1, was: '0,30', now: '0,32', source: 'nominal', sourceDate: '', measured: false, range: 'medium' }]);
+  assert.equal(r3.report.platesSaved, 0, 'набор тот же — не перезаписывается');
+  assert.equal(m3.modes[1].hvl, '0,30');
+  assert.equal(kvMachineFromVisit(j1, vu, { replaceHvl: true }).journal.machines[0].modes[1].hvl, '0,32');
+  // новый сертификат камеры при ручном вводе записывается в её запись
+  vu.chambers[0].kv_n = '0,04600';
+  const r4 = kvMachineFromVisit(j1, vu);
+  assert.deepEqual(r4.report.certSaved, ['PTW 30013 № 0000']);
+  assert.equal(r4.journal.chambers[0].kv.kv_n, '0,04600');
   // исходный журнал не меняется
   assert.equal(j1.chambers[0].kv.kv_n, SAMPLE_KV.kv_n);
-  // без связи — по названию аппарата и пучку режима
-  const v4 = normalizeKvVisit({ ...SAMPLE_KV, kv_machine: 'Xstrahl 300' });
-  const r4 = kvMachineFromVisit(j1, v4);
-  assert.deepEqual([r4.report.machineAdded, r4.report.modesAdded, r4.report.modesUpdated], [false, 0, 1]);
-  assert.equal(r4.modeIds[0], m.modes[0].id);
+  // без связи, один режим — по названию аппарата и пучку режима
+  const v5 = normalizeKvVisit({ ...SAMPLE_KV, kv_machine: 'Xstrahl 300' });
+  const r5 = kvMachineFromVisit(j1, v5);
+  assert.deepEqual([r5.report.machineAdded, r5.report.modesAdded, r5.report.modesUpdated], [false, 0, 1]);
+  assert.equal(r5.modeIds[0], m.modes[0].id);
 });
 
 test('туда и обратно: вкладка из «Оборудования» сохраняется без изменений; своя камера', () => {
   const j = journal();
   const v = kvVisitFromMachine(j, j.machines[0], ['k50', 'k200', 'k70'], normalizeKvVisit(null)).visit;
   const res = kvMachineFromVisit(j, v);
-  assert.deepEqual([res.report.machineAdded, res.report.modesAdded, res.report.appsAdded, res.report.chambersAdded.length, res.report.electrometersAdded.length, res.report.hvl.length], [false, 0, 0, 0, 0, 0]);
+  assert.deepEqual([res.report.machineAdded, res.report.modesAdded, res.report.modesLinked, res.report.appsAdded, res.report.chambersAdded.length, res.report.electrometersAdded.length, res.report.hvl.length], [false, 0, 3, 0, 0, 0, 0]);
   const m0 = j.machines[0];
   const m1 = res.journal.machines[0];
   assert.deepEqual(m1.modes.map((x) => [x.id, x.chamberId, x.electrometerId, x.applicators]), m0.modes.map((x) => [x.id, x.chamberId, x.electrometerId, x.applicators]));
-  // своя камера вкладки — «другая» в журнале с названием и типом; обратно — своя с теми же полями
+  // своя камера вкладки при ручном вводе (без связи) — «другая» в журнале с названием и типом; обратно — своя с теми же полями
   const vc = { ...v.chambers[0], kv_ch_model: 'CUSTOM', kv_cc_maker: 'Самодел', kv_cc_model: 'К-1', kv_cc_type: 'pp', kv_ch_serial: '3' };
   v.chambers[0] = vc;
+  // по связи своя камера в «Оборудование» не попадает: камера режима выбирается там
+  assert.equal(kvMachineFromVisit(j, v).journal.chambers.length, j.chambers.length);
+  v.common.kv_jmachine = '';
+  v.modes.forEach((md) => (md.shared.kv_jmode = ''));
   const r2 = kvMachineFromVisit(j, v);
   const rec = r2.journal.chambers.at(-1);
   assert.deepEqual([rec.form.ch_model, rec.form.e_other_name, rec.form.e_other_type, rec.form.ch_serial], ['OTHER', 'Самодел К-1', 'pp', '3']);
@@ -184,6 +216,8 @@ test('туда и обратно: вкладка из «Оборудования
   j3.machines[0].modes[0].chamberId = 'ch3';
   const v3 = kvVisitFromMachine(j3, j3.machines[0], ['k50'], normalizeKvVisit(null)).visit;
   v3.chambers[0].kv_n = '0,0512';
+  v3.common.kv_jmachine = '';
+  v3.modes[0].shared.kv_jmode = '';
   const r3 = kvMachineFromVisit(j3, v3);
   assert.equal(r3.journal.chambers.length, 3);
   assert.deepEqual(r3.report.chambersAdded, []);

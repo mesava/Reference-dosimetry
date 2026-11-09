@@ -2,7 +2,7 @@
 // core/journal-check.js; черновик, запись в журнал и порядок обновления — tab-journal-ui.js.
 import { L, refText } from '../core/i18n.js';
 import { isBlank, parseNumber } from '../core/units.js';
-import { beamKind, beamKeys, chamberText, electrometerText, photonCapable, electronCapable, cobaltCapable, chamberFormFromElectrons, chamberFormFromCobalt } from '../core/journal.js';
+import { beamKind, beamKeys, chamberText, electrometerText, chamberServes, chamberFormFromElectrons, chamberFormFromCobalt } from '../core/journal.js';
 import { computeDosimeterCheck, checkHistory, checkMessages, checkVerdicts, verdictMessage, checkStarted, SHIFT_Z, WATCH_Z } from '../core/journal-check.js';
 import { esc, fmt, fmtSigned, richText } from './common.js';
 import { renderCells, readCells, setupCells } from './widgets.js';
@@ -11,13 +11,12 @@ import { cellsHtml, fmtDate } from './journal-common.js';
 const SERIES = ['M', 'Mopp', 'M2'];
 const blank3 = () => ['', '', ''];
 const hasValues = (cells) => (cells || []).some((v) => !isBlank(v));
-const capable = (kind) => ({ electron: electronCapable, cobalt: cobaltCapable })[kind] ?? photonCapable;
 const lvlName = () => ({ error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') });
 
 /** Рабочая камера пучка: камера вкладки, найденная в журнале (d.chamberId), или выбранная у пучка в журналах до 0.21.0. */
 const workChamberId = (b, d) => d?.chamberId || (d?.base ? '' : b.chamberId || '');
 /** Камеры журнала, которые годятся второй камерой для пучка: того же вида и не рабочая. */
-export const secondChambers = (j, b, d) => j.chambers.filter((c) => c.id !== workChamberId(b, d) && capable(beamKind(b))(c.form));
+export const secondChambers = (j, b, d) => j.chambers.filter((c) => c.id !== workChamberId(b, d) && chamberServes(c, beamKind(b), j));
 
 /** Разметка проверок (карточки); beams — пучки записи. */
 export function checksHtml(j, beams, draftBeams, checks, { tg }) {

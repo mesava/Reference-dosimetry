@@ -1,6 +1,8 @@
 // Рентгенотерапевтический аппарат в «Оборудовании» (журнал, machine.kind === 'kv', с 0.41.0).
 // У аппарата — список аппликаторов (обозначение, форма, размер, РИП) и режимы (диапазон, напряжение, ток, фильтр, СПО,
-// камера и электрометр, отмеченные аппликаторы, референсный аппликатор). Пучков (beams) у него нет: измеряют во вкладке
+// камера, отмеченные аппликаторы, стандартный аппликатор). Камера режима выбирается в разделе 4 «Оборудования» (таблица
+// «Камеры режимов», с 0.50.0), электрометр — «Электрометр при калибровке» камеры (electrometerId режима — последний
+// электрометр вкладки, когда у камеры он не указан). Пучков (beams) у него нет: измеряют во вкладке
 // «kV-рентген», куда режимы аппарата подставляются (этап C2). Расчёта здесь нет, только проверки ввода и проверка
 // референсного аппликатора по TRS-398 Rev.1 (средние энергии — табл. 31; низкие зависят от калибровки камеры, табл. 26
 // и 27, и проверяются во вкладке).
@@ -54,7 +56,9 @@ export const KV_APPLICATOR_DEFAULTS = { id: '', name: '', shape: 'circle', a: ''
 /**
  * Режим: label — своё обозначение (пусто — по кВ, мА и фильтру), range — 'low' (СПО в мм Al) или 'medium' (мм Cu),
  * hvl — СПО, которым считается k_Q; hvlSource — 'nominal' (паспорт, приёмка) или 'measured' (измерен, дата hvlDate);
- * applicators — id отмеченных аппликаторов аппарата, refApplicator — id референсного.
+ * chamberId — камера режима; electrometerId — электрометр, с которым режим мерили во вкладке последний раз (до 0.50.0 —
+ * выбранный у режима): он подставляется, только если у камеры не указан «Электрометр при калибровке»;
+ * applicators — id отмеченных аппликаторов аппарата, refApplicator — id стандартного.
  */
 export const KV_MODE_DEFAULTS = {
   id: '', label: '', range: 'medium', kv: '', ma: '', filter: '', hvl: '', hvlSource: 'nominal', hvlDate: '',
@@ -73,7 +77,7 @@ export function newKvApplicator(from = {}) {
 }
 export function newKvMachineMode(from = null, extra = {}) {
   const base = from
-    ? { range: from.range, chamberId: from.chamberId, electrometerId: from.electrometerId, applicators: [...arr(from.applicators)], refApplicator: from.refApplicator }
+    ? { range: from.range, chamberId: from.chamberId, applicators: [...arr(from.applicators)], refApplicator: from.refApplicator }
     : {};
   return { ...KV_MODE_DEFAULTS, ...base, ...extra, id: rid('k') };
 }
@@ -209,11 +213,11 @@ export function kvMachineChecks(machine, j = null) {
     else if (!(num(m.hvl) > 0)) add('error', L('СПО — число миллиметров больше нуля', 'the HVL is a number of millimetres greater than zero'));
     if (m.hvlSource === 'measured' && isBlank(m.hvlDate)) add('info', L('СПО измерен: укажите дату измерения', 'the HVL is measured: enter the date of the measurement'));
     const ch = j?.chambers.find((c) => c.id === m.chamberId);
-    if (!m.chamberId) add('warn', L('камера не выбрана', 'no chamber selected'));
+    if (!m.chamberId) add('warn', L('камера не выбрана: её выбирают в разделе 4, «Камеры режимов»', 'no chamber selected: it is selected in section 4, Chambers of the modes'));
     else if (j && !ch) add('error', L('камеры нет в «Оборудовании»', 'the chamber is not in Equipment'));
     else if (ch && !kvChamberFitsRange(ch, m.range)) add('error', L('плоскопараллельная камера не для средних энергий: по TRS-398 Rev.1 (разд. 9.2.1, табл. 31) — только цилиндрическая 0,1–1,0 см³ на глубине 2 г/см²; плоскопараллельную калибруют на поверхности фантома для низких энергий', 'a plane-parallel chamber is not for medium energies: TRS-398 Rev.1 (Sec. 9.2.1, Table 31) requires a cylindrical chamber of 0.1–1.0 cm³ at a depth of 2 g/cm²; a plane-parallel chamber is calibrated at the phantom surface for low energies'));
     else if (ch && !(ch.kv && (!isBlank(ch.kv.kv_n) || arr(ch.kv.kv_cq_val).some((v) => !isBlank(v))))) {
-      add('info', L('у камеры нет kV-сертификата: он вводится во вкладке «kV-рентген» и сохраняется в запись камеры кнопкой «Сохранить аппарат в Оборудование»', 'the chamber has no kV certificate: it is entered in the kV x-rays tab and saved to the chamber record with “Save the unit to Equipment”'));
+      add('info', L('у камеры нет kV-сертификата: введите его в карточке камеры (раздел 4)', 'the chamber has no kV certificate: enter it in the chamber card (section 4)'));
     }
     if (!m.applicators.length) add('warn', L('не отмечено ни одного аппликатора', 'no applicators are ticked'));
     // стандартный аппликатор необязателен: в дозу он не входит (во вкладке стандартный тубус определяется по геометрии)

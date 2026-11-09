@@ -7,13 +7,12 @@ import { NDW_UNITS, unitLabel, isBlank } from '../core/units.js';
 import {
   chamberPreferred,
   tabEquipment, applyTabEquipment, chamberTabFields, electrometerTabFields, chamberText, electrometerText,
-  photonCapable, electronCapable, cobaltCapable, dueStatus,
+  chamberServes, dueStatus,
 } from '../core/journal.js';
 import { $, esc, today, richText, currentProtocol } from './common.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
 import { fmtDate } from './journal-common.js';
 
-const CAPABLE = { photon: photonCapable, electron: electronCapable, cobalt: cobaltCapable };
 
 /** Подпись поля для списка отличий (ключ без префикса вкладки). */
 function fieldLabel(key) {
@@ -141,7 +140,8 @@ function makeLink(cfg) {
     if (!el) return;
     const j = getJournal();
     // подходящие виду пучка (для электронов — плоскопараллельные) — первыми, остальные в прежнем порядке
-    const capable = j.chambers.filter((c) => CAPABLE[cfg.kind](c.form));
+    // камеры, отмеченные для этого вида пучков («Применение» в «Оборудовании», с 0.50.0)
+    const capable = j.chambers.filter((c) => chamberServes(c, cfg.kind, j));
     const chambers = [...capable.filter((c) => chamberPreferred(c.form, cfg.kind)), ...capable.filter((c) => !chamberPreferred(c.form, cfg.kind))];
     syncGroup(chambers);
     if (!chambers.length && !j.electrometers.length) {

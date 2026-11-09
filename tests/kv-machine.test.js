@@ -65,7 +65,7 @@ test('режимы: обозначение, единица СПО, новый р
   assert.equal(hvlUnit('medium'), 'мм Cu');
   const from = { id: 'k1', range: 'low', kv: '50', hvl: '1', chamberId: 'ch1', electrometerId: 'el1', applicators: ['a1'], refApplicator: 'a1' };
   const x = newKvMachineMode(from);
-  assert.deepEqual([x.range, x.chamberId, x.electrometerId, x.applicators, x.refApplicator, x.kv, x.hvl], ['low', 'ch1', 'el1', ['a1'], 'a1', '', '']);
+  assert.deepEqual([x.range, x.chamberId, x.electrometerId, x.applicators, x.refApplicator, x.kv, x.hvl], ['low', 'ch1', '', ['a1'], 'a1', '', '']);
   assert.notEqual(x.id, 'k1');
   x.applicators.push('a2');
   assert.deepEqual(from.applicators, ['a1'], 'список аппликаторов — копия');
@@ -113,12 +113,12 @@ test('замечания по аппарату kV', () => {
   assert.ok(texts({ ...ok, hvl: 'abc' }).includes('error: СПО — число миллиметров больше нуля'));
   assert.ok(texts({ ...ok, hvlSource: 'measured' }).includes('info: СПО измерен: укажите дату измерения'));
   assert.equal(texts({ ...ok, hvlSource: 'measured', hvlDate: '2026-10-01' }).filter((t) => /дату/.test(t)).length, 0);
-  assert.ok(texts({ ...ok, chamberId: '' }).includes('warn: камера не выбрана'));
+  assert.ok(texts({ ...ok, chamberId: '' }).includes('warn: камера не выбрана: её выбирают в разделе 4, «Камеры режимов»'));
   // камера без kV-сертификата — справка: он вводится во вкладке и сохраняется в запись камеры
   assert.ok(texts({ ...ok, chamberId: 'ch2' }).some((t) => /^info: у камеры нет kV-сертификата/.test(t)));
   assert.ok(texts({ ...ok, chamberId: 'ch9' }).includes('error: камеры нет в «Оборудовании»'));
   assert.ok(texts({ ...ok, applicators: [], refApplicator: '' }).includes('warn: не отмечено ни одного аппликатора'));
   // в полном тексте — номер и обозначение режима
   const full = kvMachineChecks(unit(apps, [{ ...ok, chamberId: '' }]), j).find((c) => c.modeId);
-  assert.equal(full.text, 'режим 1 (200 кВ / 15 мА / 0,5 мм Cu): камера не выбрана');
+  assert.equal(full.text, 'режим 1 (200 кВ / 15 мА / 0,5 мм Cu): камера не выбрана: её выбирают в разделе 4, «Камеры режимов»');
 });

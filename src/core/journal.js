@@ -122,6 +122,41 @@ export const electronCapable = (cf) => !!findEChamber(cf?.ch_model) || cf?.ch_mo
  * кроме камер только для kV-рентгена (мягкое излучение: PTW 23342, 23344, 34013). */
 export const cobaltCapable = (cf) => !isBlank(cf?.ch_model) && !findKvOnlyChamber(cf.ch_model);
 
+/** Камера выбрана в режимах рентгенотерапевтических аппаратов «Оборудования». */
+export const kvChamberInModes = (j, chamberId) => !!chamberId && (j?.machines ?? []).some((m) => m.kind === 'kv' && (m.modes ?? []).some((x) => x.chamberId === chamberId));
+/** Поля записи камеры, по которым видно, что её калибровали для пучков МВ или ⁶⁰Co. */
+const MV_CAL_KEYS = ['ch_ndw', 'ch_cross_ndw', 'e_cross_ndw', 'e_cross_kn'];
+/**
+ * Применение камеры (с 0.50.0): { photon — МВ фотоны и ⁶⁰Co, electron — электроны, kv — kV-рентген }. Отмечается в
+ * карточке камеры (chamber.use); пока не отмечено — по модели и по тому, где камерой мерили: камера только для
+ * kV-рентгена и камера с kV-сертификатом (или выбранная в режимах аппарата kV) без N_D,w и без пучков МВ и ⁶⁰Co —
+ * только для kV; иначе — для того, для чего годится модель (j — журнал: где камера выбрана).
+ */
+export function chamberUse(c, j = null) {
+  const u = c?.use;
+  if (u && typeof u === 'object') return { photon: !!u.photon, electron: !!u.electron, kv: !!u.kv };
+  const f = c?.form || {};
+  if (isBlank(f.ch_model)) return { photon: false, electron: false, kv: false };
+  if (findKvOnlyChamber(f.ch_model)) return { photon: false, electron: false, kv: true };
+  const uses = j ? chamberUses(j, c.id) : { photon: false, electron: false, cobalt: false };
+  const kv = !!c.kv || kvChamberInModes(j, c.id);
+  const mv = uses.photon || uses.electron || uses.cobalt || MV_CAL_KEYS.some((k) => !isBlank(f[k]));
+  if (kv && !mv) return { photon: false, electron: false, kv: true };
+  return { photon: cobaltCapable(f), electron: electronCapable(f), kv };
+}
+/** Применение отмечено в карточке камеры (а не взято по модели). */
+export const chamberUseSet = (c) => !!c?.use && typeof c.use === 'object';
+/**
+ * Камера годится для пучка вида kind ('photon' | 'electron' | 'cobalt') и отмечена для него: списки камер журнала во
+ * вкладках МВ, ⁶⁰Co и проверки второй камерой.
+ */
+export function chamberServes(c, kind, j = null) {
+  const can = { photon: photonCapable, electron: electronCapable, cobalt: cobaltCapable }[kind] ?? photonCapable;
+  if (!can(c?.form)) return false;
+  const u = chamberUse(c, j);
+  return kind === 'electron' ? u.electron : u.photon;
+}
+
 /** Запись камеры → поля камеры вкладки «Электроны». */
 export function electronChamberForm(cf = {}) {
   const out = {};
@@ -402,8 +437,12 @@ export function chamberMissing(c, uses = null, protocol = '') {
   if (isBlank(f.ch_model)) return [L('модель', 'model')];
   // камера для kV-рентгена (только kV или с kV-сертификатом и без пучков МВ и ⁶⁰Co): N_D,w в ⁶⁰Co ей не нужен
   const used = uses && (uses.photon || uses.electron || uses.cobalt);
-  if (!used && (findKvOnlyChamber(f.ch_model) || c.kv)) return f.ch_model === 'OTHER' && isBlank(f.e_other_name) ? [L('название', 'name')] : [];
-  const u = uses && (uses.photon || uses.electron || uses.cobalt) ? uses : photonCapable(f) ? { photon: true } : { electron: true };
+  const nameMiss = f.ch_model === 'OTHER' && isBlank(f.e_other_name) ? [L('название', 'name')] : [];
+  // применение отмечено в карточке (с 0.50.0): нужно то, что требуют отмеченные виды пучков
+  const set = chamberUseSet(c) ? chamberUse(c) : null;
+  if (!used && set && !set.photon && !set.electron) return nameMiss;
+  if (!used && !set && (findKvOnlyChamber(f.ch_model) || c.kv)) return nameMiss;
+  const u = used ? uses : set ? { photon: set.photon && photonCapable(f), electron: set.electron, cobalt: set.photon && !photonCapable(f) } : photonCapable(f) ? { photon: true } : { electron: true };
   const ph = !!u.photon && photonCapable(f);
   const el = !!u.electron && electronCapable(f);
   const co = !!u.cobalt;
@@ -925,8 +964,9 @@ export function chamberPreferred(cf, kind) {
  * первый. beamId можно не указывать — тогда только по аппарату.
  */
 export function sessionEquipDefaults(j, machineId, kind, beamId = '') {
-  const can = { photon: photonCapable, electron: electronCapable, cobalt: cobaltCapable }[kind] ?? photonCapable;
-  const okCh = (id) => !!id && j.chambers.some((c) => c.id === id && can(c.form));
+  // камеры, отмеченные для этого вида пучков («Применение», с 0.50.0)
+  const can = (c) => chamberServes(c, kind, j);
+  const okCh = (id) => !!id && j.chambers.some((c) => c.id === id && can(c));
   const okEl = (id) => !!id && j.electrometers.some((e) => e.id === id);
   const sessions = (j.sessions || []).filter((s) => s.machineId === machineId).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   /** Последние камера и электрометр в записях, где пучок подходит test. */
@@ -948,7 +988,7 @@ export function sessionEquipDefaults(j, machineId, kind, beamId = '') {
   const m = machineOf(j, machineId);
   const beam = beamId ? m?.beams.find((b) => b.id === beamId) : null;
   const legacy = (key) => [beam, ...(m?.beams || [])].find((b) => b && beamKind(b) === kind && (key === 'chamberId' ? okCh(b.chamberId) : okEl(b.electrometerId)))?.[key] ?? '';
-  const chamberId = own.ch || legacy('chamberId') || (j.chambers.find((c) => can(c.form) && chamberPreferred(c.form, kind))?.id ?? '') || ofKind.ch || (j.chambers.find((c) => can(c.form))?.id ?? '');
+  const chamberId = own.ch || legacy('chamberId') || (j.chambers.find((c) => can(c) && chamberPreferred(c.form, kind))?.id ?? '') || ofKind.ch || (j.chambers.find((c) => can(c))?.id ?? '');
   const electrometerId = own.el || ofKind.el || legacy('electrometerId') || (j.electrometers[0]?.id ?? '');
   return { chamberId, electrometerId };
 }
