@@ -28,6 +28,26 @@ export const KV_ONLY_CHAMBERS = KV_CHAMBERS.filter((c) => findKvOnlyChamber(c.id
 export const journalModelOfKv = (id) => KV_TO_JOURNAL[id] ?? id;
 /** Модель вкладки kV для записи журнала; пусто — камеры нет в списке вкладки. */
 export const kvModelOfJournal = (id) => JOURNAL_TO_KV[id] ?? (KV_CHAMBERS.some((c) => c.id === id && !KV_TO_JOURNAL[c.id]) ? id : '');
+/**
+ * Тип камеры записи журнала: 'pp' — плоскопараллельная, 'cyl' — цилиндрическая, '' — неизвестен. По базе вкладки kV,
+ * базе электронов (плоскопараллельные) и полю «Тип» у другой камеры; камеры базы фотонов — цилиндрические.
+ */
+export function journalChamberType(ch) {
+  const f = ch?.form ?? {};
+  const id = str(f.ch_model);
+  const kv = KV_CHAMBERS.find((c) => c.id === kvModelOfJournal(id));
+  if (kv) return kv.type;
+  if (id === 'OTHER') return f.e_other_type === 'cyl' ? 'cyl' : 'pp';
+  if (findEChamber(id)?.type === 'pp') return 'pp';
+  if (findChamber(id)) return 'cyl';
+  return '';
+}
+/**
+ * Камера годится для режима диапазона range: для средних энергий — только цилиндрическая (TRS-398 Rev.1, разд. 9.2.1,
+ * табл. 31; DIN 6809-4, разд. 6.2.1 — компактные камеры). Для низких энергий годятся обе: плоскопараллельная для
+ * внутрифантомного метода, цилиндрическая — для воздушного от 70 кВ (разд. 8.2.1); это проверяется во вкладке.
+ */
+export const kvChamberFitsRange = (ch, range) => range !== 'medium' || journalChamberType(ch) !== 'pp';
 
 /** Аппликатор: name — обозначение на тубусе («F30»), shape, a (диаметр или сторона, см), b (вторая сторона), ssd (РИП, см). */
 export const KV_APPLICATOR_DEFAULTS = { id: '', name: '', shape: 'circle', a: '', b: '', ssd: '' };
@@ -162,7 +182,7 @@ export function kvRefCandidates(machine, mode) {
 /**
  * Замечания по аппарату: [{ level: 'error'|'warn'|'info', modeId | appId, text, short }] — text с номером режима или
  * аппликатора (для списка замечаний), short без него (для карточки режима). Режим без напряжения или СПО, СПО не число,
- * нет камеры, нет отмеченных аппликаторов, референсный не выбран или не отмечен, референсный не тот, что по Rev.1.
+ * нет камеры или она не для диапазона режима, нет отмеченных аппликаторов, стандартный не отмечен или не тот, что по Rev.1.
  */
 export function kvMachineChecks(machine, j = null) {
   const out = [];
@@ -191,13 +211,15 @@ export function kvMachineChecks(machine, j = null) {
     const ch = j?.chambers.find((c) => c.id === m.chamberId);
     if (!m.chamberId) add('warn', L('камера не выбрана', 'no chamber selected'));
     else if (j && !ch) add('error', L('камеры нет в «Оборудовании»', 'the chamber is not in Equipment'));
+    else if (ch && !kvChamberFitsRange(ch, m.range)) add('error', L('плоскопараллельная камера не для средних энергий: по TRS-398 Rev.1 (разд. 9.2.1, табл. 31) — только цилиндрическая 0,1–1,0 см³ на глубине 2 г/см²; плоскопараллельную калибруют на поверхности фантома для низких энергий', 'a plane-parallel chamber is not for medium energies: TRS-398 Rev.1 (Sec. 9.2.1, Table 31) requires a cylindrical chamber of 0.1–1.0 cm³ at a depth of 2 g/cm²; a plane-parallel chamber is calibrated at the phantom surface for low energies'));
     else if (ch && !(ch.kv && (!isBlank(ch.kv.kv_n) || arr(ch.kv.kv_cq_val).some((v) => !isBlank(v))))) {
       add('info', L('у камеры нет kV-сертификата: он вводится во вкладке «kV-рентген» и сохраняется в запись камеры кнопкой «Сохранить аппарат в Оборудование»', 'the chamber has no kV certificate: it is entered in the kV x-rays tab and saved to the chamber record with “Save the unit to Equipment”'));
     }
     if (!m.applicators.length) add('warn', L('не отмечено ни одного аппликатора', 'no applicators are ticked'));
+    // стандартный аппликатор необязателен: в дозу он не входит (во вкладке стандартный тубус определяется по геометрии)
     if (!m.refApplicator) {
-      if (m.applicators.length) add('warn', L('референсный аппликатор не выбран', 'the reference applicator is not selected'));
-    } else if (!m.applicators.includes(m.refApplicator)) add('error', L('референсный аппликатор не отмечен у режима', 'the reference applicator is not ticked for the mode'));
+      // не выбран — замечания нет
+    } else if (!m.applicators.includes(m.refApplicator)) add('error', L('стандартный аппликатор не отмечен у режима', 'the standard applicator is not ticked for the mode'));
     else {
       const c = kvRefCandidates(machine, m);
       const ref = byId.get(m.refApplicator);
@@ -205,14 +227,14 @@ export function kvMachineChecks(machine, j = null) {
       if (c.how === 'comparable' || c.how === 'largest') {
         if (!c.ids.includes(m.refApplicator)) {
           add('warn', L(
-            `по TRS-398 Rev.1 (табл. 31) референсный — ${names(c.ids)}${c.how === 'largest' ? ' (самый большой квадратный или круглый тубус аппарата: 10 × 10 см нет)' : ''}, а выбран ${applicatorText(ref)}`,
-            `by TRS-398 Rev.1 (Table 31) the reference is ${names(c.ids)}${c.how === 'largest' ? ' (the largest square or circular applicator of the unit: there is no 10 × 10 cm one)' : ''}, but ${applicatorText(ref)} is selected`,
+            `по TRS-398 Rev.1 (табл. 31) стандартный — ${names(c.ids)}${c.how === 'largest' ? ' (самый большой квадратный или круглый тубус аппарата: 10 × 10 см нет)' : ''}, а выбран ${applicatorText(ref)}`,
+            `by TRS-398 Rev.1 (Table 31) the standard one is ${names(c.ids)}${c.how === 'largest' ? ' (the largest square or circular applicator of the unit: there is no 10 × 10 cm one)' : ''}, but ${applicatorText(ref)} is selected`,
           ));
         }
       } else if (c.how === 'none') {
         add('warn', L(
-          `по TRS-398 Rev.1 (табл. 31) референсное поле — 10 × 10 см или Ø 10 см, сопоставимый тубус или самый большой квадратный или круглый; у ${applicatorText(ref)} поле ${ru(applicatorDiameter(ref), 1)} см`,
-          `by TRS-398 Rev.1 (Table 31) the reference field is 10 × 10 cm or 10 cm in diameter, a comparable applicator, or the largest square or circular one; ${applicatorText(ref)} has a field of ${ru(applicatorDiameter(ref), 1)} cm`,
+          `по TRS-398 Rev.1 (табл. 31) стандартное поле — 10 × 10 см или Ø 10 см, сопоставимый тубус или самый большой квадратный или круглый; у ${applicatorText(ref)} поле ${ru(applicatorDiameter(ref), 1)} см`,
+          `by TRS-398 Rev.1 (Table 31) the standard field is 10 × 10 cm or 10 cm in diameter, a comparable applicator, or the largest square or circular one; ${applicatorText(ref)} has a field of ${ru(applicatorDiameter(ref), 1)} cm`,
         ));
       }
     }

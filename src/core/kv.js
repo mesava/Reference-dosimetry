@@ -29,6 +29,7 @@ import { KV_CONDITIONS, evaluateConditions, complianceFromConditions } from './c
 import { resolveKvChamber, interpLog, kgFromTable, pchFromTable32, resolveKvPhantom, kvPhantomStatus, KV_PHANTOMS } from './kv-tables.js';
 import { kvCalculator, ANDREO_CITATION } from './kv-data.js';
 import { compareKv } from './kv-compare.js';
+import { dinHvlConvert, DIN_HVL_DEV } from './kv-din.js';
 import * as TRS from './trs398.js';
 
 const REF = {
@@ -95,14 +96,21 @@ export const KV_DEFAULTS = {
   kv_ch_serial: '',
   kv_foil: false, // плоскопараллельная камера выше 40 кВ: фольга 0,2 мм, откалиброванная вместе с камерой
   kv_cal: 'ndw', // 'ndw' — N_D,w; 'nk' — N_K (воздушная керма в свободном воздухе)
-  kv_qo: 'kv', // средние энергии, N_D,w: 'kv' — kV-качество на 2 см; 'co60' — ⁶⁰Co на 5 см (DIN 6809-4)
+  kv_qo: 'kv', // средние энергии, N_D,w: опорное качество Qo — 'kv' (рентгеновское) или 'co60' (⁶⁰Co)
+  // средние энергии, N_D,w: глубина, на которой получены коэффициенты сертификата, см: '2' — TRS-398 Rev.1 (ур. 55, 58);
+  // '5' — DIN 6809-4 (табл. 4), на 2 см k_z = 1 с неопределённостью 0,5 % (разд. 6.4.3). Файлы до 0.49.3 с kv_qo = 'co60' — '5'
+  kv_cal_depth: '2',
   kv_cert_form: 'kq', // 'kq' — N_Qo и k_Q по качествам; 'n' — N по качествам; 'k' — N_Д и множитель K по качествам;
   // 'co' — только N_D,w в ⁶⁰Co, калибровки в рентгене нет: k_Q = 1 (не по Rev.1 и не по DIN 6809-4; только при Qo = ⁶⁰Co)
   kv_n: '', // N_Qo (или N_Д) из сертификата
   kv_n_unit: 'Gy/nC',
   kv_cq_kv: ['', '', '', ''], // таблица качеств сертификата: кВ (для записи),
-  kv_cq_hvl: ['', '', '', ''], // СПО (мм Al или мм Cu, как у пучка),
+  kv_cq_hvl: ['', '', '', ''], // СПО в металле kv_cq_mat,
+  kv_cq_mat: ['', '', '', ''], // 'Al' | 'Cu'; пусто — как у пучка (файлы до 0.49.3),
   kv_cq_val: ['', '', '', ''], // k_Q, N или K
+  // строки сертификата в другом металле, чем СПО пучка, пересчитать по DIN 6809-4, табл. 5 (kv-din.js) — справочная
+  // оценка, не TRS-398 Rev.1: результат помечается как нестандартный
+  kv_cq_din: false,
   kv_lab_shape: 'circle',
   kv_lab_f: '', // поле лаборатории, см (диаметр или сторона)
   kv_lab_ssd: '', // РИП лаборатории, см
@@ -229,7 +237,8 @@ export const KV_DEFAULTS = {
 };
 
 const CELL_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc', 'kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc', 'kv_ln_M1', 'kv_ln_M2', 'kv_ln_M3', 'kv_ln_M4', 'kv_ln_M5', 'kv_rp_M'];
-const BOOL_KEYS = ['kv_cone_largest', 'kv_foil', 'kv_lab_pol_applied', 'kv_lab_ks_applied', 'kv_ks_on', 'kv_hl_apply'];
+const BOOL_KEYS = ['kv_cone_largest', 'kv_foil', 'kv_lab_pol_applied', 'kv_lab_ks_applied', 'kv_ks_on', 'kv_hl_apply', 'kv_cq_din'];
+const CERT_ROW_KEYS = ['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_mat', 'kv_cq_val'];
 const PLATE_KEYS = ['kv_pl_name', 'kv_pl_mat', 'kv_pl_nom', 'kv_pl_t', 'kv_pl_u'];
 
 export function normalizeKv(input) {
@@ -239,12 +248,16 @@ export function normalizeKv(input) {
   if (!input?.kv_timer_mode && (legacySeries('kv_tt') || legacySeries('kv_tm'))) f.kv_timer_mode = 'measured';
   for (const k of CELL_KEYS) if (!Array.isArray(f[k])) f[k] = isBlank(f[k]) ? ['', '', ''] : String(f[k]).trim().split(/[\s;]+/);
   for (const k of ['kv_tt', 'kv_tm']) if (!Array.isArray(f[k])) f[k] = ['', ''];
-  const n = Math.max(1, ...['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_val'].map((k) => (Array.isArray(f[k]) ? f[k].length : 0)));
-  for (const k of ['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_val']) {
+  const n = Math.max(1, ...CERT_ROW_KEYS.map((k) => (Array.isArray(f[k]) ? f[k].length : 0)));
+  for (const k of CERT_ROW_KEYS) {
     const a = Array.isArray(f[k]) ? [...f[k]] : [];
     while (a.length < n) a.push('');
     f[k] = a;
   }
+  f.kv_cq_mat = f.kv_cq_mat.map((m) => (m === 'Al' || m === 'Cu' ? m : ''));
+  // до 0.49.3 Qo = ⁶⁰Co означал калибровку на 5 см (DIN 6809-4)
+  if (input && typeof input === 'object' && input.kv_cal_depth === undefined && input.kv_qo === 'co60') f.kv_cal_depth = '5';
+  f.kv_cal_depth = String(f.kv_cal_depth) === '5' ? '5' : '2';
   for (const k of BOOL_KEYS) f[k] = f[k] === true || f[k] === 'true';
   // набор пластин: столбцы одной длины, строки — текст
   const np = Math.max(0, ...PLATE_KEYS.map((k) => (Array.isArray(f[k]) ? f[k].length : 0)));
@@ -275,21 +288,34 @@ export function equivalentDiameter(shape, size, b) {
  * Таблица качеств сертификата: строки { kv, hvl, val } с заполненными СПО и значением, упорядоченные по СПО.
  * Ошибки ввода — в errors (номер строки с 1), повторяющиеся СПО — в duplicates.
  */
-export function certRows(f) {
+/**
+ * Строки таблицы качеств сертификата для пучка со СПО в мм mat ('Al' | 'Cu'). У строки свой металл СПО (kv_cq_mat; пусто —
+ * как у пучка). Строка в другом металле в интерполяцию не идёт: шкалы СПО разные (TRS-398 Rev.1, разд. 9.4.4). С din её
+ * СПО пересчитывается по DIN 6809-4, табл. 5 (kv-din.js), и строка идёт с пометкой din (справочная оценка, не Rev.1).
+ * Возвращает { rows, errors, duplicates, other }; other — строки в другом металле: { row, kv, hvl (в своём металле),
+ * mat, val, conv } (conv — результат dinHvlConvert).
+ */
+export function certRows(f, mat = 'Al', { din = false } = {}) {
   const rows = [];
   const errors = [];
+  const other = [];
   for (let i = 0; i < f.kv_cq_hvl.length; i++) {
     const cells = [f.kv_cq_kv[i], f.kv_cq_hvl[i], f.kv_cq_val[i]];
     if (cells.every(isBlank)) continue;
     const hvl = parseNumber(f.kv_cq_hvl[i]);
     const val = parseNumber(f.kv_cq_val[i]);
     const kv = parseNumber(f.kv_cq_kv[i]);
+    const m = f.kv_cq_mat?.[i] || mat;
     if (!(hvl > 0) || !(val > 0)) errors.push(i + 1);
-    else rows.push({ kv, hvl, val, row: i + 1 });
+    else if (m !== mat) {
+      const conv = dinHvlConvert(hvl, m);
+      other.push({ row: i + 1, kv, hvl, mat: m, val, conv });
+      if (din) rows.push({ kv, hvl: conv.value, val, row: i + 1, din: true, hvlSrc: hvl, matSrc: m, extrapolated: conv.extrapolated });
+    } else rows.push({ kv, hvl, val, row: i + 1 });
   }
   rows.sort((a, b) => a.hvl - b.hvl);
   const duplicates = rows.filter((r, i) => i > 0 && Math.abs(r.hvl - rows[i - 1].hvl) < 1e-9).map((r) => r.row);
-  return { rows, errors, duplicates };
+  return { rows, errors, duplicates, other };
 }
 
 /** Значение таблицы сертификата для СПО пучка: линейно по ln(СПО) (рабочие записи 8.7, 9.7). */
@@ -302,13 +328,25 @@ export function certValue(rows, hvl) {
 }
 
 /**
+ * Насколько значение сертификата для пучка (СПО hvl) зависит от СПО, пересчитанных по DIN 6809-4: rows — строки certRows
+ * с din, по возрастанию СПО. Пересчитанные СПО сдвигаются на ±DIN_HVL_DEV, возвращается наибольшее относительное изменение
+ * значения (доля); NaN — если пересчитанных строк нет или значение не определено.
+ */
+export function certDinSensitivity(rows, hvl) {
+  const base = rows.length ? certValue(rows, hvl).value : NaN;
+  if (!rows.some((x) => x.din) || !Number.isFinite(base)) return NaN;
+  const shifted = (k) => certValue(rows.map((x) => (x.din ? { ...x, hvl: x.hvl * k } : x)).sort((a, b) => a.hvl - b.hvl), hvl).value;
+  return Math.max(Math.abs(shifted(1 + DIN_HVL_DEV) - base), Math.abs(shifted(1 - DIN_HVL_DEV) - base)) / base;
+}
+
+/** Знаков после запятой у допуска: как введено, до двух (3 → «3», 0,5 → «0,5», 0,25 → «0,25»). */
+const tolDigits = (x) => (Number.isInteger(x) ? 0 : Number.isInteger(Math.round(x * 1e6) / 1e5) ? 1 : 2);
+
+/**
  * Ошибка таймера по двум заданиям: облучения с заданием T₁ и T₂, средние показания R̄₁ и R̄₂. Показание пропорционально
  * фактическому заданию, R = Ṁ·(T + τ), откуда τ = (T₂·R̄₁ − T₁·R̄₂)/(R̄₂ − R̄₁) — та же прямая, что у серии облучений, через
  * две точки. τ — в единицах T.
  */
-/** Знаков после запятой у допуска: как введено, до двух (3 → «3», 0,5 → «0,5», 0,25 → «0,25»). */
-const tolDigits = (x) => (Number.isInteger(x) ? 0 : Number.isInteger(Math.round(x * 1e6) / 1e5) ? 1 : 2);
-
 export function timerErrorTwoPoint(t1, t2, r1, r2) {
   if (!(t1 > 0) || !(t2 > 0)) return { error: L('задания T₁ и T₂ должны быть больше нуля', 'settings T₁ and T₂ must be greater than zero') };
   if (t1 === t2) return { error: L('задания T₁ и T₂ должны различаться', 'settings T₁ and T₂ must differ') };
@@ -364,6 +402,8 @@ export function computeKv(form) {
   const qo = range === 'medium' && cal === 'ndw' && f.kv_qo === 'co60' ? 'co60' : 'kv';
   // камера откалибрована только в ⁶⁰Co, k_Q,M рентгеновских качеств нет: k_Q = 1 (не по Rev.1 и не по DIN)
   const kq1 = qo === 'co60' && f.kv_cert_form === 'co';
+  // коэффициенты сертификата получены на 5 см (DIN 6809-4, табл. 4), доза — на 2 см: k_z = 1 (разд. 6.4.3)
+  const depth5 = range === 'medium' && cal === 'ndw' && f.kv_cal_depth === '5' && !kq1;
   const secRef = range === 'low' ? `${REF.trs}, разд. 8.1` : `${REF.trs}, разд. 9.1`;
   const eqText = { low: { nk: L('ур. (50)–(51)', 'Eqs (50)–(51)'), ndw: L('ур. (52)', 'Eq. (52)') }, medium: { nk: L('ур. (57)', 'Eq. (57)'), ndw: L('ур. (58)', 'Eq. (58)') } }[range][cal];
 
@@ -455,7 +495,10 @@ export function computeKv(form) {
       add('warn', 'common', L('Цилиндрическую камеру для воздушного метода допускается использовать только при 70 кВ и выше; ниже — плоскопараллельную.', 'A cylindrical chamber may be used for the in-air method only at 70 kV and above; below that, use a plane-parallel chamber.'), `${REF.trs}, разд. 8.2.1, табл. 26`, 'kv_ch_model');
     }
     if (range === 'medium' && chamber.type !== 'cyl') {
-      add('warn', 'common', L('Для средних энергий рекомендуются только цилиндрические камеры объёмом 0,1–1,0 см³.', 'Only cylindrical chambers of 0.1–1.0 cm³ are recommended for medium energies.'), `${REF.trs}, разд. 9.2.1, табл. 31`, 'kv_ch_model');
+      add('error', 'common', L(
+        'Плоскопараллельная камера не для средних энергий: TRS-398 Rev.1 рекомендует только цилиндрические камеры объёмом 0,1–1,0 см³ с центром полости на глубине 2 г/см² (DIN 6809-4 — только компактные камеры). Плоскопараллельную калибруют на поверхности фантома для низких энергий. Выберите для режима цилиндрическую камеру.',
+        'A plane-parallel chamber is not for medium energies: TRS-398 Rev.1 recommends only cylindrical chambers of 0.1–1.0 cm³ with the cavity centre at a depth of 2 g/cm² (DIN 6809-4: compact chambers only). A plane-parallel chamber is calibrated at the phantom surface for low energies. Select a cylindrical chamber for the mode.',
+      ), `${REF.trs}, разд. 9.2.1, табл. 31; ${REF.din}, разд. 6.2.1`, 'kv_ch_model');
     }
     if (chamber.type === 'pp' && !chamber.custom && chamber.table7 === false && range === 'low') {
       add('info', 'common', L(`${chamber.label} нет в табл. 7 TRS-398 Rev.1 (камеры для низких энергий): убедитесь, что камера предназначена для этого диапазона и откалибрована в нём.`, `${chamber.label} is not listed in Table 7 of TRS-398 Rev.1 (low-energy chambers): make sure the chamber is designed and calibrated for this range.`), `${REF.trs}, табл. 7`, 'kv_ch_model');
@@ -489,8 +532,10 @@ export function computeKv(form) {
     if (Number.isFinite(cert.base) && !nUnitOk(cert.base)) add('warn', 'common', L(`${nName} = ${dec(cert.base.toPrecision(4))} Гр/нКл выглядит неправдоподобно: проверьте единицы.`, `${nName} = ${dec(cert.base.toPrecision(4))} Gy/nC looks implausible: check the units.`), null, 'kv_n');
   }
   // форма 'co': таблицы качеств нет — k_Q = 1
-  const table = certForm === 'co' ? { rows: [], errors: [], duplicates: [] } : certRows(f);
+  const table = certForm === 'co' ? { rows: [], errors: [], duplicates: [], other: [] } : certRows(f, mat, { din: f.kv_cq_din });
   cert.rows = table.rows;
+  // строки в другом металле (с пересчётом по DIN или без него) — для окна пересчёта и протокола
+  cert.other = table.other;
   const valName = { kq: 'k_Q', n: nName, k: 'K', co: 'k_Q' }[certForm];
   if (certForm === 'co' && qo !== 'co60') {
     add('error', 'common', L(
@@ -506,6 +551,20 @@ export function computeKv(form) {
   }
   if (table.errors.length) add('error', 'common', L(`Таблица качеств сертификата, строки ${table.errors.join(', ')}: нужны СПО и ${valName} — положительные числа.`, `Certificate quality table, rows ${table.errors.join(', ')}: the HVL and ${valName} must be positive numbers.`), null, 'kv_cert');
   if (table.duplicates.length) add('error', 'common', L(`Таблица качеств сертификата: СПО повторяется (строки ${table.duplicates.join(', ')}).`, `Certificate quality table: the HVL is repeated (rows ${table.duplicates.join(', ')}).`), null, 'kv_cert');
+  // строки с СПО в другом металле: без пересчёта не используются, с пересчётом по DIN — оценка, не Rev.1
+  const otherMat = mat === 'Al' ? 'Cu' : 'Al';
+  const otherNos = table.other.map((x) => x.row).join(', ');
+  if (table.other.length && !f.kv_cq_din) {
+    add('warn', 'common', L(
+      `Строки ${otherNos} сертификата — СПО в мм ${otherMat}, а СПО пучка в мм ${mat}: в интерполяцию они не идут, сравнивать СПО в разных металлах нельзя. Оценить их СПО в мм ${mat} можно пересчётом по DIN 6809-4 (кнопка у таблицы качеств) — справочно, не по TRS-398 Rev.1.`,
+      `Certificate rows ${otherNos} give the HVL in mm ${otherMat}, while the beam HVL is in mm ${mat}: they are not used in the interpolation, since HVLs in different metals cannot be compared. Their HVL in mm ${mat} can be estimated with the DIN 6809-4 conversion (button at the quality table), for reference only, not TRS-398 Rev.1.`,
+    ), `${REF.trs}, разд. 9.3.1, 9.4.4`, 'kv_cert');
+  }
+  if (table.other.length && f.kv_cq_din) {
+    const ext = table.other.filter((x) => x.conv.extrapolated).map((x) => x.row);
+    cert.din = { rows: table.other, dev: DIN_HVL_DEV, extrapolated: ext };
+    notRev1.push(L(`СПО строк ${otherNos} сертификата пересчитан из мм ${otherMat} в мм ${mat} по DIN 6809-4, табл. 5 (оценка)`, `the HVL of certificate rows ${otherNos} is converted from mm ${otherMat} to mm ${mat} with DIN 6809-4, Table 5 (an estimate)`));
+  }
   if (qo === 'co60' && certForm === 'n') {
     add('error', 'common', L('Для Qo = ⁶⁰Co нужны k_Q,M рентгеновских качеств относительно N_D,w в ⁶⁰Co: выберите форму «N и k_Q по качествам» или «N_Д и множитель K».', 'For Qo = ⁶⁰Co, the k_Q,M of the x-ray qualities relative to N_D,w in ⁶⁰Co are required: choose the form "N and k_Q per quality" or "N_D and multiplier K".'), `${REF.din}, разд. 6.4.2`, 'kv_cert_form');
   }
@@ -520,6 +579,21 @@ export function computeKv(form) {
     const r = certValue(table.rows, hvl);
     cert.interp = r;
     cert.value = r.value;
+    // пересчитанные по DIN СПО: насколько меняется значение для пучка при их сдвиге на ±DIN_HVL_DEV
+    const d = cert.din ? certDinSensitivity(table.rows, hvl) : NaN;
+    if (Number.isFinite(d)) {
+      cert.din.deltaPct = d * 100;
+      cert.din.uPct = (d * 100) / Math.sqrt(3);
+      const ext = cert.din.extrapolated.length ? L(` Строки ${cert.din.extrapolated.join(', ')} — вне диапазона табл. 5 (экстраполяция): отклонение может быть больше.`, ` Rows ${cert.din.extrapolated.join(', ')} are outside Table 5 (extrapolation): the deviation may be larger.`) : '';
+      // меньше 0,01 % — пересчитанные строки на значение для пучка практически не влияют (СПО пучка между другими качествами)
+      const tiny = d * 100 < 0.005;
+      const by = tiny ? L('меньше чем на 0,01 %', 'by less than 0.01 %') : L(`на ${ru(d * 100, 2)} %`, `by ${ru(d * 100, 2)} %`);
+      const uTxt = tiny ? L('пренебрежимо мала', 'negligible') : L(`${ru(cert.din.uPct, 2)} % (внесите в бюджет на вкладке «Неопределённость»)`, `${ru(cert.din.uPct, 2)} % (enter it in the budget on the Uncertainty tab)`);
+      add('warn', 'common', L(
+        `СПО строк ${otherNos} сертификата пересчитан из мм ${otherMat} в мм ${mat} по DIN 6809-4, табл. 5 — это оценка, не TRS-398 Rev.1: соотношение СПО в Al и Cu зависит от спектра. При отклонении пересчитанных СПО на ±${ru(DIN_HVL_DEV * 100, 0)} % ${valName} для пучка меняется ${by}; как стандартная неопределённость — ${uTxt}.${ext}`,
+        `The HVL of certificate rows ${otherNos} is converted from mm ${otherMat} to mm ${mat} with DIN 6809-4, Table 5. This is an estimate, not TRS-398 Rev.1: the relation between HVLs in Al and Cu depends on the spectrum. A ±${ru(DIN_HVL_DEV * 100, 0)} % deviation of the converted HVLs changes ${valName} for the beam ${by}; as a standard uncertainty, ${uTxt}.${ext}`,
+      ), `${REF.din}, табл. 5; ${REF.trs}, разд. 9.3.1`, 'kv_cert');
+    }
     const hv = table.rows.map((x) => x.hvl);
     if (table.rows.length === 1) {
       const d = Math.abs(Math.log(hvl / hv[0]));
@@ -554,13 +628,18 @@ export function computeKv(form) {
       'k_Q = 1: камера откалибрована только в ⁶⁰Co, k_Q,M рентгеновских качеств неизвестны и приняты равными 1. Так не допускают ни TRS-398 Rev.1 (разд. 9.2.1), ни DIN 6809-4 (разд. 6.4.2): оба требуют калибровки этой камеры в рентгеновских качествах. Насколько k_Q,M отличается от 1, без такой калибровки не узнать, поэтому результат — оценка, а не референсная дозиметрия. k_z = 1 (5 см → 2 см) и k_g = 1 взяты как в DIN 6809-4.',
       'k_Q = 1: the chamber is calibrated in ⁶⁰Co only; the k_Q,M of the x-ray qualities are unknown and taken as 1. Neither TRS-398 Rev.1 (Sec. 9.2.1) nor DIN 6809-4 (Sec. 6.4.2) allows this: both require a calibration of this chamber in x-ray qualities. How far k_Q,M is from 1 cannot be known without such a calibration, so the result is an estimate, not reference dosimetry. k_z = 1 (5 cm → 2 cm) and k_g = 1 are taken as in DIN 6809-4.',
     ), `${REF.trs}, разд. 9.2.1; ${REF.din}, разд. 6.4.2`, 'kv_cert_form');
-  } else if (qo === 'co60') {
+  } else if (depth5) {
     cert.kz = 1;
-    notRev1.push(L('Qo = ⁶⁰Co (DIN 6809-4)', 'Qo = ⁶⁰Co (DIN 6809-4)'));
+    notRev1.push(L('коэффициенты сертификата на глубине 5 см (DIN 6809-4), k_z = 1', 'certificate coefficients at a depth of 5 cm (DIN 6809-4), k_z = 1'));
     add('warn', 'common', L(
-      'Qo = ⁶⁰Co: расчёт по DIN 6809-4 (N_D,w в ⁶⁰Co на 5 см, k_Q,M рентгеновских качеств из калибровки этой камеры), а не по TRS-398 Rev.1. Калибровка на 5 см, измерение на 2 см: k_z = 1 с неопределённостью 0,5 %. Для k_g берутся поле и РИП, при которых измерены k_Q,M рентгеновских качеств.',
-      'Qo = ⁶⁰Co: calculation according to DIN 6809-4 (N_D,w in ⁶⁰Co at 5 cm, k_Q,M of the x-ray qualities from a calibration of this chamber), not TRS-398 Rev.1. Calibration at 5 cm, measurement at 2 cm: k_z = 1 with an uncertainty of 0.5 %. For k_g, the field and SSD at which the x-ray k_Q,M were measured are used.',
-    ), `${REF.din}, разд. 6.4.2, 6.4.3`, 'kv_qo');
+      `Коэффициенты сертификата получены на глубине 5 см (DIN 6809-4, табл. 4${qo === 'co60' ? ': N_D,w в ⁶⁰Co и k_Q,M рентгеновских качеств' : ''}), а доза определяется на 2 г/см², как в TRS-398 Rev.1. DIN 6809-4 (разд. 6.4.3) для компактных камер берёт k_z = 1 с неопределённостью 0,5 %; в Rev.1 такого пересчёта нет — расчёт не по Rev.1. Для k_g берутся поле и РИП, при которых получены коэффициенты.`,
+      `The certificate coefficients were obtained at a depth of 5 cm (DIN 6809-4, Table 4${qo === 'co60' ? ': N_D,w in ⁶⁰Co and k_Q,M of the x-ray qualities' : ''}), while the dose is determined at 2 g/cm² as in TRS-398 Rev.1. DIN 6809-4 (Sec. 6.4.3) takes k_z = 1 with an uncertainty of 0.5 % for compact chambers; Rev.1 has no such transfer, so the calculation is not Rev.1. For k_g, the field and SSD at which the coefficients were obtained are used.`,
+    ), `${REF.din}, табл. 4, разд. 6.4.3`, 'kv_cal_depth');
+  } else if (qo === 'co60') {
+    add('info', 'common', L(
+      'Qo = ⁶⁰Co, коэффициенты рентгеновских качеств (k_Q,M или K) получены на глубине 2 г/см²: N_D,w,Q = N_D,w(⁶⁰Co) · k(Q) — калибровочный коэффициент при качестве пучка на опорной глубине, как в ур. (58). Пересчёт по глубине (k_z) не нужен. Для k_g берутся поле и РИП, при которых получены коэффициенты.',
+      'Qo = ⁶⁰Co, the coefficients of the x-ray qualities (k_Q,M or K) were obtained at a depth of 2 g/cm²: N_D,w,Q = N_D,w(⁶⁰Co) · k(Q) is the calibration coefficient at the beam quality at the reference depth, as in Eq. (58). No depth transfer (k_z) is needed. For k_g, the field and SSD at which the coefficients were obtained are used.',
+    ), `${REF.trs}, разд. 9.4.4, ур. (58)`, 'kv_qo');
   }
 
   // ------------------------------------------------------------ окружающая среда, электрометр
@@ -998,7 +1077,7 @@ export function computeKv(form) {
       ), `${REF.trs}, разд. 8.4.2, ур. (52)`, ['kv_kg_src', 'kv_phantom']);
     }
     phys.kg = kg.value;
-    phys.kz = qo === 'co60' ? 1 : undefined;
+    phys.kz = cert.kz;
     phys.factor = kg.value;
   }
 
@@ -1085,14 +1164,14 @@ export function computeKv(form) {
   // соответствие стандартным условиям (табл. 26, 27, 31)
   const shown = trs.blocked ? {} : ctrl.on ? (trs.ctrl && !trs.ctrl.blocked ? trs.ctrl : {}) : trs;
   const conditions = evaluateConditions(KV_CONDITIONS, {
-    range, cal, qo, kq1, kv, chamber, fClin, ssd, sameGeometry, kgSource: kg.source, pchSource: phys.pchSource,
+    range, cal, qo, kq1, depth5, certDin: cert.other?.length ? !!cert.din : undefined, kv, chamber, fClin, ssd, sameGeometry, kgSource: kg.source, pchSource: phys.pchSource,
     nkFsGiven: !isBlank(f.kv_nk_fs), coneLargest: f.kv_cone_largest, coneShape: f.kv_cone_shape, coneSize, coneB, kleak, kpolRaw,
     phantom, labPhantom, phantomStatus,
   }, 'trs');
   const compliance = complianceFromConditions(conditions, Number.isFinite(shown.perUnit));
 
   // справочное сравнение с TG-61 или DIN 6809-4 / SSRMP No 9 — на итог не влияет
-  const compare = qualityOk ? compareKv(f, { range, cal, qo, kq1, kv, hvl, ssd, fClin, chamber, phys, kg }) : { available: false, rows: [], notes: [], flags: [] };
+  const compare = qualityOk ? compareKv(f, { range, cal, qo, kq1, depth5, kv, hvl, ssd, fClin, chamber, phys, kg }) : { available: false, rows: [], notes: [], flags: [] };
   compare.flags.forEach((k) => flag(k, 'warn'));
 
   return {
@@ -1101,6 +1180,7 @@ export function computeKv(form) {
     range,
     cal,
     qo,
+    depth5,
     material: mat,
     chamber,
     cert,

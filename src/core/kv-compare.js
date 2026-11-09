@@ -177,8 +177,8 @@ function dinSsrmp(s, r) {
         'SSRMP allows k_FS/SSD = 1 only for 2–5 cm fields and SSDs up to 30 cm; for larger fields and SSDs it recommends going from the reference field via output factors.',
       ));
     }
-  } else if (qo === 'co60') {
-    r.notes.push(L('При Qo = ⁶⁰Co расчёт идёт по DIN 6809-4 (k_z = 1); строка отличается от итога только k_g: DIN берёт k_F = 1 с неопределённостью 1,3 %.', 'With Qo = ⁶⁰Co the calculation follows DIN 6809-4 (k_z = 1); this line differs from the result only by k_g: DIN takes k_F = 1 with a 1.3 % uncertainty.'));
+  } else if (s.depth5) {
+    r.notes.push(L('Коэффициенты на 5 см: расчёт идёт по DIN 6809-4 (k_z = 1); строка отличается от итога только k_g: DIN берёт k_F = 1 с неопределённостью 1,3 %.', 'Coefficients at 5 cm: the calculation follows DIN 6809-4 (k_z = 1); this line differs from the result only by k_g: DIN takes k_F = 1 with a 1.3 % uncertainty.'));
   } else {
     r.notes.push(L('DIN 6809-4 берёт k_F = 1 с неопределённостью 1,3 %, SSRMP No 9 — k_FS/SSD = 1 с неопределённостью 0,5 % при поле, близком к 10 см.', 'DIN 6809-4 takes k_F = 1 with a 1.3 % uncertainty, SSRMP No 9 takes k_FS/SSD = 1 with a 0.5 % uncertainty for fields close to 10 cm.'));
   }

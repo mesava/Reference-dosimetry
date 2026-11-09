@@ -87,7 +87,7 @@ test('оборудование: рентгенотерапевтический �
   await appRow(page, 3).locator('input[data-bind$="|b"]').fill('12');
   await pause();
 
-  // режим: первый — со всеми аппликаторами, референсный не выбран
+  // режим: первый — со всеми аппликаторами, стандартный не выбран (он необязателен: замечания нет)
   await kvCard(page).locator('[data-add-kvmode]').click();
   await pause();
   assert.equal(await page.evaluate(() => document.activeElement?.dataset.bind?.endsWith('|kv')), true, 'фокус — на напряжении');
@@ -101,14 +101,14 @@ test('оборудование: рентгенотерапевтический �
   assert.equal((await m1.locator('h4').innerText()).trim(), 'Режим 1 — 200 кВ / 15 мА / 0.5 mm Cu');
   let msgs = await m1.locator('.jmsgs').innerText();
   assert.match(msgs, /камера не выбрана/);
-  assert.match(msgs, /референсный аппликатор не выбран/);
+  assert.doesNotMatch(msgs, /аппликатор не выбран/);
   // кандидат по Rev.1 — Ø 10 см (сопоставим с 10 × 10 см), с наибольшим РИП
   const ref = m1.locator('select[data-bind$="|refApplicator"]');
   assert.deepEqual(await ref.locator('option').allTextContents(), ['— не выбран —', 'F3, Ø 3 см, РИП 30 см', 'F5, Ø 5 см, РИП 30 см', 'F10, Ø 10 см, РИП 50 см — по Rev.1', 'Q10, 10 × 12 см, РИП 50 см']);
   assert.match(await m1.locator('[data-live^="kvmode-ref-"] .sub').innerText(), /по TRS-398 Rev\.1 \(табл\. 31\): F10, Ø 10 см, РИП 50 см/);
   await ref.selectOption({ index: 1 });
   await pause();
-  assert.match(await modeBox(page, 0).locator('.jmsgs').innerText(), /референсный — F10, Ø 10 см, РИП 50 см, а выбран F3, Ø 3 см, РИП 30 см/);
+  assert.match(await modeBox(page, 0).locator('.jmsgs').innerText(), /стандартный — F10, Ø 10 см, РИП 50 см, а выбран F3, Ø 3 см, РИП 30 см/);
   await modeBox(page, 0).locator('select[data-bind$="|refApplicator"]').selectOption({ index: 3 });
   await modeBox(page, 0).locator('select[data-bind$="|chamberId"]').selectOption({ index: 1 });
   await pause();
@@ -148,15 +148,15 @@ test('оборудование: рентгенотерапевтический �
   await modeBox(page, 1).locator('input[data-bind$="|kv"]').fill('50');
   await modeBox(page, 1).locator('input[data-bind$="|hvl"]').fill('1,0');
   await pause();
-  // снять флажок референсного — референсный не выбран
+  // снять флажок стандартного — стандартный не выбран
   await modeBox(page, 1).locator('.jkv-apps input').nth(2).uncheck();
   await pause();
   assert.equal(await modeBox(page, 1).locator('select[data-bind$="|refApplicator"]').inputValue(), '');
   assert.equal(await modeBox(page, 1).locator('.jkv-apps input:checked').count(), 3);
   // сводка справа: аппарат и его замечания
+  // стандартный не выбран — не замечание: аппарат в сводке замечаний не появляется
   msgs = await page.locator('#eq-messages').innerText();
-  assert.match(msgs, /XSTRAHL 300|Xstrahl 300/);
-  assert.match(msgs, /режим 2 \(50 кВ\): референсный аппликатор не выбран/);
+  assert.doesNotMatch(msgs, /аппликатор не выбран/);
   assert.match(await page.locator('#eq-result').innerText(), /режимов рентгенотерапевтических аппаратов: 2/);
 
   // новый аппликатор отмечается в режимах, где отмечены все (режим 1), но не в режиме 2

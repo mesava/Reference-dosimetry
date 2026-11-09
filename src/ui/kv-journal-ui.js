@@ -58,7 +58,7 @@ function modeLine(j, m, x, i) {
       ? L(`СПО ${x.hvl} ${hvlUnit(x.range)}`, `HVL ${x.hvl} ${hvlUnit(x.range)}`) + (x.hvlSource === 'measured' ? ` (${hvlSourceText('measured', x.hvlDate)})` : '')
       : L('СПО не задан', 'no HVL'),
     ch ? chamberText(ch) : L('камера не выбрана', 'no chamber'),
-    apps.length ? L(`аппликаторов ${apps.length}`, `${apps.length} applicator${apps.length === 1 ? '' : 's'}`) + (ref ? L(`, референсный ${ref.name || applicatorText(ref)}`, `, reference ${ref.name || applicatorText(ref)}`) : '') : L('аппликаторы не отмечены', 'no applicators ticked'),
+    apps.length ? L(`аппликаторов ${apps.length}`, `${apps.length} applicator${apps.length === 1 ? '' : 's'}`) + (ref ? L(`, стандартный ${ref.name || applicatorText(ref)}`, `, standard ${ref.name || applicatorText(ref)}`) : '') : L('аппликаторы не отмечены', 'no applicators ticked'),
   ];
   return `${L(`Режим ${i + 1}`, `Mode ${i + 1}`)}${t ? ` — ${t}` : ''}: ${parts.join('; ')}`;
 }

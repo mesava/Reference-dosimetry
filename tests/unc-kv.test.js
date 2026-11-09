@@ -61,7 +61,7 @@ test('k_g: геометрия как в лаборатории — 0; k_g = 1 п
 });
 
 test('Qo = ⁶⁰Co (средние энергии, N_D,w): табл. 33 со справкой DIN 6809-4, табл. 7, и предупреждением «не по Rev.1»', () => {
-  const t = tool({ unc_kv_range: 'medium', unc_kv_cal: 'ndw', unc_kv_qo: 'co60' });
+  const t = tool({ unc_kv_range: 'medium', unc_kv_cal: 'ndw', unc_kv_qo: 'co60', unc_kv_depth: '5' });
   assert.equal(t.budget.template.id, 't33ndw');
   // к табл. 33 добавляется k_z = 1 (пересчёт с 5 см на 2 см) — 0,5 % по DIN 6809-4
   const kz = row(t.budget, 't33ndw.st_kz');
@@ -70,8 +70,22 @@ test('Qo = ⁶⁰Co (средние энергии, N_D,w): табл. 33 со с
   assert.ok(Math.abs(t.ucPct - Math.hypot(tool({ unc_kv_range: 'medium' }).ucPct, 0.5)) < 1e-12);
   assert.equal(r1(t.ucPct), 1.9);
   assert.match(t.budget.template.title, /Qo = ⁶⁰Co/);
+  assert.match(t.budget.template.title, /на 5 см, DIN 6809-4/);
   assert.match(t.budget.template.note, /DIN 6809-4, табл\. 7.*u_c = 1,80 %/);
-  assert.equal(t.flags.unc_kv_qo, 'warn');
+  assert.equal(t.flags.unc_kv_depth, 'warn');
+  // Qo = ⁶⁰Co, коэффициенты на 2 г/см² (как в поверке ВНИИФТРИ): ур. (58) Rev.1 — без k_z и без предупреждения
+  const at2 = tool({ unc_kv_range: 'medium', unc_kv_cal: 'ndw', unc_kv_qo: 'co60' });
+  assert.ok(!at2.budget.rows.some((r) => r.key.endsWith('.st_kz')));
+  assert.ok(Math.abs(at2.ucPct - tool({ unc_kv_range: 'medium' }).ucPct) < 1e-12);
+  assert.match(at2.budget.template.title, /Qo = ⁶⁰Co\)$/);
+  assert.equal(at2.flags.unc_kv_depth, undefined);
+  // рентгеновское Qo на 5 см — тоже k_z = 1 по DIN
+  const x5 = tool({ unc_kv_range: 'medium', unc_kv_cal: 'ndw', unc_kv_qo: 'kv', unc_kv_depth: '5' });
+  assert.equal(row(x5.budget, 't33ndw.st_kz').def, 0.5);
+  assert.doesNotMatch(x5.budget.template.note, /табл\. 7/);
+  // файлы до 0.49.3: Qo = ⁶⁰Co без глубины читается как 5 см
+  assert.equal(normalizeUncTool({ unc_kv_qo: 'co60' }).unc_kv_depth, '5');
+  assert.equal(normalizeUncTool({ unc_kv_qo: 'co60', unc_kv_depth: '2' }).unc_kv_depth, '2');
   // для низких энергий и для N_K опорного качества ⁶⁰Co нет — выбор не действует
   for (const o of [{ unc_kv_range: 'low' }, { unc_kv_range: 'medium', unc_kv_cal: 'nk' }]) {
     const x = tool({ ...o, unc_kv_qo: 'co60' });

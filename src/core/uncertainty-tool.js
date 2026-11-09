@@ -29,9 +29,11 @@ export const UT_DEFAULTS = {
   // kV-рентген (TRS-398 Rev.1, табл. 30 и 33): диапазон энергий, калибровка камеры, опорное качество, как получен k_g
   unc_kv_range: 'low', // 'low' | 'medium'
   unc_kv_cal: 'ndw', // 'ndw' | 'nk'
-  unc_kv_qo: 'kv', // средние энергии, N_D,w: 'kv' | 'co60' (DIN 6809-4)
+  unc_kv_qo: 'kv', // средние энергии, N_D,w: опорное качество 'kv' | 'co60'
+  unc_kv_depth: '2', // средние энергии, N_D,w: глубина калибровки, см: '2' — Rev.1; '5' — DIN 6809-4 (k_z = 1)
   unc_kv_kg: 'calc', // N_D,w: 'calc' — рассчитан или от лаборатории; 'same' — геометрия как в лаборатории; 'one' — k_g = 1 (DIN)
   unc_kv_kq: 'cert', // Qo = ⁶⁰Co: 'cert' — k_Q,M из калибровки в рентгене; 'one' — калибровки в рентгене нет, k_Q = 1 (не по Rev.1 и DIN)
+  unc_kv_hvldin: '', // u, %, от пересчёта СПО качеств сертификата Al ↔ Cu по DIN 6809-4, табл. 5 (вкладка kV); пусто — пересчёта нет
 
   unc_cert_U: '', // расширенная неопределённость N_D,w из свидетельства, %
   unc_cert_k: '2',
@@ -86,6 +88,9 @@ export function normalizeUncTool(input) {
   if (f.unc_kv_range !== 'medium') f.unc_kv_range = 'low';
   if (f.unc_kv_cal !== 'nk') f.unc_kv_cal = 'ndw';
   if (f.unc_kv_qo !== 'co60') f.unc_kv_qo = 'kv';
+  // до 0.49.3 Qo = ⁶⁰Co означал калибровку на 5 см (DIN 6809-4)
+  if (input && typeof input === 'object' && input.unc_kv_depth === undefined && input.unc_kv_qo === 'co60') f.unc_kv_depth = '5';
+  f.unc_kv_depth = String(f.unc_kv_depth) === '5' ? '5' : '2';
   if (!['calc', 'same', 'one'].includes(f.unc_kv_kg)) f.unc_kv_kg = 'calc';
   if (f.unc_kv_kq !== 'one') f.unc_kv_kq = 'cert';
   if (!UT_UNITS[f.unc_unit]) f.unc_unit = defaultUnit(f.unc_beam_type);
@@ -117,6 +122,17 @@ export function computeUncertaintyTool(form) {
   const kvQo = kv && f.unc_kv_range === 'medium' && f.unc_kv_cal === 'ndw' ? f.unc_kv_qo : 'kv';
   const kvKg = kv && f.unc_kv_cal === 'ndw' ? f.unc_kv_kg : 'calc';
   const kvKq = kvQo === 'co60' ? f.unc_kv_kq : 'cert';
+  // коэффициенты на 5 см (DIN 6809-4): строка k_z = 1; при k_Q = 1 (только ⁶⁰Co) — тоже
+  const kvDepth5 = kv && f.unc_kv_range === 'medium' && f.unc_kv_cal === 'ndw' && (f.unc_kv_depth === '5' || kvKq === 'one');
+  // СПО части качеств сертификата пересчитан в металл пучка по DIN 6809-4 (оценка): своя строка бюджета
+  let kvHvlDin = NaN;
+  if (kv && !isBlank(f.unc_kv_hvldin)) {
+    kvHvlDin = parseNumber(f.unc_kv_hvldin);
+    if (!(kvHvlDin >= 0) || kvHvlDin > 10) {
+      add('warn', L('Неопределённость от пересчёта СПО сертификата вводится в процентах, от 0 до 10.', 'The uncertainty from the certificate HVL conversion is entered in per cent, from 0 to 10.'), null, 'unc_kv_hvldin');
+      kvHvlDin = NaN;
+    }
+  }
 
   // качество пучка электронов: нужно только для плоскопараллельной камеры по TRS-398 (R50 < 2 г/см²)
   let r50 = NaN;
@@ -223,6 +239,8 @@ export function computeUncertaintyTool(form) {
     kvQo,
     kvKg,
     kvKq,
+    kvDepth5,
+    kvHvlDin,
     certU: f.unc_cert_U,
     certK: f.unc_cert_k,
     over: f.unc_over,

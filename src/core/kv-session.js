@@ -196,7 +196,7 @@ export const KV_COMMON_KEYS = ['kv_institution', 'kv_machine', 'kv_jmachine', 'k
 /** Поля камеры: камера, сертификат и условия калибровки, электрометр, напряжения и полярность. */
 export const KV_CHAMBER_KEYS = [
   'kv_ch_model', 'kv_cc_maker', 'kv_cc_model', 'kv_cc_type', 'kv_ch_serial', 'kv_foil',
-  'kv_cal', 'kv_qo', 'kv_cert_form', 'kv_n', 'kv_n_unit', 'kv_cq_kv', 'kv_cq_hvl', 'kv_cq_val',
+  'kv_cal', 'kv_qo', 'kv_cal_depth', 'kv_cert_form', 'kv_n', 'kv_n_unit', 'kv_cq_kv', 'kv_cq_hvl', 'kv_cq_mat', 'kv_cq_val', 'kv_cq_din',
   'kv_lab_shape', 'kv_lab_f', 'kv_lab_ssd', 'kv_lab_phantom', 'kv_T0', 'kv_P0',
   'kv_el_model', 'kv_el_serial', 'kv_kelec', 'kv_lab_pol_applied', 'kv_lab_kpol', 'kv_lab_ks_applied', 'kv_lab_ks',
   'kv_tg61_sleeve', 'kv_tg61_sleeve_t',

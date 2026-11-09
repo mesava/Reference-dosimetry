@@ -47,7 +47,7 @@ test('kV-рентген ↔ «Оборудование»: сохранить а�
   // вкладка связана с аппаратом: он выбран, режимы — с флажками; СПО — измеренный на листе «СПО и k_Q», с датой
   assert.equal(await jb(page, 'machine').locator('option:checked').innerText(), 'Xstrahl 300');
   assert.equal(await page.locator('#kv-jbind [data-kvj-mode]').count(), 2);
-  assert.match(await page.locator('#kv-jbind .kvj-modes').innerText(), /Режим 1 — 200 кВ \/ 10 мА \/ 0,5 мм Cu \+ 1 мм Al: СПО 1,000 мм Cu \(измеренный 15\.09\.2026\); PTW 30013 № 0000; аппликаторов 3, референсный Ø 10 см, РИП 50 см/);
+  assert.match(await page.locator('#kv-jbind .kvj-modes').innerText(), /Режим 1 — 200 кВ \/ 10 мА \/ 0,5 мм Cu \+ 1 мм Al: СПО 1,000 мм Cu \(измеренный 15\.09\.2026\); PTW 30013 № 0000; аппликаторов 3, стандартный Ø 10 см, РИП 50 см/);
 
   // измеренный СПО режима 1 не в расчёте, в таблице режимов другой — вопрос; «Оставить» не меняет СПО, «Заменить» — меняет
   await kvPage(page, 'hvl');

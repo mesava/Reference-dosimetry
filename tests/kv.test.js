@@ -252,10 +252,10 @@ test('Проверки: недостижимый СПО, тип камеры, э
   assert.equal(unphys.trs.blocked, true);
   // СПО в мм Al вместо мм Cu (типичная путаница единиц): 200 кВ и 12 «мм Cu» (≈ 1 мм Cu = 12 мм Al)
   assert.ok(errors(computeKv({ ...MED_NK, kv_hvl: '12' })).some((t) => /мм Al или мм Cu/.test(t)));
-  // плоскопараллельная камера в средних энергиях — предупреждение и нестандартные условия
+  // плоскопараллельная камера в средних энергиях — ошибка: Rev.1 допускает только цилиндрические (разд. 9.2.1, табл. 31)
   const pp = computeKv({ ...MED_NK, kv_ch_model: 'PTW23342', kv_pch: '1,0' });
-  assert.ok(has(pp, 'warn', /только цилиндрические/));
-  assert.equal(pp.compliance.status, 'nonstandard');
+  assert.ok(has(pp, 'error', /только цилиндрические/));
+  assert.equal(pp.flags.kv_ch_model, 'error');
   // камера не из табл. 32 — p_ch вручную, предупреждение, не по Rev.1
   const own = computeKv({ ...MED_NK, kv_ch_model: 'CUSTOM', kv_cc_type: 'cyl', kv_cc_model: 'Y', kv_pch: '1,01' });
   assert.deepEqual(errors(own), []);

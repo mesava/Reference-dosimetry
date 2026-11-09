@@ -1693,9 +1693,17 @@
         <div class="field" data-show="kv_range:medium;kv_cal:ndw">
           <label for="kv_qo">Опорное качество Q<sub>o</sub></label>
           <select id="kv_qo">
-            <option value="kv">рентгеновское, на глубине 2 см</option>
-            <option value="co60">⁶⁰Co на 5 см (DIN 6809-4, не по TRS-398 Rev.1)</option>
+            <option value="kv">рентгеновское</option>
+            <option value="co60">⁶⁰Co</option>
           </select>
+        </div>
+        <div class="field" data-show="kv_range:medium;kv_cal:ndw;kv_cert_form:kq,n,k">
+          <label for="kv_cal_depth">Глубина калибровки</label>
+          <select id="kv_cal_depth">
+            <option value="2">2 г/см² (TRS-398 Rev.1)</option>
+            <option value="5">5 см (DIN 6809-4, k_z = 1; не по TRS-398 Rev.1)</option>
+          </select>
+          <span class="sub">на какой глубине в воде получены коэффициенты сертификата</span>
         </div>
         <div class="field span-2">
           <label for="kv_cert_form">Как записан сертификат</label>
@@ -1718,11 +1726,16 @@
       </div>
       <div class="pairs cert-table" id="kv_cert" data-show="kv_cert_form:kq,n,k">
         <span class="label">Качества пучка из сертификата</span>
-        <div class="pairs-head"><span class="pair-no">№</span><span>кВ</span><span id="kv-lbl-cq-hvl">СПО, мм Al</span><span id="kv-lbl-cq-val">k<sub>Q</sub></span></div>
+        <div class="pairs-head"><span class="pair-no">№</span><span>кВ</span><span>СПО, мм</span><span>металл</span><span id="kv-lbl-cq-val">k<sub>Q</sub></span></div>
         <div class="pairs-list" id="kv-cert-rows"></div>
         <div class="cells-tools">
           <button type="button" class="icon-btn" id="kv-cert-add" aria-label="Добавить качество" title="Добавить качество">+</button>
           <button type="button" class="icon-btn" id="kv-cert-remove" aria-label="Убрать последнее качество" title="Убрать последнее качество">−</button>
+          <button type="button" class="link-btn" id="kv-din-open">Пересчёт СПО Al ↔ Cu (DIN 6809-4)…</button>
+        </div>
+        <div class="field" id="kv-din-box">
+          <label class="check"><input type="checkbox" id="kv_cq_din"> <span>Пересчитать СПО строк в другом металле по DIN 6809-4 (справочно, не по TRS-398 Rev.1)</span></label>
+          <span class="sub" id="kv-din-sub"></span>
         </div>
         <p class="eq" id="kv-cert-note"></p>
       </div>
@@ -1945,14 +1958,14 @@
     <!-- 3 -->
     <section class="step" aria-labelledby="kv-s3" data-kv-page="timer">
       <header><span class="step-no">3</span><h2 id="kv-s3"><button type="button" class="term" data-term="kvtimer">Ошибка таймера</button></h2>
-        <p class="hint">Облучение задают временем, дозой по монитору или в МЕ. Трубка выходит на режим не мгновенно, поэтому фактическое облучение отличается от заданного X на постоянную величину τ: доза относится к X + τ. Это не множитель, и её нужно определить (TRS-398 Rev.1, разд. 9.4.2).</p></header>
+        <p class="hint">Облучение задают временем, дозой по монитору или в МЕ. Трубка выходит на режим не мгновенно, поэтому фактическое облучение отличается от заданного X на постоянную величину τ: доза относится к X + τ. Это не множитель, и её нужно определить (TRS-398 Rev.1, разд. 9.4.2). τ входит в расчёт: доза на единицу задания на листе «Поглощённая доза» — D/(X + τ); при «не учитывать» τ = 0, а при заряде, накопленном при включённой трубке, τ в показание не входит.</p></header>
       <div class="grid">
         <div class="field span-2">
           <label for="kv_timer_mode" id="kv-lbl-timer-mode">Ошибка таймера τ</label>
           <select id="kv_timer_mode">
             <option value="twopoint">по двум заданиям T₁ и T₂</option>
             <option value="measured">по серии облучений с разным заданием</option>
-            <option value="nexp">одно облучение X против n облучений по X/n</option>
+            <option value="nexp" hidden>одно облучение X против n облучений по X/n (файлы до 0.49.3)</option>
             <option value="window">заряд накоплен при включённой трубке</option>
             <option value="manual">известное значение</option>
             <option value="none">не учитывать</option>
@@ -2043,6 +2056,12 @@
         <div class="field out-cell"><span class="label">X + τ, <span data-out-text="inputs.unitLabel"></span></span><output data-out="inputs.Xeff" data-digits="4"></output></div>
         <div class="field out-cell" data-show="kv_timer_mode:measured"><span class="label">Отклонение от прямой</span><output data-out="timer.residualPct" data-digits="3" data-suffix=" %"></output></div>
       </div>
+      <div class="kv-chart" id="kv-timer-chart-wrap" hidden>
+        <h4 class="series-head">График: задание от показания</h4>
+        <div class="chart-box" id="kv-timer-chart" data-i18n-skip></div>
+        <div class="chart-legend" id="kv-timer-legend" data-i18n-skip></div>
+        <p class="eq" id="kv-timer-eq" data-i18n-skip></p>
+      </div>
       <div class="kv-timer-block" id="kv-timer-block" hidden>
         <h4 class="series-head">Ошибка таймера по режимам</h4>
         <p class="sub-hint">Все режимы аппарата в одной таблице: показания по двум заданиям можно вводить здесь, не переключая режим. τ режима входит в дозу всех его аппликаторов; режим без своих показаний берёт τ ближайшего по напряжению режима. Другие способы вводятся выше, в своём режиме (номер режима открывает его).</p>
@@ -2086,6 +2105,7 @@
           </div>
         </div>
         <div class="kv-ln-x"><span class="label">X = M̄/Q</span><output data-ln="X0"></output><span class="label">к первому заданию</span><output data-ln="d0"></output></div>
+        <button type="button" class="icon-btn kv-ln-del" data-ln-del="0" aria-label="Удалить задание Q₁" title="Удалить задание">×</button>
       </div>
       <div class="kv-ln-row" data-ln-row="1">
         <div class="field kv-ln-q"><label for="kv_ln_q2" id="kv-ln-q2-lbl" data-i18n-skip>Задание Q₂</label><input type="text" id="kv_ln_q2" class="num" inputmode="decimal"></div>
@@ -2101,6 +2121,7 @@
           </div>
         </div>
         <div class="kv-ln-x"><span class="label">X = M̄/Q</span><output data-ln="X1"></output><span class="label">к первому заданию</span><output data-ln="d1"></output></div>
+        <button type="button" class="icon-btn kv-ln-del" data-ln-del="1" aria-label="Удалить задание Q₂" title="Удалить задание">×</button>
       </div>
       <div class="kv-ln-row" data-ln-row="2">
         <div class="field kv-ln-q"><label for="kv_ln_q3" id="kv-ln-q3-lbl" data-i18n-skip>Задание Q₃</label><input type="text" id="kv_ln_q3" class="num" inputmode="decimal"></div>
@@ -2116,6 +2137,7 @@
           </div>
         </div>
         <div class="kv-ln-x"><span class="label">X = M̄/Q</span><output data-ln="X2"></output><span class="label">к первому заданию</span><output data-ln="d2"></output></div>
+        <button type="button" class="icon-btn kv-ln-del" data-ln-del="2" aria-label="Удалить задание Q₃" title="Удалить задание">×</button>
       </div>
       <div class="kv-ln-row" data-ln-row="3">
         <div class="field kv-ln-q"><label for="kv_ln_q4" id="kv-ln-q4-lbl" data-i18n-skip>Задание Q₄</label><input type="text" id="kv_ln_q4" class="num" inputmode="decimal"></div>
@@ -2131,6 +2153,7 @@
           </div>
         </div>
         <div class="kv-ln-x"><span class="label">X = M̄/Q</span><output data-ln="X3"></output><span class="label">к первому заданию</span><output data-ln="d3"></output></div>
+        <button type="button" class="icon-btn kv-ln-del" data-ln-del="3" aria-label="Удалить задание Q₄" title="Удалить задание">×</button>
       </div>
       <div class="kv-ln-row" data-ln-row="4">
         <div class="field kv-ln-q"><label for="kv_ln_q5" id="kv-ln-q5-lbl" data-i18n-skip>Задание Q₅</label><input type="text" id="kv_ln_q5" class="num" inputmode="decimal"></div>
@@ -2146,6 +2169,7 @@
           </div>
         </div>
         <div class="kv-ln-x"><span class="label">X = M̄/Q</span><output data-ln="X4"></output><span class="label">к первому заданию</span><output data-ln="d4"></output></div>
+        <button type="button" class="icon-btn kv-ln-del" data-ln-del="4" aria-label="Удалить задание Q₅" title="Удалить задание">×</button>
       </div>
       </div>
       <div class="grid four">
@@ -2161,6 +2185,12 @@
           </table>
         </div>
       </details>
+      <div class="kv-chart" id="kv-ln-chart-wrap" hidden>
+        <h4 class="series-head">График: показание от задания</h4>
+        <div class="chart-box" id="kv-ln-chart" data-i18n-skip></div>
+        <div class="chart-legend" id="kv-ln-legend" data-i18n-skip></div>
+        <p class="eq" id="kv-ln-eq" data-i18n-skip></p>
+      </div>
       <h4 class="series-head">Допуски по методике учреждения</h4>
       <div class="grid">
         <div class="field"><label for="kv_ln_tol">Отклонение от пропорциональности, не более, %</label><input type="text" id="kv_ln_tol" class="num" inputmode="decimal"><span class="sub">для всех режимов; пусто — без проверки</span></div>
@@ -2441,7 +2471,7 @@
           <div class="field out-cell" id="kv-kg-bykv"><span class="label">k<sub>g</sub> по кВ</span><output data-out="trs.kg.byKv" data-digits="4"></output><span class="sub">для сравнения</span></div>
           <div class="field out-cell" id="kv-kg-spread"><span class="label">Расхождение</span><output data-out="trs.kg.spreadPct" data-digits="2" data-suffix=" %"></output><span class="sub">входит в неопределённость k<sub>g</sub></span></div>
           <div class="field out-cell" id="kv-kg-bw"><span class="label">B<sub>w</sub>(клин.)/B<sub>w</sub>(лаб.)</span><output data-out="trs.kg.bwRatio" data-digits="4"></output></div>
-          <div class="field out-cell" data-show="kv_range:medium;kv_qo:co60"><span class="label">k<sub>z</sub></span><output data-out="cert.kz" data-digits="3"></output><span class="sub">DIN 6809-4: калибровка на 5 см, измерение на 2 см</span></div>
+          <div class="field out-cell" id="kv-kz-field" data-show="kv_range:medium"><span class="label">k<sub>z</sub></span><output data-out="cert.kz" data-digits="3"></output><span class="sub">DIN 6809-4: калибровка на 5 см, измерение на 2 см</span></div>
         </div>
       </div>
       <div data-show="kv_cal:nk">
@@ -3254,8 +3284,15 @@
         <div class="field" data-show="unc_beam_type:kv;unc_kv_range:medium;unc_kv_cal:ndw">
           <label for="unc_kv_qo">Опорное качество Q<sub>o</sub></label>
           <select id="unc_kv_qo">
-            <option value="kv">рентгеновское, на глубине 2 см</option>
-            <option value="co60">⁶⁰Co на 5 см (DIN 6809-4, не по TRS-398 Rev.1)</option>
+            <option value="kv">рентгеновское</option>
+            <option value="co60">⁶⁰Co</option>
+          </select>
+        </div>
+        <div class="field" data-show="unc_beam_type:kv;unc_kv_range:medium;unc_kv_cal:ndw">
+          <label for="unc_kv_depth">Глубина калибровки</label>
+          <select id="unc_kv_depth">
+            <option value="2">2 г/см² (TRS-398 Rev.1)</option>
+            <option value="5">5 см (DIN 6809-4, k_z = 1; не по TRS-398 Rev.1)</option>
           </select>
         </div>
         <div class="field span-2" data-show="unc_beam_type:kv;unc_kv_range:medium;unc_kv_cal:ndw;unc_kv_qo:co60">
@@ -3264,6 +3301,11 @@
             <option value="cert">из калибровки камеры в рентгене (DIN 6809-4)</option>
             <option value="one">калибровки в рентгене нет: k_Q = 1 (не по Rev.1 и DIN)</option>
           </select>
+        </div>
+        <div class="field" data-show="unc_beam_type:kv">
+          <label for="unc_kv_hvldin">Пересчёт СПО сертификата Al ↔ Cu, u, %</label>
+          <input type="text" id="unc_kv_hvldin" class="num" inputmode="decimal" placeholder="нет">
+          <span class="sub">если СПО части качеств пересчитан по DIN 6809-4 (вкладка «kV-рентген»); пусто — пересчёта нет</span>
         </div>
         <div class="field span-2" data-show="unc_beam_type:kv;unc_kv_cal:ndw">
           <label for="unc_kv_kg">k<sub>g</sub> — поправка на поле и РИП</label>
@@ -4056,6 +4098,14 @@
     <button type="button" class="icon-btn" id="term-close" aria-label="Закрыть справку">×</button>
   </div>
   <div class="dlg-body" id="term-body"></div>
+</dialog>
+
+<dialog id="kv-din-dialog" class="term-dialog" aria-labelledby="kv-din-title">
+  <div class="dlg-head">
+    <h2 id="kv-din-title">Пересчёт СПО Al ↔ Cu по DIN 6809-4</h2>
+    <button type="button" class="icon-btn" id="kv-din-close" aria-label="Закрыть">×</button>
+  </div>
+  <div class="dlg-body" id="kv-din-body"></div>
 </dialog>
 
 <script type="module" src="src/ui/app.js"></script>

@@ -16,7 +16,7 @@ import {
 } from '../core/journal.js';
 import {
   newKvApplicator, newKvMachineMode, normalizeKvMachine, applicatorDiameter, applicatorText, kvMachineModeTitle, hvlUnit, kvRefCandidates, kvMachineChecks,
-  KV_ONLY_CHAMBERS, findKvOnlyChamber, kvModelOfJournal,
+  KV_ONLY_CHAMBERS, findKvOnlyChamber, kvModelOfJournal, kvChamberFitsRange,
 } from '../core/kv-machine.js';
 import { kvCertText } from '../core/kv-journal.js';
 import { kvModeUsed, kvAppUsed, kvEquipUsed } from '../core/kv-records.js';
@@ -38,8 +38,8 @@ const fieldId = (kind, id, path) => `eq-${kind}-${id}-${path.replace(/\./g, '-')
 const bind = (kind, id, path) => `id="${val(fieldId(kind, id, path))}" data-bind="${val(`${kind}|${id}|${path}`)}"`;
 
 /** Поле ввода. */
-function input(kind, id, path, value, { num = false, type = 'text', placeholder = '', aria = '' } = {}) {
-  return `<input type="${type}" ${bind(kind, id, path)}${num ? ' class="num" inputmode="decimal"' : ''} value="${val(value)}"${placeholder ? ` placeholder="${val(placeholder)}"` : ''}${aria ? ` aria-label="${val(aria)}"` : ''}>`;
+function input(kind, id, path, value, { num = false, type = 'text', placeholder = '', aria = '', livePh = '' } = {}) {
+  return `<input type="${type}" ${bind(kind, id, path)}${num ? ' class="num" inputmode="decimal"' : ''} value="${val(value)}"${placeholder ? ` placeholder="${val(placeholder)}"` : ''}${aria ? ` aria-label="${val(aria)}"` : ''}${livePh ? ` data-live-ph="${val(livePh)}"` : ''}>`;
 }
 function select(kind, id, path, value, options, { aria = '' } = {}) {
   return `<select ${bind(kind, id, path)}${aria ? ` aria-label="${val(aria)}"` : ''}>${options.map(([v, t]) => `<option value="${val(v)}"${String(v) === String(value ?? '') ? ' selected' : ''}>${esc(plainSymbols(t))}</option>`).join('')}</select>`;
@@ -335,7 +335,9 @@ function kvAppRow(j, m, a, i) {
   </tr>`;
 }
 
-/** Подсказка у референсного аппликатора: какой он по TRS-398 Rev.1. */
+/** Что даёт выбор стандартного аппликатора режима: в дозу он не входит. */
+const REF_ROLE = () => L('В расчёт дозы выбор не входит: во вкладке «kV-рентген» стандартный тубус определяется по геометрии сам. Здесь он задаёт строку, которая откроется первой, и линию режима на графиках журнала; при «Сохранить аппарат в Оборудование» ставится по вкладке.', 'The choice does not enter the dose: the kV x-rays tab finds the standard applicator from the geometry itself. Here it sets the row opened first and the mode line on the journal charts; “Save the unit to Equipment” sets it from the tab.');
+/** Подсказка у стандартного аппликатора: какой он по TRS-398 Rev.1. */
 function kvRefHint(m, x) {
   const c = kvRefCandidates(m, x);
   const byId = new Map(m.applicators.map((a, i) => [a.id, appName(a, i)]));
@@ -357,7 +359,9 @@ function kvModeBlock(j, m, x, i, checks) {
     const n = m.applicators.findIndex((a) => a.id === x.refApplicator);
     if (n >= 0) refOpts.push([x.refApplicator, L(`${appName(m.applicators[n], n)} — не отмечен у режима`, `${appName(m.applicators[n], n)} — not ticked for the mode`)]);
   }
-  const chOpts = [['', L('— не выбрана —', '— not selected —')], ...j.chambers.map((ch) => [ch.id, chamberText(ch) || L('камера без названия', 'unnamed chamber')])];
+  // средним энергиям плоскопараллельная камера не предлагается (TRS-398 Rev.1, разд. 9.2.1); уже выбранная остаётся с пометкой
+  const chName = (ch) => chamberText(ch) || L('камера без названия', 'unnamed chamber');
+  const chOpts = [['', L('— не выбрана —', '— not selected —')], ...j.chambers.filter((ch) => kvChamberFitsRange(ch, x.range) || ch.id === x.chamberId).map((ch) => [ch.id, kvChamberFitsRange(ch, x.range) ? chName(ch) : L(`${chName(ch)} — не для средних энергий`, `${chName(ch)}: not for medium energies`)])];
   if (x.chamberId && !j.chambers.some((ch) => ch.id === x.chamberId)) chOpts.push([x.chamberId, L('— камеры нет в «Оборудовании» —', '— the chamber is not in Equipment —')]);
   const elOpts = [['', L('— не выбран —', '— not selected —')], ...j.electrometers.map((e) => [e.id, electrometerText(e) || L('электрометр без названия', 'unnamed electrometer')])];
   if (x.electrometerId && !j.electrometers.some((e) => e.id === x.electrometerId)) elOpts.push([x.electrometerId, L('— электрометра нет в «Оборудовании» —', '— the electrometer is not in Equipment —')]);
@@ -374,13 +378,13 @@ function kvModeBlock(j, m, x, i, checks) {
       ${field(L(`СПО, ${hvlUnit(x.range)}`, `HVL, ${hvlUnit(x.range)}`), input(k, x.id, 'hvl', x.hvl, { num: true }), { forId: fid('hvl'), sub: L('по нему считается k<sub>Q</sub>', 'k<sub>Q</sub> is calculated from it') })}
       ${field(L('СПО', 'HVL'), select(k, x.id, 'hvlSource', x.hvlSource, [['nominal', L('номинальный', 'nominal')], ['measured', L('измерен', 'measured')]]), { forId: fid('hvlSource'), sub: x.hvlSource === 'measured' ? '' : L('из паспорта или приёмки', 'from the datasheet or acceptance') })}
       ${x.hvlSource === 'measured' ? field(L('Дата измерения СПО', 'HVL measurement date'), input(k, x.id, 'hvlDate', x.hvlDate, { type: 'date' }), { forId: fid('hvlDate') }) : ''}
-      ${field(L('Обозначение режима', 'Mode label'), input(k, x.id, 'label', x.label, { placeholder: t || L('120 кВ / 10 мА / 2 мм Al', '120 kV / 10 mA / 2 mm Al') }), { forId: fid('label'), sub: L('пусто — по напряжению, току и фильтру', 'blank: from the voltage, current and filter') })}
+      ${field(L('Обозначение режима', 'Mode label'), input(k, x.id, 'label', x.label, { placeholder: t || L('120 кВ / 10 мА / 2 мм Al', '120 kV / 10 mA / 2 mm Al'), livePh: `kvmode-label-${x.id}` }), { forId: fid('label'), sub: L('пусто — по напряжению, току и фильтру', 'blank: from the voltage, current and filter') })}
       ${field(L('Камера', 'Chamber'), select(k, x.id, 'chamberId', x.chamberId, chOpts), { forId: fid('chamberId'), cls: 'span-2', sub: L('своя у каждого режима; камеры — в разделе 4', 'each mode has its own; chambers are in section 4') })}
       ${field(L('Электрометр', 'Electrometer'), select(k, x.id, 'electrometerId', x.electrometerId, elOpts), { forId: fid('electrometerId') })}
     </div>
     <div class="field"><span class="label">${esc(L('Аппликаторы режима', 'Applicators of the mode'))}</span><div class="jkv-apps" data-live="kvmode-apps-${val(x.id)}">${apps}</div></div>
     <div class="grid">
-      ${field(L('Референсный аппликатор', 'Reference applicator'), select(k, x.id, 'refApplicator', x.refApplicator, refOpts), { forId: fid('refApplicator'), cls: 'span-2', live: `kvmode-ref-${x.id}`, sub: esc(kvRefHint(m, x)) })}
+      ${field(L('Стандартный аппликатор (необязательно)', 'Standard applicator (optional)'), select(k, x.id, 'refApplicator', x.refApplicator, refOpts), { forId: fid('refApplicator'), cls: 'span-2', live: `kvmode-ref-${x.id}`, sub: esc(`${kvRefHint(m, x)}. ${REF_ROLE()}`) })}
       ${field(L('Примечания', 'Notes'), input(k, x.id, 'notes', x.notes), { forId: fid('notes'), cls: 'span-2' })}
     </div>
     ${kvMsgs(checks.filter((ch) => ch.modeId === x.id), `kvmode-msgs-${x.id}`)}
@@ -629,6 +633,11 @@ function updateHead(el) {
   for (const live of fresh.querySelectorAll('[data-live]')) {
     const cur = card.querySelector(`[data-live="${CSS.escape(live.dataset.live)}"]`);
     if (cur) cur.innerHTML = live.innerHTML;
+  }
+  // подсказки в полях, зависящие от других полей (у режима kV — обозначение по напряжению, току и фильтру)
+  for (const live of fresh.querySelectorAll('[data-live-ph]')) {
+    const cur = card.querySelector(`[data-live-ph="${CSS.escape(live.dataset.livePh)}"]`);
+    if (cur) cur.placeholder = live.placeholder;
   }
 }
 

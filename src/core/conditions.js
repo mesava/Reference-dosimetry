@@ -375,13 +375,22 @@ export const KV_CONDITIONS = [
     id: 'kvQo',
     group: 'route',
     scope: 'trs',
-    label: () => L('калибровка камеры в рентгеновских качествах (Qo — kV-качество)', 'chamber calibrated in x-ray qualities (Qo is a kV quality)'),
-    ref: `${TRS}, разд. 9.2.1; ${DIN}, разд. 6.4.2`,
-    check: (c) => (c.range === 'medium' && c.cal === 'ndw' ? c.qo !== 'co60' : 'na'),
+    label: () => L('калибровка камеры в рентгеновских качествах на глубине 2 г/см²', 'chamber calibrated in x-ray qualities at a depth of 2 g/cm²'),
+    ref: `${TRS}, разд. 9.2.1, ур. (55), (58); ${DIN}, табл. 4, разд. 6.4.2`,
+    check: (c) => (c.range === 'medium' && c.cal === 'ndw' ? !c.kq1 && !c.depth5 : 'na'),
     reason: (c) =>
       c.kq1
         ? L('камера откалибрована только в ⁶⁰Co, k_Q = 1 — ни TRS-398 Rev.1, ни DIN 6809-4', 'the chamber is calibrated in ⁶⁰Co only, k_Q = 1: neither TRS-398 Rev.1 nor DIN 6809-4')
-        : L('Qo = ⁶⁰Co с k_Q,M рентгеновских качеств — способ DIN 6809-4, не TRS-398 Rev.1', 'Qo = ⁶⁰Co with x-ray k_Q,M is the DIN 6809-4 method, not TRS-398 Rev.1'),
+        : L('коэффициенты сертификата на глубине 5 см с k_z = 1 — способ DIN 6809-4, не TRS-398 Rev.1', 'certificate coefficients at a depth of 5 cm with k_z = 1 is the DIN 6809-4 method, not TRS-398 Rev.1'),
+  },
+  {
+    id: 'kvCertHvl',
+    group: 'coefficients',
+    scope: 'trs',
+    label: () => L('СПО качеств сертификата — в металле СПО пучка', 'certificate quality HVLs in the metal of the beam HVL'),
+    ref: `${TRS}, разд. 9.3.1, 9.4.4`,
+    check: (c) => (c.certDin === undefined ? 'na' : !c.certDin),
+    reason: () => L('СПО части качеств сертификата пересчитан в металл пучка по DIN 6809-4, табл. 5 — оценка, не TRS-398 Rev.1', 'the HVL of some certificate qualities is converted to the beam metal with DIN 6809-4, Table 5: an estimate, not TRS-398 Rev.1'),
   },
   {
     id: 'kvPch',

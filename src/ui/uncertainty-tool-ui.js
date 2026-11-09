@@ -204,10 +204,12 @@ function reportText(data, r) {
     line(L('Диапазон энергий', 'Energy range'), f.unc_kv_range === 'medium' ? L('средние: 80–300 кВ (TRS-398 Rev.1, разд. 9)', 'medium: 80–300 kV (TRS-398 Rev.1, Sec. 9)') : L('низкие: 10–100 кВ (TRS-398 Rev.1, разд. 8)', 'low: 10–100 kV (TRS-398 Rev.1, Sec. 8)'));
     line(L('Калибровка камеры', 'Chamber calibration'), f.unc_kv_cal === 'nk' ? L('N_K — воздушная керма в свободном воздухе', 'N_K: air kerma free in air') : L('N_D,w — поглощённая доза в воде', 'N_D,w: absorbed dose to water'));
     if (f.unc_kv_cal === 'ndw') {
-      if (f.unc_kv_range === 'medium') line(L('Опорное качество Qo', 'Reference quality Qo'), f.unc_kv_qo === 'co60' ? L('⁶⁰Co на 5 см (DIN 6809-4, не по TRS-398 Rev.1)', '⁶⁰Co at 5 cm (DIN 6809-4, not TRS-398 Rev.1)') : L('рентгеновское, на глубине 2 см', 'x-ray, at a depth of 2 cm'));
+      if (f.unc_kv_range === 'medium') line(L('Опорное качество Qo', 'Reference quality Qo'), f.unc_kv_qo === 'co60' ? '⁶⁰Co' : L('рентгеновское', 'x-ray'));
+      if (f.unc_kv_range === 'medium') line(L('Глубина калибровки', 'Calibration depth'), f.unc_kv_depth === '5' ? L('5 см (DIN 6809-4, k_z = 1; не по TRS-398 Rev.1)', '5 cm (DIN 6809-4, k_z = 1; not TRS-398 Rev.1)') : L('2 г/см² (TRS-398 Rev.1)', '2 g/cm² (TRS-398 Rev.1)'));
       if (f.unc_kv_range === 'medium' && f.unc_kv_qo === 'co60') line('k_Q,M', f.unc_kv_kq === 'one' ? L('калибровки в рентгене нет: k_Q = 1 (не по TRS-398 Rev.1 и не по DIN 6809-4)', 'no x-ray calibration: k_Q = 1 (neither TRS-398 Rev.1 nor DIN 6809-4)') : L('из калибровки камеры в рентгене (DIN 6809-4)', 'from an x-ray calibration of the chamber (DIN 6809-4)'));
       line('k_g', kvKgText(f.unc_kv_kg));
     }
+    if (String(f.unc_kv_hvldin ?? '').trim()) line(L('Пересчёт СПО сертификата Al ↔ Cu', 'Certificate HVL conversion Al ↔ Cu'), L(`DIN 6809-4, табл. 5 (оценка, не TRS-398 Rev.1): u = ${f.unc_kv_hvldin} %`, `DIN 6809-4, Table 5 (an estimate, not TRS-398 Rev.1): u = ${f.unc_kv_hvldin} %`));
   } else line(L('Калибровка камеры', 'Chamber calibration'), routeText(r.beam, r.route));
   if (r.beam === 'electrons' && Number.isFinite(r.r50)) line('R50', L(`${fmt(r.r50, 2)} г/см²`, `${fmt(r.r50, 2)} g/cm²`));
   line(L('Свидетельство о калибровке', 'Calibration certificate'), b.cert ? L(`U = ${fmt(b.cert.U, 2)} % при k = ${fmt(b.cert.k, b.cert.k % 1 ? 2 : 0)}`, `U = ${fmt(b.cert.U, 2)}% at k = ${fmt(b.cert.k, b.cert.k % 1 ? 2 : 0)}`) : L('не введено — лабораторная часть типового бюджета', 'not entered — laboratory part from the example'));
@@ -307,8 +309,10 @@ function pull(target) {
     patch.unc_kv_range = s.kvRange;
     patch.unc_kv_cal = s.kvCal;
     patch.unc_kv_qo = s.kvQo;
+    patch.unc_kv_depth = s.kvDepth ?? '2';
     patch.unc_kv_kg = s.kvKg;
     patch.unc_kv_kq = s.kvKq ?? 'cert';
+    patch.unc_kv_hvldin = Number.isFinite(s.kvHvlDin) ? fmt(s.kvHvlDin, 2) : '';
   }
   // серии для раскрытия k_i: заменяются данными вкладки; свои оценки, u(T) и u(P) остаются
   const ki = parseKi(cur.unc_ki);

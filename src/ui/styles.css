@@ -691,7 +691,16 @@ table.factors.pc-table .src { display: block; font-size: 11.5px; color: var(--mu
 table.factors.pc-table td.note { font-size: 12px; color: var(--muted); border-bottom: 0; padding-top: 2px; padding-bottom: 2px; }
 /* kV-рентген: таблица качеств сертификата (кВ, СПО, значение) */
 .cert-table { max-width: 560px; }
-.cert-table .pairs-head, .cert-table .pair-row { grid-template-columns: 28px repeat(3, minmax(0, 1fr)); }
+.cert-table .pairs-head, .cert-table .pair-row { grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 72px minmax(0, 1fr); }
+.cert-table .cells-tools { flex-wrap: wrap; align-items: center; }
+.cert-table .cells-tools .link-btn { margin-left: auto; }
+#kv-din-box { margin-top: 8px; }
+.din-table { border-collapse: collapse; font-size: 13px; margin: 6px 0; }
+.din-table th, .din-table td { padding: 3px 10px 3px 0; text-align: left; border-bottom: 1px solid var(--rule); }
+.din-table td.n { font-family: var(--font-mono); }
+.din-calc { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+.din-calc input { width: 9ch; }
+.din-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 
 /* ------------------------------------------------------------ положение камеры (электроны) */
 .positions { margin: 12px 0; padding: 10px 12px; border: 1px dashed var(--accent); border-radius: var(--radius); font-size: 13px; background: var(--accent-soft); }
@@ -1512,6 +1521,9 @@ table.kv-plates select.flag-error, table.kv-plates input.flag-error { border-col
 .kv-ln-x .label { font-size: 12px; color: var(--muted); }
 .kv-ln-x output { font: 500 14px var(--font-mono); font-variant-numeric: tabular-nums; margin-right: 8px; }
 .kv-ln-x output .ua, .out-cell output .ua { font-size: 0.8em; color: var(--muted); }
+.kv-ln-row .kv-ln-del { grid-column: 1; grid-row: 2; justify-self: start; width: 30px; height: 30px; font-size: 16px; }
+.kv-chart { margin-top: 12px; }
+.kv-chart .eq { margin-top: 6px; }
 section[data-kv-page="linearity"] h4.series-head, section[data-kv-page="repro"] h4.series-head { margin-top: 14px; }
 #kv-ln-cl-box[hidden] { display: none; }
 table.kv-ln-cl { font-size: 13px; max-width: 20em; }
@@ -1532,6 +1544,7 @@ table.kv-qaq .kv-qa-pick[aria-pressed="true"] { border-color: var(--accent); bac
 @media (max-width: 560px) {
   .kv-ln-row { grid-template-columns: minmax(0, 1fr); }
   .kv-ln-row .kv-ln-x { grid-column: 1; }
+  .kv-ln-row .kv-ln-del { grid-row: auto; }
   /* строка режима: № | режим, состояние | задания или n, M̄, K | отклонение и CL или R и s/M̄ */
   table.kv-qaq tr { grid-template-columns: 2.2em repeat(3, minmax(0, 1fr)) 1.4em; align-items: start; }
   table.kv-qaq tbody tr.active { background: var(--accent-soft); }
@@ -1553,6 +1566,7 @@ table.kv-qaq .kv-qa-pick[aria-pressed="true"] { border-color: var(--accent); bac
   table.kv-qaq .kv-qa-pick { border: 0; background: none; color: inherit; padding: 0; }
   table.kv-qaq tbody tr.active td { background: none; }
   .kv-ln-row[hidden] { display: none !important; }
+  .kv-ln-del { display: none !important; }
 }
 /* kV: лист «Сводка и протокол» — сводная таблица «аппликатор × режим» и протокол измерений (с 0.45.0) */
 .kv-svd-block + .kv-svd-block { margin-top: 14px; }

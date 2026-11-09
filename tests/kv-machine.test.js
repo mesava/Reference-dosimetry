@@ -98,14 +98,14 @@ test('замечания по аппарату kV', () => {
   const appChecks = kvMachineChecks(unit(apps, [ok]), j).filter((c) => c.appId);
   assert.deepEqual(appChecks.map((c) => [c.appId, c.level]), [['bad', 'error'], ['bad', 'error'], ['e', 'warn']]);
   assert.match(appChecks[0].text, /^аппликатор 3 \(X\): размер — число/);
-  // заполненный режим с референсным по Rev.1 — без замечаний
+  // заполненный режим со стандартным по Rev.1 — без замечаний
   assert.equal(kvMachineChecks(unit(apps, [ok]), j).filter((c) => c.modeId).length, 0);
-  // референсный не тот
+  // стандартный не тот
   const wrong = texts({ ...ok, refApplicator: 'f3' });
-  assert.ok(wrong.some((t) => /^warn: по TRS-398 Rev\.1 \(табл\. 31\) референсный — F10, Ø 10 см, РИП 50 см, а выбран F3/.test(t)), wrong.join('\n'));
-  // референсный не отмечен; не выбран
-  assert.ok(texts({ ...ok, applicators: ['f10'], refApplicator: 'f3' }).includes('error: референсный аппликатор не отмечен у режима'));
-  assert.ok(texts({ ...ok, refApplicator: '' }).includes('warn: референсный аппликатор не выбран'));
+  assert.ok(wrong.some((t) => /^warn: по TRS-398 Rev\.1 \(табл\. 31\) стандартный — F10, Ø 10 см, РИП 50 см, а выбран F3/.test(t)), wrong.join('\n'));
+  // стандартный не отмечен — ошибка; не выбран — замечания нет: он необязателен и в дозу не входит
+  assert.ok(texts({ ...ok, applicators: ['f10'], refApplicator: 'f3' }).includes('error: стандартный аппликатор не отмечен у режима'));
+  assert.equal(kvMachineChecks(unit(apps, [{ ...ok, refApplicator: '' }]), j).filter((c) => c.modeId).length, 0);
   // напряжение вне диапазона, СПО, камера
   assert.ok(texts({ ...ok, kv: '50' }).some((t) => /^warn: 50 кВ вне диапазона средних энергий \(80–300 кВ/.test(t)));
   assert.ok(texts({ ...ok, range: 'low', kv: '150' }).some((t) => /^warn: 150 кВ вне диапазона низких энергий/.test(t)));

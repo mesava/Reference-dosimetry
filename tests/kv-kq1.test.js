@@ -56,7 +56,8 @@ test('вариант «только ⁶⁰Co» — только при Qo = ⁶�
 
 test('бюджет: строка «k_Q = 1» без типового значения — u_c её не включает, пока нет своей оценки', () => {
   const tool = (o) => computeUncertaintyTool({ ...UT_DEFAULTS, unc_beam_type: 'kv', unc_kv_range: 'medium', unc_kv_cal: 'ndw', unc_kv_qo: 'co60', ...o });
-  const din = tool({});
+  // бюджет DIN: коэффициенты на 5 см, строка k_z = 1
+  const din = tool({ unc_kv_depth: '5' });
   const t = tool({ unc_kv_kq: 'one' });
   const row = t.budget.rows.find((r) => r.key === 't33ndw.st_kq1');
   assert.ok(row);

@@ -5,7 +5,9 @@ import { L } from '../core/i18n.js';
 import { KV_LN_N, KV_LN_Q, KV_LN_SERIES } from '../core/kv-qa.js';
 import { KV_SET_UNITS } from '../core/kv.js';
 import { parseCells } from '../core/units.js';
-import { $, $$, esc, fmt, fmtSigned } from './common.js';
+import { linearFit } from '../core/jaffe.js';
+import { $, $$, esc, fmt, fmtSigned, richText } from './common.js';
+import { scatterChart, legendSwatch } from './chart.js';
 
 let api = null;
 
@@ -51,6 +53,8 @@ function renderLnRows(f, ln) {
   for (let i = 0; i < KV_LN_N; i++) {
     const row = $(`#kv-sheet [data-ln-row="${i}"]`);
     row.hidden = i >= 2 && !filled(i) && !filled(i - 1);
+    // удалить можно задание, в котором что-то введено
+    row.querySelector('.kv-ln-del').hidden = !filled(i);
     const lbl = $(`#kv-ln-q${i + 1}-lbl`);
     const t = L(`Задание Q${SUB[i + 1]}, ${u}`, `Setting Q${SUB[i + 1]}, ${u}`);
     if (lbl.textContent !== t) lbl.textContent = t;
@@ -67,6 +71,62 @@ function renderLnRows(f, ln) {
   const box = $('#kv-ln-cl-box');
   box.hidden = !ln.ok || ln.cl.length < 2;
   if (!box.hidden) setOut('#kv-ln-cl', ln.cl.map((c) => `<tr${c.value === ln.clMax ? ' class="sum"' : ''}><td>${c.i + 1} – ${c.j + 1}</td><td class="v">${fmt(c.value, 4)}</td></tr>`).join(''));
+}
+
+/** График линейности: средние показания от задания, прямая по методу наименьших квадратов и пропорциональность по первому заданию. */
+function renderLnChart(f, ln) {
+  const wrap = $('#kv-ln-chart-wrap');
+  const P = ln.ok ? ln.points : [];
+  wrap.hidden = P.length < 2;
+  if (wrap.hidden) return;
+  const u = unitOf(f);
+  const fit = linearFit(P.map((p) => p.q), P.map((p) => p.abs));
+  const r0 = P[0];
+  const qMax = Math.max(...P.map((p) => p.q));
+  const pts = P.map((p) => ({ x: p.q, y: p.abs, title: L(`Задание ${p.i + 1}: Q = ${sig(p.q)} ${u}, M̄ = ${sig(p.abs)}`, `Setting ${p.i + 1}: Q = ${sig(p.q)} ${u}, M̄ = ${sig(p.abs)}`) }));
+  const lines = [{ cls: 's2', a: 0, b: r0.X, x0: 0, x1: qMax * 1.05, dashed: true }];
+  if (fit) lines.push({ cls: 's1', a: fit.a, b: fit.b, x0: 0, x1: qMax * 1.05 });
+  scatterChart($('#kv-ln-chart'), {
+    label: L('Линейность: среднее показание от задания облучения', 'Linearity: mean reading versus exposure setting'),
+    xLabel: L(`Задание Q, ${u}`, `Setting Q, ${u}`),
+    yLabel: L('Среднее показание M̄', 'Mean reading M̄'),
+    fmt,
+    xInclude: [0],
+    yInclude: [0],
+    aspect: 0.5,
+    series: [{ cls: 's1', points: pts }],
+    lines,
+  });
+  const items = [
+    [legendSwatch({ cls: 's1' }), L('M̄ при задании', 'M̄ at the setting')],
+    [legendSwatch({ line: true, cls: 's1' }), L('прямая по точкам', 'fitted line')],
+    [legendSwatch({ line: true, dashed: true, cls: 's2' }), L(`пропорциональность по заданию ${r0.i + 1}: M̄ = X₁·Q`, `proportionality to setting ${r0.i + 1}: M̄ = X₁·Q`)],
+  ];
+  setOut('#kv-ln-legend', items.map(([sw, t]) => `<span class="item">${sw}<span>${esc(t)}</span></span>`).join(''));
+  const eq = fit
+    ? L(
+        `Прямая по точкам: M̄ = ${sig(fit.b)}·Q ${fit.a < 0 ? '−' : '+'} ${sig(Math.abs(fit.a))}${P.length > 2 ? `, R² = ${fmt(fit.r2, 5)}` : ' (через две точки)'}. При пропорциональном выходе точки лежат на прямой через начало координат; отрезок на оси показаний — вклад, не зависящий от задания (например, ошибка таймера).`,
+        `Fitted line: M̄ = ${sig(fit.b)}·Q ${fit.a < 0 ? '−' : '+'} ${sig(Math.abs(fit.a))}${P.length > 2 ? `, R² = ${fmt(fit.r2, 5)}` : ' (through two points)'}. With a proportional output the points lie on a line through the origin; the intercept on the reading axis is a contribution independent of the setting (for example, the timer error).`,
+      )
+    : '';
+  setOut('#kv-ln-eq', richText(eq));
+}
+
+/** Удалить задание i линейности: следующие задания сдвигаются вверх, последнее становится пустым. */
+function deleteLnRow(i) {
+  const q = KV_LN_Q.map((k) => $(`#${k}`).value);
+  const m = KV_LN_SERIES.map((k) => api.readSeries(k));
+  q.splice(i, 1);
+  m.splice(i, 1);
+  q.push('');
+  m.push(['', '', '']);
+  KV_LN_Q.forEach((k, j) => {
+    $(`#${k}`).value = q[j];
+  });
+  KV_LN_SERIES.forEach((k, j) => api.writeSeries(k, m[j]));
+  api.changed();
+  // фокус — на задание, вставшее на место удалённого (или на первое)
+  $(`#${KV_LN_Q[Math.min(i, KV_LN_N - 1)]}`)?.focus();
 }
 
 function settingsText(f) {
@@ -128,6 +188,7 @@ export function renderQaSheets(f, vr) {
   const v = api.getVisit();
   const mr = vr.modes[v.mode];
   renderLnRows(f, mr.ln);
+  renderLnChart(f, mr.ln);
   renderLnTable(vr);
   renderRp(mr.rp);
   renderRpTable(vr);
@@ -194,9 +255,15 @@ export function qaReportLines(visit, vr) {
   return out;
 }
 
-/** Подключить листы: a — { getVisit, modeName(m), selectMode(m) }. */
+/**
+ * Подключить листы: a — { getVisit, modeName(m), selectMode(m), readSeries(key), writeSeries(key, cells), changed() }.
+ */
 export function setupKvQa(a) {
   api = a;
+  $('#kv-sheet').addEventListener('click', (e) => {
+    const b = e.target.closest('.kv-ln-del');
+    if (b) deleteLnRow(Number(b.dataset.lnDel));
+  });
   for (const id of ['#kv-lnq-body', '#kv-rpq-body']) {
     $(id).addEventListener('click', (e) => {
       const b = e.target.closest('.kv-qa-pick');

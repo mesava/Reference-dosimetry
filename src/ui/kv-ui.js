@@ -1,5 +1,6 @@
 // Модуль «kV-рентген»: связывает форму с расчётным ядром kv.js (TRS-398 Rev.1, разд. 8 и 9).
-import { KV_DEFAULTS, KV_SET_UNITS, normalizeKv } from '../core/kv.js';
+import { KV_DEFAULTS, KV_SET_UNITS, KV_RANGES, normalizeKv, certRows, certValue, certDinSensitivity } from '../core/kv.js';
+import { DIN_TH, DIN_HVL_DEV, dinHvlConvert } from '../core/kv-din.js';
 import {
   emptyKvRow, kvRowLabel, kvRowEmpty, KV_ROW_KEYS, normalizeKvVisit, splitKvVisitForm, kvVisitRowForm, computeKvVisit, newKvMode, newKvChamber,
   kvModeFrom } from '../core/kv-session.js';
@@ -8,10 +9,11 @@ import { TG61_T8_CHAMBER } from '../core/kv-tg61.js';
 import { SAMPLE_KV, SAMPLE_KV_EN, SAMPLE_KV_ROWS, SAMPLE_KV_MODE2, SAMPLE_KV_MODE2_EN } from '../core/sample-kv.js';
 import { L, getLang, refText } from '../core/i18n.js';
 import { localizeDecimals } from './i18n.js';
-import { PRESSURE_UNITS, NDW_UNITS, unitLabel, dec, parseCells } from '../core/units.js';
+import { PRESSURE_UNITS, NDW_UNITS, unitLabel, dec, parseCells, parseNumber } from '../core/units.js';
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, renderPairs, readPairs, setupPairs } from './widgets.js';
 import { refreshSectionNav } from './section-nav.js';
+import { scatterChart, legendSwatch } from './chart.js';
 import { setupKvJournal, renderKvJournal } from './kv-journal-ui.js';
 import { setupKvHvl, renderHvlSheet, renderPlates, readPlates, hvlFieldSub, hvlReportLines } from './kv-hvl-ui.js';
 import { KV_PLATE_KEYS, hvlDecimals } from '../core/kv-hvl.js';
@@ -36,7 +38,7 @@ const DRAFT_KEY = 'reference-dosimetry.kv.v1';
 const FILE_TAG = { app: 'reference-dosimetry', module: 'kv', version: 3 };
 const SERIES_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc', 'kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc', 'kv_ln_M1', 'kv_ln_M2', 'kv_ln_M3', 'kv_ln_M4', 'kv_ln_M5', 'kv_rp_M'];
 const PAIR_KEYS = ['kv_tt', 'kv_tm'];
-const CERT_KEYS = ['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_val'];
+const CERT_KEYS = ['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_mat', 'kv_cq_val'];
 const PROTO_NAME = 'TRS-398 Rev.1';
 const ROOT = () => document.getElementById('module-kv');
 let setStatus = () => {};
@@ -127,13 +129,28 @@ const isDemo = (d) => [SAMPLE_KV.kv_institution, SAMPLE_KV_EN.kv_institution].in
 // ------------------------------------------------------------ таблица качеств сертификата
 const certList = () => $('#kv-cert-rows');
 
-function renderCert(kvs, hvls, vals) {
-  const n = Math.max(1, kvs?.length || 0, hvls?.length || 0, vals?.length || 0);
+// металл СПО пучка — по диапазону энергий (прил. III Rev.1: до 100 кВ — Al, выше — Cu)
+const beamMat = () => KV_RANGES[$('#kv_range')?.value]?.material ?? 'Al';
+
+/**
+ * Таблица качеств сертификата: c = { kv, hvl, mat, val } — столбцы. Металл СПО у строки свой: пустой (файлы до 0.49.3 и
+ * новые строки) показывается как металл пучка и помечается data-auto — такой список следует за диапазоном энергий, пока его
+ * не выберут вручную.
+ */
+function renderCert({ kv = [], hvl = [], mat = [], val = [] } = {}) {
+  const n = Math.max(1, kv.length, hvl.length, mat.length, val.length);
+  const no = (i) => `${L('качество', 'quality')} ${i + 1}`;
   const cell = (cls, key, i, v, label) =>
-    `<input type="text" class="num ${cls}" inputmode="decimal" id="${key}_${i}" aria-label="${esc(label)}, ${L('качество', 'quality')} ${i + 1}" value="${esc(v ?? '')}">`;
+    `<input type="text" class="num ${cls}" inputmode="decimal" id="${key}_${i}" aria-label="${esc(label)}, ${no(i)}" value="${esc(v ?? '')}">`;
+  const metal = (i) => {
+    const m = mat[i] === 'Al' || mat[i] === 'Cu' ? mat[i] : '';
+    const v = m || beamMat();
+    const opt = (x) => `<option value="${x}"${x === v ? ' selected' : ''}>${x}</option>`;
+    return `<select class="cq-mat" id="kv_cq_mat_${i}" aria-label="${esc(L('Металл СПО', 'HVL metal'))}, ${no(i)}"${m ? '' : ' data-auto="1"'}>${opt('Al')}${opt('Cu')}</select>`;
+  };
   const rows = [];
   for (let i = 0; i < n; i++) {
-    rows.push(`<div class="pair-row"><span class="pair-no">${i + 1}</span>${cell('cq-kv', 'kv_cq_kv', i, kvs?.[i], L('Напряжение, кВ', 'Voltage, kV'))}${cell('cq-hvl', 'kv_cq_hvl', i, hvls?.[i], L('СПО', 'HVL'))}${cell('cq-val', 'kv_cq_val', i, vals?.[i], L('Значение из сертификата', 'Certificate value'))}</div>`);
+    rows.push(`<div class="pair-row"><span class="pair-no">${i + 1}</span>${cell('cq-kv', 'kv_cq_kv', i, kv[i], L('Напряжение, кВ', 'Voltage, kV'))}${cell('cq-hvl', 'kv_cq_hvl', i, hvl[i], L('СПО', 'HVL'))}${metal(i)}${cell('cq-val', 'kv_cq_val', i, val[i], L('Значение из сертификата', 'Certificate value'))}</div>`);
   }
   certList().innerHTML = rows.join('');
   $('#kv-cert-remove').disabled = n <= 1;
@@ -141,7 +158,8 @@ function renderCert(kvs, hvls, vals) {
 
 function readCert() {
   const col = (cls) => $$(`#kv-cert-rows .${cls}`).map((i) => i.value);
-  return { kv: col('cq-kv'), hvl: col('cq-hvl'), val: col('cq-val') };
+  const mat = $$('#kv-cert-rows .cq-mat').map((s) => (s.dataset.auto ? '' : s.value));
+  return { kv: col('cq-kv'), hvl: col('cq-hvl'), mat, val: col('cq-val') };
 }
 
 // ------------------------------------------------------------ форма ↔ данные
@@ -168,6 +186,7 @@ function readForm() {
   const c = readCert();
   data.kv_cq_kv = c.kv;
   data.kv_cq_hvl = c.hvl;
+  data.kv_cq_mat = c.mat;
   data.kv_cq_val = c.val;
   return data;
 }
@@ -187,7 +206,7 @@ function writeForm(values) {
     }
   }
   renderPairs(pairsBox(), data.kv_tt, data.kv_tm);
-  renderCert(data.kv_cq_kv, data.kv_cq_hvl, data.kv_cq_val);
+  renderCert({ kv: data.kv_cq_kv, hvl: data.kv_cq_hvl, mat: data.kv_cq_mat, val: data.kv_cq_val });
   renderPlates(data);
   localizeDecimals(ROOT());
 }
@@ -634,6 +653,89 @@ function timerRowHtml(m) {
     <td class="v tau" data-o="tau"${cap(`τ, ${u}`)}></td>
     <td class="act"><span class="st" role="img"></span></td>
   </tr>`;
+}
+
+/** Число с n значащими цифрами. */
+const sigFmt = (v, n = 5) => {
+  if (!Number.isFinite(v)) return '—';
+  const a = Math.abs(v);
+  return fmt(v, a > 0 ? Math.max(0, Math.min(8, n - 1 - Math.floor(Math.log10(a)))) : 0);
+};
+
+/**
+ * График ошибки таймера, как в книге учреждения: по оси x — показание, по оси y — задание облучения. Прямая — та же, по
+ * которой посчитана τ (R = Ṁ·(T + τ), т. е. T = R/Ṁ − τ): при нулевом показании она проходит через T = −τ.
+ */
+function renderTimerChart(data, result) {
+  const wrap = $('#kv-timer-chart-wrap');
+  const t = result.timer;
+  const U = KV_SET_UNITS[data.kv_set_unit] ?? KV_SET_UNITS.min;
+  let unit = L(U.label, U.labelEn);
+  let pts = [];
+  const raw = [];
+  let k = NaN;
+  let tau = NaN;
+  if (data.kv_timer_mode === 'measured' && Number.isFinite(t.slope) && !t.from) {
+    for (let i = 0; i < Math.max(data.kv_tt.length, data.kv_tm.length); i++) {
+      const T = parseNumber(data.kv_tt[i]);
+      const M = parseNumber(data.kv_tm[i]);
+      if (Number.isFinite(T) && Number.isFinite(M)) pts.push({ x: Math.abs(M), y: T });
+    }
+    k = 1 / t.slope;
+    tau = t.tau;
+  } else if (data.kv_timer_mode === 'twopoint' && Number.isFinite(t.tauT) && !t.from) {
+    if (U.time) unit = L('с', 's');
+    pts = [{ x: t.R1, y: t.t1 }, { x: t.R2, y: t.t2 }];
+    for (const [key, T] of [['kv_tp_R1', t.t1], ['kv_tp_R2', t.t2]]) for (const v of parseCells(data[key]).values) raw.push({ x: Math.abs(v), y: T, hollow: true });
+    k = (t.t2 - t.t1) / (t.R2 - t.R1);
+    tau = t.tauT;
+  }
+  wrap.hidden = pts.length < 2 || !Number.isFinite(k) || !Number.isFinite(tau);
+  if (wrap.hidden) return;
+  const n = pts.length;
+  // τ — с теми же знаками, что в таблице по режимам и выводах: секунды — два, иначе — четыре
+  const tDig = unit === L('с', 's') ? 2 : 4;
+  // R² — квадрат коэффициента корреляции (тот же для прямой T(R) и R(T))
+  const mx = pts.reduce((s, p) => s + p.x, 0) / n;
+  const my = pts.reduce((s, p) => s + p.y, 0) / n;
+  const sxy = pts.reduce((s, p) => s + (p.x - mx) * (p.y - my), 0);
+  const sxx = pts.reduce((s, p) => s + (p.x - mx) ** 2, 0);
+  const syy = pts.reduce((s, p) => s + (p.y - my) ** 2, 0);
+  const r2 = sxx > 0 && syy > 0 ? (sxy * sxy) / (sxx * syy) : NaN;
+  const xMax = Math.max(...pts.map((p) => p.x), ...raw.map((p) => p.x));
+  const tip = (p) => L(`задание ${sigFmt(p.y)} ${unit}, показание ${sigFmt(p.x)} нКл`, `setting ${sigFmt(p.y)} ${unit}, reading ${sigFmt(p.x)} nC`);
+  const series = [];
+  if (raw.length) series.push({ cls: 's1', points: raw.map((p) => ({ ...p, title: tip(p) })) });
+  series.push({ cls: 's1', points: pts.map((p) => ({ ...p, title: (raw.length ? L('среднее: ', 'mean: ') : '') + tip(p) })) });
+  series.push({ cls: 's2', shape: 'diamond', points: [{ x: 0, y: -tau, title: L(`T = −τ = ${fmtSigned(-tau, tDig)} ${unit}`, `T = −τ = ${fmtSigned(-tau, tDig)} ${unit}`) }] });
+  scatterChart($('#kv-timer-chart'), {
+    label: L('Ошибка таймера: задание облучения от показания электрометра', 'Timer error: exposure setting versus electrometer reading'),
+    xLabel: L('Показание электрометра, нКл', 'Electrometer reading, nC'),
+    yLabel: L(`Задание T, ${unit}`, `Setting T, ${unit}`),
+    fmt,
+    xInclude: [0],
+    yInclude: [0, -tau],
+    aspect: 0.5,
+    series,
+    lines: [{ cls: 's1', a: -tau, b: k, x0: 0, x1: xMax * 1.05 }],
+    notes: [{ x: 0, y: -tau, text: `−τ`, below: tau > 0 }],
+  });
+  const items = [[legendSwatch({ cls: 's1' }), raw.length ? L('средние показания при T₁ и T₂', 'mean readings at T₁ and T₂') : L('облучения серии', 'exposures of the series')]];
+  if (raw.length) items.push([legendSwatch({ cls: 's1', hollow: true }), L('отдельные показания', 'individual readings')]);
+  items.push([legendSwatch({ line: true, cls: 's1' }), L('прямая T = k·M + c', 'line T = k·M + c')]);
+  items.push([legendSwatch({ cls: 's2', shape: 'diamond' }), L('пересечение с осью задания: T = −τ', 'intercept on the setting axis: T = −τ')]);
+  html($('#kv-timer-legend'), items.map(([sw, s]) => `<span class="item">${sw}<span>${esc(s)}</span></span>`).join(''));
+  const c = -tau;
+  const r2Txt = n > 2 ? `, R² = ${fmt(r2, 5)}` : L(' (через две точки)', ' (through two points)');
+  html(
+    $('#kv-timer-eq'),
+    richText(
+      L(
+        `Прямая: T = ${sigFmt(k)}·M ${c < 0 ? '−' : '+'} ${sigFmt(Math.abs(c))} ${unit}${r2Txt}. При нулевом показании задание равно −τ, откуда τ = ${fmtSigned(tau, tDig)} ${unit}. Это та же τ, что входит в дозу: D/(X + τ).`,
+        `Line: T = ${sigFmt(k)}·M ${c < 0 ? '−' : '+'} ${sigFmt(Math.abs(c))} ${unit}${r2Txt}. At zero reading the setting equals −τ, hence τ = ${fmtSigned(tau, tDig)} ${unit}. This is the same τ that enters the dose: D/(X + τ).`,
+      ),
+    ),
+  );
 }
 
 /** Таблица ошибки таймера по режимам: строится заново, кроме ввода в ней самой (фокус остаётся в поле). */
@@ -1164,14 +1266,14 @@ function eqHint(r) {
       'Ур. (57): D_w,z=2 = M_Q · N_K,Q · [μen/ρ]w,air z=2 · p_ch — цилиндрическая камера в воде на глубине 2 г/см². p_ch — по табл. 32.',
       'Eq. (57): D_w,z=2 = M_Q · N_K,Q · [μen/ρ]w,air z=2 · p_ch, with a cylindrical chamber in water at a depth of 2 g/cm². p_ch from Table 32.',
     ),
-    'medium-ndw': co
+    'medium-ndw': r.depth5 || r.cert?.kq1
       ? L(
-          'DIN 6809-4: D_w,z=2 = M_Q · N_D,w(⁶⁰Co) · k_Q,M · k_z · k_g, k_z = 1 — не по TRS-398 Rev.1, результат помечается как нестандартный.',
-          'DIN 6809-4: D_w,z=2 = M_Q · N_D,w(⁶⁰Co) · k_Q,M · k_z · k_g, k_z = 1. This is not TRS-398 Rev.1, and the result is flagged as non-standard.',
+          `DIN 6809-4: D_w,z=2 = M_Q · N_D,w${co ? '(⁶⁰Co)' : ',Qo'} · k_Q,M · k_z · k_g, k_z = 1 — коэффициенты на 5 см, доза на 2 см; не по TRS-398 Rev.1, результат помечается как нестандартный.`,
+          `DIN 6809-4: D_w,z=2 = M_Q · N_D,w${co ? '(⁶⁰Co)' : ',Qo'} · k_Q,M · k_z · k_g, k_z = 1: coefficients at 5 cm, dose at 2 cm. This is not TRS-398 Rev.1, and the result is flagged as non-standard.`,
         )
       : L(
-          'Ур. (58): D_w,z=2 = M_Q · N_D,w,Q · k_g — цилиндрическая камера в воде на глубине 2 г/см². k_g по ур. (90): отношение [μen/ρ]w,air z=2 для поля и РИП клиники и лаборатории.',
-          'Eq. (58): D_w,z=2 = M_Q · N_D,w,Q · k_g, with a cylindrical chamber in water at a depth of 2 g/cm². k_g by Eq. (90): the ratio of [μen/ρ]w,air z=2 for the clinical and laboratory field and SSD.',
+          `Ур. (58): D_w,z=2 = M_Q · N_D,w,Q · k_g — цилиндрическая камера в воде на глубине 2 г/см²${co ? '; N_D,w,Q = N_D,w(⁶⁰Co) · k(Q), коэффициенты рентгеновских качеств на 2 г/см²' : ''}. k_g по ур. (90): отношение [μen/ρ]w,air z=2 для поля и РИП клиники и лаборатории.`,
+          `Eq. (58): D_w,z=2 = M_Q · N_D,w,Q · k_g, with a cylindrical chamber in water at a depth of 2 g/cm²${co ? '; N_D,w,Q = N_D,w(⁶⁰Co) · k(Q), with the x-ray quality coefficients at 2 g/cm²' : ''}. k_g by Eq. (90): the ratio of [μen/ρ]w,air z=2 for the clinical and laboratory field and SSD.`,
         ),
   }[key];
 }
@@ -1210,7 +1312,8 @@ function applyVisibility(data, result) {
   const timeSet = data.kv_set_unit === 'min' || data.kv_set_unit === 's';
 
   $('#kv-lbl-hvl').textContent = L(`СПО, мм ${mat}`, `HVL, mm ${mat}`);
-  $('#kv-lbl-cq-hvl').textContent = L(`СПО, мм ${mat}`, `HVL, mm ${mat}`);
+  // металл СПО строк сертификата, не выбранный вручную, следует за пучком
+  for (const s of $$('#kv-cert-rows .cq-mat[data-auto]')) s.value = mat;
   const shape = data.kv_cone_shape;
   $('#kv-lbl-cone').textContent = shape === 'square' ? L('Сторона поля, см', 'Field side, cm') : shape === 'rect' ? L('Сторона a, см', 'Side a, cm') : L('Диаметр поля, см', 'Field diameter, cm');
   $('#kv-feq-sub').textContent = shape === 'rect' ? 'd = 2√(ab/π)' : 'd = 2a/√π';
@@ -1255,6 +1358,28 @@ function applyVisibility(data, result) {
   }
   html($('#kv-chamber-info'), richText(info.join(' · ')));
   $('#kv-foil-field').hidden = !(c && c.type === 'pp');
+  // плоскопараллельную камеру калибруют на поверхности фантома (низкие энергии): Qo и глубина средних энергий ей не нужны
+  if (c && c.type === 'pp') for (const k of ['kv_qo', 'kv_cal_depth']) $(`#${k}`).closest('.field').hidden = true;
+  // способ ошибки таймера «X против n облучений по X/n» (до 0.49.3) — в списке, только если он уже выбран
+  $('#kv_timer_mode option[value="nexp"]').hidden = data.kv_timer_mode !== 'nexp';
+  // k_z (DIN 6809-4) — только когда коэффициенты отнесены к 5 см или k_Q принят равным 1
+  if (!Number.isFinite(result.cert?.kz)) $('#kv-kz-field').hidden = true;
+  // пересчёт СПО по DIN: флажок — когда в сертификате есть строки в другом металле (или пересчёт уже включён)
+  const otherRows = result.cert?.other ?? [];
+  $('#kv-din-box').hidden = !(otherRows.length || data.kv_cq_din);
+  const otherMat = mat === 'Al' ? 'Cu' : 'Al';
+  html(
+    $('#kv-din-sub'),
+    richText(
+      !otherRows.length
+        ? L(`строк с СПО в мм ${otherMat} в таблице нет`, `the table has no rows with the HVL in mm ${otherMat}`)
+        : Number.isFinite(result.cert.din?.uPct) && result.cert.din.deltaPct < 0.005
+          ? L(`строки ${otherRows.map((x) => x.row).join(', ')}: на значение для пучка пересчёт практически не влияет (меньше 0,01 %)`, `rows ${otherRows.map((x) => x.row).join(', ')}: the conversion practically does not affect the value for the beam (less than 0.01 %)`)
+        : Number.isFinite(result.cert.din?.uPct)
+          ? L(`строки ${otherRows.map((x) => x.row).join(', ')}: ${dinValueName(data.kv_cert_form)} для пучка зависит от пересчёта на ${fmt(result.cert.din.deltaPct, 2)} % (u = ${fmt(result.cert.din.uPct, 2)} %) — подробнее в окне пересчёта`, `rows ${otherRows.map((x) => x.row).join(', ')}: ${dinValueName(data.kv_cert_form)} for the beam depends on the conversion by ${fmt(result.cert.din.deltaPct, 2)} % (u = ${fmt(result.cert.din.uPct, 2)} %); details in the conversion window`)
+          : L(`строки ${otherRows.map((x) => x.row).join(', ')} — СПО в мм ${otherMat}; как считается и насколько это точно — в окне пересчёта`, `rows ${otherRows.map((x) => x.row).join(', ')} give the HVL in mm ${otherMat}; how it is calculated and how accurate it is, see the conversion window`),
+    ),
+  );
 
   // сертификат
   const ns = nSym(result.cal);
@@ -1271,7 +1396,7 @@ function applyVisibility(data, result) {
         : form === 'co'
           ? L('в пучке ⁶⁰Co на глубине 5 см; калибровки в рентгене нет — k_Q = 1', 'in the ⁶⁰Co beam at a depth of 5 cm; no x-ray calibration, so k_Q = 1')
           : co
-          ? L('в пучке ⁶⁰Co на глубине 5 см', 'in the ⁶⁰Co beam at a depth of 5 cm')
+          ? L('N_D,w в пучке ⁶⁰Co; N_Q = N · k_Q,M(СПО)', 'N_D,w in the ⁶⁰Co beam; N_Q = N · k_Q,M(HVL)')
           : L('при опорном качестве Qo; N_Q = N_Qo · k_Q(СПО)', 'at the reference quality Qo; N_Q = N_Qo · k_Q(HVL)'),
     ),
   );
@@ -1285,8 +1410,8 @@ function applyVisibility(data, result) {
     $('#kv-cert-note'),
     richText(
       L(
-        `Строка — качество из сертификата: напряжение (для записи), СПО в мм ${mat} и значение. Порядок строк любой. СПО пучка должен лежать между крайними качествами, иначе значение экстраполируется по ln(СПО) с предупреждением.${form === 'k' ? ' K заменяет k_Q: N_Q = N_Д · K.' : ''}`,
-        `Each row is a quality from the certificate: the voltage (for the record), the HVL in mm ${mat} and the value. Rows may be in any order. The beam HVL should lie between the outermost qualities; otherwise the value is extrapolated in ln(HVL) with a warning.${form === 'k' ? ' K replaces k_Q: N_Q = N_D · K.' : ''}`,
+        `Строка — качество из сертификата: напряжение (для записи), СПО с металлом, как в сертификате, и значение. Порядок строк любой. В интерполяцию идут строки с СПО в мм ${mat}, как у пучка; строки в другом металле — только после пересчёта по DIN 6809-4 (справочно). СПО пучка должен лежать между крайними качествами, иначе значение экстраполируется по ln(СПО) с предупреждением.${form === 'k' ? ' K заменяет k_Q: N_Q = N_Д · K.' : ''}`,
+        `Each row is a quality from the certificate: the voltage (for the record), the HVL with its metal as in the certificate, and the value. Rows may be in any order. Rows with the HVL in mm ${mat}, as for the beam, are used in the interpolation; rows in the other metal only after the DIN 6809-4 conversion (for reference). The beam HVL should lie between the outermost qualities; otherwise the value is extrapolated in ln(HVL) with a warning.${form === 'k' ? ' K replaces k_Q: N_Q = N_D · K.' : ''}`,
       ),
     ),
   );
@@ -1294,7 +1419,7 @@ function applyVisibility(data, result) {
     $('#kv-lab-hint'),
     richText(
       co
-        ? L('Поле и РИП, при которых измерены k_Q,M рентгеновских качеств (DIN 6809-4): по ним считается k_g (раздел 8).', 'The field and SSD at which the x-ray k_Q,M were measured (DIN 6809-4): k_g is calculated from them (section 8).')
+        ? L('Поле и РИП, при которых измерены коэффициенты рентгеновских качеств (k_Q,M или K): по ним считается k_g (раздел 8).', 'The field and SSD at which the x-ray quality coefficients (k_Q,M or K) were measured: k_g is calculated from them (section 8).')
         : L('Поле и РИП, при которых получены коэффициенты сертификата: если клинические другие, нужна поправка k_g (раздел 8).', 'The field and SSD at which the certificate coefficients were obtained: if the clinical ones differ, a k_g correction is needed (section 8).'),
     ),
   );
@@ -1376,7 +1501,7 @@ function pcHint(r) {
     );
   }
   return L(
-    `Ветка N_D,w сравнивается с ${r.qo === 'co60' ? 'DIN 6809-4' : 'DIN 6809-4 и SSRMP No 9'}: D = M · N_D,w,Q без поправки на поле и РИП (k_g = 1). У TG-61 варианта для N_D,w нет.`,
+    `Ветка N_D,w сравнивается с ${r.qo === 'co60' || r.depth5 ? 'DIN 6809-4' : 'DIN 6809-4 и SSRMP No 9'}: D = M · N_D,w,Q без поправки на поле и РИП (k_g = 1). У TG-61 варианта для N_D,w нет.`,
     `The N_D,w branch is compared with ${r.qo === 'co60' ? 'DIN 6809-4' : 'DIN 6809-4 and SSRMP No 9'}: D = M · N_D,w,Q with no field and SSD correction (k_g = 1). TG-61 has no N_D,w variant.`,
   );
 }
@@ -1449,8 +1574,9 @@ function snapshot(result) {
 }
 const snapCmp = (result) => ({ keys: ['value', 'perUnit', 'D'], main: 'value', digits: 4, unit: result.trs.rateLabel });
 
-/** Метод расчёта для подписи итога: уравнение TRS-398 Rev.1 или DIN 6809-4 при Qo = ⁶⁰Co. */
-const methodText = (r) => (r.qo === 'co60' ? L('DIN 6809-4, Qo = ⁶⁰Co (не TRS-398 Rev.1)', 'DIN 6809-4, Qo = ⁶⁰Co (not TRS-398 Rev.1)') : `${PROTO_NAME}, ${r.trs.equation}`);
+/** Метод расчёта для подписи итога: уравнение TRS-398 Rev.1 или DIN 6809-4 при коэффициентах на 5 см (k_z = 1). */
+const dinMethod = (r) => r.depth5 || r.cert?.kq1;
+const methodText = (r) => (dinMethod(r) ? L(`DIN 6809-4, ${r.qo === 'co60' ? 'Qo = ⁶⁰Co, ' : ''}калибровка на 5 см (не TRS-398 Rev.1)`, `DIN 6809-4, ${r.qo === 'co60' ? 'Qo = ⁶⁰Co, ' : ''}calibration at 5 cm (not TRS-398 Rev.1)`) : `${PROTO_NAME}, ${r.trs.equation}`);
 
 function doseRow(result) {
   const x = result.trs;
@@ -1568,7 +1694,7 @@ function renderReadout(result, data) {
   rows.push([L(`N<sub>${ns},Q</sub>, Гр/нКл`, `N<sub>${ns},Q</sub>, Gy/nC`), '', c.NQ, 6]);
   if (result.cal === 'ndw') {
     rows.push([L('Поле и РИП', 'Field and SSD'), 'k<sub>g</sub>', x.kg.value, 4]);
-    if (result.qo === 'co60') rows.push([L('Глубина калибровки', 'Calibration depth'), 'k<sub>z</sub>', c.kz, 3]);
+    if (Number.isFinite(c.kz)) rows.push([L('Глубина калибровки', 'Calibration depth'), 'k<sub>z</sub>', c.kz, 3]);
   } else if (result.range === 'low') {
     rows.push([L('Отношение коэффициентов поглощения энергии', 'Mass energy-absorption coefficient ratio'), '[μ<sub>en</sub>/ρ]<sub>w,air</sub>', ph.muen, 4]);
     rows.push([L('Обратное рассеяние', 'Backscatter'), 'B<sub>w</sub>', ph.bw, 4]);
@@ -1671,7 +1797,7 @@ function reportText(data, r, all = null, vr = null) {
   const ns = r.cal === 'nk' ? 'N_K' : 'N_D,w';
   const plain = (s) => String(s).replace(/<\/?su[bp]>/g, '');
   out.push(L('ПРОТОКОЛ РЕФЕРЕНСНОЙ ДОЗИМЕТРИИ — kV-РЕНТГЕН', 'REFERENCE DOSIMETRY REPORT — kV X-RAYS'));
-  line(L('Протокол', 'Protocol'), `${methodText(r)}${r.qo === 'co60' ? '' : r.range === 'low' ? L(' (разд. 8, низкие энергии)', ' (Sec. 8, low energies)') : L(' (разд. 9, средние энергии)', ' (Sec. 9, medium energies)')}`);
+  line(L('Протокол', 'Protocol'), `${methodText(r)}${dinMethod(r) ? '' : r.range === 'low' ? L(' (разд. 8, низкие энергии)', ' (Sec. 8, low energies)') : L(' (разд. 9, средние энергии)', ' (Sec. 9, medium energies)')}`);
   if (r.notRev1.length) line(L('Не по TRS-398 Rev.1', 'Not TRS-398 Rev.1'), r.notRev1.join('; '));
   line(L('Калькулятор', 'Calculator'), versionText());
   line(L('Учреждение', 'Institution'), data.kv_institution || '—');
@@ -1737,12 +1863,27 @@ function reportText(data, r, all = null, vr = null) {
         ? L(`${ns} по качествам, ${unitN}`, `${ns} per quality, ${unitN}`)
         : data.kv_cert_form === 'co'
           ? L(`${ns},Qo = ${data.kv_n} ${unitN} (⁶⁰Co, 5 см); калибровки в рентгене нет, k_Q = 1 (не по Rev.1 и DIN 6809-4)`, `${ns},Qo = ${data.kv_n} ${unitN} (⁶⁰Co, 5 cm); no x-ray calibration, k_Q = 1 (neither Rev.1 nor DIN 6809-4)`)
-          : L(`${ns},Qo = ${data.kv_n} ${unitN}${r.qo === 'co60' ? ' (⁶⁰Co, 5 см)' : ''}, k_Q по качествам`, `${ns},Qo = ${data.kv_n} ${unitN}${r.qo === 'co60' ? ' (⁶⁰Co, 5 cm)' : ''}, k_Q per quality`);
-  line(L('Сертификат', 'Certificate'), formTxt);
+          : L(`${ns},Qo = ${data.kv_n} ${unitN}${r.qo === 'co60' ? ' (⁶⁰Co)' : ''}, k_Q по качествам`, `${ns},Qo = ${data.kv_n} ${unitN}${r.qo === 'co60' ? ' (⁶⁰Co)' : ''}, k_Q per quality`);
+  const depthTxt = r.range === 'medium' && r.cal === 'ndw' && data.kv_cert_form !== 'co' ? L(`; коэффициенты на глубине ${r.depth5 ? '5 см (DIN 6809-4)' : '2 г/см²'}`, `; coefficients at a depth of ${r.depth5 ? '5 cm (DIN 6809-4)' : '2 g/cm²'}`) : '';
+  line(L('Сертификат', 'Certificate'), formTxt + depthTxt);
   // как введено в таблицу (с теми же знаками), по возрастанию СПО
   const raw = (key, q) => String(data[key][q.row - 1] ?? '').trim();
-  const qs = r.cert.rows?.map((q) => `${raw('kv_cq_kv', q) ? L(`${raw('kv_cq_kv', q)} кВ / `, `${raw('kv_cq_kv', q)} kV / `) : ''}${raw('kv_cq_hvl', q)} ${L('мм', 'mm')} ${mat} → ${raw('kv_cq_val', q)}`).join('; ');
+  const kvTxt = (q) => (raw('kv_cq_kv', q) ? L(`${raw('kv_cq_kv', q)} кВ / `, `${raw('kv_cq_kv', q)} kV / `) : '');
+  const dinTxt = (q) => (q.din ? L(` (≈ ${fmt(q.hvl, 3)} мм ${mat} по DIN 6809-4${q.extrapolated ? ', экстраполяция' : ''})`, ` (≈ ${fmt(q.hvl, 3)} mm ${mat} by DIN 6809-4${q.extrapolated ? ', extrapolated' : ''})`) : '');
+  const qs = r.cert.rows?.map((q) => `${kvTxt(q)}${raw('kv_cq_hvl', q)} ${L('мм', 'mm')} ${q.matSrc ?? mat}${dinTxt(q)} → ${raw('kv_cq_val', q)}`).join('; ');
   if (qs) line(L('Качества сертификата', 'Certificate qualities'), qs);
+  // строки в другом металле без пересчёта в расчёт не вошли
+  const unused = data.kv_cq_din ? [] : r.cert.other ?? [];
+  if (unused.length) line(L('Не использованы (СПО в другом металле)', 'Not used (HVL in the other metal)'), unused.map((q) => `${kvTxt(q)}${raw('kv_cq_hvl', q)} ${L('мм', 'mm')} ${q.mat} → ${raw('kv_cq_val', q)}`).join('; '));
+  if (Number.isFinite(r.cert.din?.uPct)) {
+    line(
+      L('Пересчёт СПО Al ↔ Cu', 'HVL conversion Al ↔ Cu'),
+      L(
+        `DIN 6809-4, табл. 5 (оценка, не TRS-398 Rev.1): при ±${fmt(r.cert.din.dev * 100, 0)} % по СПО значение для пучка меняется на ${fmt(r.cert.din.deltaPct, 2)} %, u = ${fmt(r.cert.din.uPct, 2)} %`,
+        `DIN 6809-4, Table 5 (an estimate, not TRS-398 Rev.1): ±${fmt(r.cert.din.dev * 100, 0)} % in HVL changes the value for the beam by ${fmt(r.cert.din.deltaPct, 2)} %, u = ${fmt(r.cert.din.uPct, 2)} %`,
+      ),
+    );
+  }
   const valName = data.kv_cert_form === 'k' ? 'K' : data.kv_cert_form === 'n' ? ns : 'k_Q';
   line(L('Для СПО пучка', 'At the beam HVL'), `${valName} = ${fmt(r.cert.value, data.kv_cert_form === 'n' ? 6 : 4)}; ${ns},Q = ${fmt(r.cert.NQ, 6)} ${L('Гр/нКл', 'Gy/nC')}${r.cert.interp?.extrapolated ? L(' (экстраполяция)', ' (extrapolated)') : ''}${r.cert.kq1 ? L(' (принят: калибровки в рентгене нет)', ' (assumed: no x-ray calibration)') : ''}`);
   if (r.cal === 'ndw' && data.kv_cert_form !== 'co') {
@@ -1796,7 +1937,7 @@ function reportText(data, r, all = null, vr = null) {
   out.push(`k_TP = ${fmt(x.kTP)}; k_elec = ${fmt(x.kelec)}; k_pol = ${fmt(x.kpol)}; k_s = ${fmt(x.ks)}; k_leak = ${fmt(x.kleak)}`);
   const ph = x.phys;
   if (r.cal === 'ndw') {
-    out.push(`k_g = ${fmt(x.kg.value)} (${plain(kgSourceText(x.kg)) || '—'})${r.qo === 'co60' ? '; k_z = 1' : ''}`);
+    out.push(`k_g = ${fmt(x.kg.value)} (${plain(kgSourceText(x.kg)) || '—'})${Number.isFinite(r.cert.kz) ? '; k_z = 1' : ''}`);
   } else if (r.range === 'low') {
     out.push(`[μen/ρ]w,air FIA = ${fmt(ph.muen)}; B_w = ${fmt(ph.bw)}; ${L('поправка N_K на поле', 'N_K field correction')} = ${fmt(ph.nkFs)}`);
   } else {
@@ -1922,9 +2063,12 @@ export function kvUncSource() {
     kvRange: result.range,
     kvCal: result.cal,
     kvQo: result.qo === 'co60' ? 'co60' : 'kv',
+    kvDepth: result.depth5 ? '5' : '2',
     // калибровки в рентгене нет: k_g = 1 — в бюджете как k_g = 1 по DIN
     kvKg: src === 'same' || src === 'one' ? src : src === 'nocal' ? 'one' : 'calc',
     kvKq: result.cert.kq1 ? 'one' : 'cert',
+    // u от пересчёта СПО строк сертификата по DIN 6809-4, %
+    kvHvlDin: result.cert.din?.uPct,
     M: p === x.ctrl ? data.kv_Mc : data.kv_M1,
     // доза на опорной глубине (поверхность или 2 г/см²): бюджет Rev.1 составлен для неё
     value: none ? NaN : p.perUnit,
@@ -1932,6 +2076,183 @@ export function kvUncSource() {
     ki: null,
     meta: { institution: data.kv_institution, machine: data.kv_machine, beam, date: data.kv_date, staff: data.kv_staff },
   };
+}
+
+// ------------------------------------------------------------ пересчёт СПО Al ↔ Cu по DIN 6809-4 (справочно)
+// Качества, где СПО известны в обоих металлах: на них оценена точность пересчёта (см. src/core/kv-din.js)
+const DIN_CHECKS = () => [
+  { name: 'TG-61, M150', al: 10.2, cu: 0.67 },
+  { name: 'TG-61, M200', al: 14.9, cu: 1.69 },
+  { name: L('TRS-398 Rev.1, табл. 53, 100 кВ', 'TRS-398 Rev.1, Table 53, 100 kV'), al: 4.0, cu: 0.15 },
+];
+
+const dinPct = (x) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${fmt(Math.abs(x), 1)} %`;
+
+function dinValueName(form) {
+  return form === 'k' ? 'K' : form === 'n' ? 'N' : 'k_Q';
+}
+
+/** Пересчёт строк сертификата для окна: строки в другом металле, значение для пучка с пересчётом и без, чувствительность. */
+function dinPreview(data, result) {
+  const mat = result?.material ?? beamMat();
+  const hvl = result?.inputs?.hvl;
+  const withDin = certRows(data, mat, { din: true });
+  const plain = certRows(data, mat);
+  const ok = (t) => t.rows.length > 0 && !t.errors.length && !t.duplicates.length && Number.isFinite(hvl);
+  return {
+    mat,
+    hvl,
+    other: withDin.other,
+    broken: withDin.errors.length > 0 || withDin.duplicates.length > 0,
+    value: ok(withDin) ? certValue(withDin.rows, hvl).value : NaN,
+    plain: ok(plain) ? certValue(plain.rows, hvl).value : NaN,
+    d: ok(withDin) ? certDinSensitivity(withDin.rows, hvl) : NaN,
+  };
+}
+
+function dinDialogHtml(data, result) {
+  const pv = dinPreview(data, result);
+  const { mat } = pv;
+  const otherMat = mat === 'Al' ? 'Cu' : 'Al';
+  const vn = dinValueName(data.kv_cert_form);
+  const dev = fmt(DIN_HVL_DEV * 100, 0);
+  const th = DIN_TH.map((q) => `<tr><td>${q.code}</td><td class="n">${q.kv}</td><td class="n">${fmt(q.al, 2)}</td><td class="n">${fmt(q.cu, 2)}</td></tr>`).join('');
+  const checks = DIN_CHECKS()
+    .map((c) => {
+      const r = dinHvlConvert(c.al, 'Al');
+      const note = r.extrapolated ? L(' (вне табл. 5)', ' (outside Table 5)') : '';
+      return `<tr><td>${esc(c.name)}</td><td class="n">${fmt(c.al, 1)}</td><td class="n">${fmt(c.cu, 2)}</td><td class="n">${fmt(r.value, 3)}</td><td class="n">${dinPct((r.value / c.cu - 1) * 100)}${note}</td></tr>`;
+    })
+    .join('');
+  const out = [];
+  out.push(
+    `<p>${L(
+      `k<sub>Q</sub> (K, N) сертификата интерполируется по СПО пучка, а сравнивать СПО можно только в одном металле (TRS-398 Rev.1, разд. 9.4.4; прил. III: до 100 кВ — Al, выше — Cu). У пучка СПО в мм ${mat}; строки сертификата в мм ${otherMat} без пересчёта в интерполяцию не идут. Лучше всего — СПО в нужном металле от лаборатории или СПО пучка, измеренный в металле сертификата. Если ни то ни другое невозможно, СПО строк можно оценить пересчётом.`,
+      `The certificate k<sub>Q</sub> (K, N) is interpolated at the beam HVL, and HVLs can only be compared in one metal (TRS-398 Rev.1, Sec. 9.4.4; App. III: Al up to 100 kV, Cu above). The beam HVL is in mm ${mat}; certificate rows in mm ${otherMat} are not used in the interpolation without a conversion. Best is an HVL in the right metal from the laboratory, or a beam HVL measured in the certificate metal. If neither is possible, the HVL of those rows can be estimated by conversion.`,
+    )}</p>`,
+  );
+  out.push(`<h4>${L('Как считается', 'How it is calculated')}</h4>`);
+  out.push(
+    `<p>${L(
+      'В DIN 6809-4:2020, табл. 5 для серии качеств TH (вольфрамовая трубка, фильтры 4,5–9 мм Al или 4 мм Al + Cu) первый СПО дан в обоих металлах на расстоянии 100 см от фокуса. Между соседними качествами TH ln(СПО в одном металле) считается линейным по ln(СПО в другом). Вне диапазона таблицы продолжается крайний отрезок — это экстраполяция.',
+      'DIN 6809-4:2020, Table 5 gives the first HVL in both metals at 100 cm from the focus for the TH series of qualities (tungsten tube, filters of 4.5–9 mm Al or 4 mm Al + Cu). Between neighbouring TH qualities, ln(HVL in one metal) is taken as linear in ln(HVL in the other). Outside the table the outermost segment is extended: this is an extrapolation.',
+    )}</p>`,
+  );
+  out.push(`<table class="din-table"><thead><tr><th>${L('Качество', 'Quality')}</th><th>${L('кВ', 'kV')}</th><th>${L('СПО, мм Al', 'HVL, mm Al')}</th><th>${L('СПО, мм Cu', 'HVL, mm Cu')}</th></tr></thead><tbody>${th}</tbody></table>`);
+  out.push(`<h4>${L('Насколько это точно', 'How accurate it is')}</h4>`);
+  out.push(
+    `<p>${L(
+      'Соотношение СПО в Al и в Cu зависит от спектра: один и тот же СПО дают разные сочетания напряжения и фильтрации (TRS-398 Rev.1, разд. 9.3.1), а табл. 5 описывает только спектры TH. Сверка с качествами, у которых СПО известны в обоих металлах:',
+      'The relation between HVLs in Al and in Cu depends on the spectrum: the same HVL results from different combinations of voltage and filtration (TRS-398 Rev.1, Sec. 9.3.1), and Table 5 describes only the TH spectra. A check against qualities with HVLs known in both metals:',
+    )}</p>`,
+  );
+  out.push(`<table class="din-table"><thead><tr><th>${L('Качество', 'Quality')}</th><th>${L('мм Al', 'mm Al')}</th><th>${L('мм Cu', 'mm Cu')}</th><th>${L('пересчёт, мм Cu', 'converted, mm Cu')}</th><th>${L('отклонение', 'deviation')}</th></tr></thead><tbody>${checks}</tbody></table>`);
+  out.push(
+    `<p>${L(
+      `Отсюда оценка: ±${dev} % по СПО внутри TH 100–300 (${fmt(DIN_TH[0].al, 2)}–${fmt(DIN_TH.at(-1).al, 2)} мм Al, ${fmt(DIN_TH[0].cu, 2)}–${fmt(DIN_TH.at(-1).cu, 2)} мм Cu); вне этого диапазона отклонение может быть больше. ${vn} меняется с СПО медленно, поэтому ошибка СПО в несколько процентов обычно сдвигает ${vn} для пучка на доли процента — для вашего сертификата это посчитано ниже. Расчёт с пересчитанными СПО — не по TRS-398 Rev.1: он помечается «нестандартные условия», а составляющая неопределённости передаётся в бюджет на вкладке «Неопределённость».`,
+      `Hence the estimate: ±${dev} % in HVL within TH 100–300 (${fmt(DIN_TH[0].al, 2)}–${fmt(DIN_TH.at(-1).al, 2)} mm Al, ${fmt(DIN_TH[0].cu, 2)}–${fmt(DIN_TH.at(-1).cu, 2)} mm Cu); outside this range the deviation may be larger. ${vn} changes slowly with the HVL, so an HVL error of a few per cent usually shifts ${vn} for the beam by a fraction of a per cent; for your certificate this is calculated below. A calculation with converted HVLs is not TRS-398 Rev.1: it is marked as non-reference conditions, and the uncertainty component is passed to the budget on the Uncertainty tab.`,
+    )}</p>`,
+  );
+  out.push(`<h4>${L('Ваш сертификат', 'Your certificate')}</h4>`);
+  if (data.kv_cert_form === 'co' || !pv.other.length) {
+    out.push(
+      `<p>${L(
+        `В таблице качеств сертификата нет строк с СПО в мм ${otherMat}: пересчитывать нечего. Металл СПО у каждой строки выбирается в столбце «металл» — как в сертификате.`,
+        `The certificate quality table has no rows with the HVL in mm ${otherMat}: there is nothing to convert. The HVL metal of each row is chosen in the "metal" column, as in the certificate.`,
+      )}</p>`,
+    );
+  } else {
+    const rows = pv.other
+      .map((x) => {
+        const ext = x.conv.extrapolated ? L('вне табл. 5 — экстраполяция', 'outside Table 5: extrapolation') : '';
+        return `<tr><td class="n">${x.row}</td><td class="n">${Number.isFinite(x.kv) ? fmt(x.kv, x.kv % 1 ? 1 : 0) : '—'}</td><td class="n">${fmt(x.hvl, 3)}</td><td class="n">≈ ${fmt(x.conv.value, 3)}</td><td>${ext}</td></tr>`;
+      })
+      .join('');
+    out.push(`<table class="din-table"><thead><tr><th>№</th><th>${L('кВ', 'kV')}</th><th>${L(`СПО, мм ${otherMat}`, `HVL, mm ${otherMat}`)}</th><th>${L(`СПО, мм ${mat}`, `HVL, mm ${mat}`)}</th><th></th></tr></thead><tbody>${rows}</tbody></table>`);
+    if (pv.broken) {
+      out.push(`<p>${L('В таблице качеств есть незаполненные строки или повторы СПО: исправьте их, чтобы оценить влияние пересчёта на пучок.', 'The quality table has incomplete rows or repeated HVLs: fix them to estimate the effect of the conversion on the beam.')}</p>`);
+    } else if (!Number.isFinite(pv.hvl)) {
+      out.push(`<p>${L('Укажите СПО пучка, чтобы оценить влияние пересчёта на значение для пучка.', 'Enter the beam HVL to estimate the effect of the conversion on the value for the beam.')}</p>`);
+    } else {
+      const digits = data.kv_cert_form === 'n' ? 6 : 4;
+      const plain = Number.isFinite(pv.plain)
+        ? L(`без пересчитанных строк — ${fmt(pv.plain, digits)}`, `without the converted rows, ${fmt(pv.plain, digits)}`)
+        : L('без пересчитанных строк значения нет', 'without the converted rows there is no value');
+      const tiny = pv.d * 100 < 0.005;
+      const sens = !Number.isFinite(pv.d)
+        ? ''
+        : tiny
+          ? L(
+              ` Пересчитанные строки на ${vn} для пучка практически не влияют (меньше 0,01 % при отклонении их СПО на ±${dev} %): СПО пучка лежит между качествами в мм ${mat}.`,
+              ` The converted rows practically do not affect ${vn} for the beam (less than 0.01 % for a ±${dev} % deviation of their HVLs): the beam HVL lies between the qualities in mm ${mat}.`,
+            )
+          : L(
+              ` При отклонении пересчитанных СПО на ±${dev} % ${vn} для пучка меняется на ${fmt(pv.d * 100, 2)} %; как стандартная неопределённость (прямоугольное распределение) — ${fmt((pv.d * 100) / Math.sqrt(3), 2)} %.`,
+              ` A ±${dev} % deviation of the converted HVLs changes ${vn} for the beam by ${fmt(pv.d * 100, 2)} %; as a standard uncertainty (rectangular distribution), ${fmt((pv.d * 100) / Math.sqrt(3), 2)} %.`,
+            );
+      out.push(`<p>${L(`Для СПО пучка ${fmt(pv.hvl, 3)} мм ${mat}: ${vn} = ${fmt(pv.value, digits)} с пересчитанными строками, ${plain}.`, `At the beam HVL of ${fmt(pv.hvl, 3)} mm ${mat}: ${vn} = ${fmt(pv.value, digits)} with the converted rows, ${plain}.`)}${sens}</p>`);
+    }
+    out.push(
+      `<p><b>${data.kv_cq_din ? L('Сейчас пересчёт включён: эти строки идут в расчёт.', 'The conversion is on: these rows are used in the calculation.') : L('Сейчас пересчёт выключен: эти строки в расчёт не идут.', 'The conversion is off: these rows are not used in the calculation.')}</b></p>`,
+    );
+    out.push(
+      `<div class="din-actions"><button type="button" class="primary" id="kv-din-apply">${L('Подставить в расчёт', 'Use in the calculation')}</button><button type="button" id="kv-din-off">${L('Не пересчитывать', 'Do not convert')}</button></div>`,
+    );
+  }
+  out.push(`<h4>${L('Пересчитать одно значение', 'Convert a single value')}</h4>`);
+  out.push(
+    `<div class="din-calc"><label for="kv-din-x">${L('СПО', 'HVL')}</label><input type="text" class="num" inputmode="decimal" id="kv-din-x" placeholder="${esc(fmt(5.58, 2))}"><label for="kv-din-from" class="visually-hidden">${L('металл', 'metal')}</label><select id="kv-din-from"><option value="Al">${L('мм Al', 'mm Al')}</option><option value="Cu">${L('мм Cu', 'mm Cu')}</option></select><output id="kv-din-out" aria-live="polite"></output></div>`,
+  );
+  out.push(`<p class="src">${L('Источники: DIN 6809-4:2020, табл. 5; IAEA TRS-398 Rev.1 (2024), разд. 9.3.1, 9.4.4, прил. III, табл. 53; AAPM TG-61 (Ma et al., Med. Phys. 28, 2001), табл. II.', 'Sources: DIN 6809-4:2020, Table 5; IAEA TRS-398 Rev.1 (2024), Secs 9.3.1, 9.4.4, App. III, Table 53; AAPM TG-61 (Ma et al., Med. Phys. 28, 2001), Table II.')}</p>`);
+  return out.join('');
+}
+
+function dinCalc() {
+  const x = parseNumber($('#kv-din-x')?.value);
+  const from = $('#kv-din-from')?.value === 'Cu' ? 'Cu' : 'Al';
+  const o = $('#kv-din-out');
+  if (!o) return;
+  if (!(x > 0)) {
+    o.textContent = '';
+    return;
+  }
+  const r = dinHvlConvert(x, from);
+  const ext = r.extrapolated ? L(` — вне табл. 5 (${fmt(r.min, 2)}–${fmt(r.max, 2)} мм ${from}), экстраполяция`, ` — outside Table 5 (${fmt(r.min, 2)}–${fmt(r.max, 2)} mm ${from}), extrapolation`) : L(` (±${fmt(DIN_HVL_DEV * 100, 0)} %)`, ` (±${fmt(DIN_HVL_DEV * 100, 0)} %)`);
+  o.textContent = L(`≈ ${fmt(r.value, 3)} мм ${r.to}${ext}`, `≈ ${fmt(r.value, 3)} mm ${r.to}${ext}`);
+}
+
+function openDinDialog() {
+  const dlg = $('#kv-din-dialog');
+  $('#kv-din-title').textContent = L('Пересчёт СПО Al ↔ Cu по DIN 6809-4 (справочно)', 'HVL conversion Al ↔ Cu with DIN 6809-4 (for reference)');
+  $('#kv-din-close').setAttribute('aria-label', L('Закрыть', 'Close'));
+  const data = current.data ?? normalizeKv(readForm());
+  html($('#kv-din-body'), dinDialogHtml(data, current.result));
+  // в калькулятор — металл строк сертификата, отличный от пучка
+  const from = current.result?.material === 'Cu' ? 'Al' : 'Cu';
+  if ($('#kv-din-from')) $('#kv-din-from').value = from;
+  if (typeof dlg.showModal === 'function') dlg.showModal();
+  else dlg.setAttribute('open', '');
+  $('#kv-din-body').scrollTop = 0;
+}
+
+function setDinUse(on) {
+  $('#kv_cq_din').checked = on;
+  $('#kv-din-dialog').close();
+  openedFile = null;
+  update();
+}
+
+function setupDinDialog() {
+  const dlg = $('#kv-din-dialog');
+  $('#kv-din-open').addEventListener('click', openDinDialog);
+  $('#kv-din-close').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('click', (e) => {
+    if (e.target === dlg) return dlg.close();
+    if (e.target.id === 'kv-din-apply') return setDinUse(true);
+    if (e.target.id === 'kv-din-off') return setDinUse(false);
+  });
+  dlg.addEventListener('input', dinCalc);
+  dlg.addEventListener('change', dinCalc);
 }
 
 // ------------------------------------------------------------ цикл
@@ -1981,6 +2302,7 @@ function update(opts = {}) {
   renderOutputs(ROOT(), result);
   renderFlags(ROOT(), { ...result.flags, ...all.hvl.flags, ...all.ln.flags, ...all.rp.flags }, seriesBox);
   renderReadout(result, data);
+  renderTimerChart(data, result);
   renderHvlSheet(data, vr);
   renderQaSheets(data, vr);
   html($('#kv-hvl-sub'), richText(hvlFieldSub(all.hvl, result)));
@@ -2063,10 +2385,7 @@ function refreshForLang() {
     const { a, b } = readPairs(pairsBox());
     renderPairs(pairsBox(), a, b);
   }
-  {
-    const c = readCert();
-    renderCert(c.kv, c.hvl, c.val);
-  }
+  renderCert(readCert());
   renderStaff($('#kv-staff-list'), readStaff($('#kv-staff-list')), update);
   localizeDemo(SAMPLE_KV, SAMPLE_KV_EN);
   localizeDemo(SAMPLE_KV_MODE2.shared, SAMPLE_KV_MODE2_EN);
@@ -2132,7 +2451,17 @@ export function initKv() {
     selectMode: (m) => selectMode(m),
   });
   // листы «Линейность» и «Воспроизводимость»: переход к режиму из таблиц по режимам
-  setupKvQa({ getVisit: () => visit, modeName: (m) => modeName(m), selectMode: (m) => selectMode(m) });
+  setupKvQa({
+    getVisit: () => visit,
+    modeName: (m) => modeName(m),
+    selectMode: (m) => selectMode(m),
+    readSeries: (key) => readCells(seriesBox(key)),
+    writeSeries: (key, cells) => renderCells(seriesBox(key), cells),
+    changed: () => {
+      openedFile = null;
+      update();
+    },
+  });
   // лист «Сводка и протокол»: сводная таблица и протокол измерений
   setupKvSummary({
     getVisit: () => visit,
@@ -2235,9 +2564,16 @@ export function initKv() {
     if (tr) openRow(Number(tr.dataset.m), Number(tr.dataset.i));
   });
 
+  // до обработчиков листа: иначе пересчёт прочтёт металл как «по пучку» и вернёт список назад
+  for (const ev of ['input', 'change']) {
+    certList().addEventListener(ev, (e) => {
+      if (e.target.matches?.('.cq-mat')) delete e.target.dataset.auto;
+    });
+  }
+  setupDinDialog();
   $('#kv-cert-add').addEventListener('click', () => {
     const c = readCert();
-    renderCert([...c.kv, ''], [...c.hvl, ''], [...c.val, '']);
+    renderCert({ kv: [...c.kv, ''], hvl: [...c.hvl, ''], mat: [...c.mat, ''], val: [...c.val, ''] });
     $$('#kv-cert-rows .cq-kv').at(-1).focus();
     openedFile = null;
     update();
@@ -2245,7 +2581,7 @@ export function initKv() {
   $('#kv-cert-remove').addEventListener('click', () => {
     const c = readCert();
     if (c.hvl.length <= 1) return;
-    renderCert(c.kv.slice(0, -1), c.hvl.slice(0, -1), c.val.slice(0, -1));
+    renderCert({ kv: c.kv.slice(0, -1), hvl: c.hvl.slice(0, -1), mat: c.mat.slice(0, -1), val: c.val.slice(0, -1) });
     openedFile = null;
     update();
   });
