@@ -1390,6 +1390,9 @@ table.kv-sum-dates td.kv-sum-check { font-style: italic; }
 .eq-mtabs a small { margin-left: 4px; font: 400 11.5px var(--font-body, inherit); color: var(--muted); }
 .eq-mtabs a[aria-current="page"] small { color: inherit; opacity: .75; }
 .eq-mtabs + .jcards > .jcard { border-top-left-radius: 0; border-top-right-radius: 0; margin-top: 0; }
+/* режимы аппарата kV — листы внутри карточки (с 0.52.1): ярлыки на фоне карточки, открытый — цвета блока режима */
+.eq-modetabs a[aria-current="page"] { background: var(--calc); box-shadow: inset 0 2px 0 var(--accent), 0 1px 0 var(--calc); }
+.eq-modetabs + .jbeams > .jkv-mode { border-top-left-radius: 0; border-top-right-radius: 0; border-top: 0; }
 .kv-modebar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: -4px; }
 .kv-modebar > .label { font: 500 13px var(--font-display); color: var(--muted); }
 .kv-modebar-list { display: flex; flex-wrap: wrap; gap: 6px; }

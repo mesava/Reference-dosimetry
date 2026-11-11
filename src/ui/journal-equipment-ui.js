@@ -539,8 +539,13 @@ function kvMachineCard(j, m) {
     ${kvMsgs(checks.filter((c) => c.appId), `kvapps-msgs-${m.id}`)}
     <div class="row-tools"><button type="button" class="link-btn" data-add-kvapp="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить аппликатор', 'Add an applicator'))}</button></div>
     <h3 class="sub-h">${esc(L('Режимы', 'Modes'))}</h3>
-    <div class="jbeams">${m.modes.map((x, i) => kvModeBlock(j, m, x, i, checks)).join('') || `<p class="sub-hint">${esc(L('Режимов пока нет: режим — напряжение, ток, фильтр и СПО со своими аппликаторами; камера режима выбирается в разделе 4.', 'No modes yet: a mode is a voltage, current, filter and HVL with its own applicators; the chamber of the mode is selected in section 4.'))}</p>`}</div>
-    <div class="row-tools"><button type="button" class="link-btn" data-add-kvmode="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить режим', 'Add a mode'))}</button></div>
+    <div class="row-tools eq-add-row"><button type="button" class="link-btn" data-add-kvmode="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить режим', 'Add a mode'))}</button></div>
+    <nav class="kv-pages eq-mtabs eq-modetabs" data-eq-tabs="${val(`kvmode.${m.id}`)}" aria-label="${val(L('Режимы аппарата', 'Modes of the unit'))}"${m.modes.length ? '' : ' hidden'}>${tabsHtml(j, `kvmode.${m.id}`)}</nav>
+    <div class="jbeams">${(() => {
+      // режим — свой лист (с 0.52.1): виден открытый, остальные — по ярлыкам
+      const x = openSheet(j, `kvmode.${m.id}`);
+      return x ? kvModeBlock(j, m, x, m.modes.indexOf(x), checks) : `<p class="sub-hint">${esc(L('Режимов пока нет: режим — напряжение, ток, фильтр и СПО со своими аппликаторами; камера режима выбирается в разделе 4.', 'No modes yet: a mode is a voltage, current, filter and HVL with its own applicators; the chamber of the mode is selected in section 4.'))}</p>`;
+    })()}</div>
     <p class="sub-hint jkv-plates">${richText(kvPlatesText(m))}</p>
     <p class="sub-hint">${esc(L('Новый режим копирует диапазон, камеру и аппликаторы последнего. Во вкладке «kV-рентген» аппарат выбирается на листе «Аппарат и режимы»: отмеченные режимы подставляются с камерой, её kV-сертификатом, электрометром и аппликаторами и там только показываются; измеренный СПО возвращается сюда кнопкой «Сохранить измеренное в Оборудование».', 'A new mode copies the range, chamber and applicators of the last one. In the kV x-rays tab the unit is selected on the Machine and modes sheet: the ticked modes are filled in with the chamber, its kV certificate, the electrometer and the applicators and are only shown there; the measured HVL comes back here with “Save the measured data to Equipment”.'))}</p>
     <div class="row-tools">
@@ -635,8 +640,9 @@ const cur = (() => {
     return {};
   }
 })();
-/** Записи раздела: аппараты, электрометры или камеры. */
-const sheetList = (j, kind) => (kind === 'machine' ? j.machines : kind === 'chamber' ? j.chambers : j.electrometers);
+/** Записи раздела: аппараты, электрометры, камеры или режимы аппарата kV. */
+// режимы аппарата kV (с 0.52.1) — вид «kvmode.<id аппарата>»: у каждого аппарата свой открытый режим
+const sheetList = (j, kind) => (kind === 'machine' ? j.machines : kind === 'chamber' ? j.chambers : kind === 'electrometer' ? j.electrometers : kind.startsWith('kvmode.') ? j.machines.find((m) => `kvmode.${m.id}` === kind)?.modes ?? [] : []);
 /** Открытая запись раздела: выбранная, иначе первая. */
 function openSheet(j, kind) {
   const list = sheetList(j, kind);
@@ -659,6 +665,14 @@ function dueState(due) {
 }
 /** Ярлык записи: подпись, подпись мелко и отметка (done / warn / error / пусто — кружок). */
 function sheetTab(j, kind, x) {
+  if (kind.startsWith('kvmode.')) {
+    const m = j.machines.find((y) => `kvmode.${y.id}` === kind);
+    const i = m.modes.indexOf(x);
+    const checks = kvMachineChecks(m, j).filter((c) => c.modeId === x.id);
+    const st = checks.some((c) => c.level === 'error') ? 'error' : checks.some((c) => c.level === 'warn') ? 'warn' : 'done';
+    const t = kvMachineModeTitle(x);
+    return { name: L(`Режим ${i + 1}`, `Mode ${i + 1}`), small: t, st, title: checks.filter((c) => c.level !== 'info').map((c) => plainSymbols(c.short).replace(/<\/?(?:sub|sup|b|i)>/g, '')).join('; ') };
+  }
   if (kind === 'machine') {
     let st = x.beams.length ? 'done' : '';
     let n = x.beams.length;
@@ -686,23 +700,29 @@ function sheetTab(j, kind, x) {
   return { name, small: '', st, title };
 }
 const TABS_BOX = { machine: '#eq-mtabs', electrometer: '#eq-etabs', chamber: '#eq-ctabs' };
+/** Разметка ярлыков раздела kind. */
+function tabsHtml(j, kind) {
+  const open = openSheet(j, kind);
+  return sheetList(j, kind).map((x) => {
+    const t = sheetTab(j, kind, x);
+    return `<a href="#equipment" data-eq-sheet="${val(kind)}" data-eq-id="${val(x.id)}"${x.id === open?.id ? ' aria-current="page"' : ''}${t.st ? ` data-state="${t.st}"` : ''}${t.title ? ` title="${val(t.title)}"` : ''}>${esc(t.name)}${t.small ? ` <small>${esc(t.small)}</small>` : ''}</a>`;
+  }).join('');
+}
+/** Ряд ярлыков раздела kind на странице: у аппаратов, электрометров и камер — свой id, у режимов — в карточке аппарата. */
+const tabsNav = (kind) => (TABS_BOX[kind] ? $(TABS_BOX[kind]) : ROOT().querySelector(`[data-eq-tabs="${CSS.escape(kind)}"]`));
 /** Ярлыки раздела (без перерисовки карточки — по вводу названия). */
 function renderTabs(kind, j = getJournal()) {
-  const nav = $(TABS_BOX[kind]);
+  const nav = tabsNav(kind);
   if (!nav) return;
   const list = sheetList(j, kind);
-  const open = openSheet(j, kind);
   nav.hidden = !list.length;
-  const html = list.map((x) => {
-    const t = sheetTab(j, kind, x);
-    return `<a href="#equipment" data-eq-sheet="${val(`${kind}:${x.id}`)}"${x.id === open?.id ? ' aria-current="page"' : ''}${t.st ? ` data-state="${t.st}"` : ''}${t.title ? ` title="${val(t.title)}"` : ''}>${esc(t.name)}${t.small ? ` <small>${esc(t.small)}</small>` : ''}</a>`;
-  });
+  const html = tabsHtml(j, kind);
   // тот же набор ярлыков — правятся на месте: ярлык, на который уже нажали (ввод названия закончился по «change»),
   // остаётся тем же элементом, и нажатие доходит
   const old = [...nav.children];
-  if (old.length === list.length && old.every((a, i) => a.dataset.eqSheet === `${kind}:${list[i].id}`)) {
+  if (old.length === list.length && old.every((a, i) => a.dataset.eqId === list[i].id)) {
     const tmp = document.createElement('div');
-    tmp.innerHTML = html.join('');
+    tmp.innerHTML = html;
     old.forEach((a, i) => {
       const b = tmp.children[i];
       for (const name of ['aria-current', 'data-state', 'title']) {
@@ -711,7 +731,8 @@ function renderTabs(kind, j = getJournal()) {
       }
       if (a.innerHTML !== b.innerHTML) a.innerHTML = b.innerHTML;
     });
-  } else nav.innerHTML = html.join('');
+  } else nav.innerHTML = html;
+  tabsResize?.observe(nav);
   centerTab(nav);
 }
 /** На телефоне ряд ярлыков прокручивается вбок: открытый лист — в видимой части ряда. */
@@ -721,7 +742,12 @@ function centerTab(nav) {
 }
 // вкладка, открытая после отрисовки (скрытый ряд ширины не имеет), и поворот экрана: ряд — к открытому листу
 const tabsResize = typeof ResizeObserver === 'function' ? new ResizeObserver((list) => list.forEach((e) => centerTab(e.target))) : null;
-const renderAllTabs = (j = getJournal()) => Object.keys(TABS_BOX).forEach((kind) => renderTabs(kind, j));
+function renderAllTabs(j = getJournal()) {
+  for (const kind of Object.keys(TABS_BOX)) renderTabs(kind, j);
+  // режимы открытого аппарата kV
+  const m = openSheet(j, 'machine');
+  if (m?.kind === 'kv') renderTabs(`kvmode.${m.id}`, j);
+}
 
 // ------------------------------------------------------------ отрисовка
 /**
@@ -772,8 +798,9 @@ function render() {
   $('#eq-electrometers').innerHTML = el ? electrometerCard(el) : `<p class="sub-hint">${esc(L('Электрометров пока нет.', 'No electrometers yet.'))}</p>`;
   for (const m of j.machines) for (const kind of Object.keys(CAL_GEO_KEYS)) geoSeen.set(`${m.id}|${kind}`, calGeoKey(kind, machineCalGeo(m, kind)));
   const m = openSheet(j, 'machine');
-  renderAllTabs(j);
   $('#eq-machines').innerHTML = m ? machineCard(j, m) : `<p class="sub-hint">${esc(L('Аппаратов пока нет: добавьте ускоритель, аппарат ⁶⁰Co или рентгенотерапевтический аппарат кнопками выше.', 'No machines yet: add a linac, a ⁶⁰Co unit or an x-ray therapy unit with the buttons above.'))}</p>`;
+  // после карточки аппарата: ряд ярлыков режимов — в ней
+  renderAllTabs(j);
   for (const btn of ROOT().querySelectorAll('[data-del]')) {
     if (btn.disabled) continue;
     armButton(btn, btn.textContent, () => L('Нажмите ещё раз, чтобы удалить', 'Click again to delete'), () => remove(btn.dataset.del));
@@ -1057,7 +1084,12 @@ function remove(what) {
       }
     } else if (kind === 'kvmode') {
       const m = j.machines.find((x) => x.id === a);
-      if (m) m.modes = m.modes.filter((x) => x.id !== b);
+      if (m) {
+        // открывается соседний режим: следующий, иначе предыдущий
+        const i = m.modes.findIndex((x) => x.id === b);
+        m.modes = m.modes.filter((x) => x.id !== b);
+        setSheet(`kvmode.${m.id}`, m.modes[Math.min(i, m.modes.length - 1)]?.id ?? '');
+      }
     }
     return j;
   }, 'equipment');
@@ -1071,15 +1103,14 @@ function focusLast(kind) {
 }
 
 function onClick(e) {
-  const tab = e.target.closest('a[data-eq-sheet]');
+  const tab = e.target.closest('a[data-eq-sheet][data-eq-id]');
   if (tab) {
     e.preventDefault();
-    const v = tab.dataset.eqSheet;
-    const [kind, id] = [v.slice(0, v.indexOf(':')), v.slice(v.indexOf(':') + 1)];
+    const { eqSheet: kind, eqId: id } = tab.dataset;
     if (id === openSheet(getJournal(), kind)?.id) return;
     setSheet(kind, id);
     render();
-    $(`${TABS_BOX[kind]} [aria-current="page"]`)?.focus({ preventScroll: true });
+    tabsNav(kind)?.querySelector('[aria-current="page"]')?.focus({ preventScroll: true });
     return;
   }
   const t = e.target.closest('button');
@@ -1150,6 +1181,7 @@ function onClick(e) {
     const m0 = getJournal().machines.find((x) => x.id === t.dataset.addKvmode);
     const last = m0?.modes.at(-1) ?? null;
     const x = newKvMachineMode(last, last ? {} : { applicators: (m0?.applicators || []).map((a) => a.id) });
+    setSheet(`kvmode.${t.dataset.addKvmode}`, x.id);
     updateJournal((j) => {
       j.machines.find((y) => y.id === t.dataset.addKvmode)?.modes.push(x);
       return j;

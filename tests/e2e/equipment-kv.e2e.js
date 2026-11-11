@@ -20,7 +20,16 @@ after(async () => {
 /** Карточка аппарата kV, его аппликаторы и режимы. */
 const kvCard = (page) => page.locator('.jcard.jkv');
 const appRow = (page, i) => kvCard(page).locator('table.jkv-apps-t tbody tr').nth(i);
-const modeBox = (page, i) => kvCard(page).locator('.jkv-mode').nth(i);
+/** Режим i аппарата kV: режимы — листы (с 0.52.1), открывается ярлыком; видна карточка одного режима. */
+const modeTabs = (page) => kvCard(page).locator('[data-eq-tabs^="kvmode."] a');
+async function modeAt(page, i) {
+  const tab = modeTabs(page).nth(i);
+  if ((await tab.getAttribute('aria-current')) !== 'page') {
+    await tab.click();
+    await page.waitForTimeout(200);
+  }
+  return kvCard(page).locator('.jkv-mode');
+}
 /** Камера режима i в таблице «Камеры режимов» (раздел 4). */
 const modeChamber = (page, i) => page.locator('#eq-kv-modes tbody tr').nth(i).locator('select[data-bind$="|chamberId"]');
 
@@ -98,7 +107,7 @@ test('оборудование: рентгенотерапевтический �
   await kvCard(page).locator('[data-add-kvmode]').click();
   await pause();
   assert.equal(await page.evaluate(() => document.activeElement?.dataset.bind?.endsWith('|kv')), true, 'фокус — на напряжении');
-  const m1 = modeBox(page, 0);
+  const m1 = (await modeAt(page, 0));
   assert.equal(await m1.locator('.jkv-apps input:checked').count(), 4);
   await m1.locator('input[data-bind$="|kv"]').fill('200');
   await m1.locator('input[data-bind$="|ma"]').fill('15');
@@ -115,23 +124,23 @@ test('оборудование: рентгенотерапевтический �
   assert.match(await m1.locator('[data-live^="kvmode-ref-"] .sub').innerText(), /по TRS-398 Rev\.1 \(табл\. 31\): F10, Ø 10 см, РИП 50 см/);
   await ref.selectOption({ index: 1 });
   await pause();
-  assert.match(await modeBox(page, 0).locator('.jmsgs').innerText(), /стандартный — F10, Ø 10 см, РИП 50 см, а выбран F3, Ø 3 см, РИП 30 см/);
-  await modeBox(page, 0).locator('select[data-bind$="|refApplicator"]').selectOption({ index: 3 });
+  assert.match(await (await modeAt(page, 0)).locator('.jmsgs').innerText(), /стандартный — F10, Ø 10 см, РИП 50 см, а выбран F3, Ø 3 см, РИП 30 см/);
+  await (await modeAt(page, 0)).locator('select[data-bind$="|refApplicator"]').selectOption({ index: 3 });
   await pause();
   // камера режима — в таблице «Камеры режимов»: камеры, не отмеченные для kV, — отдельной группой
-  assert.equal(await modeBox(page, 0).locator('.jkv-ch').innerText(), 'не выбрана');
-  assert.equal(await modeBox(page, 0).locator('select[data-bind$="|chamberId"]').count(), 0, 'в карточке режима камеру не выбрать');
+  assert.equal(await (await modeAt(page, 0)).locator('.jkv-ch').innerText(), 'не выбрана');
+  assert.equal(await (await modeAt(page, 0)).locator('select[data-bind$="|chamberId"]').count(), 0, 'в карточке режима камеру не выбрать');
   assert.match(await page.locator('#eq-kv-modes tbody tr').nth(0).innerText(), /Xstrahl 300\s+1 — 200 кВ \/ 15 мА \/ 0\.5 mm Cu/);
   assert.equal(await modeChamber(page, 0).locator('optgroup').getAttribute('label'), 'другие камеры — будут отмечены для kV-рентгена');
   await modeChamber(page, 0).selectOption({ index: 1 });
   await pause();
-  assert.equal(await modeBox(page, 0).locator('.jkv-ch').innerText(), 'PTW 30013 № 1001');
+  assert.equal(await (await modeAt(page, 0)).locator('.jkv-ch').innerText(), 'PTW 30013 № 1001');
   // камера в режиме kV и без N_D,w — отмечена для kV (флажок не снять, пока она выбрана), появились поля kV-сертификата
   assert.deepEqual([await use('photon').isChecked(), await use('kv').isChecked(), await use('kv').isDisabled()], [false, true, true]);
   assert.equal(await ch.locator('input[data-bind$="|kv.kv_n"]').count(), 1);
   // у камеры нет kV-сертификата — только справка; в таблице — «нет»
-  assert.deepEqual(await modeBox(page, 0).locator('.jmsgs li').evaluateAll((li) => li.map((x) => x.className)), ['info']);
-  assert.match(await modeBox(page, 0).locator('.jmsgs').innerText(), /у камеры нет kV-сертификата: введите его в карточке камеры/);
+  assert.deepEqual(await (await modeAt(page, 0)).locator('.jmsgs li').evaluateAll((li) => li.map((x) => x.className)), ['info']);
+  assert.match(await (await modeAt(page, 0)).locator('.jmsgs').innerText(), /у камеры нет kV-сертификата: введите его в карточке камеры/);
   assert.match(await page.locator('#eq-kv-modes tbody tr').nth(0).innerText(), /нет — введите в карточке камеры/);
   assert.equal(await kvCard(page).locator('.jcard-head .chip.warn, .jcard-head .chip.error').count(), 0);
   // электрометр режима — «Электрометр при калибровке» камеры
@@ -161,7 +170,7 @@ test('оборудование: рентгенотерапевтический �
   await ch.locator('input[data-bind$="|kv.kv_cq_val.1"]').fill('0,0455');
   await pause();
   assert.match(await page.locator('#eq-kv-modes tbody tr').nth(0).innerText(), /есть/);
-  assert.doesNotMatch(await modeBox(page, 0).locator('.jmsgs').innerText(), /нет kV-сертификата/);
+  assert.doesNotMatch(await (await modeAt(page, 0)).locator('.jmsgs').innerText(), /нет kV-сертификата/);
   assert.match(await ch.locator('h4 + .sub-hint').first().innerText(), /^NK \(воздушная керма\); N по качествам — 2 точки; СПО 1,0–2,0 мм/);
 
   // ввод названия аппликатора обновляет флажки и список референсного без потери фокуса
@@ -171,35 +180,38 @@ test('оборудование: рентгенотерапевтический �
   await nameF10.type('-50');
   await pause();
   assert.equal(await page.evaluate(() => document.activeElement?.value), 'F10-50');
-  assert.match(await modeBox(page, 0).locator('.jkv-apps').innerText(), /F10-50, Ø 10 см, РИП 50 см/);
-  assert.match(await modeBox(page, 0).locator('select[data-bind$="|refApplicator"] option:checked').innerText(), /^F10-50, Ø 10 см, РИП 50 см — по Rev\.1$/);
+  assert.match(await (await modeAt(page, 0)).locator('.jkv-apps').innerText(), /F10-50, Ø 10 см, РИП 50 см/);
+  assert.match(await (await modeAt(page, 0)).locator('select[data-bind$="|refApplicator"] option:checked').innerText(), /^F10-50, Ø 10 см, РИП 50 см — по Rev\.1$/);
 
   // измеренный СПО — поле даты; низкие энергии — мм Al и подсказка про калибровку камеры
-  await modeBox(page, 0).locator('select[data-bind$="|hvlSource"]').selectOption('measured');
+  await (await modeAt(page, 0)).locator('select[data-bind$="|hvlSource"]').selectOption('measured');
   await pause();
-  assert.match(await modeBox(page, 0).locator('.jmsgs').innerText(), /СПО измерен: укажите дату измерения/);
-  await modeBox(page, 0).locator('input[data-bind$="|hvlDate"]').fill('2026-10-01');
+  assert.match(await (await modeAt(page, 0)).locator('.jmsgs').innerText(), /СПО измерен: укажите дату измерения/);
+  await (await modeAt(page, 0)).locator('input[data-bind$="|hvlDate"]').fill('2026-10-01');
   await pause();
-  assert.doesNotMatch(await modeBox(page, 0).locator('.jmsgs').innerText(), /укажите дату/);
+  assert.doesNotMatch(await (await modeAt(page, 0)).locator('.jmsgs').innerText(), /укажите дату/);
 
   // второй режим копирует камеру и аппликаторы; низкие энергии
   await kvCard(page).locator('[data-add-kvmode]').click();
   await pause();
-  const m2 = modeBox(page, 1);
+  // новый режим открыт своим листом: один блок режима, два ярлыка
+  assert.equal(await kvCard(page).locator('.jkv-mode').count(), 1);
+  assert.deepEqual(await modeTabs(page).evaluateAll((a) => a.map((x) => x.getAttribute('aria-current'))), [null, 'page']);
+  const m2 = (await modeAt(page, 1));
   assert.equal(await modeChamber(page, 1).inputValue(), await modeChamber(page, 0).inputValue());
   assert.equal(await m2.locator('.jkv-apps input:checked').count(), 4);
   await m2.locator('select[data-bind$="|range"]').selectOption('low');
   await pause();
-  assert.match(await modeBox(page, 1).locator('label[for$="-hvl"]').innerText(), /СПО, мм Al/);
-  assert.match(await modeBox(page, 1).locator('[data-live^="kvmode-ref-"] .sub').innerText(), /низкие энергии: референсное поле — как при калибровке камеры/);
-  await modeBox(page, 1).locator('input[data-bind$="|kv"]').fill('50');
-  await modeBox(page, 1).locator('input[data-bind$="|hvl"]').fill('1,0');
+  assert.match(await (await modeAt(page, 1)).locator('label[for$="-hvl"]').innerText(), /СПО, мм Al/);
+  assert.match(await (await modeAt(page, 1)).locator('[data-live^="kvmode-ref-"] .sub').innerText(), /низкие энергии: референсное поле — как при калибровке камеры/);
+  await (await modeAt(page, 1)).locator('input[data-bind$="|kv"]').fill('50');
+  await (await modeAt(page, 1)).locator('input[data-bind$="|hvl"]').fill('1,0');
   await pause();
   // снять флажок стандартного — стандартный не выбран
-  await modeBox(page, 1).locator('.jkv-apps input').nth(2).uncheck();
+  await (await modeAt(page, 1)).locator('.jkv-apps input').nth(2).uncheck();
   await pause();
-  assert.equal(await modeBox(page, 1).locator('select[data-bind$="|refApplicator"]').inputValue(), '');
-  assert.equal(await modeBox(page, 1).locator('.jkv-apps input:checked').count(), 3);
+  assert.equal(await (await modeAt(page, 1)).locator('select[data-bind$="|refApplicator"]').inputValue(), '');
+  assert.equal(await (await modeAt(page, 1)).locator('.jkv-apps input:checked').count(), 3);
   // сводка справа: аппарат и его замечания
   // стандартный не выбран — не замечание: аппарат в сводке замечаний не появляется
   msgs = await page.locator('#eq-messages').innerText();
@@ -209,29 +221,30 @@ test('оборудование: рентгенотерапевтический �
   // новый аппликатор отмечается в режимах, где отмечены все (режим 1), но не в режиме 2
   await addApplicators(page, [['F15', '15', '50']]);
   await pause();
-  assert.equal(await modeBox(page, 0).locator('.jkv-apps input:checked').count(), 5);
-  assert.equal(await modeBox(page, 1).locator('.jkv-apps input:checked').count(), 3);
+  assert.equal(await (await modeAt(page, 0)).locator('.jkv-apps input:checked').count(), 5);
+  assert.equal(await (await modeAt(page, 1)).locator('.jkv-apps input:checked').count(), 3);
   // удалить аппликатор (двумя нажатиями) — он уходит и из режимов, референсный режима 1 снимается
   const del = appRow(page, 2).locator('[data-del^="kvapp:"]');
   await del.click();
   await del.click();
   await pause();
   assert.equal(await kvCard(page).locator('table.jkv-apps-t tbody tr').count(), 4);
-  assert.equal(await modeBox(page, 0).locator('.jkv-apps input').count(), 4);
-  assert.equal(await modeBox(page, 0).locator('select[data-bind$="|refApplicator"]').inputValue(), '');
+  assert.equal(await (await modeAt(page, 0)).locator('.jkv-apps input').count(), 4);
+  assert.equal(await (await modeAt(page, 0)).locator('select[data-bind$="|refApplicator"]').inputValue(), '');
   // удалить камеру — у режимов камера снимается
   const delCh = page.locator('[data-del^="chamber:"]');
   await delCh.click();
   await delCh.click();
   await pause();
   assert.equal(await modeChamber(page, 0).inputValue(), '');
-  assert.match(await modeBox(page, 0).locator('.jmsgs').innerText(), /камера не выбрана: её выбирают в разделе 4, «Камеры режимов»/);
+  assert.match(await (await modeAt(page, 0)).locator('.jmsgs').innerText(), /камера не выбрана: её выбирают в разделе 4, «Камеры режимов»/);
   // удалить режим
-  const delMode = modeBox(page, 1).locator('[data-del^="kvmode:"]');
+  const delMode = (await modeAt(page, 1)).locator('[data-del^="kvmode:"]');
   await delMode.click();
   await delMode.click();
   await pause();
   assert.equal(await kvCard(page).locator('.jkv-mode').count(), 1);
+  assert.equal(await modeTabs(page).count(), 1);
 
   // «Журнал и тренды» (с 0.46.0): аппарат kV — в списке отдельной группой, после ускорителей; записей у него пока нет
   await page.click('#eq-add-machine');
@@ -256,7 +269,7 @@ test('оборудование: рентгенотерапевтический �
   const lines = (await kvCard(page).innerText()).split('\n').filter((l) => CYR.test(l));
   assert.deepEqual(lines, []);
   assert.deepEqual((await page.locator('#eq-kv-modes').innerText()).split('\n').filter((l) => CYR.test(l)), []);
-  assert.match(await modeBox(page, 0).locator('h4').innerText(), /^Mode 1 — 200 kV \/ 15 mA \/ 0\.5 mm Cu$/);
+  assert.match(await (await modeAt(page, 0)).locator('h4').innerText(), /^Mode 1 — 200 kV \/ 15 mA \/ 0\.5 mm Cu$/);
   await page.locator('#lang_ru').check();
   await pause(300);
   assert.deepEqual(errors, []);

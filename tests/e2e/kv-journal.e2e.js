@@ -117,7 +117,8 @@ test('kV-рентген ↔ «Оборудование»: сохранить а�
   await page.goto(`${server.url}/index.html#equipment`);
   await page.waitForSelector('.jcard.jkv');
   const card = page.locator('.jcard.jkv');
-  assert.equal(await card.locator('.jkv-mode').count(), 2);
+  // режимы — листы (с 0.52.1): два ярлыка, виден один режим
+  assert.equal(await card.locator('[data-eq-tabs^="kvmode."] a').count(), 2);
   assert.equal(await card.locator('table.jkv-apps-t tbody tr').count(), 3);
   assert.equal(await card.locator('.jkv-mode').first().locator('select[data-bind$="|refApplicator"] option:checked').innerText(), 'Ø 10 см, РИП 50 см — по Rev.1');
   const ch = page.locator('[data-card^="chamber:"]');
