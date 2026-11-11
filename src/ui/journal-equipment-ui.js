@@ -12,7 +12,7 @@ import { CO_DEFAULTS, normalizeCobalt } from '../core/cobalt.js';
 import {
   uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, saveBeamSettings, equipmentDue, equipmentNoDue,
   chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable, electronChamberForm, beamKind, cobaltCapable, cobaltChamberForm, myChambersToJournal, orgText, withChamberLength,
-  CAL_GEO_KEYS, machineCalGeo, calGeoKey, calGeoText, syncCalGeo, chamberUse, chamberUseSet, kvChamberInModes,
+  CAL_GEO_KEYS, machineCalGeo, calGeoKey, calGeoText, syncCalGeo, chamberUse, chamberUseSet, kvChamberInModes, dueStatus,
 } from '../core/journal.js';
 import {
   newKvApplicator, newKvMachineMode, normalizeKvMachine, applicatorDiameter, applicatorText, kvMachineModeTitle, hvlUnit, kvRefCandidates, kvMachineChecks,
@@ -623,6 +623,106 @@ function importMine() {
   );
 }
 
+// ------------------------------------------------------------ листы: аппараты, электрометры, камеры
+// С 0.52.0 каждый аппарат, электрометр и камера — свой лист в своём разделе (ярлыки, как листы вкладки «kV-рентген»):
+// видна одна карточка, а не все подряд. Кнопки добавления — над ярлыками. Открытые листы помнятся в этом браузере.
+const SHEET_KEY = 'reference-dosimetry.equipment.sheets';
+const cur = (() => {
+  try {
+    const o = JSON.parse(localStorage.getItem(SHEET_KEY) || '{}');
+    return o && typeof o === 'object' ? o : {};
+  } catch {
+    return {};
+  }
+})();
+/** Записи раздела: аппараты, электрометры или камеры. */
+const sheetList = (j, kind) => (kind === 'machine' ? j.machines : kind === 'chamber' ? j.chambers : j.electrometers);
+/** Открытая запись раздела: выбранная, иначе первая. */
+function openSheet(j, kind) {
+  const list = sheetList(j, kind);
+  return list.find((x) => x.id === cur[kind]) ?? list[0] ?? null;
+}
+function setSheet(kind, id) {
+  cur[kind] = id || '';
+  try {
+    localStorage.setItem(SHEET_KEY, JSON.stringify(cur));
+  } catch {
+    /* хранилище недоступно */
+  }
+}
+/** Вид аппарата для ярлыка. */
+const machineKindText = (m) => (m.kind === 'kv' ? L('рентгенотерапевтический', 'x-ray therapy') : m.kind === 'cobalt' ? '⁶⁰Co' : L('ускоритель', 'linac'));
+/** Отметка на ярлыке по сроку калибровки: прошёл — ошибка, подходит — внимание (как отметка срока в карточке). */
+function dueState(due) {
+  const st = dueStatus(due, today()).status;
+  return st === 'overdue' ? 'error' : st === 'soon' ? 'warn' : '';
+}
+/** Ярлык записи: подпись, подпись мелко и отметка (done / warn / error / пусто — кружок). */
+function sheetTab(j, kind, x) {
+  if (kind === 'machine') {
+    let st = x.beams.length ? 'done' : '';
+    let n = x.beams.length;
+    let w = countWord(n, [L('пучок', 'beam'), L('пучка', 'beams'), L('пучков', 'beams')], ['beam', 'beams']);
+    if (x.kind === 'kv') {
+      const checks = kvMachineChecks(x, j);
+      st = checks.some((c) => c.level === 'error') ? 'error' : checks.some((c) => c.level === 'warn') ? 'warn' : x.modes.length ? 'done' : '';
+      n = x.modes.length;
+      w = countWord(n, [L('режим', 'mode'), L('режима', 'modes'), L('режимов', 'modes')], ['mode', 'modes']);
+    }
+    const name = x.name || (x.kind === 'kv' ? L('Новый рентгенотерапевтический аппарат', 'New x-ray therapy unit') : x.kind === 'cobalt' ? L('Новый аппарат ⁶⁰Co', 'New ⁶⁰Co unit') : L('Новый ускоритель', 'New linac'));
+    return { name, small: machineKindText(x), st, title: `${machineKindText(x)}; ${n} ${w}` };
+  }
+  const chamber = kind === 'chamber';
+  const miss = chamber ? chamberMissing(x, chamberUses(j, x.id), 'trs') : electrometerMissing(x);
+  const due = dueState(x.dueDate);
+  const st = due || (miss.length ? 'warn' : 'done');
+  // модель ещё не выбрана — «Новая камера» («Новый электрометр»), а не «—» и не «электрометр»
+  const blank = chamber ? isBlank(x.form?.ch_model) && isBlank(x.form?.ch_serial) : isBlank(x.form?.el_model) && isBlank(x.form?.el_serial);
+  const name = blank ? (chamber ? L('Новая камера', 'New chamber') : L('Новый электрометр', 'New electrometer')) : chamber ? chamberText(x) : electrometerText(x);
+  const title = [
+    due === 'error' ? L('срок калибровки прошёл', 'calibration overdue') : due === 'warn' ? L('срок калибровки подходит', 'calibration due soon') : '',
+    miss.length ? plainSymbols(L(`не заполнено: ${miss.join(', ')}`, `missing: ${miss.join(', ')}`)).replace(/<\/?(?:sub|sup|b|i)>/g, '') : '',
+  ].filter(Boolean).join('; ');
+  return { name, small: '', st, title };
+}
+const TABS_BOX = { machine: '#eq-mtabs', electrometer: '#eq-etabs', chamber: '#eq-ctabs' };
+/** Ярлыки раздела (без перерисовки карточки — по вводу названия). */
+function renderTabs(kind, j = getJournal()) {
+  const nav = $(TABS_BOX[kind]);
+  if (!nav) return;
+  const list = sheetList(j, kind);
+  const open = openSheet(j, kind);
+  nav.hidden = !list.length;
+  const html = list.map((x) => {
+    const t = sheetTab(j, kind, x);
+    return `<a href="#equipment" data-eq-sheet="${val(`${kind}:${x.id}`)}"${x.id === open?.id ? ' aria-current="page"' : ''}${t.st ? ` data-state="${t.st}"` : ''}${t.title ? ` title="${val(t.title)}"` : ''}>${esc(t.name)}${t.small ? ` <small>${esc(t.small)}</small>` : ''}</a>`;
+  });
+  // тот же набор ярлыков — правятся на месте: ярлык, на который уже нажали (ввод названия закончился по «change»),
+  // остаётся тем же элементом, и нажатие доходит
+  const old = [...nav.children];
+  if (old.length === list.length && old.every((a, i) => a.dataset.eqSheet === `${kind}:${list[i].id}`)) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html.join('');
+    old.forEach((a, i) => {
+      const b = tmp.children[i];
+      for (const name of ['aria-current', 'data-state', 'title']) {
+        if (b.hasAttribute(name)) a.setAttribute(name, b.getAttribute(name));
+        else a.removeAttribute(name);
+      }
+      if (a.innerHTML !== b.innerHTML) a.innerHTML = b.innerHTML;
+    });
+  } else nav.innerHTML = html.join('');
+  centerTab(nav);
+}
+/** На телефоне ряд ярлыков прокручивается вбок: открытый лист — в видимой части ряда. */
+function centerTab(nav) {
+  const a = nav.querySelector('[aria-current="page"]');
+  if (a && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = Math.max(0, a.offsetLeft - nav.offsetLeft - (nav.clientWidth - a.offsetWidth) / 2);
+}
+// вкладка, открытая после отрисовки (скрытый ряд ширины не имеет), и поворот экрана: ряд — к открытому листу
+const tabsResize = typeof ResizeObserver === 'function' ? new ResizeObserver((list) => list.forEach((e) => centerTab(e.target))) : null;
+const renderAllTabs = (j = getJournal()) => Object.keys(TABS_BOX).forEach((kind) => renderTabs(kind, j));
+
 // ------------------------------------------------------------ отрисовка
 /**
  * «Камеры режимов» (раздел 4, с 0.50.0): у каждого режима рентгенотерапевтических аппаратов — своя камера; электрометр —
@@ -665,11 +765,15 @@ function render() {
   const j = getJournal();
   $('#eq_institution').value = j.institution || '';
   $('#eq_department').value = j.department || '';
-  $('#eq-chambers').innerHTML = j.chambers.map((c) => chamberCard(c, j)).join('') || `<p class="sub-hint">${esc(L('Камер пока нет.', 'No chambers yet.'))}</p>`;
+  const ch = openSheet(j, 'chamber');
+  $('#eq-chambers').innerHTML = ch ? chamberCard(ch, j) : `<p class="sub-hint">${esc(L('Камер пока нет.', 'No chambers yet.'))}</p>`;
   $('#eq-kv-modes').innerHTML = kvModeChambersHtml(j);
-  $('#eq-electrometers').innerHTML = j.electrometers.map(electrometerCard).join('') || `<p class="sub-hint">${esc(L('Электрометров пока нет.', 'No electrometers yet.'))}</p>`;
+  const el = openSheet(j, 'electrometer');
+  $('#eq-electrometers').innerHTML = el ? electrometerCard(el) : `<p class="sub-hint">${esc(L('Электрометров пока нет.', 'No electrometers yet.'))}</p>`;
   for (const m of j.machines) for (const kind of Object.keys(CAL_GEO_KEYS)) geoSeen.set(`${m.id}|${kind}`, calGeoKey(kind, machineCalGeo(m, kind)));
-  $('#eq-machines').innerHTML = j.machines.map((m) => machineCard(j, m)).join('') || `<p class="sub-hint">${esc(L('Аппаратов пока нет.', 'No machines yet.'))}</p>`;
+  const m = openSheet(j, 'machine');
+  renderAllTabs(j);
+  $('#eq-machines').innerHTML = m ? machineCard(j, m) : `<p class="sub-hint">${esc(L('Аппаратов пока нет: добавьте ускоритель, аппарат ⁶⁰Co или рентгенотерапевтический аппарат кнопками выше.', 'No machines yet: add a linac, a ⁶⁰Co unit or an x-ray therapy unit with the buttons above.'))}</p>`;
   for (const btn of ROOT().querySelectorAll('[data-del]')) {
     if (btn.disabled) continue;
     armButton(btn, btn.textContent, () => L('Нажмите ещё раз, чтобы удалить', 'Click again to delete'), () => remove(btn.dataset.del));
@@ -739,6 +843,8 @@ export function saveBeamFromTab(target, form, title = '') {
 /** Открыть карточку пучка и прокрутить к ней. */
 export function revealBeam(beamId) {
   if (!beamId) return;
+  const m = getJournal().machines.find((x) => x.beams.some((b) => b.id === beamId));
+  if (m) setSheet('machine', m.id);
   render();
   const card = ROOT().querySelector(`[data-card="beam:${CSS.escape(beamId)}"]`);
   card?.scrollIntoView({ block: 'start' });
@@ -898,6 +1004,7 @@ function onInput(e) {
   }
   updateHead(el);
   renderReadout();
+  renderAllTabs();
 }
 
 function remove(what) {
@@ -918,12 +1025,24 @@ function remove(what) {
       // у режимов аппаратов kV камера и электрометр снимаются: режим попросит выбрать другие
       for (const m of j.machines) for (const x of m.modes || []) if (x[key] === a) x[key] = '';
     }
+    // открывается соседний лист: следующий, иначе предыдущий
+    if (kind === 'chamber' || kind === 'electrometer') {
+      const list = sheetList(j, kind);
+      const i = list.findIndex((x) => x.id === a);
+      const rest = list.filter((x) => x.id !== a);
+      setSheet(kind, rest[Math.min(i, rest.length - 1)]?.id ?? '');
+    }
     if (kind === 'chamber') j.chambers = j.chambers.filter((x) => x.id !== a);
     else if (kind === 'electrometer') {
       j.electrometers = j.electrometers.filter((x) => x.id !== a);
       for (const c of j.chambers) if (c.calEl === a) c.calEl = '';
     }
-    else if (kind === 'machine') j.machines = j.machines.filter((x) => x.id !== a);
+    else if (kind === 'machine') {
+      // открывается соседний аппарат: следующий, иначе предыдущий
+      const i = j.machines.findIndex((x) => x.id === a);
+      j.machines = j.machines.filter((x) => x.id !== a);
+      setSheet('machine', j.machines[Math.min(i, j.machines.length - 1)]?.id ?? '');
+    }
     else if (kind === 'beam') {
       const m = j.machines.find((x) => x.id === a);
       if (m) m.beams = m.beams.filter((x) => x.id !== b);
@@ -952,6 +1071,17 @@ function focusLast(kind) {
 }
 
 function onClick(e) {
+  const tab = e.target.closest('a[data-eq-sheet]');
+  if (tab) {
+    e.preventDefault();
+    const v = tab.dataset.eqSheet;
+    const [kind, id] = [v.slice(0, v.indexOf(':')), v.slice(v.indexOf(':') + 1)];
+    if (id === openSheet(getJournal(), kind)?.id) return;
+    setSheet(kind, id);
+    render();
+    $(`${TABS_BOX[kind]} [aria-current="page"]`)?.focus({ preventScroll: true });
+    return;
+  }
   const t = e.target.closest('button');
   if (!t) return;
   if (t.dataset.addBeam) {
@@ -1043,8 +1173,10 @@ function onClick(e) {
           : normalizeForm(withChamberLength({ ...FORM_DEFAULTS, ...b.form, ...(ch?.form || {}), ...(el?.form || {}), meta_beam: b.name, meta_machine: m.name, meta_institution: orgText(j), protocol: currentProtocol() }, ch));
     tabBridge.edit(kind, form, { title: `${m.name || ''} — ${b.name || ''}`, target: { machineId: mid, beamId: bid, kind } });
   } else if (t.id === 'eq-add-chamber') {
+    const id = uid('ch');
+    setSheet('chamber', id);
     updateJournal((j) => {
-      j.chambers.push({ ...CHAMBER_DEFAULTS, id: uid('ch'), form: { ch_model: '', ch_serial: '', ch_ndw: '', ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', ch_T0: '20', ch_P0: '101,325' } });
+      j.chambers.push({ ...CHAMBER_DEFAULTS, id, form: { ch_model: '', ch_serial: '', ch_ndw: '', ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', ch_T0: '20', ch_P0: '101,325' } });
       return j;
     }, 'equipment');
     focusLast('chamber');
@@ -1052,6 +1184,7 @@ function onClick(e) {
     importMine();
   } else if (t.id === 'eq-add-electrometer') {
     const id = uid('el');
+    setSheet('electrometer', id);
     updateJournal((j) => {
       j.electrometers.push({ ...ELECTROMETER_DEFAULTS, id, form: { el_model: '', el_serial: '', el_kelec: '1,000' } });
       return j;
@@ -1059,16 +1192,21 @@ function onClick(e) {
     focusLast('electrometer');
   } else if (t.id === 'eq-add-kv') {
     const id = uid('m');
+    setSheet('machine', id);
     updateJournal((j) => {
       j.machines.push(normalizeKvMachine({ ...MACHINE_DEFAULTS, id, kind: 'kv' }));
       return j;
     }, 'equipment');
     document.getElementById(fieldId('machine', id, 'name'))?.focus();
   } else if (t.id === 'eq-add-machine' || t.id === 'eq-add-cobalt') {
+    // новый аппарат открывается своим листом, фокус — на его названии
+    const id = uid('m');
+    setSheet('machine', id);
     updateJournal((j) => {
-      j.machines.push({ ...MACHINE_DEFAULTS, id: uid('m'), kind: t.id === 'eq-add-cobalt' ? 'cobalt' : 'linac', calGeo: { photon: machineCalGeo(null, 'photon'), electron: machineCalGeo(null, 'electron') }, beams: [] });
+      j.machines.push({ ...MACHINE_DEFAULTS, id, kind: t.id === 'eq-add-cobalt' ? 'cobalt' : 'linac', calGeo: { photon: machineCalGeo(null, 'photon'), electron: machineCalGeo(null, 'electron') }, beams: [] });
       return j;
     }, 'equipment');
+    document.getElementById(fieldId('machine', id, 'name'))?.focus();
   }
 }
 
@@ -1078,6 +1216,7 @@ export function equipmentStatus(text) {
 
 export function initEquipment() {
   setStatus = makeStatus($('#eq-status'));
+  for (const sel of Object.values(TABS_BOX)) if ($(sel)) tabsResize?.observe($(sel));
   setupFilePanel($('#eq-file'), (t) => setStatus(t));
   render();
   const sheet = $('#eq-sheet');

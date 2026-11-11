@@ -1384,6 +1384,12 @@ table.kv-sum-dates td.kv-sum-check { font-style: italic; }
 .kv-pages a.wip { color: var(--muted); font-weight: 400; }
 .kv-pages a.wip::before { border-style: dashed; }
 @media (max-width: 560px) { .kv-pages { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; } }
+/* «Оборудование»: аппараты — листы раздела 2 (с 0.52.0); кнопки добавления — над ярлыками */
+.eq-add-row { margin: 4px 0 10px; }
+.eq-mtabs { margin-top: 0; }
+.eq-mtabs a small { margin-left: 4px; font: 400 11.5px var(--font-body, inherit); color: var(--muted); }
+.eq-mtabs a[aria-current="page"] small { color: inherit; opacity: .75; }
+.eq-mtabs + .jcards > .jcard { border-top-left-radius: 0; border-top-right-radius: 0; margin-top: 0; }
 .kv-modebar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: -4px; }
 .kv-modebar > .label { font: 500 13px var(--font-display); color: var(--muted); }
 .kv-modebar-list { display: flex; flex-wrap: wrap; gap: 6px; }

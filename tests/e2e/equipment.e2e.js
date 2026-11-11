@@ -50,11 +50,16 @@ test('оборудование: подразделение, производит
   await pause();
   await page.click('#eq-add-electrometer');
   await pause();
-  const el2 = page.locator('[data-card^="electrometer:"]').nth(1);
+  // электрометр — свой лист (с 0.52.0): видна карточка нового, у раздела — ярлыки
+  assert.equal(await page.locator('[data-card^="electrometer:"]').count(), 1);
+  assert.equal(await page.locator('#eq-etabs a').count(), 2);
+  const el2 = page.locator('[data-card^="electrometer:"]');
+  const el2id = (await el2.getAttribute('data-card')).split(':')[1];
   await el2.locator('select[data-bind$="|maker"]').selectOption('other');
   await pause();
   await el2.locator('input[data-bind$="|form.el_model"]').fill('Самодельный ЭМ-1');
   await pause();
+  assert.deepEqual((await page.locator('#eq-etabs a').allInnerTexts()).map((t) => t.trim()), ['PTW UNIDOS Tango', 'Самодельный ЭМ-1']);
 
   // камера: производитель → модель, размеры из базы
   await page.click('#eq-add-chamber');
@@ -69,7 +74,6 @@ test('оборудование: подразделение, производит
   await ch.locator('input[data-bind$="|form.ch_ndw"]').fill('0,05235');
   await ch.locator('input[data-bind$="|calCert"]').fill('123');
   // камеру калибровали со вторым электрометром при −400 В
-  const el2id = (await el2.getAttribute('data-card')).split(':')[1];
   await ch.locator('select[data-bind$="|calEl"]').selectOption(el2id);
   await pause();
   await ch.locator('input[data-bind$="|calV"]').fill('400');
@@ -121,6 +125,71 @@ test('оборудование: подразделение, производит
   await page.waitForTimeout(500);
   const card = (await page.locator('[data-card^="chamber:"]').innerText()).split('\n').filter((l) => CYR.test(l) && !/739475|ЭМ-1/.test(l));
   assert.deepEqual(card, []);
+  assert.deepEqual(errors, []);
+});
+
+test('оборудование: аппараты, электрометры и камеры — листы с ярлыками, кнопки добавления над ярлыками', async () => {
+  const { page, errors } = await openPage(browser);
+  await page.goto(`${server.url}/index.html#equipment`);
+  await page.waitForSelector('#eq_department');
+  const pause = () => page.waitForTimeout(250);
+  assert.ok(await page.locator('#eq-mtabs').isHidden(), 'без аппаратов ярлыков нет');
+  for (const [btn, name] of [['#eq-add-machine', 'Halcyon'], ['#eq-add-machine', 'Versa HD'], ['#eq-add-cobalt', 'Тератрон'], ['#eq-add-kv', 'Терад 200']]) {
+    await page.click(btn);
+    await pause();
+    // новый аппарат открыт своим листом, фокус — на названии
+    assert.equal(await page.evaluate(() => document.activeElement?.dataset.bind?.endsWith('|name')), true, `${name}: фокус на названии`);
+    await page.locator('[data-card^="machine:"] input[data-bind$="|name"]').fill(name);
+    await pause();
+  }
+  // одна карточка аппарата, ярлыки — по аппаратам, с видом аппарата
+  assert.equal(await page.locator('[data-card^="machine:"]').count(), 1);
+  assert.deepEqual((await page.locator('#eq-mtabs a').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()), ['Halcyon ускоритель', 'Versa HD ускоритель', 'Тератрон ⁶⁰Co', 'Терад 200 рентгенотерапевтический']);
+  assert.equal(await page.locator('#eq-mtabs a[aria-current="page"]').innerText().then((t) => t.split(/\s/)[0]), 'Терад');
+  // кнопки добавления — над ярлыками и карточкой
+  const y = async (sel) => (await page.locator(sel).boundingBox()).y;
+  assert.ok((await y('#eq-add-machine')) < (await y('#eq-mtabs')), 'кнопки над ярлыками');
+  assert.ok((await y('#eq-mtabs')) < (await y('[data-card^="machine:"]')), 'ярлыки над карточкой');
+  // ярлык открывает аппарат; у аппарата с пучками — отметка
+  await page.locator('#eq-mtabs a', { hasText: 'Versa HD' }).click();
+  await pause();
+  assert.equal(await page.locator('[data-card^="machine:"] input[data-bind^="machine|"][data-bind$="|name"]').inputValue(), 'Versa HD');
+  await page.locator('[data-add-beam]').click();
+  await pause();
+  await page.locator('[data-card^="beam:"] input[data-bind$="|name"]').fill('6 МВ');
+  await pause();
+  assert.equal(await page.locator('#eq-mtabs a', { hasText: 'Versa HD' }).getAttribute('data-state'), 'done');
+  assert.equal(await page.locator('#eq-mtabs a', { hasText: 'Halcyon' }).getAttribute('data-state'), null);
+  // открытый аппарат помнится после перезагрузки
+  await page.reload();
+  await page.waitForSelector('[data-card^="machine:"]');
+  assert.equal(await page.locator('[data-card^="machine:"] input[data-bind^="machine|"][data-bind$="|name"]').inputValue(), 'Versa HD');
+  // удалить открытый аппарат (без записей) — открывается следующий
+  await page.locator('#eq-mtabs a', { hasText: 'Halcyon' }).click();
+  await pause();
+  const del = page.locator('[data-card^="machine:"] [data-del^="machine:"]');
+  await del.click();
+  await del.click();
+  await pause();
+  assert.equal(await page.locator('#eq-mtabs a').count(), 3);
+  assert.equal(await page.locator('[data-card^="machine:"] input[data-bind^="machine|"][data-bind$="|name"]').inputValue(), 'Versa HD');
+  // камеры: свой лист, кнопка над ярлыками; не заполнено — жёлтая отметка
+  await page.click('#eq-add-chamber');
+  await pause();
+  await page.click('#eq-add-chamber');
+  await pause();
+  assert.equal(await page.locator('[data-card^="chamber:"]').count(), 1);
+  assert.equal(await page.locator('#eq-ctabs a').count(), 2);
+  assert.equal(await page.locator('#eq-ctabs a').nth(1).getAttribute('aria-current'), 'page');
+  assert.equal(await page.locator('#eq-ctabs a').nth(0).getAttribute('data-state'), 'warn');
+  assert.ok((await y('#eq-add-chamber')) < (await y('#eq-ctabs')));
+  // по-английски — подписи ярлыков без кириллицы (кроме названий)
+  await page.locator('#lang_en').check();
+  await pause();
+  assert.deepEqual((await page.locator('#eq-mtabs a small').allInnerTexts()), ['linac', '⁶⁰Co', 'x-ray therapy']);
+  assert.deepEqual((await page.locator('#eq-ctabs a').allInnerTexts()).map((t) => t.trim()), ['New chamber', 'New chamber']);
+  await page.locator('#lang_ru').check();
+  await pause();
   assert.deepEqual(errors, []);
 });
 

@@ -130,7 +130,8 @@ test('kV-рентген ↔ «Оборудование»: сохранить а�
   // в списке моделей — камеры только для kV-рентгена
   await page.click('#eq-add-chamber');
   await pause();
-  const ch2 = page.locator('[data-card^="chamber:"]').nth(1);
+  // камеры — листы (с 0.52.0): открыта карточка новой камеры
+  const ch2 = page.locator('[data-card^="chamber:"]');
   await ch2.locator('select[data-bind$="|maker"]').selectOption('PTW');
   await pause();
   await ch2.locator('select[data-bind$="|form.ch_model"]').selectOption('PTW23342');

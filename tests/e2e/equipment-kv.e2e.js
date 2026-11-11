@@ -248,6 +248,8 @@ test('оборудование: рентгенотерапевтический �
 
   // по-английски — без кириллицы в карточке (кроме введённых значений)
   await page.goto(`${server.url}/index.html#equipment`);
+  // аппараты — листы (с 0.52.0): открыт последний выбранный (Versa HD), Xstrahl 300 — своим ярлыком
+  await page.locator('#eq-mtabs a', { hasText: 'Xstrahl 300' }).click();
   await page.waitForSelector('.jcard.jkv');
   await page.locator('#lang_en').check();
   await pause(600);
