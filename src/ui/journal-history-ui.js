@@ -2,7 +2,7 @@
 // пучка и общая часть сеансов (journal-spc-ui.js), k_pol и k_s по калибровкам, сроки калибровки, выгрузка в CSV.
 // С 0.46.0 — и рентгенотерапевтические аппараты: записи журнала kV (аппарат за день), «Открыть во вкладке», протокол.
 import { L } from '../core/i18n.js';
-import { trendSeries, machineOf, equipmentDue, equipmentNoDue, dayNumber, beamKind } from '../core/journal.js';
+import { trendSeries, machineOf, equipmentDue, equipmentNoDue, dayNumber, beamKind, moveSession } from '../core/journal.js';
 import { $, esc, fmt, fmtSigned, today, makeStatus, armButton, notifyUpdate, richText, downloadText, copyText, printToPdf } from './common.js';
 import { sessionReportText } from './journal-report.js';
 import { scatterChart, legendSwatch } from './chart.js';
@@ -167,7 +167,9 @@ function renderTables(j, series) {
           return `<li><div><b>${esc(fmtDate(s.date))}</b> · ${esc(s.mode === 'cal' ? L('калибровка', 'calibration') : L('проверка выхода', 'output check'))} · ${esc(L(`пучков: ${bs.length}`, `beams: ${bs.length}`))}${(s.checks || []).length ? ` · ${esc(L(`проверок второй камерой: ${s.checks.length}`, `second-chamber checks: ${s.checks.length}`))}` : ''}${out.length ? ` · <span class="st-out">${esc(L(`вне допуска: ${out.join(', ')}`, `out of tolerance: ${out.join(', ')}`))}</span>` : ''}${s.staff?.some((x) => x.trim()) ? `<br><small>${esc(s.staff.filter((x) => x.trim()).join(', '))}</small>` : ''}</div>
             <ul class="jsess-beams">${beamLines}</ul>
             ${s.spcRestart ? `<small class="chip">${esc(L('с этой записи — новый отсчёт контрольной карты', 'a new control-chart count starts here'))}</small>` : ''}
-            <div class="row-tools"><button type="button" class="link-btn" data-report="${esc(s.id)}">${esc(L('Протокол', 'Report'))}</button><button type="button" class="link-btn" data-spc-restart="${esc(s.id)}" title="${esc(L('Например, после ремонта или замены узла ускорителя без записанной подстройки: до и после — разные процессы.', 'For example, after a repair or replacement of a linac part without a recorded adjustment: before and after are different processes.'))}">${esc(s.spcRestart ? L('Убрать новый отсчёт карты', 'Remove the new chart count') : L('Новый отсчёт карты', 'New chart count'))}</button><button type="button" class="link-btn danger" data-del-session="${esc(s.id)}">${esc(L('Удалить', 'Delete'))}</button></div></li>`;
+            <div class="row-tools"><button type="button" class="link-btn" data-report="${esc(s.id)}">${esc(L('Протокол', 'Report'))}</button><button type="button" class="link-btn" data-spc-restart="${esc(s.id)}" title="${esc(L('Например, после ремонта или замены узла ускорителя без записанной подстройки: до и после — разные процессы.', 'For example, after a repair or replacement of a linac part without a recorded adjustment: before and after are different processes.'))}">${esc(s.spcRestart ? L('Убрать новый отсчёт карты', 'Remove the new chart count') : L('Новый отсчёт карты', 'New chart count'))}</button><button type="button" class="link-btn" data-move-session="${esc(s.id)}">${esc(L('Перенести на другую дату', 'Move to another date'))}</button><button type="button" class="link-btn danger" data-del-session="${esc(s.id)}">${esc(L('Удалить', 'Delete'))}</button></div>
+            <div class="jmove" data-move-form="${esc(s.id)}" hidden><label>${esc(L('Новая дата записи', 'New date of the record'))} <input type="date" data-move-date value="${esc(s.date)}" max="${esc(today())}"></label> <button type="button" class="primary" data-move-ok="${esc(s.id)}">${esc(L('Перенести', 'Move'))}</button> <button type="button" data-move-cancel>${esc(L('Отмена', 'Cancel'))}</button>
+              <p class="sub-hint">${esc(L('Переносятся все пучки записи вместе; показания, поправки и доза не меняются (у ⁶⁰Co ожидаемая мощность дозы пересчитывается по распаду на новую дату).', 'All beams of the record are moved together; the readings, corrections and dose do not change (for ⁶⁰Co the expected dose rate is decay-corrected to the new date).'))}</p><p class="jmove-err st-out" role="alert"></p></div></li>`;
         })
         .join('')}</ul>`
     : `<p class="sub-hint">${esc(L('Записей пока нет: выберите пучок журнала во вкладке «⁶⁰Co», «МВ фотоны» или «Электроны» (раздел 1), измерьте и нажмите «Записать в журнал».', 'No records yet: select a journal beam in the ⁶⁰Co, MV photons or Electrons tab (section 1), measure and click "Record to journal".'))}</p>`;
@@ -590,6 +592,37 @@ export function initHistory() {
     }
   });
   $('#hs-sessions').addEventListener('click', (e) => {
+    // перенос записи на другую дату (moveSession): поле даты под кнопками записи
+    const mv = e.target.closest('[data-move-session]');
+    if (mv) {
+      const form = $('#hs-sessions').querySelector(`[data-move-form="${CSS.escape(mv.dataset.moveSession)}"]`);
+      if (form) {
+        form.hidden = !form.hidden;
+        if (!form.hidden) form.querySelector('[data-move-date]')?.focus();
+      }
+      return;
+    }
+    if (e.target.closest('[data-move-cancel]')) {
+      const form = e.target.closest('[data-move-form]');
+      if (form) form.hidden = true;
+      return;
+    }
+    const ok = e.target.closest('[data-move-ok]');
+    if (ok) {
+      const form = ok.closest('[data-move-form]');
+      const id = ok.dataset.moveOk;
+      const was = getJournal().sessions.find((x) => x.id === id)?.date;
+      const res = moveSession(getJournal(), id, form?.querySelector('[data-move-date]')?.value, { today: today() });
+      if (res.error) {
+        const err = form?.querySelector('.jmove-err');
+        if (err) err.textContent = res.error;
+        return;
+      }
+      updateJournal(() => res.journal, 'history');
+      const more = res.updated ? L(` Проверок выхода, взявших k_pol и k_s из этой калибровки: ${res.updated} — они ссылаются на новую дату.`, ` Output checks that took k_pol and k_s from this calibration: ${res.updated}; they now refer to the new date.`) : '';
+      setStatus(L(`Запись ${fmtDate(was)} перенесена на ${fmtDate(res.session.date)}.${more} Сохраните журнал в файл.`, `The record of ${fmtDate(was)} has been moved to ${fmtDate(res.session.date)}.${more} Save the journal to the file.`));
+      return;
+    }
     const r = e.target.closest('[data-spc-restart]');
     if (r) {
       const id = r.dataset.spcRestart;

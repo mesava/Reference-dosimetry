@@ -1108,6 +1108,114 @@ export function upsertSession(j, s) {
   return { ...j, sessions };
 }
 
+// ---------------------------------------------------------------- перенос записи на другую дату
+/** Дата «ДД.ММ.ГГГГ» или «ГГГГ-ММ-ДД» (как в поле «из калибровки от …») → ГГГГ-ММ-ДД; иначе ''. */
+const isoOfText = (t) => {
+  const s = String(t ?? '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+};
+/** Та же дата в том же написании, что и было (ДД.ММ.ГГГГ или ГГГГ-ММ-ДД). */
+const sameStyleDate = (was, iso) => (/^\d{2}\.\d{2}\.\d{4}$/.test(String(was ?? '').trim()) ? dateText(iso, false) : iso);
+/** Дата калибровки, на которую опирается пучок записи: k_pol и k_s «из калибровки от …», у ⁶⁰Co — и мощность дозы сравнения. */
+const refDatesOf = (b) => {
+  const k = kindOf(beamKind(b)).k;
+  const f = b.form || {};
+  return [f[k.fixed] ? isoOfText(f[k.fixedFrom]) : '', beamKind(b) === 'cobalt' ? isoOfText(f.co_ref_date) : ''].filter(Boolean);
+};
+
+/**
+ * Перенести запись журнала (аппарат за день) на другую дату — например, протокол внесли не с той датой. Меняются дата
+ * записи и дата измерения в форме каждого пучка; итог пучков пересчитывается по форме (у ⁶⁰Co от даты зависит
+ * поправка на распад). Показания, поправки и оборудование не меняются.
+ * Не переносится: на дату в будущем; если за новую дату у аппарата уже есть запись в том же режиме и по тому же
+ * протоколу (их пришлось бы объединять); если пучок записи опирается на калибровку позже новой даты; если на эту
+ * калибровку опираются проверки выхода или проверки в пластинах раньше новой даты. Проверки выхода позже новой даты,
+ * взявшие k_pol и k_s (у ⁶⁰Co — мощность дозы сравнения) из переносимой калибровки, ссылаются на новую дату.
+ * Возвращает { journal, session, updated } (updated — сколько проверок выхода теперь ссылаются на новую дату) или { error }.
+ */
+export function moveSession(j, sessionId, newDate, { today = localToday() } = {}) {
+  const s = j.sessions.find((x) => x.id === sessionId);
+  if (!s) return { error: L('Запись не найдена в журнале.', 'The record was not found in the journal.') };
+  const date = String(newDate ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: L('Укажите новую дату записи.', 'Enter the new date of the record.') };
+  if (date === s.date) return { error: L('Новая дата совпадает с датой записи.', 'The new date is the same as the date of the record.') };
+  const future = futureDateError(date, today);
+  if (future) return { error: future };
+  const proto = (x) => (x.protocol === 'tg51' ? 'tg51' : 'trs');
+  const modeText = (x) => (x.mode === 'cal' ? L('калибровка', 'calibration') : L('проверка выхода', 'output check'));
+  const clash = j.sessions.find((x) => x.id !== s.id && x.machineId === s.machineId && x.date === date && x.mode === s.mode && proto(x) === proto(s));
+  if (clash) {
+    return { error: L(
+      `За ${dateText(date, false)} у этого аппарата уже есть запись (${modeText(s)}): записи одного дня не объединяются при переносе. Удалите лишнюю запись или перенесите её на другую дату.`,
+      `There is already a record of this machine for ${dateText(date, true)} (${modeText(s)}): records of one day are not merged by a move. Delete the extra record or move it to another date.`,
+    ) };
+  }
+  const beamName = (id) => beamOf(j, id)?.beam?.name || '—';
+  const dt = (d) => L(dateText(d, false), dateText(d, true));
+  // пучок записи опирается на калибровку позже новой даты
+  const later = s.beams.flatMap((b) => refDatesOf(b).filter((d) => d > date).map((d) => `${beamName(b.beamId)} (${dt(d)})`));
+  if (later.length) {
+    return { error: L(
+      `Пучки записи опираются на калибровку позже новой даты: ${[...new Set(later)].join(', ')}. Проверка выхода не может быть раньше калибровки, из которой взяты k_pol и k_s.`,
+      `Beams of the record rely on a calibration later than the new date: ${[...new Set(later)].join(', ')}. An output check cannot precede the calibration its k_pol and k_s come from.`,
+    ) };
+  }
+  // на эту калибровку опираются другие записи
+  const ids = new Set(s.beams.map((b) => b.beamId));
+  const deps = [];
+  if (s.mode === 'cal') {
+    for (const x of j.sessions) {
+      if (x.id === s.id || x.machineId !== s.machineId) continue;
+      for (const b of x.beams) if (ids.has(b.beamId) && refDatesOf(b).includes(s.date)) deps.push({ session: x, beam: b });
+    }
+  }
+  const early = deps.filter((d) => d.session.date < date).map((d) => `${beamName(d.beam.beamId)} ${dt(d.session.date)}`);
+  const plates = (j.plateChecks || []).filter((p) => ids.has(p.beamId) && p.binding?.calDate === s.date).map((p) => `${beamName(p.beamId)} ${dt(p.date)}`);
+  if (early.length || plates.length) {
+    return { error: L(
+      `На эту калибровку опираются ${[early.length ? `проверки выхода раньше новой даты (${early.join(', ')})` : '', plates.length ? `проверки в пластинах (${plates.join(', ')})` : ''].filter(Boolean).join(' и ')}. Сначала перенесите или удалите их.`,
+      `This calibration is relied on by ${[early.length ? `output checks before the new date (${early.join(', ')})` : '', plates.length ? `checks in plates (${plates.join(', ')})` : ''].filter(Boolean).join(' and ')}. Move or delete them first.`,
+    ) };
+  }
+  const restate = (b, patch) => {
+    if (!b.form) return b;
+    const kind = beamKind(b);
+    const form = kindOf(kind).normalize({ ...kindOf(kind).defaults, ...b.form, ...patch });
+    const { dKpol, dKs } = b.summary || {};
+    const summary = { ...beamSummary(computeStored(form, kind), kind), ...(dKpol !== undefined ? { dKpol, dKs } : {}) };
+    return { ...b, form, summary };
+  };
+  const moved = { ...s, date, saved: new Date().toISOString(), beams: s.beams.map((b) => restate(b, { [kindOf(beamKind(b)).k.date]: date })) };
+  let out = upsertSession(j, moved);
+  // проверки выхода позже новой даты: ссылка на калибровку — новая дата
+  const touched = new Map();
+  for (const d of deps) {
+    const x = touched.get(d.session.id) ?? out.sessions.find((y) => y.id === d.session.id);
+    const k = kindOf(beamKind(d.beam)).k;
+    const f = d.beam.form;
+    const patch = {
+      ...(f[k.fixed] && isoOfText(f[k.fixedFrom]) === s.date ? { [k.fixedFrom]: sameStyleDate(f[k.fixedFrom], date) } : {}),
+      ...(beamKind(d.beam) === 'cobalt' && isoOfText(f.co_ref_date) === s.date ? { co_ref_date: date } : {}),
+    };
+    touched.set(x.id, { ...x, beams: x.beams.map((b) => (b.beamId === d.beam.beamId ? restate(b, patch) : b)) });
+  }
+  for (const x of touched.values()) out = upsertSession(out, x);
+  // сравнение k_pol и k_s калибровки с прошлой калибровкой пучка — по новой дате
+  if (moved.mode === 'cal') {
+    const sm = out.sessions.find((x) => x.id === moved.id);
+    const beams = sm.beams.map((b) => {
+      if (!b.summary?.ok || !Number.isFinite(b.summary.kpolRaw) || !Number.isFinite(b.summary.ksRaw)) return b;
+      const prev = lastCalibration(out, b.beamId, { before: date, exceptId: sm.id });
+      const { dKpol, dKs, ...rest } = b.summary;
+      return { ...b, summary: prev ? { ...rest, dKpol: (rest.kpolRaw / prev.kpol - 1) * 100, dKs: (rest.ksRaw / prev.ks - 1) * 100 } : rest };
+    });
+    out = upsertSession(out, { ...sm, beams });
+  }
+  return { journal: out, session: out.sessions.find((x) => x.id === s.id), updated: deps.length };
+}
+
 // ---------------------------------------------------------------- тренды
 /** Ряды для графика: по каждому пучку аппарата — сеансы по дате с отклонением, k_s и k_pol. */
 export function trendSeries(j, machineId) {

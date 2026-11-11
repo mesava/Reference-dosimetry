@@ -1200,6 +1200,12 @@ table.jkv-cert-t td:nth-child(4) { width: 9.5em; }
 .jsessions li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; padding: 8px 0; border-bottom: 1px solid var(--rule); font-size: 13.5px; }
 .jsessions li:last-child { border-bottom: 0; }
 .jsessions small { color: var(--muted); }
+.jmove { flex-basis: 100%; padding: 8px 10px; border: 1px dashed var(--rule); border-radius: 6px; }
+.jmove[hidden] { display: none; }
+.jmove label { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.jmove .sub-hint { margin: 6px 0 0; }
+.jmove-err { margin: 6px 0 0; }
+.jmove-err:empty { display: none; }
 @media print {
   .journal-file, .jsb-more > summary, .jbeam > summary::before { display: none !important; }
   .jsb.off { display: none; }
