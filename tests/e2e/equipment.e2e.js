@@ -154,6 +154,14 @@ test('оборудование: аппараты, электрометры и к
   await page.locator('#eq-mtabs a', { hasText: 'Versa HD' }).click();
   await pause();
   assert.equal(await page.locator('[data-card^="machine:"] input[data-bind^="machine|"][data-bind$="|name"]').inputValue(), 'Versa HD');
+  // тип аппарата задаётся кнопкой добавления и не меняется (с 0.52.3): выбора «Тип» у ускорителя и ⁶⁰Co нет
+  assert.equal(await page.locator('[data-card^="machine:"] select[data-bind$="|kind"]').count(), 0);
+  await page.locator('#eq-mtabs a', { hasText: 'Тератрон' }).click();
+  await pause();
+  assert.equal(await page.locator('[data-card^="machine:"] select[data-bind$="|kind"]').count(), 0);
+  assert.match(await page.locator('[data-card^="machine:"] .jcard-head').innerText(), /аппарат ⁶⁰Co/);
+  await page.locator('#eq-mtabs a', { hasText: 'Versa HD' }).click();
+  await pause();
   await page.locator('[data-add-beam]').click();
   await pause();
   await page.locator('[data-card^="beam:"] input[data-bind$="|name"]').fill('6 МВ');

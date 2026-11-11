@@ -556,6 +556,8 @@ function kvMachineCard(j, m) {
 
 function machineCard(j, m) {
   if (m.kind === 'kv') return kvMachineCard(j, m);
+  // тип аппарата задаётся кнопкой добавления и не меняется (с 0.52.3 выбора «Тип» в карточке нет): ускоритель —
+  // пучки фотонов и электронов, аппарат ⁶⁰Co — пучки ⁶⁰Co; тип виден в заголовке карточки и на ярлыке
   const k = 'machine';
   const hasSessions = j.sessions.some((s) => s.machineId === m.id) || (j.plateChecks || []).some((p) => p.machineId === m.id);
   const cobalt = m.kind === 'cobalt';
@@ -575,7 +577,6 @@ function machineCard(j, m) {
     <div class="jcard-head"><b>${esc(m.name || (cobalt ? L('Новый аппарат ⁶⁰Co', 'New ⁶⁰Co unit') : L('Новый ускоритель', 'New linac')))}</b><span class="chip none">${esc(cobalt ? L('аппарат ⁶⁰Co', '⁶⁰Co unit') : L('ускоритель', 'linac'))}</span></div>
     <div class="grid">
       ${field(L('Аппарат', 'Machine'), input(k, m.id, 'name', m.name, { placeholder: cobalt ? L('Тератрон', 'Theratron') : 'Elekta Versa HD' }), { forId: fieldId(k, m.id, 'name') })}
-      ${field(L('Тип', 'Type'), select(k, m.id, 'kind', cobalt ? 'cobalt' : 'linac', [['linac', L('ускоритель', 'linac')], ['cobalt', L('аппарат ⁶⁰Co', '⁶⁰Co unit')]]), { forId: fieldId(k, m.id, 'kind') })}
       ${field(L('Заводской №', 'Serial No.'), input(k, m.id, 'serial', m.serial), { forId: fieldId(k, m.id, 'serial') })}
       ${field(L('Примечания', 'Notes'), input(k, m.id, 'notes', m.notes), { forId: fieldId(k, m.id, 'notes') })}
     </div>
