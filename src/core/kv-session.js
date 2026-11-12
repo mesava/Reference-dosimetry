@@ -24,7 +24,8 @@ export const KV_ROW_KEYS = [
 ];
 const ROW_SET = new Set(KV_ROW_KEYS);
 
-const copy = (v) => (Array.isArray(v) ? [...v] : v);
+// массивы — с вложенными (показания серии облучений по заданиям), чтобы режимы не делили одни массивы
+const copy = (v) => (Array.isArray(v) ? v.map(copy) : v);
 const pick = (f, keys) => Object.fromEntries(keys.map((k) => [k, copy(f[k])]));
 
 /** Пустая строка; from — строка, из которой берутся форма тубуса, РИП, задание, T, P и влажность (новая строка таблицы). */
@@ -118,7 +119,7 @@ export function kvTimerState(form) {
   const f = normalizeKv(form);
   if (f.kv_timer_mode === 'window') return 'window';
   if (f.kv_timer_mode === 'none') return 'off';
-  if (f.kv_timer_mode === 'measured' && [...f.kv_tt, ...f.kv_tm].every(isBlank)) return 'none';
+  if (f.kv_timer_mode === 'measured' && f.kv_ts_R.every((c) => !hasSeries(c))) return 'none';
   if (f.kv_timer_mode === 'nexp' && !hasSeries(f.kv_nx_M1) && !hasSeries(f.kv_nx_Mn)) return 'none';
   if (f.kv_timer_mode === 'twopoint' && !hasSeries(f.kv_tp_R1) && !hasSeries(f.kv_tp_R2)) return 'none';
   return 'own';
@@ -207,8 +208,8 @@ const COMMON_SET = new Set(KV_COMMON_KEYS);
 const CHAMBER_SET = new Set(KV_CHAMBER_KEYS);
 /** Поля режима: всё, что не строка, не камера и не общее. */
 export const KV_MODE_KEYS = Object.keys(KV_DEFAULTS).filter((k) => !ROW_SET.has(k) && !COMMON_SET.has(k) && !CHAMBER_SET.has(k));
-/** Поля, которые новый режим не копирует из текущего: связь с режимом «Оборудования», пучок и данные ошибки таймера у него свои (задания T₁ и T₂ — те же). */
-const MODE_OWN_KEYS = ['kv_jmode', 'kv_kv', 'kv_ma', 'kv_filter', 'kv_hvl', 'kv_tau', 'kv_tt', 'kv_tm', 'kv_nx_t', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', ...KV_HVL_OWN_KEYS, ...KV_QA_OWN_KEYS];
+/** Поля, которые новый режим не копирует из текущего: связь с режимом «Оборудования», пучок и данные ошибки таймера у него свои (задания T₁ и T₂ и задания серии облучений — те же). */
+const MODE_OWN_KEYS = ['kv_jmode', 'kv_kv', 'kv_ma', 'kv_filter', 'kv_hvl', 'kv_tau', 'kv_ts_R', 'kv_nx_t', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', ...KV_HVL_OWN_KEYS, ...KV_QA_OWN_KEYS];
 /** Поля камеры, которые новая камера копирует из текущей: электрометр, условия сертификата и измерения заряда. */
 const CHAMBER_KEEP_KEYS = ['kv_el_model', 'kv_el_serial', 'kv_kelec', 'kv_T0', 'kv_P0', 'kv_V1', 'kv_V2', 'kv_polarity', 'kv_ks_on', 'kv_rec_trs', 'kv_kleak'];
 

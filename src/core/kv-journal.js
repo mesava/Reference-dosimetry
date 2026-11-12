@@ -20,7 +20,7 @@ import { certOn, certMetaOf, isIsoDate, certFilled, archiveCert } from './chambe
 import { L } from './i18n.js';
 
 const str = (v) => (v === undefined || v === null ? '' : String(v));
-const copy = (v) => (Array.isArray(v) ? [...v] : v);
+const copy = (v) => (Array.isArray(v) ? v.map(copy) : v);
 const norm = (v) => str(v).trim().toLowerCase().replace(/\s+/g, ' ');
 const num = (v) => parseNumber(v);
 const sameNum = (a, b) => {

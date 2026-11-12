@@ -213,8 +213,12 @@ export const KV_DEFAULTS = {
   kv_tp_R2: ['', '', ''],
   // допуск на |τ|, с — по методике учреждения (в TRS-398 Rev.1 его нет); пусто — без проверки
   kv_tau_tol: '',
-  kv_tt: ['', ''],
-  kv_tm: ['', ''],
+  // серия облучений с разным заданием (как таблица «Концевой эффект»): задания kv_ts_t — столбцы, при каждом — повторные
+  // показания kv_ts_R[j] (обычно не меньше трёх); прямая и τ — по средним. kv_ts_unit — единица заданий серии при задании
+  // облучения по времени: 's' или 'min' (при Гр и МЕ задания — в единицах задания). До 0.57.0 — пары kv_tt / kv_tm.
+  kv_ts_unit: 's',
+  kv_ts_t: ['', '', ''],
+  kv_ts_R: [['', '', ''], ['', '', ''], ['', '', '']],
   kv_nx_t: '',
   kv_nx_n: '5',
   kv_nx_M1: ['', '', ''],
@@ -252,9 +256,20 @@ export function normalizeKv(input) {
   const f = { ...KV_DEFAULTS, ...input, protocol: 'trs' };
   // форма без способа ошибки таймера, но с точками серии (до 0.38.0 серия была способом по умолчанию)
   const legacySeries = (k) => Array.isArray(input?.[k]) && input[k].some((v) => !isBlank(v));
-  if (!input?.kv_timer_mode && (legacySeries('kv_tt') || legacySeries('kv_tm'))) f.kv_timer_mode = 'measured';
+  const legacy = legacySeries('kv_tt') || legacySeries('kv_tm');
+  if (!input?.kv_timer_mode && legacy) f.kv_timer_mode = 'measured';
   for (const k of CELL_KEYS) if (!Array.isArray(f[k])) f[k] = isBlank(f[k]) ? ['', '', ''] : String(f[k]).trim().split(/[\s;]+/);
-  for (const k of ['kv_tt', 'kv_tm']) if (!Array.isArray(f[k])) f[k] = ['', ''];
+  // серия облучений: до 0.57.0 — пары «задание — показание»; одинаковые задания собираются в один столбец с повторами,
+  // задания — в единицах задания облучения
+  const grid = timerSeriesGrid(f.kv_ts_t, f.kv_ts_R);
+  const gridBlank = grid.t.every(isBlank) && grid.R.every((c) => c.every(isBlank));
+  if (legacy && gridBlank) {
+    Object.assign(f, timerSeriesFromPairs(input.kv_tt, input.kv_tm));
+    if (input?.kv_set_unit === 's' || input?.kv_set_unit === 'min') f.kv_ts_unit = input.kv_set_unit;
+  } else Object.assign(f, { kv_ts_t: grid.t, kv_ts_R: grid.R });
+  delete f.kv_tt;
+  delete f.kv_tm;
+  if (f.kv_ts_unit !== 'min') f.kv_ts_unit = 's';
   const n = Math.max(1, ...CERT_ROW_KEYS.map((k) => (Array.isArray(f[k]) ? f[k].length : 0)));
   for (const k of CERT_ROW_KEYS) {
     const a = Array.isArray(f[k]) ? [...f[k]] : [];
@@ -344,6 +359,46 @@ export function certDinSensitivity(rows, hvl) {
   if (!rows.some((x) => x.din) || !Number.isFinite(base)) return NaN;
   const shifted = (k) => certValue(rows.map((x) => (x.din ? { ...x, hvl: x.hvl * k } : x)).sort((a, b) => a.hvl - b.hvl), hvl).value;
   return Math.max(Math.abs(shifted(1 + DIN_HVL_DEV) - base), Math.abs(shifted(1 - DIN_HVL_DEV) - base)) / base;
+}
+
+const cellText = (v) => (v === undefined || v === null ? '' : String(v));
+
+/**
+ * Таблица серии облучений с разным заданием: задания t (столбцы, не меньше двух) и показания R[j] при задании j — все
+ * столбцы одной длины (повторы, не меньше одного; без данных — три). Значения — строки, массивы — новые.
+ */
+export function timerSeriesGrid(t, R) {
+  const ts = Array.isArray(t) ? t.map(cellText) : [];
+  const rs = Array.isArray(R) ? R.map((c) => (Array.isArray(c) ? c.map(cellText) : isBlank(c) ? [] : [cellText(c)])) : [];
+  const cols = Math.max(2, ts.length, rs.length);
+  const rows = Math.max(1, ...rs.map((c) => c.length));
+  const n = rs.some((c) => c.length) ? rows : 3;
+  return {
+    t: Array.from({ length: cols }, (_, j) => ts[j] ?? ''),
+    R: Array.from({ length: cols }, (_, j) => Array.from({ length: n }, (_, i) => rs[j]?.[i] ?? '')),
+  };
+}
+
+/** Пары «задание — показание» (до 0.57.0) → таблица серии: одинаковые задания — один столбец, повторы — по порядку. */
+export function timerSeriesFromPairs(tt, tm) {
+  const a = Array.isArray(tt) ? tt : [];
+  const b = Array.isArray(tm) ? tm : [];
+  const t = [];
+  const R = [];
+  const index = new Map();
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if (isBlank(a[i]) && isBlank(b[i])) continue;
+    const v = parseNumber(a[i]);
+    const key = Number.isFinite(v) ? v : isBlank(a[i]) ? 'blank' : `raw${i}`;
+    if (!index.has(key)) {
+      index.set(key, t.length);
+      t.push(cellText(a[i]).trim());
+      R.push([]);
+    }
+    R[index.get(key)].push(cellText(b[i]).trim());
+  }
+  const g = timerSeriesGrid(t, R);
+  return { kv_ts_t: g.t, kv_ts_R: g.R };
 }
 
 /** Знаков после запятой у допуска: как введено, до двух (3 → «3», 0,5 → «0,5», 0,25 → «0,25»). */
@@ -682,7 +737,7 @@ export function computeKv(form) {
     return c.n === 0 && !c.error;
   };
   const timerBlank =
-    f.kv_timer_mode === 'measured' ? [...f.kv_tt, ...f.kv_tm].every(isBlank)
+    f.kv_timer_mode === 'measured' ? f.kv_ts_R.every((c) => c.every(isBlank))
       : f.kv_timer_mode === 'nexp' ? noCells('kv_nx_M1') && noCells('kv_nx_Mn')
         : f.kv_timer_mode === 'twopoint' && noCells('kv_tp_R1') && noCells('kv_tp_R2');
   const tauFrom = timerBlank && !isBlank(f.kv_tau_from) ? String(f.kv_tau_from) : '';
@@ -752,13 +807,59 @@ export function computeKv(form) {
       }
     }
   } else if (f.kv_timer_mode === 'measured') {
-    const r = timerError(f.kv_tt, f.kv_tm);
-    if (r.error) add('error', 'common', L(`${timerWord}: ${r.error}.`, `${timerWord}: ${r.error}.`), null, 'kv_timer');
-    else {
-      tau = r.tau;
-      tauOwn = true;
-      timer = { ...timer, ...r, residualPct: r.n > 2 ? r.residual * 100 : NaN };
-      if (r.residual > 0.002) add('warn', 'common', L(`Показания при разных заданиях плохо ложатся на прямую (разброс ${ru(r.residual * 100, 2)} %): повторите облучения.`, `Readings at different settings fit a straight line poorly (residual ${ru(r.residual * 100, 2)} %): repeat the exposures.`), null, 'kv_timer');
+    // задания серии — столбцы, при каждом повторные показания; прямая M̄ = a·T + b по средним, τ = b/a (TRS-398 Rev.1,
+    // разд. 9.4.2: доза относится к X + τ; τ — в единицах T,
+    // затем — в единицах задания). При задании по времени задания серии — в секундах или минутах (kv_ts_unit).
+    const tUnit = U.time ? f.kv_ts_unit : f.kv_set_unit;
+    const tU = KV_SET_UNITS[tUnit];
+    const tL = L(tU.label, tU.labelEn);
+    const pts = [];
+    const few = [];
+    let bad = false;
+    f.kv_ts_t.forEach((tRaw, j) => {
+      const S = parseCells(f.kv_ts_R[j]);
+      if (isBlank(tRaw) && S.n === 0 && !S.error) return;
+      const no = j + 1;
+      const key = [`kv_ts_${j}`, 'kv_timer'];
+      const err = (msg) => {
+        bad = true;
+        add('error', 'common', L(`${timerWord}, задание ${no}: ${msg}.`, `${timerWord}, setting ${no}: ${msg}.`), null, key);
+      };
+      const t = parseNumber(tRaw);
+      if (isBlank(tRaw)) err(L('показания есть, а задание не введено', 'there are readings but no setting'));
+      else if (!Number.isFinite(t)) err(L(`не удалось прочитать число «${tRaw}»`, `could not read the number "${tRaw}"`));
+      else if (t <= 0) err(L('задание должно быть больше нуля', 'the setting must be greater than zero'));
+      if (S.error) err(S.error);
+      else if (S.n === 0) err(L('нет показаний', 'no readings'));
+      if (!Number.isFinite(t) || t <= 0 || S.error || S.n === 0) return;
+      spread(S, L(`при задании ${no} (${tRaw} ${tL})`, `at setting ${no} (${tRaw} ${tL})`), key);
+      if (S.n < 3) few.push(no);
+      pts.push({ j, t, mean: S.mean, n: S.n });
+    });
+    if (pts.some((p) => p.mean < 0) && pts.some((p) => p.mean > 0)) {
+      bad = true;
+      add('error', 'common', L('Серия облучений: средние показания разного знака — все облучения снимаются при одной полярности.', 'Series of exposures: mean readings of different sign; all exposures are taken at the same polarity.'), null, ['kv_ts_all', 'kv_timer']);
+    }
+    if (few.length) {
+      add('info', 'common', L(
+        `${few.length > 1 ? 'При заданиях' : 'При задании'} ${few.join(', ')} меньше трёх показаний: при каждом задании обычно снимают не меньше трёх и строят прямую по средним.`,
+        `${few.length > 1 ? 'Settings' : 'Setting'} ${few.join(', ')}: fewer than three readings; at least three are usually taken at each setting and the line is fitted to the means.`,
+      ), null, 'kv_timer');
+    }
+    if (!bad) {
+      const r = pts.length < 2
+        ? { error: L('нужны хотя бы два задания с показаниями', 'at least two settings with readings are required') }
+        : timerError(pts.map((p) => p.t), pts.map((p) => Math.abs(p.mean)));
+      if (r.error) add('error', 'common', L(`${timerWord}: ${r.error}.`, `${timerWord}: ${r.error}.`), null, ['kv_ts_all', 'kv_timer']);
+      else {
+        tau = !U.time || tUnit === f.kv_set_unit ? r.tau : tUnit === 's' ? r.tau / 60 : r.tau * 60;
+        tauOwn = true;
+        timer = {
+          ...timer, tUnit, tauT: r.tau, slope: r.slope, intercept: r.intercept, n: r.n, residual: r.residual,
+          residualPct: r.n > 2 ? r.residual * 100 : NaN, points: pts.map((p) => ({ ...p, mean: Math.abs(p.mean) })),
+        };
+        if (r.residual > 0.002) add('warn', 'common', L(`Средние показания при разных заданиях плохо ложатся на прямую (разброс ${ru(r.residual * 100, 2)} %): повторите облучения.`, `Mean readings at different settings fit a straight line poorly (residual ${ru(r.residual * 100, 2)} %): repeat the exposures.`), null, ['kv_ts_all', 'kv_timer']);
+      }
     }
   } else {
     add(U.time ? 'warn' : 'info', 'common', U.time

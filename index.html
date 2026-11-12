@@ -2024,14 +2024,18 @@
         </div>
         <p class="eq">Облучения в той же геометрии, при одном напряжении и полярности; поправки к показаниям для τ не нужны. Через средние R̄₁ и R̄₂ проводится прямая R = Ṁ·(T + τ), откуда τ = (T₂·R̄₁ − T₁·R̄₂)/(R̄₂ − R̄₁). При задании облучения по времени T₁ и T₂ вводятся в секундах, τ пересчитывается в единицы задания.</p>
       </div>
-      <div class="pairs" id="kv_timer" data-a="kv_tt" data-b="kv_tm" data-label-a="Задание" data-label-b="Показание" data-show="kv_timer_mode:measured">
-        <div class="pairs-head"><span class="pair-no">№</span><span id="kv-lbl-tt">Задание, мин</span><span>Показание, нКл</span></div>
-        <div class="pairs-list"></div>
-        <div class="cells-tools">
-          <button type="button" class="icon-btn pair-add" aria-label="Добавить облучение" title="Добавить облучение">+</button>
-          <button type="button" class="icon-btn pair-remove" aria-label="Убрать последнее облучение" title="Убрать последнее облучение">−</button>
+      <div class="timer-box kv-ts" id="kv_timer" data-show="kv_timer_mode:measured">
+        <div class="grid">
+          <div class="field" data-show="kv_set_unit:min,s"><label for="kv_ts_unit">Задания серии</label><select id="kv_ts_unit"><option value="s">в секундах</option><option value="min">в минутах</option></select><span class="sub">τ пересчитывается в единицы задания облучения</span></div>
         </div>
-        <p class="eq">Облучения в той же геометрии, при одном напряжении и полярности; поправки к показаниям для τ не нужны. Через точки проводится прямая M = a·X + b, τ = b/a.</p>
+        <div class="ts-wrap"><div class="ts-grid" id="kv-ts-grid" data-flag="kv_ts_all" data-i18n-skip></div></div>
+        <div class="row-tools">
+          <button type="button" class="link-btn" id="kv-ts-add-col"><span aria-hidden="true">+</span> Задание</button>
+          <button type="button" class="link-btn" id="kv-ts-del-col"><span aria-hidden="true">−</span> Задание</button>
+          <button type="button" class="link-btn" id="kv-ts-add-row"><span aria-hidden="true">+</span> Повтор</button>
+          <button type="button" class="link-btn" id="kv-ts-del-row"><span aria-hidden="true">−</span> Повтор</button>
+        </div>
+        <p class="eq">Облучения в той же геометрии, при одном напряжении и полярности; поправки к показаниям для τ не нужны. При каждом задании — повторные облучения (обычно не меньше трёх), клавиша Tab идёт вниз по столбцу. Через средние показания проводится прямая M̄ = a·T + b, τ = b/a; на графике — только средние.</p>
       </div>
       <div class="timer-box" data-show="kv_timer_mode:nexp">
         <div class="grid">

@@ -223,7 +223,7 @@ test('Qo = ⁶⁰Co (DIN 6809-4): та же доза, что при эквива
 test('Задание облучения: τ по серии и по n облучениям; Гр/Гр, Гр/мин (из секунд), сГр/МЕ', () => {
   const D0 = computeKv({ ...MED_NK, kv_timer_mode: 'none' }).trs.D;
   // серия: M = a·(X + τ), τ = 0,02 мин
-  const ser = computeKv({ ...MED_NK, kv_timer_mode: 'measured', kv_tt: ['0,5', '1', '2'], kv_tm: ['0,52', '1,02', '2,02'] });
+  const ser = computeKv({ ...MED_NK, kv_timer_mode: 'measured', kv_ts_unit: 'min', kv_ts_t: ['0,5', '1', '2'], kv_ts_R: [['0,52'], ['1,02'], ['2,02']] });
   near(ser.timer.tau, 0.02, 1e-12);
   near(ser.trs.perUnit, D0 / 1.02, 1e-12);
   // одно облучение X против n облучений по X/n (рабочая запись)

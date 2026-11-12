@@ -381,7 +381,7 @@ test('режимы аппарата: новый режим — камера, ф�
   assert.equal(m.shared.kv_kv, '');
   assert.equal(m.shared.kv_ma, '');
   assert.equal(m.shared.kv_hvl, '');
-  assert.deepEqual(m.shared.kv_tt, KV_DEFAULTS.kv_tt);
+  assert.deepEqual(m.shared.kv_ts_R, KV_DEFAULTS.kv_ts_R);
   // ошибка таймера по двум заданиям: задания T₁ и T₂ — как у образца, показания — свои
   assert.equal(m.shared.kv_timer_mode, 'twopoint');
   assert.deepEqual([m.shared.kv_tp_t1, m.shared.kv_tp_t2], ['6', '60']);

@@ -95,12 +95,12 @@ test('kV-рентген: металл СПО сертификата, перес�
   assert.equal(await page.locator('#kv_timer_mode option[value="nexp"]').evaluate((o) => o.hidden), true);
   await page.selectOption('#kv_timer_mode', 'measured');
   await pause();
+  // задания серии — в минутах (по умолчанию в секундах), по одному показанию при задании
+  await page.selectOption('#kv_ts_unit', 'min');
   const pairs = [['0,5', '4,02'], ['1', '8,02'], ['2', '16,02']];
-  for (let i = 0; i < pairs.length; i++) {
-    if ((await page.locator('#kv_timer .pair-row').count()) <= i) await page.click('#kv_timer .pair-add');
-    const r = page.locator('#kv_timer .pair-row').nth(i).locator('input');
-    await r.nth(0).fill(pairs[i][0]);
-    await r.nth(1).fill(pairs[i][1]);
+  for (let j = 0; j < pairs.length; j++) {
+    await page.fill(`#kv_ts_t_${j}`, pairs[j][0]);
+    await page.fill(`#kv_ts_R_${j}_0`, pairs[j][1]);
   }
   await pause();
   assert.match(await page.locator('#kv-timer-eq').innerText(), /^Прямая: T = 0,12500·M − 0,0025000 мин, R² = 1,00000\. .*τ = \+0,0025 мин/);

@@ -1,6 +1,6 @@
 // Модуль «kV-рентген»: связывает форму с расчётным ядром kv.js (TRS-398 Rev.1, разд. 8 и 9).
 import { certText } from '../core/journal.js';
-import { KV_DEFAULTS, KV_SET_UNITS, KV_RANGES, normalizeKv, certRows, certValue, certDinSensitivity } from '../core/kv.js';
+import { KV_DEFAULTS, KV_SET_UNITS, KV_RANGES, normalizeKv, certRows, certValue, certDinSensitivity, timerSeriesGrid } from '../core/kv.js';
 import { DIN_TH, DIN_HVL_DEV, dinHvlConvert } from '../core/kv-din.js';
 import {
   emptyKvRow, kvRowLabel, kvRowEmpty, KV_ROW_KEYS, normalizeKvVisit, splitKvVisitForm, kvVisitRowForm, computeKvVisit, newKvMode, newKvChamber,
@@ -12,7 +12,7 @@ import { L, getLang, refText } from '../core/i18n.js';
 import { localizeDecimals } from './i18n.js';
 import { PRESSURE_UNITS, NDW_UNITS, unitLabel, dec, parseCells, parseNumber } from '../core/units.js';
 import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
-import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, renderPairs, readPairs, setupPairs } from './widgets.js';
+import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import { refreshSectionNav } from './section-nav.js';
 import { scatterChart, legendSwatch } from './chart.js';
 import { setupKvJournal, renderKvJournal } from './kv-journal-ui.js';
@@ -38,7 +38,8 @@ const DRAFT_KEY = 'reference-dosimetry.kv.v1';
 // режим mode; form — плоская форма выбранной строки выбранного режима. Формат 2 (0.36): rows и active одного режима.
 const FILE_TAG = { app: 'reference-dosimetry', module: 'kv', version: 3 };
 const SERIES_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc', 'kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc', 'kv_ln_M1', 'kv_ln_M2', 'kv_ln_M3', 'kv_ln_M4', 'kv_ln_M5', 'kv_rp_M'];
-const PAIR_KEYS = ['kv_tt', 'kv_tm'];
+// серия облучений с разным заданием: задания — столбцы таблицы, повторные показания — строки (раздел 3)
+const TS_KEYS = ['kv_ts_t', 'kv_ts_R'];
 const CERT_KEYS = ['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_mat', 'kv_cq_val'];
 const PROTO_NAME = 'TRS-398 Rev.1';
 const ROOT = () => document.getElementById('module-kv');
@@ -165,7 +166,84 @@ function readCert() {
 
 // ------------------------------------------------------------ форма ↔ данные
 const seriesBox = (key) => $(`#kv-sheet .cells[data-series="${key}"]`);
-const pairsBox = () => $('#kv_timer');
+
+// ------------------------------------------------------------ серия облучений с разным заданием (раздел 3)
+const tsGrid = () => $('#kv-ts-grid');
+/** Единица заданий серии: при задании по времени — выбранная (с или мин), иначе — единица задания. */
+function tsUnitText() {
+  const set = $('#kv_set_unit')?.value;
+  const u = KV_SET_UNITS[KV_SET_UNITS[set]?.time ? ($('#kv_ts_unit')?.value === 'min' ? 'min' : 's') : set] ?? KV_SET_UNITS.s;
+  return L(u.label, u.labelEn);
+}
+
+/**
+ * Таблица серии, как в книге учреждения: столбец — задание, под ним повторные показания и среднее. Поля идут в документе
+ * по столбцам (сетка с grid-auto-flow: column), поэтому Tab ведёт вниз по столбцу — в порядке облучений.
+ */
+function renderTs(t, R) {
+  const g = timerSeriesGrid(t, R);
+  const rows = g.R[0].length;
+  const u = tsUnitText();
+  const box = tsGrid();
+  box.style.setProperty('--ts-rows', String(rows + 3));
+  const cell = [`<span class="ts-h ts-no">№</span>`, `<span class="ts-h" id="kv-lbl-tt">${esc(L(`Задание, ${u}`, `Setting, ${u}`))}</span>`];
+  for (let i = 0; i < rows; i++) cell.push(`<span class="ts-h">${esc(L(`M${i + 1}, нКл`, `M${i + 1}, nC`))}</span>`);
+  cell.push(`<span class="ts-h ts-mean-h">${esc(L('Среднее, нКл', 'Mean, nC'))}</span>`);
+  g.t.forEach((tv, j) => {
+    const no = j + 1;
+    const flag = ` data-flag="kv_ts_${j}"`;
+    cell.push(`<span class="ts-no">${no}</span>`);
+    cell.push(`<input type="text" class="num ts-t" inputmode="decimal" id="kv_ts_t_${j}" data-j="${j}"${flag} aria-label="${esc(L(`Задание ${no}, ${u}`, `Setting ${no}, ${u}`))}" value="${esc(tv)}">`);
+    for (let i = 0; i < rows; i++) {
+      cell.push(`<input type="text" class="num ts-m" inputmode="decimal" id="kv_ts_R_${j}_${i}" data-j="${j}" data-i="${i}"${flag} aria-label="${esc(L(`Задание ${no}: показание ${i + 1}, нКл`, `Setting ${no}: reading ${i + 1}, nC`))}" value="${esc(g.R[j][i])}">`);
+    }
+    cell.push(`<output class="ts-mean" data-j="${j}"${flag}></output>`);
+  });
+  box.innerHTML = cell.join('');
+  $('#kv-ts-del-col').disabled = g.t.length <= 2;
+  $('#kv-ts-del-row').disabled = rows <= 1;
+  renderTsMeans();
+}
+
+function readTs() {
+  const box = tsGrid();
+  const t = $$('.ts-t', box).map((i) => i.value);
+  const R = t.map(() => []);
+  for (const i of $$('.ts-m', box)) R[Number(i.dataset.j)][Number(i.dataset.i)] = i.value;
+  return { kv_ts_t: t, kv_ts_R: R };
+}
+
+/** Средние показания под столбцами: 4 значащие цифры. */
+function renderTsMeans() {
+  const { kv_ts_R: R } = readTs();
+  for (const o of $$('.ts-mean', tsGrid())) {
+    const c = parseCells(R[Number(o.dataset.j)]);
+    o.textContent = c.n > 0 && !c.error ? sigFmt(Math.abs(c.mean), 4) : '';
+  }
+}
+
+function setupTs() {
+  const grow = (dc, dr) => {
+    const { kv_ts_t: t, kv_ts_R: R } = readTs();
+    if (dc > 0) {
+      t.push('');
+      R.push(Array.from({ length: R[0]?.length || 3 }, () => ''));
+    } else if (dc < 0 && t.length > 2) {
+      t.pop();
+      R.pop();
+    }
+    if (dr > 0) R.forEach((c) => c.push(''));
+    else if (dr < 0 && (R[0]?.length ?? 0) > 1) R.forEach((c) => c.pop());
+    renderTs(t, R);
+    if (dc > 0) $(`#kv_ts_t_${t.length - 1}`)?.focus();
+    if (dr > 0) $(`#kv_ts_R_0_${R[0].length - 1}`)?.focus();
+    update();
+  };
+  $('#kv-ts-add-col').addEventListener('click', () => grow(1, 0));
+  $('#kv-ts-del-col').addEventListener('click', () => grow(-1, 0));
+  $('#kv-ts-add-row').addEventListener('click', () => grow(0, 1));
+  $('#kv-ts-del-row').addEventListener('click', () => grow(0, -1));
+}
 
 function readForm() {
   const data = {};
@@ -173,7 +251,7 @@ function readForm() {
     if (key === 'protocol') data.protocol = 'trs';
     else if (key === 'kv_staff') data.kv_staff = readStaff($('#kv-staff-list'));
     else if (SERIES_KEYS.includes(key)) data[key] = readCells(seriesBox(key));
-    else if (PAIR_KEYS.includes(key) || CERT_KEYS.includes(key) || KV_PLATE_KEYS.includes(key)) continue;
+    else if (TS_KEYS.includes(key) || CERT_KEYS.includes(key) || KV_PLATE_KEYS.includes(key)) continue;
     else {
       const el = document.getElementById(key);
       if (!el) continue;
@@ -181,9 +259,7 @@ function readForm() {
     }
   }
   Object.assign(data, readPlates());
-  const { a, b } = readPairs(pairsBox());
-  data.kv_tt = a;
-  data.kv_tm = b;
+  Object.assign(data, readTs());
   const c = readCert();
   data.kv_cq_kv = c.kv;
   data.kv_cq_hvl = c.hvl;
@@ -196,7 +272,7 @@ function writeForm(values) {
   const data = normalizeKv(values);
   if (String(data.kv_ch_model).startsWith('MY:') && !getMyChambers().some((c) => c.id === data.kv_ch_model)) data.kv_ch_model = 'CUSTOM';
   for (const [key, value] of Object.entries(data)) {
-    if (key === 'protocol' || PAIR_KEYS.includes(key) || CERT_KEYS.includes(key) || KV_PLATE_KEYS.includes(key)) continue;
+    if (key === 'protocol' || TS_KEYS.includes(key) || CERT_KEYS.includes(key) || KV_PLATE_KEYS.includes(key)) continue;
     if (key === 'kv_staff') renderStaff($('#kv-staff-list'), value, update);
     else if (SERIES_KEYS.includes(key)) renderCells(seriesBox(key), value);
     else {
@@ -206,7 +282,7 @@ function writeForm(values) {
       else el.value = value ?? '';
     }
   }
-  renderPairs(pairsBox(), data.kv_tt, data.kv_tm);
+  renderTs(data.kv_ts_t, data.kv_ts_R);
   renderCert({ kv: data.kv_cq_kv, hvl: data.kv_cq_hvl, mat: data.kv_cq_mat, val: data.kv_cq_val });
   renderPlates(data);
   localizeDecimals(ROOT());
@@ -773,14 +849,13 @@ function renderTimerChart(data, result) {
   const raw = [];
   let k = NaN;
   let tau = NaN;
-  if (data.kv_timer_mode === 'measured' && Number.isFinite(t.slope) && !t.from) {
-    for (let i = 0; i < Math.max(data.kv_tt.length, data.kv_tm.length); i++) {
-      const T = parseNumber(data.kv_tt[i]);
-      const M = parseNumber(data.kv_tm[i]);
-      if (Number.isFinite(T) && Number.isFinite(M)) pts.push({ x: Math.abs(M), y: T });
-    }
+  if (data.kv_timer_mode === 'measured' && Number.isFinite(t.slope) && Array.isArray(t.points) && !t.from) {
+    // только средние при каждом задании: по ним проведена прямая
+    const tu = KV_SET_UNITS[t.tUnit] ?? U;
+    unit = L(tu.label, tu.labelEn);
+    pts = t.points.map((p) => ({ x: p.mean, y: p.t, n: p.n }));
     k = 1 / t.slope;
-    tau = t.tau;
+    tau = t.tauT;
   } else if (data.kv_timer_mode === 'twopoint' && Number.isFinite(t.tauT) && !t.from) {
     if (U.time) unit = L('с', 's');
     pts = [{ x: t.R1, y: t.t1 }, { x: t.R2, y: t.t2 }];
@@ -802,9 +877,10 @@ function renderTimerChart(data, result) {
   const r2 = sxx > 0 && syy > 0 ? (sxy * sxy) / (sxx * syy) : NaN;
   const xMax = Math.max(...pts.map((p) => p.x), ...raw.map((p) => p.x));
   const tip = (p) => L(`задание ${sigFmt(p.y)} ${unit}, показание ${sigFmt(p.x)} нКл`, `setting ${sigFmt(p.y)} ${unit}, reading ${sigFmt(p.x)} nC`);
+  const meanTip = (p) => (p.n ? L(`среднее из ${p.n}: `, `mean of ${p.n}: `) : raw.length ? L('среднее: ', 'mean: ') : '');
   const series = [];
   if (raw.length) series.push({ cls: 's1', points: raw.map((p) => ({ ...p, title: tip(p) })) });
-  series.push({ cls: 's1', points: pts.map((p) => ({ ...p, title: (raw.length ? L('среднее: ', 'mean: ') : '') + tip(p) })) });
+  series.push({ cls: 's1', points: pts.map((p) => ({ ...p, title: meanTip(p) + tip(p) })) });
   series.push({ cls: 's2', shape: 'diamond', points: [{ x: 0, y: -tau, title: L(`T = −τ = ${fmtSigned(-tau, tDig)} ${unit}`, `T = −τ = ${fmtSigned(-tau, tDig)} ${unit}`) }] });
   scatterChart($('#kv-timer-chart'), {
     label: L('Ошибка таймера: задание облучения от показания электрометра', 'Timer error: exposure setting versus electrometer reading'),
@@ -818,7 +894,7 @@ function renderTimerChart(data, result) {
     lines: [{ cls: 's1', a: -tau, b: k, x0: 0, x1: xMax * 1.05 }],
     notes: [{ x: 0, y: -tau, text: `−τ`, below: tau > 0 }],
   });
-  const items = [[legendSwatch({ cls: 's1' }), raw.length ? L('средние показания при T₁ и T₂', 'mean readings at T₁ and T₂') : L('облучения серии', 'exposures of the series')]];
+  const items = [[legendSwatch({ cls: 's1' }), raw.length ? L('средние показания при T₁ и T₂', 'mean readings at T₁ and T₂') : L('средние показания при каждом задании', 'mean readings at each setting')]];
   if (raw.length) items.push([legendSwatch({ cls: 's1', hollow: true }), L('отдельные показания', 'individual readings')]);
   items.push([legendSwatch({ line: true, cls: 's1' }), L('прямая T = k·M + c', 'line T = k·M + c')]);
   items.push([legendSwatch({ cls: 's2', shape: 'diamond' }), L('пересечение с осью задания: T = −τ', 'intercept on the setting axis: T = −τ')]);
@@ -1527,7 +1603,13 @@ function applyVisibility(data, result) {
   $('#kv-set-sub').textContent = windowMode ? L('интервал, на котором электрометр накапливал заряд', 'the interval over which the electrometer collected charge') : L('одно и то же для всех серий показаний строки в разделе 5', 'the same for all reading series of the row in section 5');
   $('#kv-lbl-timer-mode').textContent = timeSet ? L('Ошибка таймера τ', 'Timer error τ') : L('Концевой эффект τ', 'End effect τ');
   $('#kv-lbl-tau').textContent = `τ, ${unit}`;
-  $('#kv-lbl-tt').textContent = L(`Задание, ${unit}`, `Setting, ${unit}`);
+  {
+    // единица заданий серии — в шапке таблицы и подписях её полей
+    const u = tsUnitText();
+    const lbl = $('#kv-lbl-tt');
+    if (lbl) lbl.textContent = L(`Задание, ${u}`, `Setting, ${u}`);
+    for (const i of $$('#kv-ts-grid .ts-t')) i.setAttribute('aria-label', L(`Задание ${Number(i.dataset.j) + 1}, ${u}`, `Setting ${Number(i.dataset.j) + 1}, ${u}`));
+  }
   $('#kv-lbl-nxt').textContent = L(`Задание одиночного облучения X, ${unit}`, `Single exposure setting X, ${unit}`);
   // две точки: при задании по времени T₁ и T₂ — в секундах
   const tpUnit = timeSet ? L('с', 's') : unit;
@@ -1885,6 +1967,22 @@ function timerReportLine(m, mr) {
   return L(`Режим ${m + 1} (${modeName(m)}): ${txt}`, `Mode ${m + 1} (${modeName(m)}): ${txt}`);
 }
 
+/** Серия облучений в протоколе: «по 9 заданиям, прямая по средним: 6 с: 2,04; 2,022; 2,028 → 2,030 нКл; …». */
+function tsReportText(data, tm) {
+  const tu = KV_SET_UNITS[isTimeUnit(data.kv_set_unit) ? data.kv_ts_unit : data.kv_set_unit] ?? KV_SET_UNITS.s;
+  const u = L(tu.label, tu.labelEn);
+  const cols = data.kv_ts_t
+    .map((t, j) => [String(t ?? '').trim(), data.kv_ts_R[j] ?? []])
+    .filter(([t, c]) => t && parseCells(c).n > 0 && !parseCells(c).error)
+    .map(([t, c]) => {
+      const vals = c.map((v) => String(v ?? '').trim()).filter(Boolean).join('; ');
+      const m = sigFmt(Math.abs(parseCells(c).mean), 4);
+      return L(`${t} ${u}: ${vals} → ${m} нКл`, `${t} ${u}: ${vals} → ${m} nC`);
+    });
+  const tauT = Number.isFinite(tm.tauT) && tm.tUnit !== data.kv_set_unit ? `, τ = ${fmtSigned(tm.tauT, tm.tUnit === 's' ? 2 : 4)} ${u}` : '';
+  return L(`по ${cols.length} заданиям, прямая по средним: ${cols.join('; ')}${tauT}`, `from ${cols.length} settings, line through the means: ${cols.join('; ')}${tauT}`);
+}
+
 function reportText(data, r, all = null, vr = null) {
   const out = [];
   const line = (k, v) => out.push(`${k}: ${v}`);
@@ -2006,11 +2104,7 @@ function reportText(data, r, all = null, vr = null) {
         `from two settings: T₁ = ${data.kv_tp_t1} ${tpU} (${cells(data.kv_tp_R1)} nC), T₂ = ${data.kv_tp_t2} ${tpU} (${cells(data.kv_tp_R2)} nC)${data.kv_set_unit === 'min' && Number.isFinite(tm.tauS) ? `, τ = ${fmtSigned(tm.tauS, 2)} s` : ''}`,
       )
       : data.kv_timer_mode === 'measured'
-      ? `${L(`по ${tm.n ?? '—'} облучениям`, `from ${tm.n ?? '—'} exposures`)}: ${data.kv_tt
-          .map((t, k) => [t, data.kv_tm[k]])
-          .filter(([a, b]) => String(a ?? '').trim() && String(b ?? '').trim())
-          .map(([a, b]) => L(`${a} ${u} → ${b} нКл`, `${a} ${u} → ${b} nC`))
-          .join('; ')}`
+      ? tsReportText(data, tm)
       : data.kv_timer_mode === 'nexp'
         ? L(`одно облучение ${data.kv_nx_t} ${u} (${cells(data.kv_nx_M1)} нКл) против ${data.kv_nx_n} облучений по X/n (${cells(data.kv_nx_Mn)} нКл)`, `one exposure of ${data.kv_nx_t} ${u} (${cells(data.kv_nx_M1)} nC) vs. ${data.kv_nx_n} exposures of X/n (${cells(data.kv_nx_Mn)} nC)`)
         : data.kv_timer_mode === 'manual'
@@ -2404,6 +2498,7 @@ function update(opts = {}) {
   renderOutputs(ROOT(), result);
   renderFlags(ROOT(), { ...result.flags, ...all.hvl.flags, ...all.ln.flags, ...all.rp.flags }, seriesBox);
   renderReadout(result, data);
+  renderTsMeans();
   renderTimerChart(data, result);
   renderHvlSheet(data, vr);
   renderQaSheets(data, vr);
@@ -2485,8 +2580,8 @@ function refreshForLang() {
   for (const [sel, v] of kept) if ([...sel.options].some((o) => o.value === v)) sel.value = v;
   $$('#kv-sheet .cells').forEach((box) => renderCells(box, readCells(box)));
   {
-    const { a, b } = readPairs(pairsBox());
-    renderPairs(pairsBox(), a, b);
+    const ts = readTs();
+    renderTs(ts.kv_ts_t, ts.kv_ts_R);
   }
   renderCert(readCert());
   renderStaff($('#kv-staff-list'), readStaff($('#kv-staff-list')), update);
@@ -2504,7 +2599,7 @@ export function initKv() {
   fillChamberSelect();
   fillPhantomSelects();
   $$('#kv-sheet .cells').forEach((box) => setupCells(box, update));
-  setupPairs(pairsBox(), update);
+  setupTs();
   $$('#kv-sheet > section .combo').forEach((c) => makeCombo(c));
 
   const draft = loadDraft();

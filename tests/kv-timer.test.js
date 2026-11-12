@@ -45,7 +45,7 @@ test('две точки: с несколькими показаниями — т
   const R1 = ['2,393', '2,394', '2,393'];
   const R2 = ['21,95', '21,95', '21,96'];
   const tp = computeKv({ ...BASE, kv_set_unit: 's', kv_set: '60', kv_timer_mode: 'twopoint', kv_tp_t1: '6', kv_tp_t2: '60', kv_tp_R1: R1, kv_tp_R2: R2 });
-  const ser = computeKv({ ...BASE, kv_set_unit: 's', kv_set: '60', kv_timer_mode: 'measured', kv_tt: ['6', '6', '6', '60', '60', '60'], kv_tm: [...R1, ...R2] });
+  const ser = computeKv({ ...BASE, kv_set_unit: 's', kv_set: '60', kv_timer_mode: 'measured', kv_ts_t: ['6', '60'], kv_ts_R: [R1, R2] });
   near(tp.timer.tau, ser.timer.tau, 1e-12);
   near(tp.timer.tau, 0.60736196, 1e-8);
   const man = computeKv({ ...BASE, kv_set_unit: 'min', kv_set: '1', kv_timer_mode: 'manual', kv_tau: String(tp.timer.tau / 60).replace('.', ',') });
