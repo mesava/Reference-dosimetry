@@ -1151,6 +1151,7 @@ table.jkv-cert-t td:nth-child(4) { width: 9.5em; }
 .jfile-line { margin: 0 0 8px; font-size: 13px; overflow-wrap: anywhere; }
 .jf-dirty { color: var(--warn); font-weight: 600; }
 .jf-clean { color: var(--ok); }
+.jf-sync { color: var(--muted); }
 .jfile-box { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: var(--radius); padding: 8px 12px; margin: 0 0 10px; display: grid; gap: 6px; justify-items: start; }
 .jfile-box.warn { border-color: var(--err); background: var(--err-soft); }
 .jfile-box p { margin: 0; font-size: 13px; }

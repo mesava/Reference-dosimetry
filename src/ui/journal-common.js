@@ -111,8 +111,8 @@ export function setupFilePanel(el, setStatus) {
     }
     if (f.direct && f.autosave) {
       return L(
-        'Изменения записываются в файл автоматически. Файл можно держать на общем диске отделения: если журнал изменят на другом компьютере, поверх он не запишется — программа предложит выбрать версию.',
-        'Changes are written to the file automatically. The file can be kept on a shared department drive: if the journal is changed on another computer, it will not be overwritten; you will be asked which version to keep.',
+        'Изменения записываются в файл автоматически. Файл можно держать в общей папке отделения и открыть на нескольких компьютерах: каждые 15 секунд и при возврате на вкладку журнал сверяется с файлом, изменения другого компьютера подгружаются и сливаются с этими по записям. Спросить, какую версию оставить, программа может, только если одну и ту же запись или карточку изменили на обоих компьютерах.',
+        'Changes are written to the file automatically. The file can be kept in a shared department folder and opened on several computers: every 15 seconds and when you return to the tab the journal is checked against the file, and changes from another computer are loaded and merged with these record by record. You are asked which version to keep only if the same record or card was changed on both computers.',
       );
     }
     if (f.direct) return L('Сохранение идёт прямо в открытый файл — кнопкой «Сохранить журнал».', 'Saving goes directly to the opened file, with the Save journal button.');
@@ -133,9 +133,10 @@ export function setupFilePanel(el, setStatus) {
     const conflict = f.conflict
       ? `<div class="jfile-box warn" role="alert">
           <p>${esc(L(
-            'Файл журнала изменили в другом месте (на другом компьютере или в другой вкладке) после того, как его открыли здесь, а в этом браузере тоже есть изменения. Поверх файла журнал не записан.',
-            'The journal file was changed elsewhere (on another computer or in another tab) after it was opened here, and this browser also has changes. The journal was not written over the file.',
+            'Файл журнала изменили в другом месте (на другом компьютере или в другой вкладке), и одни и те же данные изменены и там, и в этом браузере — автоматически их не слить. Поверх файла журнал не записан.',
+            'The journal file was changed elsewhere (on another computer or in another tab), and the same data were changed both there and in this browser, so they cannot be merged automatically. The journal was not written over the file.',
           ))}</p>
+          ${f.conflictWhat ? `<p>${esc(L(`Разошлись: ${f.conflictWhat}.`, `Differ: ${f.conflictWhat}.`))}</p>` : ''}
           <div class="actions">
             <button type="button" data-jf="take-file">${esc(L('Взять версию из файла', 'Take the version from the file'))}</button>
             <button type="button" data-jf="keep-mine">${esc(L('Записать мою поверх', 'Write mine over it'))}</button>
@@ -247,7 +248,7 @@ export function setupFilePanel(el, setStatus) {
   onJournal(({ source }) => {
     // панель целиком перерисовывается только при открытии, сохранении и новом журнале; при правках — строка
     // состояния и выделение кнопки «Сохранить» (так не сбрасывается двухшаговая кнопка «Новый журнал»)
-    if (['open', 'save', 'new'].includes(source)) render();
+    if (['open', 'save', 'new', 'sync'].includes(source)) render();
     else refresh();
   });
   onFileState((source) => (source === 'autosave' ? refresh() : render()));

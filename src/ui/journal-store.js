@@ -7,6 +7,7 @@
 // сохраняется скачиванием файла с тем же именем.
 import { newJournal, normalizeJournal, JOURNAL_TAG, journalFormat } from '../core/journal.js';
 import { backupName, backupsToDelete, backupDue, syncDecision, BACKUP_MIN_MINUTES, BACKUP_KEEP } from '../core/journal-backup.js';
+import { mergeJournals, conflictSummary } from '../core/journal-merge.js';
 import { APP_VERSION, APP_DATE } from '../core/version.js';
 import { L } from '../core/i18n.js';
 import { downloadText, esc, dateText } from './common.js';
@@ -15,6 +16,8 @@ import { putHandle, getHandle, writePermission } from './handle-store.js';
 const DRAFT_KEY = 'reference-dosimetry.journal.v1';
 const AUTOSAVE_KEY = 'reference-dosimetry.journal.autosave';
 const AUTOSAVE_DELAY = 1500;
+// журнал в общей папке: как часто сверяться с файлом, пока страница открыта (и сразу при возврате на вкладку)
+const POLL_MS = 15000;
 
 const state = {
   journal: newJournal(),
@@ -25,7 +28,11 @@ const state = {
   dirty: false,
   dirtySince: '',
   savedAt: '',
-  conflict: false, // файл изменён в другом месте, а у нас есть свои изменения
+  conflict: false, // файл изменён в другом месте, а у нас есть свои изменения, и сами они не сливаются
+  conflictWhat: '', // что именно разошлось (одни и те же записи изменены и тут, и там)
+  base: null, // журнал, каким его последний раз прочитали из файла или записали в него: основа слияния
+  syncedAt: '', // когда последний раз подгружены изменения другого компьютера
+  syncedMerged: false, // тогда же слиты с изменениями этого браузера
   error: '',
   backupDir: null,
   backupPending: null,
@@ -53,7 +60,7 @@ function saveDraft() {
   try {
     localStorage.setItem(
       DRAFT_KEY,
-      JSON.stringify({ journal: state.journal, fileName: state.fileName, dirty: state.dirty, dirtySince: state.dirtySince, savedAt: state.savedAt, known: state.known, lastBackupAt: state.lastBackupAt }),
+      JSON.stringify({ journal: state.journal, base: state.base, fileName: state.fileName, dirty: state.dirty, dirtySince: state.dirtySince, savedAt: state.savedAt, known: state.known, lastBackupAt: state.lastBackupAt }),
     );
   } catch {
     /* хранилище недоступно — работаем без черновика */
@@ -70,6 +77,11 @@ function loadDraft() {
       state.savedAt = String(d.savedAt || '');
       state.known = Number(d.known);
       state.lastBackupAt = String(d.lastBackupAt || '');
+      try {
+        state.base = d.base ? normalizeJournal(d.base) : null;
+      } catch {
+        state.base = null;
+      }
     }
   } catch {
     /* повреждённый черновик — начинаем с пустого журнала */
@@ -104,6 +116,9 @@ export const journalFile = () => ({
   canDirect: fsa(),
   pending: state.pending ? state.pending.name || state.fileName : '',
   conflict: state.conflict,
+  conflictWhat: state.conflictWhat,
+  syncedAt: state.syncedAt,
+  syncedMerged: state.syncedMerged,
   autosave,
   error: state.error,
   backup: {
@@ -160,6 +175,8 @@ function linkFile(handle, known = NaN) {
   state.pending = null;
   state.known = known;
   state.conflict = false;
+  state.conflictWhat = '';
+  state.syncedAt = '';
   putHandle('journal', handle);
 }
 
@@ -207,6 +224,7 @@ export async function openJournalFile(fileFromInput = null) {
   loadText(await file.text(), file.name);
   clearTimeout(autosaveTimer);
   linkFile(handle, handle ? file.lastModified : NaN);
+  state.base = handle ? structuredClone(state.journal) : null;
   saveDraft();
   persistStorage();
   emit('open');
@@ -229,6 +247,7 @@ export function importJournalObject(obj) {
   state.journal = normalizeJournal(obj);
   state.fileName = '';
   linkFile(null);
+  state.base = null;
   markDirty();
   saveDraft();
   emit('open');
@@ -240,22 +259,106 @@ const conflictText = () =>
     'The journal file was changed elsewhere (on another computer or in another tab) after it was opened here. The journal was not written over it: choose which version to keep.',
   );
 
+/**
+ * Файл изменили в другом месте, а в браузере есть свои изменения: слить их (core/journal-merge.js) по основе — версии,
+ * которую здесь последний раз читали из файла или записали в него. true — слито (журнал остаётся несохранённым, его
+ * нужно записать); false — одни и те же записи изменены и тут, и там: конфликт, выбирает пользователь.
+ */
+async function mergeFrom(file) {
+  let theirs;
+  try {
+    theirs = normalizeJournal(JSON.parse(await file.text()));
+  } catch {
+    theirs = null;
+  }
+  const r = state.base && theirs ? mergeJournals(state.base, state.journal, theirs) : null;
+  if (!r || r.conflicts.length) {
+    state.conflict = true;
+    state.conflictWhat = r ? conflictSummary(r.conflicts, theirs) : '';
+    return false;
+  }
+  state.journal = r.journal;
+  state.base = theirs;
+  state.known = file.lastModified;
+  state.conflict = false;
+  state.conflictWhat = '';
+  state.syncedAt = new Date().toISOString();
+  state.syncedMerged = true;
+  rev += 1;
+  markDirty();
+  saveDraft();
+  emit('sync');
+  return true;
+}
+
+/**
+ * Сверка с файлом, пока страница открыта (журнал в общей папке, с ним работают и на другом компьютере): файл изменили —
+ * без своих изменений берётся версия из файла, со своими — изменения сливаются и записываются.
+ */
+async function pullFromDisk() {
+  const h = state.handle;
+  if (!h || state.conflict || state.pending) return;
+  let file;
+  try {
+    file = await h.getFile();
+  } catch {
+    return; // сетевой диск недоступен: попробуем в следующий раз, запись сообщит об ошибке сама
+  }
+  const decision = syncDecision({ known: state.known, disk: file.lastModified, dirty: state.dirty });
+  if (decision === 'take-file') {
+    let text;
+    try {
+      text = await file.text();
+      loadText(text, file.name);
+    } catch {
+      return; // файл записывается в этот момент: прочитаем в следующий раз
+    }
+    state.known = file.lastModified;
+    state.base = structuredClone(state.journal);
+    state.savedAt = new Date(file.lastModified).toISOString();
+    state.syncedAt = new Date().toISOString();
+    state.syncedMerged = false;
+    saveDraft();
+    emit('sync');
+  } else if (decision === 'conflict') {
+    if (await mergeFrom(file)) scheduleAutosave();
+    else emitFile('conflict');
+  }
+}
+let polling = 0;
+function startPolling() {
+  if (polling || typeof window === 'undefined') return;
+  const tick = () => {
+    if (document.visibilityState !== 'visible') return;
+    queue(() => pullFromDisk()).catch(() => {});
+  };
+  polling = setInterval(tick, POLL_MS);
+  document.addEventListener('visibilitychange', tick);
+  window.addEventListener('focus', tick);
+}
+
 /** Записать журнал в связанный файл. force — поверх версии, изменённой в другом месте. Возвращает текст или бросает ошибку. */
 async function writeLinked({ manual = false, force = false } = {}) {
   const h = state.handle;
-  if (!force && syncDecision({ known: state.known, disk: (await h.getFile()).lastModified, dirty: true }) === 'conflict') {
-    state.conflict = true;
-    emitFile('conflict');
-    return conflictText();
+  if (!force) {
+    const disk = await h.getFile();
+    // файл изменили на другом компьютере: сначала слить его изменения со своими, затем записать
+    if (syncDecision({ known: state.known, disk: disk.lastModified, dirty: true }) === 'conflict' && !(await mergeFrom(disk))) {
+      emitFile('conflict');
+      return conflictText();
+    }
   }
   const text = fileText();
   const at = rev;
+  const written = structuredClone(state.journal);
   const w = await h.createWritable();
   await w.write(text);
   await w.close();
   state.known = (await h.getFile()).lastModified;
+  state.base = written;
   state.fileName = h.name || state.fileName;
   state.conflict = false;
+  state.conflictWhat = '';
   // пока шла запись, журнал могли изменить: тогда он остаётся несохранённым и запишется следующим автосохранением
   if (at === rev) markSaved();
   else scheduleAutosave();
@@ -392,6 +495,7 @@ async function syncWithDisk(h) {
   if (decision === 'take-file') {
     loadText(await file.text(), file.name);
     state.known = file.lastModified;
+    state.base = structuredClone(state.journal);
     saveDraft();
     emit('open');
     return L(
@@ -400,7 +504,13 @@ async function syncWithDisk(h) {
     );
   }
   if (decision === 'conflict') {
-    state.conflict = true;
+    if (await mergeFrom(file)) {
+      scheduleAutosave();
+      return L(
+        `Журнал «${file.name}» изменили в другом месте: изменения слиты с изменениями этого браузера.`,
+        `The journal "${file.name}" was changed elsewhere: the changes have been merged with the changes in this browser.`,
+      );
+    }
     emitFile('conflict');
     return conflictText();
   }
@@ -417,7 +527,9 @@ export async function resolveConflict(choice) {
     const file = await h.getFile();
     loadText(await file.text(), file.name);
     state.known = file.lastModified;
+    state.base = structuredClone(state.journal);
     state.conflict = false;
+    state.conflictWhat = '';
     saveDraft();
     emit('open');
     return L(`Загружена версия из файла «${file.name}».`, `The version from "${file.name}" has been loaded.`);
@@ -482,6 +594,7 @@ export function resetJournal() {
   state.journal = newJournal();
   state.fileName = '';
   linkFile(null);
+  state.base = null;
   state.dirty = false;
   state.dirtySince = '';
   state.savedAt = '';
@@ -500,7 +613,12 @@ export function fileLine() {
     const since = f.dirtySince && f.dirtySince.slice(0, 10) !== new Date().toISOString().slice(0, 10) ? L(` с ${esc(timeText(f.dirtySince))}`, ` since ${esc(timeText(f.dirtySince))}`) : '';
     st = `<span class="jf-dirty">${L('есть несохранённые изменения', 'unsaved changes')}${since}</span>`;
   } else if (f.name) st = `<span class="jf-clean">${f.direct && f.savedAt ? L(`сохранён ${esc(timeText(f.savedAt))}`, `saved ${esc(timeText(f.savedAt))}`) : L('сохранён', 'saved')}</span>`;
-  return `${L('Журнал', 'Journal')}: <b>${name}</b>${st ? ` · ${st}` : ''}`;
+  const sync = f.syncedAt && !f.conflict
+    ? ` · <span class="jf-sync">${f.syncedMerged
+      ? L(`изменения другого компьютера слиты с этими ${esc(timeText(f.syncedAt))}`, `changes from another computer merged ${esc(timeText(f.syncedAt))}`)
+      : L(`обновлён из файла (изменения другого компьютера) ${esc(timeText(f.syncedAt))}`, `updated from the file (changes from another computer) ${esc(timeText(f.syncedAt))}`)}</span>`
+    : '';
+  return `${L('Журнал', 'Journal')}: <b>${name}</b>${st ? ` · ${st}` : ''}${sync}`;
 }
 
 /** Строка о копиях для панели файла. */
@@ -517,6 +635,7 @@ export function backupLine() {
 export function initJournalStore() {
   loadDraft();
   restoreLinks();
+  startPolling();
 }
 
 async function restoreLinks() {
