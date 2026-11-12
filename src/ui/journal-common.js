@@ -65,17 +65,18 @@ export function countWord(n, ru, en) {
   return L(r, n === 1 ? en[0] : en[1]);
 }
 
-/** Метка срока калибровки: «до 01.11.2026 · осталось 24 дн.» и класс статуса. */
-export function dueChip(dueDate) {
+/** Метка срока калибровки: «до 01.11.2026 · осталось 24 дн.» и класс статуса; label — чей срок («kV: до …»). */
+export function dueChip(dueDate, label = '') {
   const s = dueStatus(dueDate, today());
-  if (s.status === 'none') return `<span class="chip due none">${esc(L('срок не задан', 'no due date'))}</span>`;
+  const pre = label ? `${label}: ` : '';
+  if (s.status === 'none') return `<span class="chip due none">${esc(pre + L('срок не задан', 'no due date'))}</span>`;
   const txt =
     s.status === 'overdue'
       ? L(`срок прошёл ${fmtDate(dueDate)}`, `overdue since ${fmtDate(dueDate)}`)
       : s.status === 'soon'
         ? L(`до ${fmtDate(dueDate)} · осталось ${s.days} дн.`, `until ${fmtDate(dueDate)} · ${s.days} days left`)
         : L(`до ${fmtDate(dueDate)}`, `until ${fmtDate(dueDate)}`);
-  return `<span class="chip due ${s.status}">${esc(txt)}</span>`;
+  return `<span class="chip due ${s.status}">${esc(pre + txt)}</span>`;
 }
 
 /** Варианты списка аппаратов с пучками (рентгенотерапевтические — без пучков, их записей в журнале пока нет). */

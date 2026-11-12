@@ -7,7 +7,7 @@ import { NDW_UNITS, unitLabel, isBlank } from '../core/units.js';
 import {
   chamberPreferred,
   tabEquipment, applyTabEquipment, chamberTabFields, electrometerTabFields, chamberText, electrometerText,
-  chamberServes, dueStatus,
+  chamberServes, dueStatus, chamberOnDate, tabDate, certText,
 } from '../core/journal.js';
 import { $, esc, today, richText, currentProtocol } from './common.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
@@ -167,7 +167,9 @@ function makeLink(cfg) {
         if (cfg.demo?.()) return '';
         return `<p class="jlink-st none">${esc(L(`${name} вкладки в журнале отделения не найден${what === 'chamber' ? 'а' : ''} (по модели и номеру).`, `This ${what === 'chamber' ? 'chamber' : 'electrometer'} was not found in the department journal (by model and serial number).`))} <button type="button" class="link-btn" data-jl-put="${what}">${esc(L('Добавить в журнал', 'Add to the journal'))}</button></p>`;
       }
-      const recText = what === 'chamber' ? chamberText(rec) : electrometerText(rec);
+      // дата измерения раньше действующего свидетельства камеры: сверка — со свидетельством из истории (с 0.53.0)
+      const onCert = what === 'chamber' && t.chamberOn?.certSrc ? certText(t.chamberOn) : '';
+      const recText = (what === 'chamber' ? chamberText(rec) : electrometerText(rec)) + (onCert ? L(` (свидетельство на дату измерения: ${onCert})`, ` (certificate on the measurement date: ${onCert})`) : '');
       const due = dueText(rec);
       const st = dueStatus(rec.dueDate, today()).status;
       if (diffs.length) {
@@ -199,12 +201,18 @@ function makeLink(cfg) {
     setPick('electrometer', t.electrometer);
   }
 
-  function take(what, rec) {
-    if (!rec) return;
+  function take(what, rec0) {
+    if (!rec0) return;
+    // камера — со свидетельством, действовавшим на дату измерения вкладки (с 0.53.0)
+    const rec = what === 'chamber' ? chamberOnDate(rec0, tabDate(cfg.read(), cfg.kind)) : rec0;
     cfg.patch(what === 'chamber' ? chamberTabFields(rec, cfg.kind) : electrometerTabFields(rec, cfg.kind));
+    const cert = what === 'chamber' && rec.certSrc ? certText(rec) : '';
+    const old = cert
+      ? L(` Дата измерения раньше действующего свидетельства: взято свидетельство, действовавшее на эту дату (${cert}).`, ` The measurement date is earlier than the current certificate: the certificate valid on that date is used (${cert}).`)
+      : '';
     cfg.status(
       what === 'chamber'
-        ? L(`Подставлена камера из журнала: ${chamberText(rec)} (модель, №, калибровочный коэффициент, T₀, P₀, поправки лаборатории); подсвечены изменённые поля.`, `Chamber taken from the journal: ${chamberText(rec)} (model, serial number, calibration coefficient, T₀, P₀, laboratory corrections); the changed fields are highlighted.`)
+        ? L(`Подставлена камера из журнала: ${chamberText(rec)} (модель, №, калибровочный коэффициент, T₀, P₀, поправки лаборатории); подсвечены изменённые поля.${old}`, `Chamber taken from the journal: ${chamberText(rec)} (model, serial number, calibration coefficient, T₀, P₀, laboratory corrections); the changed fields are highlighted.${old}`)
         : L(`Подставлен электрометр из журнала: ${electrometerText(rec)}.`, `Electrometer taken from the journal: ${electrometerText(rec)}.`),
     );
   }
@@ -218,7 +226,9 @@ function makeLink(cfg) {
     const state = what === 'chamber' ? res.chamber : res.electrometer;
     const name = what === 'chamber' ? L('Камера', 'The chamber') : L('Электрометр', 'The electrometer');
     cfg.status(
-      state === 'added'
+      state === 'older'
+        ? L('Камера в журнале не обновлена: дата измерения вкладки раньше действующего свидетельства камеры, поля вкладки относятся к прежнему. Новое свидетельство вводится в «Оборудовании» (карточка камеры, «Новый сертификат»).', 'The chamber in the journal was not updated: the measurement date of the tab is earlier than the current chamber certificate, so the tab fields belong to the previous one. A new certificate is entered in Equipment (the chamber card, “New certificate”).')
+        : state === 'added'
         ? L(`${name} добавлен${what === 'chamber' ? 'а' : ''} в журнал отделения: укажите даты калибровки в «Оборудовании» и сохраните журнал в файл.`, `${name} has been added to the department journal: enter its calibration dates in Equipment and save the journal to the file.`)
         : L(`${name} в журнале обновлен${what === 'chamber' ? 'а' : ''} полями вкладки — для всех пучков, где он${what === 'chamber' ? 'а' : ''} выбран${what === 'chamber' ? 'а' : ''}. Сохраните журнал в файл.`, `${name} in the journal has been updated with the tab fields, for all beams that use it. Save the journal to the file.`),
     );

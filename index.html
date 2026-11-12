@@ -1685,6 +1685,22 @@
       <h4 class="series-head">Сертификат калибровки</h4>
       <div class="grid">
         <div class="field">
+          <label for="kv_cert_no">№ свидетельства</label>
+          <input type="text" id="kv_cert_no">
+        </div>
+        <div class="field">
+          <label for="kv_cert_date">Дата калибровки</label>
+          <input type="date" id="kv_cert_date">
+        </div>
+        <div class="field">
+          <label for="kv_cert_lab">Лаборатория</label>
+          <input type="text" id="kv_cert_lab">
+          <input type="hidden" id="kv_cert_src">
+        </div>
+      </div>
+      <p class="jlink-st warn" id="kv-cert-on-date" hidden data-i18n-skip></p>
+      <div class="grid">
+        <div class="field">
           <label for="kv_cal">Калибровочный коэффициент</label>
           <select id="kv_cal">
             <option value="ndw">N_D,w — поглощённая доза в воде</option>

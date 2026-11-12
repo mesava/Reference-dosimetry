@@ -3,6 +3,7 @@
 // с решением о калибровке, итоги листов СПО, ошибки таймера, линейности и воспроизводимости, подписи. Протокол
 // печатается отдельно от рабочего листа (body.print-kv-protocol, styles.css). Данные — core/kv-summary.js.
 // С 0.46.0 тот же протокол — у записи журнала kV («Журнал и тренды»): kvProtocolHtml.
+import { certText } from '../core/journal.js';
 import { L, getLang } from '../core/i18n.js';
 import { kvOutputRows, kvDoseMatrix, kvClimate, kvSheetChecks, kvModeName, kvChamberName, kvHvlSourceText } from '../core/kv-summary.js';
 import { kvRecMode, kvRecModeText } from '../core/kv-records.js';
@@ -83,7 +84,10 @@ function devicesHtml(visit, vr) {
     const modes = visit.modes.map((md, m) => (md.chamber === j ? m + 1 : 0)).filter(Boolean);
     const el = [str(ch?.kv_el_model), str(ch?.kv_el_serial) ? L(`№ ${str(ch.kv_el_serial)}`, `S/N ${str(ch.kv_el_serial)}`) : ''].filter(Boolean).join(' ');
     const who = used.length > 1 || visit.modes.length > 1 ? L(` (режим${modes.length > 1 ? 'ы' : ''} ${modes.join(', ')})`, ` (mode${modes.length > 1 ? 's' : ''} ${modes.join(', ')})`) : '';
-    return esc(L(`камера ${kvChamberName(ch)}${el ? `, электрометр ${el}` : ''}${who}`, `chamber ${kvChamberName(ch)}${el ? `, electrometer ${el}` : ''}${who}`));
+    // свидетельство kV-сертификата камеры (с 0.53.0)
+    const cert = certText({ no: ch?.kv_cert_no, date: ch?.kv_cert_date, lab: ch?.kv_cert_lab });
+    const c = cert ? ` (${cert})` : '';
+    return esc(L(`камера ${kvChamberName(ch)}${c}${el ? `, электрометр ${el}` : ''}${who}`, `chamber ${kvChamberName(ch)}${c}${el ? `, electrometer ${el}` : ''}${who}`));
   });
   const phantoms = [...new Set(vr.modes.flatMap((mr) => mr.results.map((r) => r.phantom?.clin?.name).filter(Boolean)))];
   if (phantoms.length) items.push(esc(L(`фантом: ${phantoms.join('; ')}`, `phantom: ${phantoms.join('; ')}`)));

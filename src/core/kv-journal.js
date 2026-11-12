@@ -12,10 +12,11 @@
 // по-прежнему заводит или дополняет аппарат целиком.
 import { KV_CHAMBER_KEYS, newKvMode, newKvChamber, emptyKvRow, computeKvVisit } from './kv-session.js';
 import { normalizeKvMachine, newKvApplicator, newKvMachineMode, kvRefCandidates, journalModelOfKv, kvModelOfJournal } from './kv-machine.js';
-import { uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, orgText, chamberText, electrometerText, chamberUse } from './journal.js';
+import { uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, orgText, chamberText, electrometerText, chamberUse, localToday } from './journal.js';
 import { findEChamber } from './electron-chambers.js';
 import { parseNumber, isBlank, dec } from './units.js';
 import { hvlText } from './kv-hvl.js';
+import { certOn, certMetaOf, isIsoDate, certFilled, archiveCert } from './chamber-certs.js';
 import { L } from './i18n.js';
 
 const str = (v) => (v === undefined || v === null ? '' : String(v));
@@ -31,10 +32,15 @@ const sameNum = (a, b) => {
 /** Поля записи камеры, относящиеся к модели, номеру и электрометру: у записи журнала они свои. */
 const CHAMBER_ID_KEYS = ['kv_ch_model', 'kv_cc_maker', 'kv_cc_model', 'kv_cc_type', 'kv_ch_serial', 'kv_el_model', 'kv_el_serial', 'kv_kelec'];
 /**
+ * Сведения о свидетельстве kV-сертификата во вкладке (с 0.53.0): №, дата, лаборатория и откуда сертификат. В записи
+ * камеры они хранятся отдельно (chamber.kvCal: calCert, calDate, calLab), не в chamber.kv.
+ */
+export const KV_CERT_META_KEYS = ['kv_cert_no', 'kv_cert_date', 'kv_cert_lab', 'kv_cert_src'];
+/**
  * kV-сертификат и условия измерения камеры: тип калибровки, таблица качеств, условия лаборатории, T₀, P₀, поправки
  * лаборатории, напряжения и полярность. Хранятся в записи камеры журнала отдельно от её N_D,w в ⁶⁰Co (chamber.kv).
  */
-export const KV_CERT_KEYS = KV_CHAMBER_KEYS.filter((k) => !CHAMBER_ID_KEYS.includes(k));
+export const KV_CERT_KEYS = KV_CHAMBER_KEYS.filter((k) => !CHAMBER_ID_KEYS.includes(k) && !KV_CERT_META_KEYS.includes(k));
 
 /**
  * Поля kV-сертификата, которые вводятся в карточке камеры «Оборудования» (с 0.50.0): вид коэффициента, Q_o и глубина,
@@ -55,9 +61,11 @@ export const hasKvCert = (kv) => !!kv && (!isBlank(kv.kv_n) || (Array.isArray(kv
  * мерили во вкладке последний раз (до 0.50.0 — выбранный у режима; src 'last'); { el: null, src: '' } — нет ни того,
  * ни другого (электрометр вводится во вкладке).
  */
-export function kvModeElectrometer(j, x) {
+export function kvModeElectrometer(j, x, date = '') {
   const ch = j.chambers.find((c) => c.id === x?.chamberId);
-  const cal = ch?.calEl ? j.electrometers.find((e) => e.id === ch.calEl) : null;
+  // электрометр при калибровке — kV-сертификата (с 0.53.0 — свой, kvCal), действовавшего на дату измерения date
+  const calEl = ch ? certOn(ch, 'kv', date).meta.calEl : '';
+  const cal = calEl ? j.electrometers.find((e) => e.id === calEl) : null;
   if (cal) return { el: cal, src: 'cal' };
   const last = x?.electrometerId ? j.electrometers.find((e) => e.id === x.electrometerId) : null;
   return last ? { el: last, src: 'last' } : { el: null, src: '' };
@@ -66,12 +74,17 @@ export function kvModeElectrometer(j, x) {
 /** Аппарат текстом для поля «Аппарат» вкладки: «Xstrahl 300, № 123». */
 export const kvMachineText = (m) => [str(m?.name).trim(), isBlank(m?.serial) ? '' : `№ ${str(m.serial).trim()}`].filter(Boolean).join(', ');
 
-/** Камера вкладки из записи камеры и электрометра журнала; base — камера вкладки, откуда берутся поля, которых в записи нет. */
-export function kvChamberFromRecord(ch, el, base = null) {
+/**
+ * Камера вкладки из записи камеры и электрометра журнала; base — камера вкладки, откуда берутся поля, которых в записи
+ * нет; date — дата измерения (ISO): kV-сертификат — действовавший на эту дату (с 0.53.0, certOn: при дате раньше
+ * действующего — из истории камеры).
+ */
+export function kvChamberFromRecord(ch, el, base = null, date = '') {
   const out = newKvChamber(base);
   if (ch) {
     const f = ch.form || {};
-    const kv = ch.kv || {};
+    const on = certOn(ch, 'kv', date);
+    const kv = on.data || {};
     const id = kvModelOfJournal(f.ch_model);
     if (id) out.kv_ch_model = id;
     else if (!isBlank(f.ch_model)) {
@@ -84,6 +97,9 @@ export function kvChamberFromRecord(ch, el, base = null) {
     }
     out.kv_ch_serial = str(f.ch_serial);
     for (const k of KV_CERT_KEYS) if (k in kv) out[k] = copy(kv[k]);
+    // своя камера: название и тип — из действующей записи (в сертификате из истории их может не быть)
+    if (out.kv_ch_model === 'CUSTOM' && !isBlank(ch.kv?.kv_cc_model)) Object.assign(out, { kv_cc_maker: str(ch.kv.kv_cc_maker), kv_cc_model: str(ch.kv.kv_cc_model), kv_cc_type: ch.kv.kv_cc_type === 'cyl' ? 'cyl' : 'pp' });
+    Object.assign(out, { kv_cert_no: str(on.meta.calCert).trim(), kv_cert_date: str(on.meta.calDate).trim(), kv_cert_lab: str(on.meta.calLab).trim(), kv_cert_src: on.src !== 'current' ? on.src : isIsoDate(date) && isIsoDate(on.meta.calDate) && date < on.meta.calDate ? 'newer' : '' });
   }
   if (el) {
     out.kv_el_model = str(el.form?.el_model);
@@ -110,14 +126,15 @@ export function kvVisitFromMachine(j, machine, modeIds, visit) {
   const chambers = [];
   const index = new Map();
   const noCert = [];
+  const date = str(visit.common?.kv_date).trim();
   const modes = picked.map((x) => {
-    const el = kvModeElectrometer(j, x).el;
+    const el = kvModeElectrometer(j, x, date).el;
     const key = `${x.chamberId}|${el?.id ?? ''}`;
     if (!index.has(key)) {
       const ch = j.chambers.find((c) => c.id === x.chamberId) ?? null;
       index.set(key, chambers.length);
-      chambers.push(kvChamberFromRecord(ch, el, base));
-      if (ch && !hasKvCert(ch.kv)) noCert.push(chamberText(ch));
+      chambers.push(kvChamberFromRecord(ch, el, base, date));
+      if (ch && !hasKvCert(certOn(ch, 'kv', date).data)) noCert.push(chamberText(ch));
     }
     const md = newKvMode(tpl);
     Object.assign(md.shared, { kv_jmode: x.id, kv_range: x.range === 'medium' ? 'medium' : 'low', kv_kv: str(x.kv), kv_ma: str(x.ma), kv_filter: str(x.filter), kv_hvl: str(x.hvl) });
@@ -153,6 +170,7 @@ export function kvRefreshFromMachine(j, machine, visit) {
   const v = structuredClone(visit);
   const keep = ['kv_el_model', 'kv_el_serial', 'kv_kelec', 'kv_V1', 'kv_V2', 'kv_polarity', 'kv_ks_on', 'kv_rec_trs', 'kv_kleak', 'kv_tg61_sleeve', 'kv_tg61_sleeve_t'];
   const owner = new Map(); // камера вкладки → id камеры «Оборудования», которая в ней теперь
+  const date = str(v.common?.kv_date).trim();
   v.modes.forEach((md) => {
     const x = machine.modes.find((y) => y.id === md.shared.kv_jmode);
     if (!x) return;
@@ -165,11 +183,33 @@ export function kvRefreshFromMachine(j, machine, visit) {
     }
     owner.set(md.chamber, ch.id);
     const cur = v.chambers[md.chamber];
-    v.chambers[md.chamber] = { ...kvChamberFromRecord(ch, null, cur), ...pick(cur, keep) };
+    v.chambers[md.chamber] = { ...kvChamberFromRecord(ch, null, cur, date), ...pick(cur, keep) };
   });
   // десятичная запятая или точка (вкладка на английском показывает точку) — не изменение
-  const same = (o) => JSON.stringify(o, (k, x) => (typeof x === 'string' ? x.replace(/(\d),(\d)/g, '$1.$2') : x));
+  // сведения о свидетельстве у камеры вкладки, где их нет (вкладки до 0.53.0), — не изменение; где есть — изменение
+  const blankMeta = visit.chambers.map((c) => ['kv_cert_no', 'kv_cert_date', 'kv_cert_lab'].every((k) => isBlank(c?.[k])));
+  const strip = (c, i) => ((blankMeta[i] ?? blankMeta[0]) ? Object.fromEntries(Object.entries(c).filter(([k]) => !KV_CERT_META_KEYS.includes(k))) : c);
+  const same = (o) => JSON.stringify({ ...o, chambers: o.chambers.map(strip) }, (k, x) => (typeof x === 'string' ? x.replace(/(\d),(\d)/g, '$1.$2') : x));
   return { visit: v, changed: same(v) !== same(visit) };
+}
+
+/**
+ * Камеры режимов вкладки, у которых дата измерения раньше даты действующего kV-сертификата, а прежнего в истории камеры
+ * нет (с 0.53.0): «Обновить из «Оборудования»» подставит им действующий сертификат. [{ chamber, cert }] — названия
+ * камер и действующий сертификат текстом («№ 0174-26 от 2026-10-07»).
+ */
+export function kvRefreshRisk(j, machine, visit) {
+  const date = str(visit?.common?.kv_date).trim();
+  if (!isIsoDate(date)) return [];
+  const out = new Map();
+  for (const md of visit.modes ?? []) {
+    const x = machine.modes.find((y) => y.id === md.shared?.kv_jmode);
+    const ch = x ? j.chambers.find((c) => c.id === x.chamberId) : null;
+    if (!ch || out.has(ch.id)) continue;
+    const on = certOn(ch, 'kv', date);
+    if (on.src === 'current' && isIsoDate(on.meta.calDate) && date < on.meta.calDate) out.set(ch.id, { chamber: chamberText(ch), no: on.meta.calCert, date: on.meta.calDate });
+  }
+  return [...out.values()];
 }
 
 /** Тот же аппликатор: форма, размер и РИП (числа — по значению). a — аппликатор аппарата, r — строка вкладки. */
@@ -222,6 +262,8 @@ function upsertChamber(j, vc, rep) {
   const { custom, model, name } = chamberModel(vc);
   const kv = pick(vc, KV_CERT_KEYS);
   if (custom) Object.assign(kv, { kv_cc_maker: str(vc.kv_cc_maker), kv_cc_model: str(vc.kv_cc_model), kv_cc_type: vc.kv_cc_type === 'cyl' ? 'cyl' : 'pp' });
+  // сведения о свидетельстве вкладки (с 0.53.0) — для записи камеры, которой ещё нет
+  const meta = certMetaOf({ calCert: str(vc.kv_cert_no).trim(), calDate: isIsoDate(str(vc.kv_cert_date).trim()) ? str(vc.kv_cert_date).trim() : '', calLab: str(vc.kv_cert_lab).trim() });
   let ch = kvFindChamber(j, vc);
   if (!ch) {
     // камера, добавленная из вкладки kV, отмечена только для kV-рентгена
@@ -230,13 +272,31 @@ function upsertChamber(j, vc, rep) {
       id: uid('ch'),
       form: { ch_model: model, ch_serial: str(vc.kv_ch_serial), ch_ndw: '', ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', ch_T0: '20', ch_P0: '101,325', ...(custom ? { e_other_name: name, e_other_type: vc.kv_cc_type === 'cyl' ? 'cyl' : 'pp' } : {}) },
       kv,
+      kvCal: meta,
+      certHistory: [],
       use: { photon: false, electron: false, kv: true },
     };
     j.chambers.push(ch);
     rep.chambersAdded.push(chamberText(ch));
   } else {
     if (!chamberUse(ch, j).kv) ch.use = { ...chamberUse(ch, j), kv: true };
-    if (!sameKv(ch.kv, kv)) {
+    // сертификат вкладки старше действующего в «Оборудовании» (или без даты, когда у действующего она есть): действующий
+    // им не перезаписывается — новый сертификат вводится в карточке камеры (с 0.53.0)
+    const curDate = str(ch.kvCal?.calDate).trim();
+    const tabDate = meta.calDate;
+    const older = hasKvCert(ch.kv) && isIsoDate(curDate) && (!tabDate || tabDate < curDate);
+    if (older) {
+      if (!sameKv(ch.kv, kv)) rep.certOlder.push(chamberText(ch));
+    } else if (!sameKv(ch.kv, kv)) {
+      // у вкладки другое свидетельство (новее действующего): действующее — в историю камеры, сведения — из вкладки
+      const cur = certMetaOf(ch.kvCal);
+      const other = (meta.calCert || meta.calDate) && (meta.calCert !== cur.calCert || meta.calDate !== cur.calDate);
+      if (other && certFilled(ch, 'kv')) {
+        const elId = cur.calEl;
+        Object.assign(ch, archiveCert(ch, 'kv', { id: uid('cert'), today: localToday(), elText: elId ? electrometerText(j.electrometers.find((e) => e.id === elId)) : '' }));
+        ch.kvCal = { ...certMetaOf({}), calCert: meta.calCert, calDate: meta.calDate, calLab: meta.calLab };
+        rep.certArchived.push(chamberText(ch));
+      } else if (meta.calCert || meta.calDate || meta.calLab) ch.kvCal = { ...cur, calCert: meta.calCert, calDate: meta.calDate, calLab: meta.calLab };
       ch.kv = kv;
       rep.certSaved.push(chamberText(ch));
     }
@@ -270,7 +330,7 @@ function upsertElectrometer(j, vc, rep) {
  */
 export function kvMachineFromVisit(j0, visit, { replaceHvl = false } = {}) {
   const j = structuredClone(j0);
-  const rep = { machineAdded: false, modesAdded: 0, modesUpdated: 0, modesLinked: 0, appsAdded: 0, chambersAdded: [], certSaved: [], electrometersAdded: [], hvl: [], hvlMeasured: 0, platesSaved: 0 };
+  const rep = { machineAdded: false, modesAdded: 0, modesUpdated: 0, modesLinked: 0, appsAdded: 0, chambersAdded: [], certSaved: [], certOlder: [], certArchived: [], electrometersAdded: [], hvl: [], hvlMeasured: 0, platesSaved: 0 };
   const name = str(visit.common.kv_machine).trim();
   let m = j.machines.find((x) => x.kind === 'kv' && x.id === visit.common.kv_jmachine)
     ?? (name ? j.machines.find((x) => x.kind === 'kv' && (norm(x.name) === norm(name) || norm(kvMachineText(x)) === norm(name))) : null);
@@ -377,6 +437,8 @@ export function kvSaveText(m, rep) {
     rep.appsAdded ? L(`аппликаторов добавлено: ${rep.appsAdded}`, `applicators added: ${rep.appsAdded}`) : '',
     rep.chambersAdded.length ? L(`камеры добавлены: ${rep.chambersAdded.join(', ')}`, `chambers added: ${rep.chambersAdded.join(', ')}`) : '',
     rep.certSaved.length ? L(`kV-сертификат записан в камеры: ${rep.certSaved.join(', ')}`, `kV certificate saved to the chambers: ${rep.certSaved.join(', ')}`) : '',
+    rep.certArchived.length ? L(`прежний kV-сертификат перенесён в историю камеры (${rep.certArchived.join(', ')})`, `the previous kV certificate moved to the chamber history (${rep.certArchived.join(', ')})`) : '',
+    rep.certOlder.length ? L(`kV-сертификат вкладки старше действующего и не записан (${rep.certOlder.join(', ')}): новый сертификат вводится в карточке камеры`, `the kV certificate of the tab is older than the current one and was not saved (${rep.certOlder.join(', ')}): a new certificate is entered in the chamber card`) : '',
     rep.electrometersAdded.length ? L(`электрометры добавлены: ${rep.electrometersAdded.join(', ')}`, `electrometers added: ${rep.electrometersAdded.join(', ')}`) : '',
     rep.hvlMeasured ? L(`измеренный СПО записан в режимов: ${rep.hvlMeasured}`, `measured HVL saved to modes: ${rep.hvlMeasured}`) : '',
     rep.platesSaved ? L(`набор пластин для СПО сохранён (${rep.platesSaved})`, `the HVL plate set saved (${rep.platesSaved})`) : '',

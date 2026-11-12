@@ -10,10 +10,11 @@ import { E_DEFAULTS, normalizeElectrons, parseElectronBeam } from '../core/elect
 import { E_CHAMBERS, findEChamber } from '../core/electron-chambers.js';
 import { CO_DEFAULTS, normalizeCobalt } from '../core/cobalt.js';
 import {
-  uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, saveBeamSettings, equipmentDue, equipmentNoDue,
+  uid, CHAMBER_DEFAULTS, newChamberRecord, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, saveBeamSettings, equipmentDue, equipmentNoDue,
   chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable, electronChamberForm, beamKind, cobaltCapable, cobaltChamberForm, myChambersToJournal, orgText, withChamberLength,
-  CAL_GEO_KEYS, machineCalGeo, calGeoKey, calGeoText, syncCalGeo, chamberUse, chamberUseSet, kvChamberInModes, dueStatus,
+  CAL_GEO_KEYS, machineCalGeo, calGeoKey, calGeoText, syncCalGeo, chamberUse, chamberUseSet, kvChamberInModes, dueStatus, chamberDueDates, certText,
 } from '../core/journal.js';
+import { certMeta, certHistory, certFilled, archiveCert, restoreCert, removeCert } from '../core/chamber-certs.js';
 import {
   newKvApplicator, newKvMachineMode, normalizeKvMachine, applicatorDiameter, applicatorText, kvMachineModeTitle, hvlUnit, kvRefCandidates, kvMachineChecks,
   KV_ONLY_CHAMBERS, findKvOnlyChamber, kvModelOfJournal, kvChamberFitsRange, journalChamberType,
@@ -183,7 +184,10 @@ function kvCertBlock(j, c) {
   const text = kvCertText(c.kv);
   const box = (key, label) => check(k, id, p(key), !!v(key), label);
   return `<h4 class="sub-h">${esc(L('kV-сертификат', 'kV certificate'))}</h4>
-    <p class="sub-hint" data-live="kvcert-${val(id)}">${richText(text ? `${text}. ` : L('Пока не введён. ', 'Not entered yet. '))}${esc(L('Калибровка в рентгеновских пучках: подставляется во вкладку «kV-рентген» вместе с камерой режима и там только показывается.', 'Calibration in x-ray beams: it is filled in to the kV x-rays tab with the chamber of the mode and only shown there.'))}</p>
+    <p class="sub-hint" data-live="kvcert-${val(id)}">${richText(text ? `${text}. ` : L('Пока не введён. ', 'Not entered yet. '))}${esc(L('Калибровка в рентгеновских пучках: подставляется во вкладку «kV-рентген» вместе с камерой режима и там только показывается. Сведения о свидетельстве, T₀ и P₀ — свои, отдельно от свидетельства для МВ и ⁶⁰Co.', 'Calibration in x-ray beams: it is filled in to the kV x-rays tab with the chamber of the mode and only shown there. The certificate details, T₀ and P₀ are its own, separate from the MV and ⁶⁰Co certificate.'))}</p>
+    <div class="grid">
+      ${certMetaFields(j, c, 'kv')}
+    </div>
     <div class="grid">
       ${field(L('Калибровочный коэффициент', 'Calibration coefficient'), select(k, id, p('kv_cal'), v('kv_cal'), [['ndw', L('N_D,w — поглощённая доза в воде', 'N_D,w: absorbed dose to water')], ['nk', L('N_K — воздушная керма в свободном воздухе', 'N_K: air kerma in free air')]]), { forId: fid('kv_cal'), cls: 'span-2' })}
       ${field(L('Как записан сертификат', 'How the certificate is written'), select(k, id, p('kv_cert_form'), form, [['kq', L('N при Qo и k_Q по качествам', 'N at Qo and k_Q by quality')], ['n', L('N по качествам', 'N by quality')], ['k', L('N_Д и множитель K по качествам (поверка)', 'N_D and factor K by quality (verification)')], ['co', L('только N_D,w в ⁶⁰Co: k_Q = 1 (не по Rev.1 и DIN)', 'N_D,w in ⁶⁰Co only: k_Q = 1 (not by Rev.1 or DIN)')]]), { forId: fid('kv_cert_form'), cls: 'span-2' })}
@@ -210,7 +214,86 @@ function kvCertBlock(j, c) {
       ${v('kv_lab_pol_applied') ? '' : field(L('k<sub>pol</sub> в пучке лаборатории', 'k<sub>pol</sub> in the laboratory beam'), input(k, id, p('kv_lab_kpol'), v('kv_lab_kpol'), { num: true }), { forId: fid('kv_lab_kpol') })}
       <div class="field">${box('kv_lab_ks_applied', esc(L('Лаборатория внесла поправку на рекомбинацию', 'The laboratory applied the recombination correction')))}</div>
       ${v('kv_lab_ks_applied') ? '' : field(L('k<sub>s</sub> при калибровке', 'k<sub>s</sub> at calibration'), input(k, id, p('kv_lab_ks'), v('kv_lab_ks'), { num: true }), { forId: fid('kv_lab_ks') })}
-    </div>`;
+    </div>
+    ${certTools(j, c, 'kv')}`;
+}
+
+/**
+ * Сведения о свидетельстве камеры вида kind ('mv' — для МВ фотонов, электронов и ⁶⁰Co: поля самой записи; 'kv' —
+ * kV-сертификат: chamber.kvCal, с 0.53.0): лаборатория, №, дата калибровки, срок, электрометр, напряжение и полярность.
+ */
+function certMetaFields(j, c, kind) {
+  const k = 'chamber';
+  const p = kind === 'kv' ? 'kvCal.' : '';
+  const m = certMeta(c, kind);
+  const fid = (key) => fieldId(k, c.id, p + key);
+  const elSub = kind === 'kv'
+    ? L('электрометр режимов аппарата kV с этой камерой (таблица «Камеры режимов»); с другим нужен его k<sub>elec</sub>', 'the electrometer of the kV unit modes with this chamber (the “Mode chambers” table); another one needs its own k<sub>elec</sub>')
+    : L('если камеру калибровали вместе с электрометром: с другим электрометром нужен его k<sub>elec</sub> — блок «Журнал» на вкладке дозиметрии об этом напомнит', 'if the chamber was calibrated together with an electrometer: another electrometer needs its own k<sub>elec</sub>; the Journal block of the dosimetry tab will remind you');
+  return `${field(L('Лаборатория', 'Laboratory'), input(k, c.id, `${p}calLab`, m.calLab, { placeholder: L('ВНИИФТРИ', 'SSDL / PSDL') }), { forId: fid('calLab') })}
+      ${field(L('№ свидетельства', 'Certificate No.'), input(k, c.id, `${p}calCert`, m.calCert), { forId: fid('calCert') })}
+      ${field(L('Дата калибровки', 'Calibration date'), input(k, c.id, `${p}calDate`, m.calDate, { type: 'date' }), { forId: fid('calDate'), sub: L('по ней измерениям прошлых дат подставляется сертификат из истории', 'by it, measurements of earlier dates get the certificate from the history') })}
+      ${field(L('Действует до', 'Valid until'), input(k, c.id, `${p}dueDate`, m.dueDate, { type: 'date' }), { forId: fid('dueDate'), sub: L('за 30 дней до срока появится напоминание', 'a reminder appears 30 days before') })}
+      ${field(L('Электрометр при калибровке', 'Electrometer at calibration'), select(k, c.id, `${p}calEl`, m.calEl, [['', L('— не указан —', '— not given —')], ...j.electrometers.map((e) => [e.id, electrometerText(e) || L('электрометр без названия', 'unnamed electrometer')])]), { forId: fid('calEl'), cls: 'span-2', sub: elSub })}
+      ${field(L('Напряжение при калибровке, В', 'Calibration voltage, V'), input(k, c.id, `${p}calV`, m.calV, { num: true, placeholder: '400' }), { forId: fid('calV') })}
+      ${field(L('Полярность при калибровке', 'Calibration polarity'), select(k, c.id, `${p}calPol`, m.calPol, [['', L('— не указана —', '— not given —')], ['+', L('положительная (+)', 'positive (+)')], ['-', L('отрицательная (−)', 'negative (−)')]]), { forId: fid('calPol') })}`;
+}
+
+/** Коэффициенты свидетельства из истории коротко (простой текст, для richText): kV — как kvCertText, МВ — N_D,w и др. */
+function certDataText(kind, data) {
+  if (!data) return '';
+  if (kind === 'kv') return kvCertText(data);
+  const u = (key) => unitLabel(Object.hasOwn(NDW_UNITS, String(data[key] ?? '')) ? NDW_UNITS[data[key]] : NDW_UNITS['Gy/nC']);
+  const v = (key) => String(data[key] ?? '').trim();
+  return [
+    v('ch_ndw') ? `N_D,w = ${v('ch_ndw')} ${u('ch_ndw_unit')}` : '',
+    v('ch_klab') && v('ch_klab').replace(',', '.') !== '1.000' ? L(`k_лаб = ${v('ch_klab')}`, `k_lab = ${v('ch_klab')}`) : '',
+    v('ch_cross_ndw') ? L(`N_D,w,Qcross (фотоны) = ${v('ch_cross_ndw')} ${u('ch_cross_ndw_unit')}`, `N_D,w,Qcross (photons) = ${v('ch_cross_ndw')} ${u('ch_cross_ndw_unit')}`) : '',
+    v('e_cross_ndw') ? L(`N_D,w,Qcross (электроны) = ${v('e_cross_ndw')} ${u('e_cross_ndw_unit')}`, `N_D,w,Qcross (electrons) = ${v('e_cross_ndw')} ${u('e_cross_ndw_unit')}`) : '',
+    v('e_cross_kn') ? `(k_Qecal·N_D,w)pp = ${v('e_cross_kn')} ${u('e_cross_kn_unit')}` : '',
+    v('ch_T0') || v('ch_P0') ? L(`T₀ = ${v('ch_T0') || '—'} °C, P₀ = ${v('ch_P0') || '—'} кПа`, `T₀ = ${v('ch_T0') || '—'} °C, P₀ = ${v('ch_P0') || '—'} kPa`) : '',
+  ].filter(Boolean).join('; ');
+}
+
+/**
+ * «Новый сертификат» и история свидетельств вида kind (с 0.53.0): кнопка переносит действующее свидетельство в историю;
+ * у записи истории — «Сделать действующим» и «Удалить». Записи журнала хранят свои значения и не меняются.
+ */
+function certTools(j, c, kind) {
+  const m = certMeta(c, kind);
+  const hist = certHistory(c, kind);
+  const attr = (act, h = '') => `data-cert-act="${act}" data-cert-kind="${kind}" data-cert-ch="${val(c.id)}"${h ? ` data-cert-h="${val(h)}"` : ''}`;
+  const elName = (h) => (h.meta.calEl ? electrometerText(j.electrometers.find((e) => e.id === h.meta.calEl)) : '') || h.elText;
+  const rows = hist
+    .slice()
+    .reverse()
+    .map((h) => {
+      const who = [h.meta.calLab, elName(h) ? L(`электрометр ${elName(h)}`, `electrometer ${elName(h)}`) : '', !isBlank(h.meta.calV) ? L(`${h.meta.calV} В`, `${h.meta.calV} V`) : '', h.meta.calPol ? L(`полярность ${h.meta.calPol === '-' ? '−' : '+'}`, `polarity ${h.meta.calPol === '-' ? '−' : '+'}`) : ''].filter(Boolean).map(esc).join(', ');
+      return `<tr><td data-cap="${esc(L('Свидетельство', 'Certificate'))}">${esc(isBlank(h.meta.calCert) ? '—' : `№ ${h.meta.calCert}`)}</td>
+        <td data-cap="${esc(L('Дата калибровки', 'Calibration date'))}">${esc(h.meta.calDate ? fmtDate(h.meta.calDate) : '—')}</td>
+        <td data-cap="${esc(L('Срок действия', 'Valid until'))}">${esc(h.meta.dueDate ? fmtDate(h.meta.dueDate) : '—')}</td>
+        <td data-cap="${esc(L('Сведения', 'Details'))}">${[who, richText(certDataText(kind, h.data))].filter(Boolean).join('<br>') || '—'}</td>
+        <td class="del"><button type="button" class="link-btn" ${attr('restore', h.id)}>${esc(L('Сделать действующим', 'Make current'))}</button> <button type="button" class="link-btn danger" ${attr('del', h.id)}>${esc(L('Удалить', 'Delete'))}</button></td></tr>`;
+    })
+    .join('');
+  // предупреждение без даты — data-live: обновляется при вводе даты без перерисовки карточки
+  const noDate = hist.length && isBlank(m.calDate)
+    ? `<p class="jlink-st warn">${esc(L('Укажите дату калибровки действующего свидетельства: без неё измерениям прошлых дат сертификат из истории не подставляется.', 'Enter the calibration date of the current certificate: without it, measurements of earlier dates do not get the certificate from the history.'))}</p>`
+    : '';
+  return `<div class="row-tools"><button type="button" class="link-btn" ${attr('new')}>${esc(L('Новый сертификат…', 'New certificate…'))}</button></div>
+    <p class="sub-hint">${esc(L('Когда камера откалибрована заново: действующее свидетельство уйдёт в историю, поля освободятся под новое (лаборатория, электрометр, условия и таблица качеств останутся как образец). Записи журнала не пересчитываются; измерениям с датой раньше нового свидетельства подставляется прежнее.', 'When the chamber is calibrated again: the current certificate goes to the history and the fields are cleared for the new one (the laboratory, electrometer, conditions and the quality table stay as a template). Journal records are not recalculated; measurements dated before the new certificate get the previous one.'))}</p>
+    <div data-live="certdate-${kind}-${val(c.id)}">${noDate}</div>
+    ${hist.length ? `<details class="jcert-hist"${hist.length ? ' open' : ''}><summary>${esc(L(`История сертификатов (${hist.length})`, `Certificate history (${hist.length})`))}</summary>
+      <div class="table-wrap"><table class="factors jf-table" aria-label="${esc(L('История сертификатов', 'Certificate history'))}"><thead><tr><th>${esc(L('Свидетельство', 'Certificate'))}</th><th>${esc(L('Дата калибровки', 'Calibration date'))}</th><th>${esc(L('Срок действия', 'Valid until'))}</th><th>${esc(L('Сведения', 'Details'))}</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></details>` : ''}`;
+}
+
+/** Метки сроков свидетельств камеры в заголовке карточки: МВ и ⁶⁰Co (если поля есть) и kV; при обоих — с подписью. */
+function chamberDueChips(c, j, mv, kv) {
+  const both = mv && kv;
+  const out = [];
+  if (mv || !kv) out.push(dueChip(c.dueDate, both ? L('МВ и ⁶⁰Co', 'MV and ⁶⁰Co') : ''));
+  if (kv) out.push(dueChip(c.kvCal?.dueDate ?? '', both ? 'kV' : ''));
+  return out.join('');
 }
 
 function chamberCard(c, j = getJournal()) {
@@ -226,18 +309,19 @@ function chamberCard(c, j = getJournal()) {
   const coOnly = use.photon && !photonCapable(f) && cobaltCapable(f);
   const phCross = ph && f.ch_cal_route === 'cross';
   const elCross = el && f.e_cal_route === 'cross';
-  const mv = isBlank(f.ch_model) || ph || el || coOnly || uses.cobalt;
+  // свидетельство для МВ и ⁶⁰Co — когда камера отмечена для фотонов, электронов или ⁶⁰Co (до выбора модели полей нет)
+  const mv = !isBlank(f.ch_model) && (ph || el || coOnly || uses.cobalt);
   // камера из списка вкладки kV: плоскопараллельная только для kV или цилиндрическая из табл. 32 (её калибруют и в рентгене)
   const kvCapable = !!kvModelOfJournal(f.ch_model);
   const forWhat = [photonCapable(f) && L('фотонов', 'photons'), electronCapable(f) && L('электронов', 'electrons'), cobaltCapable(f) && '⁶⁰Co', kvCapable && L('kV-рентгена', 'kV x-rays')].filter(Boolean);
   const forText = forWhat.length ? L(`для ${forWhat.length > 1 ? `${forWhat.slice(0, -1).join(', ')} и ${forWhat.at(-1)}` : forWhat[0]}`, `for ${forWhat.length > 1 ? `${forWhat.slice(0, -1).join(', ')} and ${forWhat.at(-1)}` : forWhat[0]}`) : '';
   // N_D,w в ⁶⁰Co нужен, если хоть для одного вида пучков камера калибруется в ⁶⁰Co, если она выбрана у пучка ⁶⁰Co
   // (или модель ещё не выбрана)
-  const needNdw = isBlank(f.ch_model) || (ph && !phCross) || (el && !elCross) || coOnly || uses.cobalt;
+  const needNdw = mv && ((ph && !phCross) || (el && !elCross) || coOnly || uses.cobalt);
   const units = Object.entries(NDW_UNITS).map(([v, u]) => [v, unitLabel(u)]);
   const maker = chamberMakerOf(c);
   return `<div class="jcard" data-card="chamber:${esc(c.id)}">
-    <div class="jcard-head"><b>${esc(chamberText(c) || L('Новая камера', 'New chamber'))}</b><span class="chips">${missChip(chamberMissing(c, uses, 'trs'))}${dueChip(c.dueDate)}</span></div>
+    <div class="jcard-head"><b>${esc(chamberText(c) || L('Новая камера', 'New chamber'))}</b><span class="chips">${missChip(chamberMissing(c, uses, 'trs'))}${chamberDueChips(c, j, mv, use.kv)}</span></div>
     <div class="grid">
       ${field(L('Производитель', 'Manufacturer'), `<select ${bind(k, c.id, 'maker')}>${makerOptions(chamberMakers(), maker, L('Другая или своя камера', 'Other or custom chamber'))}</select>`, { forId: fieldId(k, c.id, 'maker') })}
       ${maker ? field(L('Модель', 'Model'), `<select ${bind(k, c.id, 'form.ch_model')}>${chamberModelOptions(maker, f.ch_model)}</select>`, { forId: fieldId(k, c.id, 'form.ch_model'), sub: [custom ? esc([f.cc_maker, f.cc_model].filter(Boolean).join(' ')) : '', esc(forText), esc(chamberDims(f))].filter(Boolean).join(' · ') }) : ''}
@@ -249,6 +333,12 @@ function chamberCard(c, j = getJournal()) {
           ${field(L('Тип', 'Type'), select(k, c.id, 'form.e_other_type', f.e_other_type || 'pp', [['pp', L('плоскопараллельная', 'plane-parallel')], ['cyl', L('цилиндрическая', 'cylindrical')]]), { forId: fieldId(k, c.id, 'form.e_other_type') })}
           ${f.e_other_type === 'cyl' ? field(L('Радиус полости, мм', 'Cavity radius, mm'), input(k, c.id, 'form.e_other_r', f.e_other_r, { num: true }), { forId: fieldId(k, c.id, 'form.e_other_r') }) : ''}`
         : ''}
+    </div>
+    ${isBlank(f.ch_model) ? `<p class="sub-hint">${esc(L('Выберите модель и отметьте, для чего камера: появятся поля её сертификатов — для МВ фотонов, электронов и ⁶⁰Co и (отдельно) kV-сертификата.', 'Select the model and tick what the chamber is used for: the fields of its certificates appear, for MV photons, electrons and ⁶⁰Co and (separately) the kV certificate.'))}</p>` : ''}
+    ${!isBlank(f.ch_model) && !mv && !use.kv ? `<p class="sub-hint">${esc(L('Отметьте в «Применении», для чего камера: появятся поля её сертификатов.', 'Tick in “Use” what the chamber is used for: the fields of its certificates appear.'))}</p>` : ''}
+    ${mv ? `<h4 class="sub-h">${esc(L('Свидетельство для МВ фотонов, электронов и ⁶⁰Co', 'Certificate for MV photons, electrons and ⁶⁰Co'))}</h4>
+    <p class="sub-hint">${esc(use.kv ? L('Калибровка в пучке ⁶⁰Co или перекрёстная. К kV-рентгену не относится: у него свой kV-сертификат ниже, со своими T₀, P₀ и сведениями о свидетельстве.', 'Calibration in a ⁶⁰Co beam or cross-calibration. It does not apply to kV x-rays: they have their own kV certificate below, with its own T₀, P₀ and certificate details.') : L('Калибровка в пучке ⁶⁰Co или перекрёстная.', 'Calibration in a ⁶⁰Co beam or cross-calibration.'))}</p>
+    <div class="grid">
       ${ph ? field(L('Калибровка для фотонов', 'Calibration for photons'), select(k, c.id, 'form.ch_cal_route', f.ch_cal_route || 'co60', [['co60', L('N_D,w в пучке ⁶⁰Co', 'N_D,w in a ⁶⁰Co beam')], ['cross', L('перекрёстная в пучке МВ фотонов (TRS-398)', 'cross-calibration in an MV photon beam (TRS-398)')]]), { forId: fieldId(k, c.id, 'form.ch_cal_route'), cls: el ? '' : 'span-2' }) : ''}
       ${el ? field(L('Калибровка для электронов', 'Calibration for electrons'), select(k, c.id, 'form.e_cal_route', f.e_cal_route || 'co60', [['co60', L('N_D,w в пучке ⁶⁰Co', 'N_D,w in a ⁶⁰Co beam')], ['cross', L('перекрёстная в пучке электронов', 'cross-calibration in an electron beam')]]), { forId: fieldId(k, c.id, 'form.e_cal_route'), cls: ph ? '' : 'span-2' }) : ''}
       ${needNdw
@@ -271,18 +361,14 @@ function chamberCard(c, j = getJournal()) {
       ${mv ? field('T₀, °C', input(k, c.id, 'form.ch_T0', f.ch_T0 ?? '20', { num: true }), { forId: fieldId(k, c.id, 'form.ch_T0') }) : ''}
       ${mv ? field(L('P₀, кПа', 'P₀, kPa'), input(k, c.id, 'form.ch_P0', f.ch_P0 ?? '101,325', { num: true }), { forId: fieldId(k, c.id, 'form.ch_P0') }) : ''}
     </div>
-    <h4 class="sub-h">${esc(L('Свидетельство о калибровке', 'Calibration certificate'))}</h4>
     <div class="grid">
-      ${field(L('Лаборатория', 'Laboratory'), input(k, c.id, 'calLab', c.calLab, { placeholder: L('ВНИИФТРИ', 'SSDL / PSDL') }), { forId: fieldId(k, c.id, 'calLab') })}
-      ${field(L('№ свидетельства', 'Certificate No.'), input(k, c.id, 'calCert', c.calCert), { forId: fieldId(k, c.id, 'calCert') })}
-      ${field(L('Дата калибровки', 'Calibration date'), input(k, c.id, 'calDate', c.calDate, { type: 'date' }), { forId: fieldId(k, c.id, 'calDate') })}
-      ${field(L('Действует до', 'Valid until'), input(k, c.id, 'dueDate', c.dueDate, { type: 'date' }), { forId: fieldId(k, c.id, 'dueDate'), sub: L('за 30 дней до срока появится напоминание', 'a reminder appears 30 days before') })}
-      ${field(L('Электрометр при калибровке', 'Electrometer at calibration'), select(k, c.id, 'calEl', c.calEl, [['', L('— не указан —', '— not given —')], ...j.electrometers.map((e) => [e.id, electrometerText(e) || L('электрометр без названия', 'unnamed electrometer')])]), { forId: fieldId(k, c.id, 'calEl'), cls: 'span-2', sub: L('если камеру калибровали вместе с электрометром: с другим электрометром нужен его k<sub>elec</sub> — блок «Журнал» на вкладке дозиметрии об этом напомнит', 'if the chamber was calibrated together with an electrometer: another electrometer needs its own k<sub>elec</sub>; the Journal block of the dosimetry tab will remind you') })}
-      ${field(L('Напряжение при калибровке, В', 'Calibration voltage, V'), input(k, c.id, 'calV', c.calV, { num: true, placeholder: '400' }), { forId: fieldId(k, c.id, 'calV') })}
-      ${field(L('Полярность при калибровке', 'Calibration polarity'), select(k, c.id, 'calPol', c.calPol, [['', L('— не указана —', '— not given —')], ['+', L('положительная (+)', 'positive (+)')], ['-', L('отрицательная (−)', 'negative (−)')]]), { forId: fieldId(k, c.id, 'calPol') })}
+      ${certMetaFields(j, c, 'mv')}
+    </div>
+    ${certTools(j, c, 'mv')}` : ''}
+    ${use.kv ? kvCertBlock(j, c) : ''}
+    <div class="grid">
       ${field(L('Примечания', 'Notes'), input(k, c.id, 'notes', c.notes), { forId: fieldId(k, c.id, 'notes'), cls: 'span-2' })}
     </div>
-    ${use.kv ? kvCertBlock(j, c) : ''}
     <div class="row-tools"><button type="button" class="link-btn danger" data-del="chamber:${esc(c.id)}"${usedInRecords(j, 'chamberId', c.id) ? ` disabled title="${esc(RECORDS_TITLE())}"` : ''}>${esc(L('Удалить камеру', 'Delete chamber'))}</button></div>
   </div>`;
 }
@@ -689,7 +775,9 @@ function sheetTab(j, kind, x) {
   }
   const chamber = kind === 'chamber';
   const miss = chamber ? chamberMissing(x, chamberUses(j, x.id), 'trs') : electrometerMissing(x);
-  const due = dueState(x.dueDate);
+  // у камеры сроков два (свидетельство для МВ и ⁶⁰Co и kV-сертификат, с 0.53.0): отметка — по худшему
+  const dues = chamber ? chamberDueDates(x, j).map((d) => dueState(d.dueDate)) : [dueState(x.dueDate)];
+  const due = dues.includes('error') ? 'error' : dues.includes('warn') ? 'warn' : '';
   const st = due || (miss.length ? 'warn' : 'done');
   // модель ещё не выбрана — «Новая камера» («Новый электрометр»), а не «—» и не «электрометр»
   const blank = chamber ? isBlank(x.form?.ch_model) && isBlank(x.form?.ch_serial) : isBlank(x.form?.el_model) && isBlank(x.form?.el_serial);
@@ -806,10 +894,70 @@ function render() {
     if (btn.disabled) continue;
     armButton(btn, btn.textContent, () => L('Нажмите ещё раз, чтобы удалить', 'Click again to delete'), () => remove(btn.dataset.del));
   }
+  // сертификаты камеры (с 0.53.0): «Новый сертификат», «Сделать действующим», «Удалить» — со вторым нажатием
+  for (const btn of ROOT().querySelectorAll('[data-cert-act]')) {
+    if (btn.disabled) continue;
+    const act = btn.dataset.certAct;
+    const armed = act === 'new'
+      ? () => L('Нажмите ещё раз: действующий уйдёт в историю', 'Click again: the current one goes to the history')
+      : act === 'restore'
+        ? () => L('Нажмите ещё раз: этот станет действующим', 'Click again: this one becomes current')
+        : () => L('Нажмите ещё раз, чтобы удалить', 'Click again to delete');
+    armButton(btn, btn.textContent, armed, () => certAction(btn.dataset.certAct, btn.dataset.certKind, btn.dataset.certCh, btn.dataset.certH));
+  }
   renderMyChambersTool();
   localizeDecimals(ROOT());
   renderReadout();
   notifyUpdate(ROOT());
+}
+
+/** Электрометр при калибровке свидетельства kind камеры c текстом (для истории: электрометр могут потом удалить). */
+function certElText(j, c, kind) {
+  const id = certMeta(c, kind).calEl;
+  return id ? electrometerText(j.electrometers.find((e) => e.id === id)) : '';
+}
+
+/** Действие с сертификатом камеры: 'new' — действующий в историю, 'restore' — запись истории h действующей, 'del' — убрать h. */
+function certAction(act, kind, chId, h) {
+  // род: «kV-сертификат» — мужской, «Свидетельство для МВ и ⁶⁰Co» — средний
+  const kv = kind === 'kv';
+  const what = kv ? L('kV-сертификат', 'The kV certificate') : L('Свидетельство для МВ и ⁶⁰Co', 'The MV and ⁶⁰Co certificate');
+  let done = '';
+  updateJournal((j) => {
+    const i = j.chambers.findIndex((x) => x.id === chId);
+    if (i < 0) return j;
+    const c = j.chambers[i];
+    let out = null;
+    if (act === 'new') {
+      if (!certFilled(c, kind)) {
+        done = kv
+          ? L('kV-сертификат пустой (нет ни коэффициента, ни №, ни даты) — переносить в историю нечего: введите сведения нового прямо в поля.', 'The kV certificate is empty (no coefficient, No. or date): there is nothing to move to the history; enter the new one directly in the fields.')
+          : L('Свидетельство для МВ и ⁶⁰Co пустое (нет ни коэффициента, ни №, ни даты) — переносить в историю нечего: введите сведения нового прямо в поля.', 'The MV and ⁶⁰Co certificate is empty (no coefficient, No. or date): there is nothing to move to the history; enter the new one directly in the fields.');
+        return j;
+      }
+      const was = certText(certMeta(c, kind));
+      out = archiveCert(c, kind, { id: uid('cert'), today: today(), elText: certElText(j, c, kind) });
+      done = L(`${what}${was ? ` (${was})` : ''} ${kv ? 'перенесён' : 'перенесено'} в историю камеры. Введите сведения и коэффициенты нового; обязательно — дату калибровки: по ней измерениям прошлых дат подставляется ${kv ? 'прежний' : 'прежнее'}.`, `${what}${was ? ` (${was})` : ''} has been moved to the chamber history. Enter the details and coefficients of the new one, including the calibration date: by it, measurements of earlier dates get the previous one.`);
+    } else if (act === 'restore') {
+      const hist = certHistory(c, kind).find((x) => x.id === h);
+      const elText = certElText(j, c, kind);
+      out = restoreCert(c, h, { newId: uid('cert'), today: today(), elText });
+      // электрометра истории в «Оборудовании» больше нет — поле «Электрометр при калибровке» пустое
+      if (out && hist?.meta.calEl && !j.electrometers.some((e) => e.id === hist.meta.calEl)) {
+        if (kind === 'kv') out.kvCal.calEl = '';
+        else out.calEl = '';
+      }
+      done = out ? L(`${what} из истории ${kv ? 'стал действующим' : 'стало действующим'}${hist ? ` (${certText(hist.meta) || '—'})` : ''}; ${kv ? 'прежний действующий' : 'прежнее действующее'} — в истории.`, `${what} from the history is now current${hist ? ` (${certText(hist.meta) || '—'})` : ''}; the previous current one is in the history.`) : '';
+    } else if (act === 'del') {
+      out = removeCert(c, h);
+      if (out.certHistory.length === (c.certHistory?.length ?? 0)) return j;
+      done = L('Запись истории сертификатов удалена.', 'The certificate history entry has been deleted.');
+    }
+    if (!out) return j;
+    j.chambers[i] = out;
+    return j;
+  }, 'equipment');
+  if (done) setStatus(`${done} ${L('Сохраните журнал в файл.', 'Save the journal to the file.')}`);
 }
 
 function renderReadout() {
@@ -1063,7 +1211,10 @@ function remove(what) {
     if (kind === 'chamber') j.chambers = j.chambers.filter((x) => x.id !== a);
     else if (kind === 'electrometer') {
       j.electrometers = j.electrometers.filter((x) => x.id !== a);
-      for (const c of j.chambers) if (c.calEl === a) c.calEl = '';
+      for (const c of j.chambers) {
+        if (c.calEl === a) c.calEl = '';
+        if (c.kvCal?.calEl === a) c.kvCal.calEl = '';
+      }
     }
     else if (kind === 'machine') {
       // открывается соседний аппарат: следующий, иначе предыдущий
@@ -1209,7 +1360,7 @@ function onClick(e) {
     const id = uid('ch');
     setSheet('chamber', id);
     updateJournal((j) => {
-      j.chambers.push({ ...CHAMBER_DEFAULTS, id, form: { ch_model: '', ch_serial: '', ch_ndw: '', ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', ch_T0: '20', ch_P0: '101,325' } });
+      j.chambers.push(newChamberRecord({ id, form: { ch_model: '', ch_serial: '', ch_ndw: '', ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', ch_T0: '20', ch_P0: '101,325' } }));
       return j;
     }, 'equipment');
     focusLast('chamber');

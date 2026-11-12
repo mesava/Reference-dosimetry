@@ -24,16 +24,20 @@ import { parseNumber, isBlank, parseBeamName } from './units.js';
 import { L } from './i18n.js';
 import { normalizeKvMachine, findKvOnlyChamber } from './kv-machine.js';
 import { kvChamberLabel } from './kv-tables.js';
+import { CERT_META_KEYS, certMetaOf, certOn, certStamp, normalizeCertEntry } from './chamber-certs.js';
 
 /** version — наибольший формат файла, который понимает эта версия калькулятора (2 — с аппаратами ⁶⁰Co, 3 — с рентгенотерапевтическими). */
-export const JOURNAL_TAG = { app: 'reference-dosimetry', module: 'journal', version: 3 };
+export const JOURNAL_TAG = { app: 'reference-dosimetry', module: 'journal', version: 4 };
 /**
  * Формат файла журнала: 3, если в нём есть рентгенотерапевтические аппараты (с 0.41.0), 2 — если аппараты или пучки
  * ⁶⁰Co (прежняя версия страницы сочла бы их ускорителями и должна отказаться открыть файл), иначе 1 — такой журнал
  * открывается и прежней версией.
  */
 export const journalFormat = (j) =>
-  j.machines.some((m) => m.kind === 'kv') ? 3 : j.machines.some((m) => m.kind === 'cobalt' || m.beams.some((b) => b.kind === 'cobalt')) ? 2 : 1;
+  // 4 — с раздельными сертификатами камеры (с 0.53.0): история или сведения kV-сертификата заполнены — прежние версии
+  // такой файл не открывают (иначе прочли бы его без них)
+  j.chambers.some((c) => (Array.isArray(c.certHistory) && c.certHistory.length) || Object.values(c.kvCal ?? {}).some((v) => !isBlank(v))) ? 4
+    : j.machines.some((m) => m.kind === 'kv') ? 3 : j.machines.some((m) => m.kind === 'cobalt' || m.beams.some((b) => b.kind === 'cobalt')) ? 2 : 1;
 
 /** Короткий идентификатор записи: префикс, время и случайная часть. */
 export function uid(prefix) {
@@ -228,6 +232,11 @@ const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj && k in ob
  * calEl, calV, calPol, calLab, calCert — сведения о калибровке: электрометр, с которым её калибровали, напряжение и
  * полярность, лаборатория, № свидетельства (пусто — проверок по ним нет, см. calibrationChecks). */
 export const CHAMBER_DEFAULTS = { id: '', kind: 'photon', form: {}, calDate: '', dueDate: '', notes: '', length: '', calEl: '', calV: '', calPol: '', calLab: '', calCert: '' };
+/**
+ * Новая запись камеры (с 0.53.0): как CHAMBER_DEFAULTS, со своими (не общими) сведениями kV-сертификата и историей —
+ * по ним запись 0.53.0 отличается от записи до 0.53.0 (migrateChamberCerts).
+ */
+export const newChamberRecord = (fields = {}) => ({ ...CHAMBER_DEFAULTS, kvCal: certMetaOf({}), certHistory: [], ...fields });
 export const ELECTROMETER_DEFAULTS = { id: '', form: {}, calDate: '', dueDate: '', notes: '' };
 /** kind: 'linac' — ускоритель (пучки фотонов и электронов), 'cobalt' — аппарат ⁶⁰Co, 'kv' — рентгенотерапевтический
  * (аппликаторы и режимы вместо пучков, core/kv-machine.js). */
@@ -285,7 +294,36 @@ export function normalizeJournal(obj) {
     })
     // в один день записей может быть несколько (с 0.47.0 — по режимам): по времени записи
     .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.saved ?? '').localeCompare(String(b.saved ?? '')));
+  for (const c of j.chambers) migrateChamberCerts(c, j);
   return j;
+}
+
+/**
+ * Сертификаты камеры (с 0.53.0, core/chamber-certs.js): у kV-сертификата свои сведения о свидетельстве (chamber.kvCal),
+ * история — chamber.certHistory. До 0.53.0 сведения (лаборатория, №, даты, электрометр, напряжение, полярность) были
+ * одни на камеру. Запись камеры до 0.53.0 узнаётся по тому, что у неё нет ни kvCal, ни certHistory (у записей 0.53.0
+ * они есть всегда — переносится один раз). У такой камеры, если она для kV-рентгена (kV-сертификат, модель только для
+ * kV или камера режима аппарата kV): без калибровки для МВ и ⁶⁰Co (нет коэффициента и ею не мерили пучки МВ и ⁶⁰Co) —
+ * сведения переносятся в kV-сертификат (у свидетельства для МВ они пустеют); с ней — копируются в оба (какое к чему
+ * относится, программа не знает). Меняет c.
+ */
+export function migrateChamberCerts(c, j = null) {
+  const legacy = !(c.kvCal && typeof c.kvCal === 'object') && !Array.isArray(c.certHistory);
+  if (legacy && chamberUse(c, j).kv) {
+    const meta = certMetaOf(c);
+    const uses = j ? chamberUses(j, c.id) : { photon: false, electron: false, cobalt: false };
+    const mvCal = MV_CAL_KEYS.some((k) => !isBlank(c.form?.[k])) || uses.photon || uses.electron || uses.cobalt;
+    c.kvCal = meta;
+    if (!mvCal) for (const k of CERT_META_KEYS) c[k] = '';
+  } else c.kvCal = certMetaOf(c.kvCal);
+  // записи истории: id — непустые и разные (по ним «Сделать действующим» и «Удалить»)
+  const seen = new Set();
+  c.certHistory = arr(c.certHistory).map(normalizeCertEntry).filter(Boolean).map((h) => {
+    if (!h.id || seen.has(h.id)) h.id = uid('cert');
+    seen.add(h.id);
+    return h;
+  });
+  return c;
 }
 
 // ---------------------------------------------------------------- геометрия калибровки дозы аппарата
@@ -414,9 +452,11 @@ export function chamberText(c) {
 /** Свидетельство о калибровке камеры для протокола: «свидетельство № 123 от 12.03.2026, ВНИИФТРИ». */
 export function certText(c) {
   if (!c) return '';
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(c.calDate || '') ? c.calDate.split('-').reverse().join('.') : '';
-  const no = String(c.calCert || '').trim();
-  const lab = String(c.calLab || '').trim();
+  // запись камеры или сведения о свидетельстве (calCert, calDate, calLab), или снимок записи журнала (no, date, lab)
+  const d = String(c.calDate ?? c.date ?? '');
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(d) ? d.split('-').reverse().join('.') : '';
+  const no = String(c.calCert ?? c.no ?? '').trim();
+  const lab = String(c.calLab ?? c.lab ?? '').trim();
   if (!no && !lab && !date) return '';
   const head = [no ? L(`свидетельство № ${no}`, `certificate No. ${no}`) : L('калибровка', 'calibrated'), date ? L(`от ${date}`, `of ${date}`) : ''].filter(Boolean).join(' ');
   return [head, lab].filter(Boolean).join(', ');
@@ -470,9 +510,11 @@ const POL_KEY = { photon: 'rd_polarity', electron: 'e_polarity', cobalt: 'co_pol
  * — напряжение и полярность: поправки лаборатории (k_pol, k_s) и N_D,w относятся к условиям калибровки.
  * form — поля пучка (V₁ и полярность), kind — 'photon' | 'electron' | 'cobalt'.
  */
-export function calibrationChecks(j, chamberId, electrometerId, form = {}, kind = 'photon') {
-  const ch = chamberOf(j, chamberId);
-  if (!ch) return [];
+export function calibrationChecks(j, chamberId, electrometerId, form = {}, kind = 'photon', date = '') {
+  const c0 = chamberOf(j, chamberId);
+  if (!c0) return [];
+  // сведения свидетельства для МВ и ⁶⁰Co, действовавшего на дату измерения (электрометр, напряжение, полярность)
+  const ch = { ...c0, ...certOn(c0, 'mv', date).meta };
   const out = [];
   const chName = chamberText(ch) || L('камера', 'the chamber');
   const calEl = ch.calEl ? electrometerOf(j, ch.calEl) : null;
@@ -564,12 +606,29 @@ export function dueStatus(dueDate, today, soonDays = 30) {
   const days = d - t;
   return { status: days < 0 ? 'overdue' : days <= soonDays ? 'soon' : 'ok', days };
 }
+/**
+ * Сроки свидетельств камеры (с 0.53.0): [{ cert, dueDate, text }] — свидетельство для МВ и ⁶⁰Co ('mv'), если камера
+ * отмечена для фотонов или электронов (или ни для чего), и kV-сертификат ('kv'), если для kV-рентгена. У камеры с обоими
+ * в подписи — какое свидетельство.
+ */
+export function chamberDueDates(c, j = null) {
+  const u = chamberUse(c, j);
+  const mv = u.photon || u.electron || !u.kv;
+  const both = mv && u.kv;
+  const name = chamberText(c);
+  const out = [];
+  if (mv) out.push({ cert: 'mv', dueDate: c.dueDate ?? '', text: both ? L(`${name} (свидетельство для МВ и ⁶⁰Co)`, `${name} (MV and ⁶⁰Co certificate)`) : name });
+  if (u.kv) out.push({ cert: 'kv', dueDate: c.kvCal?.dueDate ?? '', text: both ? L(`${name} (kV-сертификат)`, `${name} (kV certificate)`) : name });
+  return out;
+}
 /** Камеры и электрометры, у которых срок калибровки прошёл или подходит. */
 export function equipmentDue(j, today) {
   const out = [];
   for (const c of j.chambers) {
-    const s = dueStatus(c.dueDate, today);
-    if (s.status === 'overdue' || s.status === 'soon') out.push({ kind: 'chamber', id: c.id, text: chamberText(c), ...s, dueDate: c.dueDate });
+    for (const x of chamberDueDates(c, j)) {
+      const s = dueStatus(x.dueDate, today);
+      if (s.status === 'overdue' || s.status === 'soon') out.push({ kind: 'chamber', id: c.id, text: x.text, cert: x.cert, ...s, dueDate: x.dueDate });
+    }
   }
   for (const e of j.electrometers) {
     const s = dueStatus(e.dueDate, today);
@@ -580,7 +639,7 @@ export function equipmentDue(j, today) {
 /** Камеры и электрометры без срока калибровки («Действует до»): о них напоминание о сроке не появится. */
 export function equipmentNoDue(j) {
   return [
-    ...j.chambers.filter((c) => dueStatus(c.dueDate, '2000-01-01').status === 'none').map((c) => ({ kind: 'chamber', id: c.id, text: chamberText(c) })),
+    ...j.chambers.flatMap((c) => chamberDueDates(c, j).filter((x) => dueStatus(x.dueDate, '2000-01-01').status === 'none').map((x) => ({ kind: 'chamber', id: c.id, text: x.text, cert: x.cert }))),
     ...j.electrometers.filter((e) => dueStatus(e.dueDate, '2000-01-01').status === 'none').map((e) => ({ kind: 'electrometer', id: e.id, text: electrometerText(e) })),
   ];
 }
@@ -728,7 +787,8 @@ export function beamForm(j, session, machine, beam, input = {}, { en = false } =
   const K = kindOf(kind);
   const k = K.k;
   const base = input.base && typeof input.base === 'object' ? input.base : null;
-  const ch = base ? null : chamberOf(j, input.chamberId || beam.chamberId);
+  // камера — со свидетельством, действовавшим на дату сеанса (с 0.53.0: сеанс прошлой даты после замены сертификата)
+  const ch = base ? null : chamberOnDate(chamberOf(j, input.chamberId || beam.chamberId), session.date);
   const el = base ? null : electrometerOf(j, input.electrometerId || beam.electrometerId);
   const f = base
     ? { ...K.defaults, ...pick(base, [...K.beamKeys, ...K.chamberKeys, ...K.electrometerKeys]) }
@@ -843,6 +903,38 @@ export function beamForm(j, session, machine, beam, input = {}, { en = false } =
 }
 /** Прежнее имя (фотоны). */
 export const photonBeamForm = beamForm;
+/** Дата измерения вкладки вида kind из её формы (ISO или пусто). */
+export const tabDate = (form, kind = 'photon') => String(form?.[kindOf(kind).k.date] ?? '').trim();
+
+/**
+ * Запись камеры с коэффициентами и сведениями свидетельства для МВ и ⁶⁰Co, действовавшего на дату date (с 0.53.0):
+ * при дате раньше действующего свидетельства — из истории (core/chamber-certs.js, certOn); иначе — сама запись.
+ */
+export function chamberOnDate(ch, date) {
+  if (!ch) return ch;
+  const on = certOn(ch, 'mv', date);
+  if (on.src === 'current') return ch;
+  return { ...ch, ...on.meta, form: { ...(ch.form || {}), ...(on.data || {}) }, certSrc: on.src };
+}
+/**
+ * Снимок свидетельства камеры для МВ и ⁶⁰Co на дату date для записи сеанса: { no, date, lab, src } или null. chForm —
+ * поля камеры, по которым посчитан пучок (имена записи камеры): если калибровочный коэффициент в них другой, чем в
+ * свидетельстве на эту дату (введён на вкладке вручную), снимка нет — свидетельство неизвестно.
+ */
+export function chamberCertStamp(ch, date, chForm = null) {
+  if (!ch) return null;
+  const on = certOn(ch, 'mv', date);
+  if (chForm) {
+    const keys = ['ch_ndw', 'ch_cross_ndw', 'e_cross_ndw', 'e_cross_kn'].filter((k) => !isBlank(chForm[k]));
+    const same = (a, b) => {
+      const x = parseNumber(a);
+      const y = parseNumber(b);
+      return Number.isFinite(x) && Number.isFinite(y) ? Math.abs(x - y) < 1e-12 : String(a ?? '').trim() === String(b ?? '').trim();
+    };
+    if (keys.some((k) => !same(chForm[k], on.data?.[k]))) return null;
+  }
+  return certStamp(on);
+}
 
 const mean = (cells) => {
   const v = (cells || []).map(parseNumber).filter(Number.isFinite);
@@ -1003,7 +1095,7 @@ export function computeSessionBeam(j, session, beamInput, opts = {}) {
   const result = kindOf(kind).compute(built.form);
   // согласие с калибровкой камеры (электрометр, напряжение, полярность) — замечания к расчёту пучка
   if (!(beamInput.base && typeof beamInput.base === 'object')) {
-    const notes = calibrationChecks(j, beamInput.chamberId || found.beam.chamberId, beamInput.electrometerId || found.beam.electrometerId, built.form, kind);
+    const notes = calibrationChecks(j, beamInput.chamberId || found.beam.chamberId, beamInput.electrometerId || found.beam.electrometerId, built.form, kind, session.date);
     if (notes.length && Array.isArray(result.messages)) result.messages.push(...notes.map((n) => ({ level: n.level, scope: 'common', text: n.text, ref: null, cal: true })));
   }
   // предыдущая калибровка этого пучка — для сравнения k_pol и k_s (изменение k_pol больше 0,2 % — повод выяснить причину)
@@ -1031,16 +1123,17 @@ export function mainValue(r, kind = 'photon') {
  * От камеры зависят k_Q и (в пучке БВФ) k_vol: они берутся по модели второй камеры и длине её полости; k_Q и k_vol,
  * введённые для рабочей камеры, к ней не относятся — их можно ввести для второй (kQ, kvol). Поправка на рекомбинацию по
  * глубине для показателя качества — по k_s рабочей камеры (ks10): качество измерено ею. ⁶⁰Co: ошибка таймера — та же,
- * что у рабочей камеры (tau, в единицах времени пучка): она относится к аппарату, а не к камере.
+ * что у рабочей камеры (tau, в единицах времени пучка): она относится к аппарату, а не к камере. date — дата сеанса (ISO).
  */
-export function checkBase(j, workForm, kind, { chamberId = '', electrometerId = '', recorded = null, kQ = '', kvol = '', ks10 = NaN, tau = NaN, en = false } = {}) {
+export function checkBase(j, workForm, kind, { chamberId = '', electrometerId = '', recorded = null, kQ = '', kvol = '', ks10 = NaN, tau = NaN, en = false, date = '' } = {}) {
   const K = kindOf(kind);
   const six = (v) => (en ? v.toFixed(6) : v.toFixed(6).replace('.', ','));
   const exact = (v) => {
     const t = v.toFixed(12).replace(/0+$/, '').replace(/\.$/, '');
     return en ? t : t.replace('.', ',');
   };
-  const ch = recorded ? null : chamberOf(j, chamberId);
+  // свидетельство второй камеры — действовавшее на дату сеанса (date), как у рабочей
+  const ch = recorded ? null : chamberOnDate(chamberOf(j, chamberId), date);
   const el = recorded || !electrometerId ? null : electrometerOf(j, electrometerId);
   const b = {
     ...pick(workForm, K.beamKeys),
@@ -1094,7 +1187,11 @@ export function finalizeSession(j, session, opts = {}) {
     .map((b) => {
       const c = computeSessionBeam(j, s, b, opts);
       const { base, ...rest } = b;
-      return c ? { ...rest, kind: c.kind, chamberId: c.chamber?.id || b.chamberId || '', electrometerId: c.electrometer?.id || b.electrometerId || '', form: c.form, summary: c.summary } : rest;
+      if (!c) return rest;
+      const chamberId = c.chamber?.id || b.chamberId || '';
+      // свидетельство камеры, по которому посчитан пучок (с 0.53.0): у записанного сеанса — прежний снимок
+      const cert = b.base ? b.cert ?? null : chamberCertStamp(chamberOf(j, chamberId), s.date);
+      return { ...rest, kind: c.kind, chamberId, electrometerId: c.electrometer?.id || b.electrometerId || '', form: c.form, summary: c.summary, ...(cert ? { cert } : {}) };
     });
   return s;
 }
@@ -1326,7 +1423,7 @@ const copyJournal = (j) => ({ ...j, chambers: j.chambers.map((c) => ({ ...c, for
 function matchChamber(journal, chForm, kind) {
   const ch = journal.chambers.find((c) => sameChamber(c.form, chForm, kind));
   if (ch || isBlank(chForm.ch_model)) return { ch: ch ?? null, added: false };
-  const added = { ...CHAMBER_DEFAULTS, id: uid('ch'), form: { ...chForm } };
+  const added = newChamberRecord({ id: uid('ch'), form: { ...chForm } });
   journal.chambers.push(added);
   return { ch: added, added: true };
 }
@@ -1530,6 +1627,8 @@ export function tabEquipment(j, form, kind = 'photon') {
   const chForm = K.chamberFromTab(f);
   const elForm = K.electrometerFromTab(f);
   const chamber = isBlank(chForm.ch_model) ? null : j.chambers.find((c) => sameChamber(c.form, chForm, kind)) ?? null;
+  // вкладка сверяется со свидетельством камеры, действовавшим на дату измерения вкладки (с 0.53.0)
+  const chamberOn = chamberOnDate(chamber, tabDate(f, kind));
   const elBlank = isBlank(elForm.el_model) && isBlank(elForm.el_serial);
   const electrometer = elBlank ? null : j.electrometers.find((e) => sameElectrometer(e.form, elForm)) ?? null;
   // запись журнала на вкладке: поля, которых в записи нет, — по умолчанию (а не как на вкладке)
@@ -1540,7 +1639,9 @@ export function tabEquipment(j, form, kind = 'photon') {
   };
   return {
     chamber,
-    chamberDiffs: diffs(chamber, K.chamberForm, chamberCompareKeys(kind, f, chamber?.form), K.chamberKeys),
+    chamberOn,
+    chamberCertSrc: chamberOn?.certSrc ?? 'current',
+    chamberDiffs: diffs(chamberOn, K.chamberForm, chamberCompareKeys(kind, f, chamberOn?.form), K.chamberKeys),
     electrometer,
     electrometerDiffs: diffs(electrometer, K.electrometerForm, K.electrometerKeys.filter((k) => !/_(model|serial)$/.test(k)), K.electrometerKeys),
     hasChamber: !isBlank(chForm.ch_model),
@@ -1573,8 +1674,11 @@ export function applyTabEquipment(j, form, kind = 'photon', { chamber = true, el
     const chForm = K.chamberFromTab(f);
     if (!isBlank(chForm.ch_model)) {
       const { ch, added } = matchChamber(journal, chForm, kind);
-      if (!added) ch.form = { ...ch.form, ...chamberUpdate(chForm, kind, ch.form) };
-      res.chamber = added ? 'added' : 'updated';
+      // дата вкладки раньше действующего свидетельства (есть более раннее в истории): поля вкладки относятся к прежнему
+      // свидетельству — действующее ими не перезаписывается (с 0.53.0)
+      const older = !added && certOn(ch, 'mv', tabDate(f, kind)).src !== 'current';
+      if (!added && !older) ch.form = { ...ch.form, ...chamberUpdate(chForm, kind, ch.form) };
+      res.chamber = added ? 'added' : older ? 'older' : 'updated';
       res.chamberId = ch.id;
     }
   }
@@ -1609,7 +1713,7 @@ export function myChambersToJournal(j, mine) {
     const form = pp
       ? { ch_model: 'OTHER', e_other_name: name, e_other_type: 'pp', ch_serial: '', ch_ndw: '', ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', ch_T0: '20', ch_P0: '101,325' }
       : { ch_model: 'CUSTOM', ...Object.fromEntries(PH_CHAMBER_KEYS.filter((k) => k.startsWith('cc_') && k in m).map((k) => [k, m[k]])), ch_serial: '', ch_ndw: '', ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', ch_T0: '20', ch_P0: '101,325' };
-    journal.chambers.push({ ...CHAMBER_DEFAULTS, id: uid('ch'), form, notes: '' });
+    journal.chambers.push(newChamberRecord({ id: uid('ch'), form, notes: '' }));
     added.push(name);
   }
   return { journal, added };
@@ -1713,6 +1817,9 @@ export function recordTabBeam(j, { machineId, beamId, form, kind = 'photon', tod
     summary,
     source: 'tab',
   };
+  // свидетельство камеры, по которому посчитан пучок (с 0.53.0): по дате измерения, если коэффициент вкладки — его
+  const cert = t.chamber ? chamberCertStamp(t.chamber, date, K.chamberFromTab(f)) : null;
+  if (cert) entry.cert = cert;
   const base = tabSessionOf(j, { machineId, form: f, kind }) ?? { ...SESSION_DEFAULTS, id: uid('s'), machineId, date, mode, protocol, beams: [] };
   // сотрудники записи — все, кто мерил пучки этой записи
   const allStaff = [...new Set([...(base.staff || []).filter((x) => !isBlank(x)), ...staff])];

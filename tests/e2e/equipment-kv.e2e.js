@@ -145,7 +145,7 @@ test('оборудование: рентгенотерапевтический �
   assert.equal(await kvCard(page).locator('.jcard-head .chip.warn, .jcard-head .chip.error').count(), 0);
   // электрометр режима — «Электрометр при калибровке» камеры
   assert.match(await page.locator('#eq-kv-modes tbody tr').nth(0).innerText(), /укажите «Электрометр при калибровке» у камеры/);
-  await ch.locator('select[data-bind$="|calEl"]').selectOption({ index: 1 });
+  await ch.locator('select[data-bind$="|kvCal.calEl"]').selectOption({ index: 1 });
   await pause();
   assert.match(await page.locator('#eq-kv-modes tbody tr').nth(0).innerText(), /при калибровке камеры/);
   // kV-сертификат в карточке камеры: N_K, таблица качеств

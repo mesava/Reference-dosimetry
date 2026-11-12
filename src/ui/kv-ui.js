@@ -1,4 +1,5 @@
 // Модуль «kV-рентген»: связывает форму с расчётным ядром kv.js (TRS-398 Rev.1, разд. 8 и 9).
+import { certText } from '../core/journal.js';
 import { KV_DEFAULTS, KV_SET_UNITS, KV_RANGES, normalizeKv, certRows, certValue, certDinSensitivity } from '../core/kv.js';
 import { DIN_TH, DIN_HVL_DEV, dinHvlConvert } from '../core/kv-din.js';
 import {
@@ -232,7 +233,7 @@ const sess = {
 const rowForm = (i) => kvVisitRowForm(visit, visit.mode, i);
 
 // текстовые поля: в них число с запятой или точкой — не число (серийный номер, фильтр), разделитель не меняется
-const TEXT_KEYS = new Set(['kv_institution', 'kv_machine', 'kv_jmachine', 'kv_jmode', 'kv_date', 'kv_staff', 'kv_notes', 'kv_filter', 'kv_ph_name', 'kv_ph_note', 'kv_cc_maker', 'kv_cc_model', 'kv_ch_serial', 'kv_el_model', 'kv_el_serial', 'kv_hl_app', 'kv_pl_name', 'kv_pl_mat', 'kv_ln_app', 'kv_rp_app', 'kv_method', 'kv_checker']);
+const TEXT_KEYS = new Set(['kv_institution', 'kv_machine', 'kv_jmachine', 'kv_jmode', 'kv_date', 'kv_staff', 'kv_notes', 'kv_filter', 'kv_ph_name', 'kv_ph_note', 'kv_cc_maker', 'kv_cc_model', 'kv_ch_serial', 'kv_cert_no', 'kv_cert_date', 'kv_cert_lab', 'kv_cert_src', 'kv_el_model', 'kv_el_serial', 'kv_hl_app', 'kv_pl_name', 'kv_pl_mat', 'kv_ln_app', 'kv_rp_app', 'kv_method', 'kv_checker']);
 /**
  * Десятичный разделитель в числах всех режимов, камер и строк — языка интерфейса (поля формы — localizeDecimals; здесь —
  * невыбранные режимы, камеры и строки: их числа видны в подписях режимов, сводке и протоколе).
@@ -553,7 +554,7 @@ function modeLinked(m, mach = linkedMachine()) {
 }
 const LOCK_BEAM = ['kv_range', 'kv_kv', 'kv_ma', 'kv_filter', 'kv_hvl'];
 const LOCK_CHAMBER = [
-  'kv_ch_model', 'kv_cc_maker', 'kv_cc_model', 'kv_cc_type', 'kv_ch_serial', 'kv_foil', 'kv_cal', 'kv_qo', 'kv_cal_depth', 'kv_cert_form', 'kv_n', 'kv_n_unit',
+  'kv_ch_model', 'kv_cc_maker', 'kv_cc_model', 'kv_cc_type', 'kv_ch_serial', 'kv_foil', 'kv_cert_no', 'kv_cert_date', 'kv_cert_lab', 'kv_cal', 'kv_qo', 'kv_cal_depth', 'kv_cert_form', 'kv_n', 'kv_n_unit',
   'kv_lab_shape', 'kv_lab_f', 'kv_lab_ssd', 'kv_lab_phantom', 'kv_T0', 'kv_P0', 'kv_lab_pol_applied', 'kv_lab_kpol', 'kv_lab_ks_applied', 'kv_lab_ks',
 ];
 const LOCK_ROW = ['kv_cone_shape', 'kv_cone', 'kv_cone_b', 'kv_ssd'];
@@ -589,6 +590,18 @@ function applyLock() {
   const chNote = $('#kv-ch-lock');
   chNote.hidden = !cur;
   if (cur) html(chNote, L(`Камера и kV-сертификат — из ${eq} (${eqSec('раздел 4, карточка камеры')}): здесь они только показываются. Электрометр, напряжения и полярность можно задать на день измерений. Пересчёт СПО по DIN 6809-4 из окна пересчёта записывается в kV-сертификат камеры.`, `The chamber and the kV certificate come from ${eq} (${eqSec('section 4, the chamber card')}): here they are only shown. The electrometer, voltages and polarity can be set for the day of measurement. The DIN 6809-4 HVL conversion chosen in the conversion window is saved to the kV certificate of the chamber.`));
+  // kV-сертификат на дату измерения (с 0.53.0): дата раньше действующего — сертификат из истории камеры
+  const vc = visit.chambers[mode().chamber] ?? {};
+  const onDate = $('#kv-cert-on-date');
+  const src = cur ? String(vc.kv_cert_src ?? '') : '';
+  onDate.hidden = !src;
+  if (src) {
+    html(onDate, src === 'newer'
+      ? L(`Дата измерения раньше действующего kV-сертификата камеры (№ ${esc(vc.kv_cert_no || '—')} от ${esc(vc.kv_cert_date ? dateText(vc.kv_cert_date) : '—')}), а прежнего в истории камеры нет: расчёт — по действующему. Если измерение считалось по прежнему сертификату, внесите его в историю камеры (${eqSec('раздел 4, карточка камеры')}).`, `The measurement date is earlier than the current kV certificate of the chamber (No. ${esc(vc.kv_cert_no || '—')} of ${esc(vc.kv_cert_date ? dateText(vc.kv_cert_date) : '—')}), and the chamber history has no earlier one: the calculation uses the current one. If the measurement was calculated with the earlier certificate, add it to the chamber history (${eqSec('section 4, the chamber card')}).`)
+      : src === 'early'
+      ? L(`Дата измерения раньше всех kV-сертификатов камеры в «Оборудовании»: подставлен самый ранний из истории (№ ${esc(vc.kv_cert_no || '—')}). Проверьте, по какому сертификату считалось это измерение.`, `The measurement date is earlier than all kV certificates of the chamber in Equipment: the earliest one from the history is used (No. ${esc(vc.kv_cert_no || '—')}). Check which certificate this measurement was calculated with.`)
+      : L(`Дата измерения раньше действующего kV-сертификата камеры: подставлен сертификат из истории (${eqSec('раздел 4, карточка камеры')}), действовавший на эту дату.`, `The measurement date is earlier than the current kV certificate of the chamber: the certificate from the history (${eqSec('section 4, the chamber card')}) valid on that date is used.`));
+  }
   const rowNote = $('#kv-rows-lock');
   rowNote.hidden = !cur;
   if (cur) html(rowNote, L(`Аппликаторы режима — из ${eq} (${eqSec('раздел 2, аппарат')}): форма, размер и РИП здесь не правятся; лишнюю строку можно удалить.`, `The applicators of the mode come from ${eq} (${eqSec('section 2, the unit')}): the shape, size and SSD are not edited here; an unneeded row can be deleted.`));
@@ -603,6 +616,8 @@ function syncDinToJournal() {
   if (!modeLinked(visit.mode, mach)) return;
   const x = mach.modes.find((y) => y.id === mode().shared.kv_jmode);
   const on = !!$('#kv_cq_din').checked;
+  // вкладка прошлой даты с сертификатом из истории: действующий kV-сертификат камеры её выбором не меняется
+  if (['history', 'early'].includes(String(visit.chambers[mode().chamber]?.kv_cert_src ?? ''))) return;
   let done = false;
   updateJournal((j) => {
     const ch = j.chambers.find((c) => c.id === x?.chamberId);
@@ -1949,6 +1964,9 @@ function reportText(data, r, all = null, vr = null) {
           : L(`${ns},Qo = ${data.kv_n} ${unitN}${r.qo === 'co60' ? ' (⁶⁰Co)' : ''}, k_Q по качествам`, `${ns},Qo = ${data.kv_n} ${unitN}${r.qo === 'co60' ? ' (⁶⁰Co)' : ''}, k_Q per quality`);
   const depthTxt = r.range === 'medium' && r.cal === 'ndw' && data.kv_cert_form !== 'co' ? L(`; коэффициенты на глубине ${r.depth5 ? '5 см (DIN 6809-4)' : '2 г/см²'}`, `; coefficients at a depth of ${r.depth5 ? '5 cm (DIN 6809-4)' : '2 g/cm²'}`) : '';
   line(L('Сертификат', 'Certificate'), formTxt + depthTxt);
+  // свидетельство (с 0.53.0): №, дата калибровки, лаборатория
+  const certNo = certText({ no: data.kv_cert_no, date: data.kv_cert_date, lab: data.kv_cert_lab });
+  if (certNo) line(L('Свидетельство', 'Calibration certificate'), certNo);
   // как введено в таблицу (с теми же знаками), по возрастанию СПО
   const raw = (key, q) => String(data[key][q.row - 1] ?? '').trim();
   const kvTxt = (q) => (raw('kv_cq_kv', q) ? L(`${raw('kv_cq_kv', q)} кВ / `, `${raw('kv_cq_kv', q)} kV / `) : '');

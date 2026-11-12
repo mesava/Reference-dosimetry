@@ -4,7 +4,7 @@
 // записанным в журнал формам — так же, как во вкладке дозиметрии в день измерения.
 import { L, refText } from '../core/i18n.js';
 import { unitLabel, PRESSURE_UNITS } from '../core/units.js';
-import { machineOf, chamberText, certText, electrometerText, chamberOf, electrometerOf, beamKind, beamKeys, orgText } from '../core/journal.js';
+import { machineOf, chamberText, certText, chamberOnDate, electrometerText, chamberOf, electrometerOf, beamKind, beamKeys, orgText } from '../core/journal.js';
 import { computePhotons } from '../core/photons.js';
 import { computeElectrons } from '../core/electrons.js';
 import { computeCobalt } from '../core/cobalt.js';
@@ -37,7 +37,8 @@ export function sessionReportText(j, s) {
     const name = m?.beams.find((x) => x.id === b.beamId)?.name || '—';
     const ch = chamberOf(j, b.chamberId);
     const el = electrometerOf(j, b.electrometerId);
-    const cert = certText(ch);
+    // свидетельство, по которому посчитан пучок: снимок записи (с 0.53.0), иначе — действовавшее на дату записи
+    const cert = b.cert ? certText(b.cert) : certText(chamberOnDate(ch, s.date));
     out.push(`${name}: ${chamberText(ch) || L('камера не из журнала', 'chamber not from the journal')}${cert ? ` (${cert})` : ''}; ${electrometerText(el) || L('электрометр не из журнала', 'electrometer not from the journal')}`);
     const sum = b.summary || {};
     if (sum.ok) {

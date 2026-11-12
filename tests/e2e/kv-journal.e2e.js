@@ -84,7 +84,7 @@ test('kV-рентген ↔ «Оборудование»: сохранить а�
   // вкладка: «Обновить из «Оборудования»» — СПО и N из журнала, показания остаются
   await page.goto(`${server.url}/index.html#kv/modes`);
   await page.waitForSelector('#kv-jbind [data-kvj="refresh"]');
-  assert.match(await page.locator('#kv-jbind').innerText(), /В «Оборудовании» изменились пучок, камера или kV-сертификат режимов вкладки\./);
+  assert.match(await page.locator('#kv-jbind').innerText(), /В «Оборудовании» изменились пучок, камера или kV-сертификат режимов вкладки \(сертификат — действовавший на дату измерения\)\./);
   const reading = await page.inputValue('#kvr0_kv_M1_0');
   assert.notEqual(reading, '');
   await jb(page, 'refresh').click();

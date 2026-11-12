@@ -790,6 +790,8 @@ export const STATIC_EN = {
   "Фольга 0,2 мм на окне камеры": "0.2 mm foil on the chamber window",
   "выше 40 кВ — та же, с которой камера калибровалась (TRS-398, разд. 8.2.1)": "above 40 kV: the same foil as at calibration (TRS-398, Sec. 8.2.1)",
   "Сертификат калибровки": "Calibration certificate",
+  "№ свидетельства": "Certificate No.",
+  "Лаборатория": "Laboratory",
   "Калибровочный коэффициент": "Calibration coefficient",
   "N_D,w — поглощённая доза в воде": "N_D,w: absorbed dose to water",
   "N_K — воздушная керма в свободном воздухе": "N_K: air kerma free in air",

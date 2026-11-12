@@ -87,6 +87,7 @@ export function computeDosimeterCheck(j, session, check, work, { en = false } = 
     ks10: workSum.ksRaw,
     tau: tauUsed,
     en,
+    date: session.date || '',
   });
   const electrometerId = check.form ? check.summary?.electrometerId ?? check.electrometerId : check.electrometerId || work.electrometer?.id || '';
   const input = { beamId: check.beamId, chamberId: check.chamberId, electrometerId, base, env_T: work.form[k.T], env_P: work.form[k.P], env_P_unit: work.form[k.PUnit], [k.M1]: check.M };

@@ -31,12 +31,12 @@ test('аппарат kV в журнале: нормализация, пучко�
   const x = m.modes[0];
   assert.deepEqual([x.range, x.kv, x.hvlSource, x.refApplicator], ['medium', '200', 'nominal', '']);
   assert.deepEqual(x.applicators, ['a1']);
-  // формат: 3 с аппаратом kV, страница понимает 3
-  assert.equal(JOURNAL_TAG.version, 3);
+  // формат: 3 с аппаратом kV (страница понимает до 4 — с 0.53.0, раздельные сертификаты камеры)
+  assert.equal(JOURNAL_TAG.version, 4);
   assert.equal(journalFormat(j), 3);
   assert.equal(journalFormat(newJournal()), 1);
-  // журнал формата 4 — от более новой версии: не открывается
-  assert.throws(() => normalizeJournal({ ...JOURNAL_TAG, version: 4, machines: [] }), /формат 4/);
+  // журнал формата 5 — от более новой версии: не открывается
+  assert.throws(() => normalizeJournal({ ...JOURNAL_TAG, version: 5, machines: [] }), /формат 5/);
   // ускоритель не меняется
   assert.ok(j.machines[0].calGeo);
 });

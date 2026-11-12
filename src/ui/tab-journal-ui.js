@@ -3,7 +3,7 @@
 // журнал». Измерение идёт во вкладке со всеми поправками; в журнал попадает форма вкладки и итог (core/journal.js:
 // recordTabBeam). Пучки одного аппарата за день в одном режиме — одна запись журнала.
 import { L } from '../core/i18n.js';
-import { beamKind, machineOf, tabBeamPatch, recordTabBeam, tabRecordOf, tabSessionOf, tabWork, calibrationChecks, tabEquipment, lastCalibration, chamberText, electrometerText, chamberOf, electrometerOf, saveBeamSettings, staleReadings, SESSION_DEFAULTS, CAL_GEO_KEYS, calGeoText, sameCalGeo } from '../core/journal.js';
+import { beamKind, machineOf, tabBeamPatch, recordTabBeam, tabRecordOf, tabSessionOf, tabWork, calibrationChecks, tabEquipment, tabDate, lastCalibration, chamberText, electrometerText, chamberOf, electrometerOf, saveBeamSettings, staleReadings, SESSION_DEFAULTS, CAL_GEO_KEYS, calGeoText, sameCalGeo } from '../core/journal.js';
 import { IMPLAUSIBLE_DEVIATION } from '../core/common.js';
 import { newCheck, withTabChecks, CHECK_REF } from '../core/journal-check.js';
 import { $, esc, richText, currentProtocol, fmt, fmtSigned, today } from './common.js';
@@ -123,7 +123,7 @@ function makeTabJournal(cfg) {
     const why = demo ? L('Открыт демонстрационный пример: в журнал он не записывается.', 'A demonstration example is open: it is not recorded to the journal.') : dry?.error ?? '';
     // согласие с калибровкой камеры журнала: электрометр, напряжение и полярность калибровки
     const t = tabEquipment(j, form, cfg.kind);
-    const cal = t.chamber ? calibrationChecks(j, t.chamber.id, t.electrometer?.id || '', form, cfg.kind) : [];
+    const cal = t.chamber ? calibrationChecks(j, t.chamber.id, t.electrometer?.id || '', form, cfg.kind, tabDate(form, cfg.kind)) : [];
     const warn = !why && dry && !dry.chamberFound
       ? L('Камера вкладки не найдена в журнале (по модели и №): запись будет без привязки к камере журнала, контрольная карта и проверки второй камерой её не свяжут с камерой.', 'The tab chamber was not found in the journal (by model and serial number): the record will not be linked to a journal chamber.')
       : '';

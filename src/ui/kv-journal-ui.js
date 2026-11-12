@@ -8,7 +8,7 @@
 // возвращает туда СПО, а «Обновить из Оборудования» подтягивает изменённые там пучок, камеру и kV-сертификат.
 import { L } from '../core/i18n.js';
 import { kvMachineModeTitle, applicatorText, hvlUnit } from '../core/kv-machine.js';
-import { kvVisitFromMachine, kvMachineFromVisit, kvSaveText, kvMachineText, kvRefreshFromMachine } from '../core/kv-journal.js';
+import { kvVisitFromMachine, kvMachineFromVisit, kvSaveText, kvMachineText, kvRefreshFromMachine, kvRefreshRisk } from '../core/kv-journal.js';
 import { recordKvVisit, kvRecMode, kvRecModeText, kvRecordCounts, kvRecordsOn } from '../core/kv-records.js';
 import { chamberText } from '../core/journal.js';
 import { parseCells } from '../core/units.js';
@@ -86,8 +86,17 @@ export function renderKvJournal() {
   }
   // режимы из «Оборудования», у которых там изменились пучок, камера или kV-сертификат
   const fresh = m ? kvRefreshFromMachine(j, m, v) : null;
+  // дата измерения раньше действующего kV-сертификата, а прежнего в истории камеры нет (с 0.53.0): обновление подставит
+  // действующий — например, запись прошлого года, открытая после замены сертификата
+  const risk = fresh?.changed ? kvRefreshRisk(j, m, v) : [];
+  const riskTxt = risk.length
+    ? ` ${L(
+      `Внимание: дата измерения вкладки раньше действующего kV-сертификата (${risk.map((x) => `${x.chamber}: № ${x.no || '—'} от ${dateText(x.date)}`).join('; ')}), а прежнего сертификата в истории камеры нет — обновление пересчитает это измерение по действующему. Если измерение считалось по прежнему сертификату, внесите его в историю камеры («Оборудование», карточка камеры).`,
+      `Note: the measurement date of the tab is earlier than the current kV certificate (${risk.map((x) => `${x.chamber}: No. ${x.no || '—'} of ${dateText(x.date)}`).join('; ')}), and the chamber history has no earlier certificate: the update will recalculate this measurement with the current one. If it was calculated with the earlier certificate, add that one to the chamber history (Equipment, the chamber card).`,
+    )}`
+    : '';
   const refresh = fresh?.changed
-    ? `<p class="jlink-st warn">${esc(L('В «Оборудовании» изменились пучок, камера или kV-сертификат режимов вкладки.', 'The beam, chamber or kV certificate of the tab modes changed in Equipment.'))} <button type="button" class="link-btn" data-kvj="refresh">${esc(L('Обновить из «Оборудования»', 'Update from Equipment'))}</button> ${esc(L('— показания и электрометр останутся.', 'The readings and the electrometer stay.'))}</p>`
+    ? `<p class="jlink-st warn">${esc(L('В «Оборудовании» изменились пучок, камера или kV-сертификат режимов вкладки (сертификат — действовавший на дату измерения).', 'The beam, chamber or kV certificate of the tab modes changed in Equipment (the certificate valid on the measurement date).'))} <button type="button" class="link-btn" data-kvj="refresh">${esc(L('Обновить из «Оборудования»', 'Update from Equipment'))}</button> ${esc(L('— показания и электрометр останутся.', 'The readings and the electrometer stay.'))}${esc(riskTxt)}</p>`
     : '';
   const st = m
     ? L(`Аппарат журнала: ${machineName(m)}. Подстановка заменяет режимы вкладки отмеченными режимами аппарата — пучок, камера с kV-сертификатом и аппликаторы из «Оборудования» (во вкладке они только показываются и правятся в «Оборудовании»), электрометр — при калибровке камеры; без показаний, дата и сотрудники остаются. Измерение записывается в журнал кнопкой «Записать в журнал» (панель «Журнал» справа).`, `Journal unit: ${machineName(m)}. Filling in replaces the modes of the tab with the ticked modes of the unit: the beam, the chamber with its kV certificate and the applicators from Equipment (in the tab they are only shown and are edited in Equipment), the electrometer at the chamber calibration; without readings, the date and staff stay. The measurement is recorded to the journal with “Record to journal” (the Journal panel on the right).`)
@@ -296,8 +305,10 @@ function save(replaceHvl = null) {
   api.setLinks(res.machineId, (md, i) => res.modeIds[i] ?? '');
   const m = res.journal.machines.find((x) => x.id === res.machineId);
   // вкладка теперь связана с аппаратом: её постоянное — как в «Оборудовании» (например, СПО режима — сохранённый измеренный)
+  // но не когда у вкладки свой (более старый) сертификат: обновление подставило бы действующий — оставляем баннер
+  const risky = (res.report.certOlder?.length ?? 0) > 0 || kvRefreshRisk(getJournal(), m, api.getVisit()).length > 0;
   const fresh = kvRefreshFromMachine(getJournal(), m, api.getVisit());
-  if (fresh.changed) api.replaceVisit(fresh.visit);
+  if (fresh.changed && !risky) api.replaceVisit(fresh.visit);
   api.status(kvSaveText(m, res.report));
 }
 

@@ -182,7 +182,8 @@ function modeSummary(j, machine, visit, vr, m, x, rows, ch) {
       date: r?.inputs?.hvlSource === 'journal' ? str(jx?.hvl?.date) : r?.inputs?.hvlSource === 'measured' ? str(visit.common.kv_date) : '',
       mat: r?.material === 'Cu' || s.kv_range === 'medium' ? 'Cu' : 'Al',
     },
-    cert: r ? { form: str(r.form?.kv_cert_form), value: num(r.cert?.value), kQ: num(r.cert?.kQ), NQ: num(r.cert?.NQ) } : null,
+    // свидетельство kV-сертификата, по которому посчитана доза (с 0.53.0): №, дата калибровки, лаборатория
+    cert: r ? { form: str(r.form?.kv_cert_form), value: num(r.cert?.value), kQ: num(r.cert?.kQ), NQ: num(r.cert?.NQ), no: str(vc.kv_cert_no), date: str(vc.kv_cert_date), lab: str(vc.kv_cert_lab) } : null,
     ln: ln ? { q: ln.q, dMax: num(ln.dMax), clMax: num(ln.clMax), dOver: ln.dOver, clOver: ln.clOver } : null,
     rp: rp ? { n: rp.n, R: num(rp.R), cv: num(rp.cv), over: rp.over } : null,
     notRev1,
