@@ -269,7 +269,7 @@ function renderKvReadout(j, ctl = null) {
   const nr = [...new Set(recs.flatMap((r) => r.summary?.notRev1 ?? []))];
   if (nr.length) msgs.push(`<li class="warn"><span class="lvl">${esc(L('Не по TRS-398 Rev.1', 'Not TRS-398 Rev.1'))}</span><span>${esc(L(`В записях есть расчёт не по TRS-398 Rev.1: ${nr.join('; ')}.`, `The records include calculations not according to TRS-398 Rev.1: ${nr.join('; ')}.`))}</span></li>`);
   if (ctl) for (const x of kvSpcMessages(ctl.charts, ctl.common)) msgs.push(`<li class="${x.level}"><span class="lvl">${esc(x.head)}</span><span>${esc(x.text)}</span></li>`);
-  $('#hs-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Сроки калибровки камер и электрометров заданы и не подходят.', 'Chamber and electrometer calibrations are within their dates.'))}</span></li>`;
+  $('#hs-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Ни один срок калибровки камер и электрометров не истёк и не истекает в ближайшие 30 дней.', 'No chamber or electrometer calibration has expired or expires within the next 30 days.'))}</span></li>`;
   $('#hs-mobile-value').textContent = `${kvMachineText(m) || '—'}: ${recs.length}`;
 }
 
@@ -483,7 +483,7 @@ function renderReadout(j, series) {
   if (noDue.length) msgs.push(`<li class="info"><span class="lvl">${esc(L('Срок калибровки не задан', 'No calibration due date'))}</span><span>${esc(L(`${noDue.map((x) => x.text || (x.kind === 'chamber' ? 'камера' : 'электрометр')).join('; ')}: укажите «Действует до» в «Оборудовании», иначе напоминания о сроке калибровки не будет.`, `${noDue.map((x) => x.text || x.kind).join('; ')}: enter "Valid until" in Equipment, otherwise there will be no calibration due reminder.`))}</span></li>`);
   for (const x of [...spcMessages(j, machineId, series.map((s) => s.beam), commonRes), ...checkSignalMessages(j, machineId)]) msgs.push(`<li class="${x.level}"><span class="lvl">${esc(x.head)}</span><span>${esc(x.text)}</span></li>`);
   if (lastCal && dayNumber(today()) - dayNumber(lastCal.date) > 365) msgs.push(`<li class="info"><span class="lvl">${esc(L('Калибровка', 'Calibration'))}</span><span>${esc(L(`Последняя калибровка аппарата — больше года назад (${fmtDate(lastCal.date)}).`, `The machine's last calibration was more than a year ago (${fmtDate(lastCal.date)}).`))}</span></li>`);
-  $('#hs-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Сроки калибровки камер и электрометров заданы и не подходят.', 'Chamber and electrometer calibrations are within their dates.'))}</span></li>`;
+  $('#hs-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Ни один срок калибровки камер и электрометров не истёк и не истекает в ближайшие 30 дней.', 'No chamber or electrometer calibration has expired or expires within the next 30 days.'))}</span></li>`;
   $('#hs-mobile-value').textContent = `${m?.name || '—'}: ${sessions.length}`;
 }
 

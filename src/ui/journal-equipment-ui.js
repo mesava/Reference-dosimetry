@@ -1036,7 +1036,7 @@ function renderReadout() {
     const text = [...groups].map(([who, items]) => `${who}: ${items.join(', ')}`).join('; ');
     msgs.push(`<li class="${err ? 'error' : 'warn'}"><span class="lvl">${esc(m.name || L('Рентгенотерапевтический аппарат', 'X-ray therapy unit'))}</span><span>${richText(text)}</span></li>`);
   }
-  $('#eq-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Сроки калибровки заданы и не подходят, у камер и электрометров заполнено всё нужное для расчёта.', 'Calibration due dates are set and not near; chambers and electrometers have what the calculation needs.'))}</span></li>`;
+  $('#eq-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Сроки калибровки («Действует до») заданы у всех камер и электрометров, ни один не истёк и не истекает в ближайшие 30 дней. У камер и электрометров заполнено всё нужное для расчёта.', 'Calibration due dates ("Valid until") are set for all chambers and electrometers; none has expired or expires within the next 30 days. Chambers and electrometers have everything the calculation needs.'))}</span></li>`;
 }
 
 // ------------------------------------------------------------ связь с вкладкой «МВ фотоны» и сеансом
