@@ -5,7 +5,7 @@ message: >-
 type: software
 title: >-
   Reference-dosimetry: a calculator for reference dosimetry of radiotherapy beams
-  (60Co, MV photons, electrons) according to IAEA TRS-398 Rev.1 and AAPM TG-51
+  (60Co, MV photons, electrons, kV x-rays) according to IAEA TRS-398 Rev.1 and AAPM TG-51
 authors:
   - family-names: Melentev
     given-names: Aleksandr Valerievich
@@ -22,10 +22,12 @@ repository-code: "https://github.com/mesava/Reference-dosimetry"
 url: "https://mesava.github.io/Reference-dosimetry/"
 abstract: >-
   A Russian- and English-language web calculator for the absorbed dose to water in reference conditions
-  for 60Co, MV photon and electron beams according to IAEA TRS-398 Rev.1 and AAPM TG-51 (with the 2014 photon
-  addendum and WGTG51 Reports 374 and 385), with cross-calibration, Jaffé plot, electron depth-dose tools,
-  an uncertainty budget with a traceable origin of every value, and a department journal with output trends,
-  control charts and dosimeter checks. Every correction and message references the protocol section, equation
+  for 60Co, MV photon and electron beams and low- and medium-energy kV x-rays according to IAEA TRS-398 Rev.1,
+  with AAPM TG-51 (with the 2014 photon addendum and WGTG51 Reports 374 and 385) for comparison and AAPM TG-61,
+  DIN 6809-4 and SSRMP No 9 as a reference line for kV x-rays; with cross-calibration, Jaffé plot, electron
+  depth-dose tools, x-ray unit checks (HVL, timer error, linearity, reproducibility), an uncertainty budget with
+  a traceable origin of every value, and a department journal with output trends, control charts and dosimeter
+  checks that can be shared between computers. Every correction and message references the protocol section, equation
   or table; results are verified against independent calculations of real linac calibrations.
 keywords:
   - radiotherapy
@@ -34,6 +36,8 @@ keywords:
   - absorbed dose to water
   - TRS-398
   - TG-51
+  - TG-61
+  - kilovoltage x-rays
   - ionization chamber
   - uncertainty budget
   - statistical process control
