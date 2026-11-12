@@ -3,12 +3,13 @@
 // Данные условные.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { certOn, certMeta, certHistory, archiveCert, restoreCert, removeCert, certFilled, certStamp, normalizeCertEntry } from '../src/core/chamber-certs.js';
+import { certOn, certMeta, certHistory, archiveCert, restoreCert, removeCert, certFilled, certStamp, normalizeCertEntry, certIgnored } from '../src/core/chamber-certs.js';
 import {
   normalizeJournal, JOURNAL_TAG, migrateChamberCerts, chamberOnDate, chamberCertStamp, equipmentDue, equipmentNoDue, applyTabEquipment, tabEquipment,
-  calibrationChecks, certText, newChamberRecord, journalFormat,
+  calibrationChecks, certText, newChamberRecord, journalFormat, recordTabBeam, chamberDueDates,
 } from '../src/core/journal.js';
-import { kvVisitFromMachine, kvRefreshFromMachine, kvMachineFromVisit, kvModeElectrometer, kvChamberFromRecord, kvRefreshRisk } from '../src/core/kv-journal.js';
+import { SAMPLE_FORM } from '../src/core/sample.js';
+import { kvVisitFromMachine, kvRefreshFromMachine, kvMachineFromVisit, kvModeElectrometer, kvChamberFromRecord, kvRefreshRisk, sameKvCert } from '../src/core/kv-journal.js';
 import { recordKvVisit } from '../src/core/kv-records.js';
 import { normalizeKvVisit } from '../src/core/kv-session.js';
 import { SAMPLE_KV } from '../src/core/sample-kv.js';
@@ -288,11 +289,17 @@ test('перенос журналов выполняется один раз: п
   const back = normalizeJournal(JSON.parse(JSON.stringify(j)));
   assert.equal(back.chambers[0].calCert, 'Co-1');
   assert.equal(back.chambers[0].kvCal.calCert, '12');
-  // новая камера (с 0.53.0) с kV-сертификатом: её свидетельство для МВ миграция не трогает
-  const n = newChamberRecord({ id: 'n', form: { ch_model: 'PTW30013' }, kv: KV_OLD, calCert: 'Co-2' });
+  // новая камера (с 0.53.0) для фотонов и kV: её свидетельство для МВ миграция не трогает
+  const n = newChamberRecord({ id: 'n', form: { ch_model: 'PTW30013' }, use: { photon: true, electron: false, kv: true }, kv: KV_OLD, calCert: 'Co-2' });
   const jn = normalizeJournal({ ...JOURNAL_TAG, chambers: [n] });
   assert.equal(jn.chambers[0].calCert, 'Co-2');
   assert.equal(jn.chambers[0].kvCal.calCert, '');
+  // файл 0.53.0 (формат ≤ 3), сохранённый прежней версией: у камеры только для kV сведения на самой записи — в kV-сертификат
+  const old = newChamberRecord({ id: 'o', form: { ch_model: 'PTW23342', ch_serial: '7' }, kv: KV_OLD, calCert: '0174-26', calDate: '2026-10-07', dueDate: '2027-10-06' });
+  const jo = normalizeJournal({ ...JOURNAL_TAG, chambers: [old] });
+  assert.equal(jo.chambers[0].kvCal.calCert, '0174-26');
+  assert.equal(jo.chambers[0].kvCal.dueDate, '2027-10-06');
+  assert.equal(jo.chambers[0].calCert, '');
 });
 
 test('история сертификатов: сохранение в файл и загрузка, формат журнала 4, повторяющиеся id', () => {
@@ -317,11 +324,17 @@ test('certOn: действующий без даты и запись истор�
   fresh.kv.kv_cq_val = ['1,1', '1,1', '1,1'];
   assert.equal(certOn(fresh, 'kv', '2026-11-12').src, 'current');
   assert.equal(certOn(fresh, 'kv', '2026-03-15').meta.calCert, '0155-25');
-  // «Сделать действующим» старый: более новый — в истории, и для поздних дат берётся он
+  // «Сделать действующим» прежний (новый введён по ошибке): действующий — для всех дат с его даты, более новый из
+  // истории на шкалу не попадает (в карточке — «не применяется»)
   const r = restoreCert(chamber(), 'h1', { newId: 'h5', today: '2026-11-12' });
-  assert.equal(certOn(r, 'kv', '2026-11-01').meta.calCert, '0174-26');
-  assert.equal(certOn(r, 'kv', '2026-11-01').src, 'history');
+  assert.equal(certOn(r, 'kv', '2026-11-01').src, 'current');
+  assert.equal(certOn(r, 'kv', '2026-11-01').meta.calCert, '0155-25');
   assert.equal(certOn(r, 'kv', '2026-03-15').src, 'current');
+  assert.deepEqual(certIgnored(r, 'kv').map((h) => h.id), ['h5']);
+  // запись истории без даты калибровки на шкалу не попадает и отмечается
+  const nd = { ...chamber(), certHistory: [...chamber().certHistory, { id: 'nd', kind: 'mv', meta: { calCert: 'X' }, data: {} }] };
+  assert.deepEqual(certIgnored(nd, 'mv').map((h) => h.id), ['nd']);
+  assert.deepEqual(certIgnored(chamber(), 'kv'), []);
   // запись истории без коэффициентов kV: действующий тоже без них
   const nokv = restoreCert({ ...chamber(), certHistory: [{ id: 'z', kind: 'kv', meta: { calCert: '1', calDate: '2024-01-01' }, data: null }] }, 'z', { newId: 'y' });
   assert.equal(nokv.kv, undefined);
@@ -363,4 +376,80 @@ test('вкладка kV: дата раньше действующего серт
   assert.equal(past.chambers[0].kv_cert_src, 'newer');
   const now = kvVisitFromMachine(j, j.machines[0], ['k50'], tab('2026-11-10')).visit;
   assert.equal(now.chambers[0].kv_cert_src, '');
+});
+
+/** Журнал с ускорителем m1 (пучок фотонов b1) и камерой SAMPLE_FORM, свидетельство которой «OLD» от 2024-05-01. */
+const mvJournal = () =>
+  normalizeJournal({
+    ...JOURNAL_TAG,
+    chambers: [{ id: 'c1', form: { ch_model: 'PTW30013', ch_serial: '000000', ch_ndw: '0,05335', ch_ndw_unit: 'Gy/nC', ch_klab: '1,000', ch_T0: '20', ch_P0: '101,325' }, use: { photon: true, electron: false, kv: false }, calCert: 'OLD', calDate: '2024-05-01' }],
+    machines: [{ id: 'm1', name: 'Ускоритель', kind: 'linac', beams: [{ id: 'b1', kind: 'photon', name: '6 МВ', active: true, form: {} }] }],
+  });
+
+test('сразу после «Новый сертификат»: вкладка сегодняшней даты записывает новый коэффициент в действующее', () => {
+  const j = mvJournal();
+  j.chambers[0] = archiveCert(j.chambers[0], 'mv', { id: 'h', today: '2026-11-12' });
+  const form = { ...SAMPLE_FORM, ch_ndw: '0,05341', meta_date: '2026-11-12' };
+  const t = tabEquipment(j, form, 'photon');
+  assert.equal(t.chamberCertSrc, 'current', 'сверка — с действующим (новым, пока пустым)');
+  const res = applyTabEquipment(j, form, 'photon', { electrometer: false });
+  assert.equal(res.chamber, 'updated');
+  assert.equal(res.journal.chambers[0].form.ch_ndw, '0,05341');
+  // для прошлых дат прежнее из истории — когда у нового указана дата калибровки (до того в карточке предупреждение)
+  const c = res.journal.chambers[0];
+  assert.equal(chamberOnDate(c, '2025-01-01').form.ch_ndw, '0,05341');
+  c.calDate = '2026-11-01';
+  assert.equal(chamberOnDate(c, '2025-01-01').form.ch_ndw, '0,05335');
+});
+
+test('запись из вкладки с коэффициентом не из свидетельства на дату: свидетельство «неизвестно», а не чужое', () => {
+  const j = mvJournal();
+  const ok = recordTabBeam(j, { machineId: 'm1', beamId: 'b1', form: { ...SAMPLE_FORM, meta_date: '2026-11-01' }, kind: 'photon', today: '2026-11-12' });
+  assert.ok(!ok.error, ok.error);
+  const b = ok.journal.sessions.at(-1).beams.at(-1);
+  assert.equal(b.cert.no, 'OLD');
+  const own = recordTabBeam(j, { machineId: 'm1', beamId: 'b1', form: { ...SAMPLE_FORM, ch_ndw: '0,05400', meta_date: '2026-11-01' }, kind: 'photon', today: '2026-11-12' });
+  assert.ok(!own.error, own.error);
+  assert.equal(own.journal.sessions.at(-1).beams.at(-1).cert.src, 'unknown');
+});
+
+test('kV: тот же сертификат с условиями измерения вкладки — не отличие; пустой № вкладки не стирает № действующего', () => {
+  assert.equal(sameKvCert(KV_NEW, { ...KV_NEW, kv_V1: '300', kv_polarity: '+', kv_cq_val: ['1.004', '1.018', '1.031'] }), true);
+  assert.equal(sameKvCert(KV_NEW, KV_OLD), false);
+  assert.equal(sameKvCert(undefined, KV_NEW), false);
+  const j = kvJournal();
+  const v = kvVisitFromMachine(j, j.machines[0], ['k50'], tab('2026-11-10')).visit;
+  v.common.kv_jmachine = '';
+  v.modes[0].shared.kv_jmode = '';
+  Object.assign(v.chambers[0], { kv_cert_no: '', kv_cert_date: '', kv_cert_lab: '' });
+  const res = kvMachineFromVisit(j, v);
+  const ch = res.journal.chambers.find((c) => c.id === 'ch1');
+  assert.deepEqual(res.report.certOlder, [], 'тот же сертификат — не «старше действующего»');
+  assert.deepEqual(res.report.certArchived, []);
+  assert.equal(ch.kvCal.calCert, '0174-26');
+  assert.equal(ch.kvCal.dueDate, '2027-10-06');
+  assert.equal(certHistory(ch, 'kv').length, 1);
+});
+
+test('kV: № сертификата, введённый в «Оборудовании» позже, — изменение для «Обновить из Оборудования»', () => {
+  const j = kvJournal();
+  const cal = { ...j.chambers[0].kvCal };
+  j.chambers[0].kvCal = { ...cal, calCert: '', calLab: '' };
+  const m = j.machines[0];
+  const v = kvVisitFromMachine(j, m, ['k50'], tab('2026-11-10')).visit;
+  assert.equal(v.chambers[0].kv_cert_no, '');
+  j.chambers[0].kvCal = cal;
+  const r = kvRefreshFromMachine(j, m, v);
+  assert.equal(r.changed, true);
+  assert.equal(r.visit.chambers[0].kv_cert_no, '0174-26');
+});
+
+test('сроки: камера, которой мерили пучок ⁶⁰Co, но отмеченная только для kV, — срок свидетельства для МВ тоже', () => {
+  const j = normalizeJournal({
+    ...JOURNAL_TAG,
+    chambers: [{ ...chamber(), use: { photon: false, electron: false, kv: true } }],
+    machines: [{ id: 'co', name: 'Кобальт', kind: 'cobalt', beams: [{ id: 'cb', kind: 'cobalt', name: '⁶⁰Co', active: true, form: {} }] }],
+    sessions: [{ id: 's', machineId: 'co', date: '2026-05-01', mode: 'cal', beams: [{ beamId: 'cb', kind: 'cobalt', chamberId: 'ch1', form: {}, summary: {} }] }],
+  });
+  assert.deepEqual(chamberDueDates(j.chambers[0], j).map((x) => x.cert), ['mv', 'kv']);
 });

@@ -204,7 +204,7 @@ function makeLink(cfg) {
   function take(what, rec0) {
     if (!rec0) return;
     // камера — со свидетельством, действовавшим на дату измерения вкладки (с 0.53.0)
-    const rec = what === 'chamber' ? chamberOnDate(rec0, tabDate(cfg.read(), cfg.kind)) : rec0;
+    const rec = what === 'chamber' ? chamberOnDate(rec0, tabDate(cfg.read(), cfg.kind), { preferCurrent: true }) : rec0;
     cfg.patch(what === 'chamber' ? chamberTabFields(rec, cfg.kind) : electrometerTabFields(rec, cfg.kind));
     const cert = what === 'chamber' && rec.certSrc ? certText(rec) : '';
     const old = cert

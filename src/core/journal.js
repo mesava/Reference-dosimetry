@@ -309,11 +309,16 @@ export function normalizeJournal(obj) {
  */
 export function migrateChamberCerts(c, j = null) {
   const legacy = !(c.kvCal && typeof c.kvCal === 'object') && !Array.isArray(c.certHistory);
-  if (legacy && chamberUse(c, j).kv) {
-    const meta = certMetaOf(c);
-    const uses = j ? chamberUses(j, c.id) : { photon: false, electron: false, cobalt: false };
-    const mvCal = MV_CAL_KEYS.some((k) => !isBlank(c.form?.[k])) || uses.photon || uses.electron || uses.cobalt;
-    c.kvCal = meta;
+  const u = chamberUse(c, j);
+  const isKv = u.kv;
+  const uses = j ? chamberUses(j, c.id) : { photon: false, electron: false, cobalt: false };
+  const mvCal = MV_CAL_KEYS.some((k) => !isBlank(c.form?.[k])) || uses.photon || uses.electron || uses.cobalt;
+  const recMeta = certMetaOf(c);
+  // файл 0.53.0 без истории и сведений kV-сертификата (формат ≤ 3) могла открыть и сохранить прежняя версия: у камеры
+  // только для kV она записала сведения свидетельства на саму запись — их место в kV-сертификате
+  const resaved = !legacy && isKv && !u.photon && !u.electron && !mvCal && !arr(c.certHistory).length && !Object.values(certMetaOf(c.kvCal)).some((v) => !isBlank(v)) && Object.values(recMeta).some((v) => !isBlank(v));
+  if ((legacy && isKv) || resaved) {
+    c.kvCal = recMeta;
     if (!mvCal) for (const k of CERT_META_KEYS) c[k] = '';
   } else c.kvCal = certMetaOf(c.kvCal);
   // записи истории: id — непустые и разные (по ним «Сделать действующим» и «Удалить»)
@@ -613,7 +618,8 @@ export function dueStatus(dueDate, today, soonDays = 30) {
  */
 export function chamberDueDates(c, j = null) {
   const u = chamberUse(c, j);
-  const mv = u.photon || u.electron || !u.kv;
+  // как в карточке камеры: свидетельство для МВ и ⁶⁰Co — и у камеры, которой мерили пучок ⁶⁰Co
+  const mv = u.photon || u.electron || !u.kv || (!!j && chamberUses(j, c.id).cobalt);
   const both = mv && u.kv;
   const name = chamberText(c);
   const out = [];
@@ -908,11 +914,13 @@ export const tabDate = (form, kind = 'photon') => String(form?.[kindOf(kind).k.d
 
 /**
  * Запись камеры с коэффициентами и сведениями свидетельства для МВ и ⁶⁰Co, действовавшего на дату date (с 0.53.0):
- * при дате раньше действующего свидетельства — из истории (core/chamber-certs.js, certOn); иначе — сама запись.
+ * при дате раньше действующего свидетельства — из истории (core/chamber-certs.js, certOn); иначе — сама запись. opts —
+ * как у certOn ({ preferCurrent } — для связи вкладки с «Оборудованием»: пустое действующее после «Новый сертификат»
+ * не уступает прежнему, в него вкладка записывает новый коэффициент).
  */
-export function chamberOnDate(ch, date) {
+export function chamberOnDate(ch, date, opts = {}) {
   if (!ch) return ch;
-  const on = certOn(ch, 'mv', date);
+  const on = certOn(ch, 'mv', date, opts);
   if (on.src === 'current') return ch;
   return { ...ch, ...on.meta, form: { ...(ch.form || {}), ...(on.data || {}) }, certSrc: on.src };
 }
@@ -1628,7 +1636,7 @@ export function tabEquipment(j, form, kind = 'photon') {
   const elForm = K.electrometerFromTab(f);
   const chamber = isBlank(chForm.ch_model) ? null : j.chambers.find((c) => sameChamber(c.form, chForm, kind)) ?? null;
   // вкладка сверяется со свидетельством камеры, действовавшим на дату измерения вкладки (с 0.53.0)
-  const chamberOn = chamberOnDate(chamber, tabDate(f, kind));
+  const chamberOn = chamberOnDate(chamber, tabDate(f, kind), { preferCurrent: true });
   const elBlank = isBlank(elForm.el_model) && isBlank(elForm.el_serial);
   const electrometer = elBlank ? null : j.electrometers.find((e) => sameElectrometer(e.form, elForm)) ?? null;
   // запись журнала на вкладке: поля, которых в записи нет, — по умолчанию (а не как на вкладке)
@@ -1676,7 +1684,7 @@ export function applyTabEquipment(j, form, kind = 'photon', { chamber = true, el
       const { ch, added } = matchChamber(journal, chForm, kind);
       // дата вкладки раньше действующего свидетельства (есть более раннее в истории): поля вкладки относятся к прежнему
       // свидетельству — действующее ими не перезаписывается (с 0.53.0)
-      const older = !added && certOn(ch, 'mv', tabDate(f, kind)).src !== 'current';
+      const older = !added && certOn(ch, 'mv', tabDate(f, kind), { preferCurrent: true }).src !== 'current';
       if (!added && !older) ch.form = { ...ch.form, ...chamberUpdate(chForm, kind, ch.form) };
       res.chamber = added ? 'added' : older ? 'older' : 'updated';
       res.chamberId = ch.id;
@@ -1818,8 +1826,11 @@ export function recordTabBeam(j, { machineId, beamId, form, kind = 'photon', tod
     source: 'tab',
   };
   // свидетельство камеры, по которому посчитан пучок (с 0.53.0): по дате измерения, если коэффициент вкладки — его
+  // коэффициент введён на вкладке и не совпадает со свидетельством на дату — отметка «неизвестно» (src 'unknown'), чтобы
+  // протокол не назвал чужое свидетельство (у записей до 0.53.0 cert нет вовсе)
   const cert = t.chamber ? chamberCertStamp(t.chamber, date, K.chamberFromTab(f)) : null;
   if (cert) entry.cert = cert;
+  else if (t.chamber) entry.cert = { no: '', date: '', lab: '', src: 'unknown' };
   const base = tabSessionOf(j, { machineId, form: f, kind }) ?? { ...SESSION_DEFAULTS, id: uid('s'), machineId, date, mode, protocol, beams: [] };
   // сотрудники записи — все, кто мерил пучки этой записи
   const allStaff = [...new Set([...(base.staff || []).filter((x) => !isBlank(x)), ...staff])];

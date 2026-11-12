@@ -80,28 +80,37 @@ export function certHistory(c, kind) {
  *   src 'current' — действующее (дата не задана, или оно последнее не позже date, или истории с датами нет);
  *   src 'history' — из истории (id — запись истории);
  *   src 'early' — дата раньше всех известных свидетельств: взято самое раннее (из истории).
+ * Действующее с датой калибровки действует с неё и дальше: записи истории с датой позже (например, после «Сделать
+ * действующим» у прежнего — новое, введённое по ошибке) на шкалу не попадают.
  * Действующее без даты калибровки (например, сразу после «Новый сертификат») — самое новое: оно берётся для дат не
- * раньше последнего датированного, но пустое (без коэффициента) уступает последнему из истории.
+ * раньше последнего датированного, но пустое (без коэффициента) уступает последнему из истории — для расчёта; с
+ * preferCurrent (связь вкладки с «Оборудованием»: в такое действующее вкладка записывает новый коэффициент) — не уступает.
  */
-export function certOn(c, kind, date) {
+export function certOn(c, kind, date, { preferCurrent = false } = {}) {
   const cur = { meta: certMeta(c, kind), data: certData(c, kind), src: 'current', id: '' };
   if (!c || !isIsoDate(date)) return cur;
-  const hist = certHistory(c, kind).filter((h) => isIsoDate(h.meta.calDate));
+  const curDated = isIsoDate(cur.meta.calDate);
+  const hist = certHistory(c, kind).filter((h) => isIsoDate(h.meta.calDate) && (!curDated || h.meta.calDate <= cur.meta.calDate));
   if (!hist.length) return cur;
   const of = (h, src) => ({ meta: { ...h.meta }, data: copy(h.data) ?? null, src, id: h.id });
-  const curDated = isIsoDate(cur.meta.calDate);
   // шкала: записи истории и действующее (если у него есть дата)
   const line = [...hist.map((h) => ({ date: h.meta.calDate, h })), ...(curDated ? [{ date: cur.meta.calDate, h: null }] : [])].sort((a, b) => a.date.localeCompare(b.date));
   const before = line.filter((x) => x.date <= date).at(-1);
   if (!curDated) {
     // действующее без даты — новее всех: для дат не раньше последнего из истории, если в нём уже есть коэффициент
     const last = hist.at(-1);
-    if (date >= last.meta.calDate && certHasData(kind, cur.data)) return cur;
+    if (date >= last.meta.calDate && (preferCurrent || certHasData(kind, cur.data))) return cur;
     return before ? of(before.h, 'history') : of(hist[0], 'early');
   }
+  // в один день с записью истории действующее — новее (сортировка устойчива: оно в шкале последним)
   if (before) return before.h ? of(before.h, 'history') : cur;
   const first = line[0];
   return first.h ? of(first.h, 'early') : cur;
+}
+/** Записи истории вида kind, которые на шкалу не попадают: без даты калибровки или новее действующего (с датой). */
+export function certIgnored(c, kind) {
+  const d = certMeta(c, kind).calDate;
+  return certHistory(c, kind).filter((h) => !isIsoDate(h.meta.calDate) || (isIsoDate(d) && h.meta.calDate > d));
 }
 
 /**

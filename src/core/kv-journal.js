@@ -186,10 +186,9 @@ export function kvRefreshFromMachine(j, machine, visit) {
     v.chambers[md.chamber] = { ...kvChamberFromRecord(ch, null, cur, date), ...pick(cur, keep) };
   });
   // десятичная запятая или точка (вкладка на английском показывает точку) — не изменение
-  // сведения о свидетельстве у камеры вкладки, где их нет (вкладки до 0.53.0), — не изменение; где есть — изменение
-  const blankMeta = visit.chambers.map((c) => ['kv_cert_no', 'kv_cert_date', 'kv_cert_lab'].every((k) => isBlank(c?.[k])));
-  const strip = (c, i) => ((blankMeta[i] ?? blankMeta[0]) ? Object.fromEntries(Object.entries(c).filter(([k]) => !KV_CERT_META_KEYS.includes(k))) : c);
-  const same = (o) => JSON.stringify({ ...o, chambers: o.chambers.map(strip) }, (k, x) => (typeof x === 'string' ? x.replace(/(\d),(\d)/g, '$1.$2') : x));
+  // сведения о свидетельстве (№, дата, лаборатория) — тоже изменение: без них запись журнала и протокол без № свидетельства
+  // (у вкладки до 0.53.0 их нет — баннер появится, если в «Оборудовании» они введены)
+  const same = (o) => JSON.stringify(o, (k, x) => (typeof x === 'string' ? x.replace(/(\d),(\d)/g, '$1.$2') : x));
   return { visit: v, changed: same(v) !== same(visit) };
 }
 
@@ -229,6 +228,13 @@ function visitPlates(common) {
 
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, copy(o[k])]));
 const sameKv = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+/**
+ * Тот же kV-сертификат: поля KV_CERT_FORM_KEYS (условия измерения вкладки — напряжения, полярность и т. п. — не в счёт),
+ * числа — по значению (запятая или точка), поле, которого нет у одной из сторон, — не отличие; сертификата нет у одной
+ * из сторон — отличие.
+ */
+const certVal = (v) => (Array.isArray(v) ? v.map(certVal) : v === undefined || v === null || v === false ? '' : String(v).trim().replace(/(\d),(\d)/g, '$1.$2'));
+export const sameKvCert = (a, b) => (!a || !b ? !a === !b : KV_CERT_FORM_KEYS.every((k) => !(a && k in a) || !(b && k in b) || JSON.stringify(certVal(a[k])) === JSON.stringify(certVal(b[k]))));
 
 /** Модель камеры вкладки в журнале: { custom, model, name } (своя камера — «другая» с названием). */
 function chamberModel(vc) {
@@ -284,21 +290,27 @@ function upsertChamber(j, vc, rep) {
     // им не перезаписывается — новый сертификат вводится в карточке камеры (с 0.53.0)
     const curDate = str(ch.kvCal?.calDate).trim();
     const tabDate = meta.calDate;
+    // сравниваются только поля сертификата: условия измерения вкладки (напряжения, полярность) — не отличие
+    const differs = !sameKvCert(ch.kv, kv);
     const older = hasKvCert(ch.kv) && isIsoDate(curDate) && (!tabDate || tabDate < curDate);
     if (older) {
-      if (!sameKv(ch.kv, kv)) rep.certOlder.push(chamberText(ch));
-    } else if (!sameKv(ch.kv, kv)) {
-      // у вкладки другое свидетельство (новее действующего): действующее — в историю камеры, сведения — из вкладки
+      if (differs) rep.certOlder.push(chamberText(ch));
+    } else {
       const cur = certMetaOf(ch.kvCal);
-      const other = (meta.calCert || meta.calDate) && (meta.calCert !== cur.calCert || meta.calDate !== cur.calDate);
-      if (other && certFilled(ch, 'kv')) {
+      // у вкладки другое свидетельство (другой непустой № или другая дата, новее действующего): действующее — в историю
+      // камеры, если у него есть дата калибровки (без неё по истории его не найти — оно заменяется, как до 0.53.0)
+      const other = (meta.calCert && meta.calCert !== cur.calCert) || (meta.calDate && meta.calDate !== cur.calDate);
+      if (differs && other && certFilled(ch, 'kv') && isIsoDate(curDate)) {
         const elId = cur.calEl;
         Object.assign(ch, archiveCert(ch, 'kv', { id: uid('cert'), today: localToday(), elText: elId ? electrometerText(j.electrometers.find((e) => e.id === elId)) : '' }));
-        ch.kvCal = { ...certMetaOf({}), calCert: meta.calCert, calDate: meta.calDate, calLab: meta.calLab };
+        ch.kvCal = { ...certMetaOf(ch.kvCal), calCert: meta.calCert, calDate: meta.calDate, calLab: meta.calLab || cur.calLab };
         rep.certArchived.push(chamberText(ch));
-      } else if (meta.calCert || meta.calDate || meta.calLab) ch.kvCal = { ...cur, calCert: meta.calCert, calDate: meta.calDate, calLab: meta.calLab };
-      ch.kv = kv;
-      rep.certSaved.push(chamberText(ch));
+      } else if (meta.calCert || meta.calDate || meta.calLab) {
+        // те же сведения или уточнение: пустые поля вкладки непустые поля действующего не стирают
+        ch.kvCal = { ...cur, calCert: meta.calCert || cur.calCert, calDate: meta.calDate || cur.calDate, calLab: meta.calLab || cur.calLab };
+      }
+      if (differs || !sameKv(ch.kv, kv)) ch.kv = kv;
+      if (differs) rep.certSaved.push(chamberText(ch));
     }
   }
   return ch.id;

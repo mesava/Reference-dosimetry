@@ -14,7 +14,7 @@ import {
   chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable, electronChamberForm, beamKind, cobaltCapable, cobaltChamberForm, myChambersToJournal, orgText, withChamberLength,
   CAL_GEO_KEYS, machineCalGeo, calGeoKey, calGeoText, syncCalGeo, chamberUse, chamberUseSet, kvChamberInModes, dueStatus, chamberDueDates, certText,
 } from '../core/journal.js';
-import { certMeta, certHistory, certFilled, archiveCert, restoreCert, removeCert } from '../core/chamber-certs.js';
+import { certMeta, certHistory, certFilled, certIgnored, isIsoDate, archiveCert, restoreCert, removeCert } from '../core/chamber-certs.js';
 import {
   newKvApplicator, newKvMachineMode, normalizeKvMachine, applicatorDiameter, applicatorText, kvMachineModeTitle, hvlUnit, kvRefCandidates, kvMachineChecks,
   KV_ONLY_CHAMBERS, findKvOnlyChamber, kvModelOfJournal, kvChamberFitsRange, journalChamberType,
@@ -262,6 +262,7 @@ function certDataText(kind, data) {
 function certTools(j, c, kind) {
   const m = certMeta(c, kind);
   const hist = certHistory(c, kind);
+  const ignored = new Set(certIgnored(c, kind).map((h) => h.id));
   const attr = (act, h = '') => `data-cert-act="${act}" data-cert-kind="${kind}" data-cert-ch="${val(c.id)}"${h ? ` data-cert-h="${val(h)}"` : ''}`;
   const elName = (h) => (h.meta.calEl ? electrometerText(j.electrometers.find((e) => e.id === h.meta.calEl)) : '') || h.elText;
   const rows = hist
@@ -269,7 +270,10 @@ function certTools(j, c, kind) {
     .reverse()
     .map((h) => {
       const who = [h.meta.calLab, elName(h) ? L(`электрометр ${elName(h)}`, `electrometer ${elName(h)}`) : '', !isBlank(h.meta.calV) ? L(`${h.meta.calV} В`, `${h.meta.calV} V`) : '', h.meta.calPol ? L(`полярность ${h.meta.calPol === '-' ? '−' : '+'}`, `polarity ${h.meta.calPol === '-' ? '−' : '+'}`) : ''].filter(Boolean).map(esc).join(', ');
-      return `<tr><td data-cap="${esc(L('Свидетельство', 'Certificate'))}">${esc(isBlank(h.meta.calCert) ? '—' : `№ ${h.meta.calCert}`)}</td>
+      const why = !ignored.has(h.id) ? '' : isBlank(h.meta.calDate)
+        ? L('не применяется: нет даты калибровки', 'not used: no calibration date')
+        : L('не применяется: новее действующего (удалите, если введено по ошибке)', 'not used: newer than the current one (delete it if it was entered by mistake)');
+      return `<tr><td data-cap="${esc(L('Свидетельство', 'Certificate'))}">${esc(isBlank(h.meta.calCert) ? '—' : `№ ${h.meta.calCert}`)}${why ? `<br><small class="warn">${esc(why)}</small>` : ''}</td>
         <td data-cap="${esc(L('Дата калибровки', 'Calibration date'))}">${esc(h.meta.calDate ? fmtDate(h.meta.calDate) : '—')}</td>
         <td data-cap="${esc(L('Срок действия', 'Valid until'))}">${esc(h.meta.dueDate ? fmtDate(h.meta.dueDate) : '—')}</td>
         <td data-cap="${esc(L('Сведения', 'Details'))}">${[who, richText(certDataText(kind, h.data))].filter(Boolean).join('<br>') || '—'}</td>
@@ -914,7 +918,9 @@ function render() {
 /** Электрометр при калибровке свидетельства kind камеры c текстом (для истории: электрометр могут потом удалить). */
 function certElText(j, c, kind) {
   const id = certMeta(c, kind).calEl;
-  return id ? electrometerText(j.electrometers.find((e) => e.id === id)) : '';
+  const e = id ? j.electrometers.find((x) => x.id === id) : null;
+  // электрометр свидетельства, восстановленного из истории, которого в «Оборудовании» уже нет, — текстом
+  return e ? electrometerText(e) : id ? '' : String(c.certElText?.[kind] ?? '');
 }
 
 /** Действие с сертификатом камеры: 'new' — действующий в историю, 'restore' — запись истории h действующей, 'del' — убрать h. */
@@ -923,34 +929,47 @@ function certAction(act, kind, chId, h) {
   const kv = kind === 'kv';
   const what = kv ? L('kV-сертификат', 'The kV certificate') : L('Свидетельство для МВ и ⁶⁰Co', 'The MV and ⁶⁰Co certificate');
   let done = '';
+  // проверки до изменения журнала: пустое свидетельство или без даты калибровки в историю не переносится
+  const c0 = getJournal().chambers.find((x) => x.id === chId);
+  if (!c0) return;
+  if (act === 'new' && !certFilled(c0, kind)) {
+    setStatus(kv
+      ? L('kV-сертификат пустой (нет ни коэффициента, ни №, ни даты) — переносить в историю нечего: введите сведения нового прямо в поля.', 'The kV certificate is empty (no coefficient, No. or date): there is nothing to move to the history; enter the new one directly in the fields.')
+      : L('Свидетельство для МВ и ⁶⁰Co пустое (нет ни коэффициента, ни №, ни даты) — переносить в историю нечего: введите сведения нового прямо в поля.', 'The MV and ⁶⁰Co certificate is empty (no coefficient, No. or date): there is nothing to move to the history; enter the new one directly in the fields.'));
+    return;
+  }
+  if (act === 'new' && !isIsoDate(certMeta(c0, kind).calDate)) {
+    setStatus(kv
+      ? L('Сначала укажите дату калибровки действующего kV-сертификата: без неё по истории его не найти, и измерениям прошлых дат подставлялся бы новый.', 'First enter the calibration date of the current kV certificate: without it, it cannot be found in the history, and measurements of earlier dates would get the new one.')
+      : L('Сначала укажите дату калибровки действующего свидетельства для МВ и ⁶⁰Co: без неё по истории его не найти, и измерениям прошлых дат подставлялось бы новое.', 'First enter the calibration date of the current MV and ⁶⁰Co certificate: without it, it cannot be found in the history, and measurements of earlier dates would get the new one.'));
+    return;
+  }
+  if (act === 'del' && !(c0.certHistory || []).some((x) => x?.id === h)) return;
   updateJournal((j) => {
     const i = j.chambers.findIndex((x) => x.id === chId);
     if (i < 0) return j;
     const c = j.chambers[i];
     let out = null;
     if (act === 'new') {
-      if (!certFilled(c, kind)) {
-        done = kv
-          ? L('kV-сертификат пустой (нет ни коэффициента, ни №, ни даты) — переносить в историю нечего: введите сведения нового прямо в поля.', 'The kV certificate is empty (no coefficient, No. or date): there is nothing to move to the history; enter the new one directly in the fields.')
-          : L('Свидетельство для МВ и ⁶⁰Co пустое (нет ни коэффициента, ни №, ни даты) — переносить в историю нечего: введите сведения нового прямо в поля.', 'The MV and ⁶⁰Co certificate is empty (no coefficient, No. or date): there is nothing to move to the history; enter the new one directly in the fields.');
-        return j;
-      }
       const was = certText(certMeta(c, kind));
       out = archiveCert(c, kind, { id: uid('cert'), today: today(), elText: certElText(j, c, kind) });
+      // электрометр прежнего текстом (см. «Сделать действующим») — у нового свой
+      if (out.certElText) out.certElText = { ...out.certElText, [kind]: '' };
       done = L(`${what}${was ? ` (${was})` : ''} ${kv ? 'перенесён' : 'перенесено'} в историю камеры. Введите сведения и коэффициенты нового; обязательно — дату калибровки: по ней измерениям прошлых дат подставляется ${kv ? 'прежний' : 'прежнее'}.`, `${what}${was ? ` (${was})` : ''} has been moved to the chamber history. Enter the details and coefficients of the new one, including the calibration date: by it, measurements of earlier dates get the previous one.`);
     } else if (act === 'restore') {
       const hist = certHistory(c, kind).find((x) => x.id === h);
       const elText = certElText(j, c, kind);
       out = restoreCert(c, h, { newId: uid('cert'), today: today(), elText });
       // электрометра истории в «Оборудовании» больше нет — поле «Электрометр при калибровке» пустое
+      // его название текстом остаётся (certElText) — при следующей замене оно уйдёт в историю вместе со свидетельством
       if (out && hist?.meta.calEl && !j.electrometers.some((e) => e.id === hist.meta.calEl)) {
         if (kind === 'kv') out.kvCal.calEl = '';
         else out.calEl = '';
       }
+      if (out) out.certElText = { ...(out.certElText || {}), [kind]: out && hist && !j.electrometers.some((e) => e.id === hist.meta.calEl) ? hist.elText : '' };
       done = out ? L(`${what} из истории ${kv ? 'стал действующим' : 'стало действующим'}${hist ? ` (${certText(hist.meta) || '—'})` : ''}; ${kv ? 'прежний действующий' : 'прежнее действующее'} — в истории.`, `${what} from the history is now current${hist ? ` (${certText(hist.meta) || '—'})` : ''}; the previous current one is in the history.`) : '';
     } else if (act === 'del') {
       out = removeCert(c, h);
-      if (out.certHistory.length === (c.certHistory?.length ?? 0)) return j;
       done = L('Запись истории сертификатов удалена.', 'The certificate history entry has been deleted.');
     }
     if (!out) return j;

@@ -38,7 +38,8 @@ export function sessionReportText(j, s) {
     const ch = chamberOf(j, b.chamberId);
     const el = electrometerOf(j, b.electrometerId);
     // свидетельство, по которому посчитан пучок: снимок записи (с 0.53.0), иначе — действовавшее на дату записи
-    const cert = b.cert ? certText(b.cert) : certText(chamberOnDate(ch, s.date));
+    // снимок src 'unknown' — коэффициент введён на вкладке, свидетельство неизвестно
+    const cert = b.cert?.src === 'unknown' ? L('коэффициент введён на вкладке, свидетельство не указано', 'coefficient entered on the tab, certificate not specified') : b.cert ? certText(b.cert) : certText(chamberOnDate(ch, s.date));
     out.push(`${name}: ${chamberText(ch) || L('камера не из журнала', 'chamber not from the journal')}${cert ? ` (${cert})` : ''}; ${electrometerText(el) || L('электрометр не из журнала', 'electrometer not from the journal')}`);
     const sum = b.summary || {};
     if (sum.ok) {
