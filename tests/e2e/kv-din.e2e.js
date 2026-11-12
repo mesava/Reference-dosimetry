@@ -89,7 +89,8 @@ test('kV-рентген: металл СПО сертификата, перес�
   await page.goto(`${server.url}/index.html#kv/timer`);
   await pause();
   assert.ok(await page.locator('#kv-timer-chart-wrap').isVisible());
-  assert.equal(await page.locator('#kv-timer-chart svg .pt').count(), 2 + 6 + 1);
+  // только средние при T₁ и T₂ и точка T = −τ (отдельные показания не выводятся, 0.57.0)
+  assert.equal(await page.locator('#kv-timer-chart svg .pt').count(), 2 + 1);
   assert.match(await page.locator('#kv-timer-eq').innerText(), /^Прямая: T = [\d,]+·M − 0,6\d+ с \(через две точки\)\. При нулевом показании задание равно −τ, откуда τ = \+0,61 с/);
   // способа «X против n облучений» в списке нет; серия облучений — график с R²
   assert.equal(await page.locator('#kv_timer_mode option[value="nexp"]').evaluate((o) => o.hidden), true);

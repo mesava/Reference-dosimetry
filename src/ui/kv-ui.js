@@ -846,7 +846,6 @@ function renderTimerChart(data, result) {
   const U = KV_SET_UNITS[data.kv_set_unit] ?? KV_SET_UNITS.min;
   let unit = L(U.label, U.labelEn);
   let pts = [];
-  const raw = [];
   let k = NaN;
   let tau = NaN;
   if (data.kv_timer_mode === 'measured' && Number.isFinite(t.slope) && Array.isArray(t.points) && !t.from) {
@@ -859,7 +858,8 @@ function renderTimerChart(data, result) {
   } else if (data.kv_timer_mode === 'twopoint' && Number.isFinite(t.tauT) && !t.from) {
     if (U.time) unit = L('с', 's');
     pts = [{ x: t.R1, y: t.t1 }, { x: t.R2, y: t.t2 }];
-    for (const [key, T] of [['kv_tp_R1', t.t1], ['kv_tp_R2', t.t2]]) for (const v of parseCells(data[key]).values) raw.push({ x: Math.abs(v), y: T, hollow: true });
+    // только средние R̄₁ и R̄₂: по ним проведена прямая (отдельные показания на график не выводятся, 0.57.0)
+    pts = pts.map((p, i) => ({ ...p, n: parseCells(data[i ? 'kv_tp_R2' : 'kv_tp_R1']).n }));
     k = (t.t2 - t.t1) / (t.R2 - t.R1);
     tau = t.tauT;
   }
@@ -875,11 +875,10 @@ function renderTimerChart(data, result) {
   const sxx = pts.reduce((s, p) => s + (p.x - mx) ** 2, 0);
   const syy = pts.reduce((s, p) => s + (p.y - my) ** 2, 0);
   const r2 = sxx > 0 && syy > 0 ? (sxy * sxy) / (sxx * syy) : NaN;
-  const xMax = Math.max(...pts.map((p) => p.x), ...raw.map((p) => p.x));
+  const xMax = Math.max(...pts.map((p) => p.x));
   const tip = (p) => L(`задание ${sigFmt(p.y)} ${unit}, показание ${sigFmt(p.x)} нКл`, `setting ${sigFmt(p.y)} ${unit}, reading ${sigFmt(p.x)} nC`);
-  const meanTip = (p) => (p.n ? L(`среднее из ${p.n}: `, `mean of ${p.n}: `) : raw.length ? L('среднее: ', 'mean: ') : '');
+  const meanTip = (p) => (p.n > 1 ? L(`среднее из ${p.n}: `, `mean of ${p.n}: `) : '');
   const series = [];
-  if (raw.length) series.push({ cls: 's1', points: raw.map((p) => ({ ...p, title: tip(p) })) });
   series.push({ cls: 's1', points: pts.map((p) => ({ ...p, title: meanTip(p) + tip(p) })) });
   series.push({ cls: 's2', shape: 'diamond', points: [{ x: 0, y: -tau, title: L(`T = −τ = ${fmtSigned(-tau, tDig)} ${unit}`, `T = −τ = ${fmtSigned(-tau, tDig)} ${unit}`) }] });
   scatterChart($('#kv-timer-chart'), {
@@ -894,8 +893,7 @@ function renderTimerChart(data, result) {
     lines: [{ cls: 's1', a: -tau, b: k, x0: 0, x1: xMax * 1.05 }],
     notes: [{ x: 0, y: -tau, text: `−τ`, below: tau > 0 }],
   });
-  const items = [[legendSwatch({ cls: 's1' }), raw.length ? L('средние показания при T₁ и T₂', 'mean readings at T₁ and T₂') : L('средние показания при каждом задании', 'mean readings at each setting')]];
-  if (raw.length) items.push([legendSwatch({ cls: 's1', hollow: true }), L('отдельные показания', 'individual readings')]);
+  const items = [[legendSwatch({ cls: 's1' }), data.kv_timer_mode === 'twopoint' ? L('средние показания при T₁ и T₂', 'mean readings at T₁ and T₂') : L('средние показания при каждом задании', 'mean readings at each setting')]];
   items.push([legendSwatch({ line: true, cls: 's1' }), L('прямая T = k·M + c', 'line T = k·M + c')]);
   items.push([legendSwatch({ cls: 's2', shape: 'diamond' }), L('пересечение с осью задания: T = −τ', 'intercept on the setting axis: T = −τ')]);
   html($('#kv-timer-legend'), items.map(([sw, s]) => `<span class="item">${sw}<span>${esc(s)}</span></span>`).join(''));
