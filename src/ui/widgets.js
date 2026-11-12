@@ -11,11 +11,25 @@ function fire(el) {
 
 let comboSeq = 0;
 
+// дополнительные значения списка не из браузера: сотрудники из «Оборудования» (журнал отделения) — app.js
+const listSources = new Map();
+/** Источник значений для списка name: функция без аргументов, возвращает массив строк; они идут первыми. */
+export function setListSource(name, fn) {
+  listSources.set(name, fn);
+}
+const fixedValues = (name) => {
+  try {
+    return (listSources.get(name)?.() ?? []).map((v) => String(v ?? '').trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
 /**
  * Поле ввода со списком сохранённых значений.
  * Значение попадает в список при подтверждении ввода (событие change); из списка его можно удалить.
  */
-export function makeCombo(wrapper, { onPick } = {}) {
+export function makeCombo(wrapper, { onPick, openOnFocus = false } = {}) {
   if (wrapper.dataset.ready) return;
   wrapper.dataset.ready = '1';
   const listName = wrapper.dataset.list;
@@ -47,16 +61,23 @@ export function makeCombo(wrapper, { onPick } = {}) {
   };
   const render = (filter) => {
     currentFilter = filter ?? '';
-    const all = getList(listName);
+    const fixed = fixedValues(listName);
+    const all = [...fixed, ...getList(listName).filter((v) => !fixed.includes(v))];
     const q = (filter ?? '').trim().toLowerCase();
     items = q ? all.filter((v) => v.toLowerCase().includes(q) && v !== input.value) : all;
     if (items.length === 0) {
       menu.innerHTML = q ? '' : `<div class="combo-empty">${L('Список пуст. Введённое значение сохранится автоматически.', 'The list is empty. The value you enter will be saved automatically.')}</div>`;
     } else {
+      // значения из «Оборудования» из списка не удаляются (их правят там), у сохранённых в браузере — «×»
+      const fixedTip = L('Из «Оборудования», раздел 1', 'From Equipment, section 1');
       menu.innerHTML = items
         .map(
           (v, i) =>
-            `<div class="combo-item${i === active ? ' active' : ''}" role="option" data-i="${i}"><span class="combo-pick">${esc(v)}</span><button type="button" class="combo-del" data-i="${i}" aria-label="${L(`Удалить «${esc(v)}» из списка`, `Remove “${esc(v)}” from the list`)}" title="${L('Удалить из списка', 'Remove from the list')}">×</button></div>`,
+            `<div class="combo-item${i === active ? ' active' : ''}${fixed.includes(v) ? ' fixed' : ''}" role="option" data-i="${i}"><span class="combo-pick">${esc(v)}</span>${
+              fixed.includes(v)
+                ? `<span class="combo-src" title="${esc(fixedTip)}">${L('отделение', 'department')}</span>`
+                : `<button type="button" class="combo-del" data-i="${i}" aria-label="${L(`Удалить «${esc(v)}» из списка`, `Remove “${esc(v)}” from the list`)}" title="${L('Удалить из списка', 'Remove from the list')}">×</button>`
+            }</div>`,
         )
         .join('');
     }
@@ -116,6 +137,15 @@ export function makeCombo(wrapper, { onPick } = {}) {
       close();
     }
   });
+  // поле сотрудника: пустое при входе — сразу список (сотрудники отделения из «Оборудования» и сохранённые)
+  if (openOnFocus) {
+    input.addEventListener('focus', () => {
+      if (!input.value.trim() && menu.hidden) {
+        active = -1;
+        open('');
+      }
+    });
+  }
   input.addEventListener('blur', () => setTimeout(close, 120));
   input.addEventListener('change', () => addToList(listName, input.value));
   menu.addEventListener('mousedown', (e) => {
@@ -183,7 +213,7 @@ export function renderStaff(container, values, onChange) {
       </div>`,
     )
     .join('');
-  container.querySelectorAll('.combo').forEach((c) => makeCombo(c));
+  container.querySelectorAll('.combo').forEach((c) => makeCombo(c, { openOnFocus: true }));
   container.querySelectorAll('.staff-remove').forEach((b) =>
     b.addEventListener('click', () => {
       const cur = readStaff(container);

@@ -105,6 +105,7 @@ export function mergeJournals(base, mine, theirs) {
 const PART = {
   institution: () => L('учреждение', 'institution'),
   department: () => L('отделение', 'department'),
+  staff: () => L('сотрудник', 'staff member'),
   chambers: () => L('камера', 'chamber'),
   electrometers: () => L('электрометр', 'electrometer'),
   machines: () => L('аппарат', 'machine'),
@@ -118,7 +119,7 @@ function itemName(part, item) {
   if (!item) return '';
   if (part === 'chambers') return chamberText(item);
   if (part === 'electrometers') return electrometerText(item);
-  if (part === 'machines') return String(item.name || '');
+  if (part === 'machines' || part === 'staff') return String(item.name || '');
   return item.date ? String(item.date).split('-').reverse().join('.') : '';
 }
 

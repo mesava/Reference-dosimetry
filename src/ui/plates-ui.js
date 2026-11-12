@@ -10,7 +10,7 @@ import {
   waterCalibrations, makeBinding, bindingOf, platesResult, recordPlates, setBinding, platesPoints, waterReading, kspolFactor,
 } from '../core/plates.js';
 import { $, esc, fmt, fmtSigned, richText, today, armButton } from './common.js';
-import { renderCells, readCells, setupCells } from './widgets.js';
+import { renderCells, readCells, setupCells, makeCombo } from './widgets.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
 import { cellsHtml, fmtDate } from './journal-common.js';
 import { renderPlatesSpc } from './journal-spc-ui.js';
@@ -159,7 +159,7 @@ function checkFormHtml(c, b) {
   if (!b) return `<p class="start-note">${esc(L('Проверка станет доступна после привязки пластин (раздел 2).', 'The check becomes available after the plates are bound (section 2).'))}</p>`;
   return `<div class="grid">
       <div class="field"><label for="plc_date">${esc(L('Дата измерения', 'Measurement date'))}</label><input type="date" id="plc_date" data-c="date" value="${esc(f.date || today())}"></div>
-      <div class="field span-2"><label for="plc_staff">${esc(L('Сотрудники', 'Staff'))}</label><input type="text" id="plc_staff" data-c="staff" value="${esc(f.staff)}"></div>
+      <div class="field span-2"><label for="plc_staff">${esc(L('Сотрудники', 'Staff'))}</label><div class="combo" data-list="staff"><input type="text" id="plc_staff" data-c="staff" value="${esc(f.staff)}"></div></div>
       <div class="field"><label for="plc_amount">${esc(amountLabel(c.kind))}</label><input type="text" class="num" inputmode="decimal" id="plc_amount" data-c="amount" value="${esc(f.amount || b.amount)}"></div>
       <div class="field"><label for="plc_T">${esc(L('Температура в пластинах, °C', 'Temperature in the plates, °C'))}</label><input type="text" class="num" inputmode="decimal" id="plc_T" data-c="T" value="${esc(f.T)}"></div>
       <div class="field"><label for="plc_P">${esc(L('Давление', 'Pressure'))}</label><div class="inline"><input type="text" class="num" inputmode="decimal" id="plc_P" data-c="P" value="${esc(f.P)}"><select id="plc_P_unit" data-c="P_unit" aria-label="${esc(L('Единица давления', 'Pressure unit'))}">${unitOpts(f.P_unit)}</select></div></div>
@@ -216,6 +216,8 @@ function render() {
     renderCells(el, vals);
     setupCells(el, onInput);
   }
+  // сотрудники: список отделения из «Оборудования» и сохранённые в браузере
+  for (const el of root.querySelectorAll('.combo[data-list="staff"]')) makeCombo(el, { openOnFocus: true });
   const box = $('#pl-chart', root);
   if (box) renderPlatesSpc({ box, legend: $('#pl-legend', root), summary: $('#pl-summary', root) }, platesPoints(j, c.beam.id), { tol: b?.tol ?? NaN, name: c.beam.name || '—', cobalt: c.kind === 'cobalt' });
   for (const btn of root.querySelectorAll('[data-pl-del]')) {

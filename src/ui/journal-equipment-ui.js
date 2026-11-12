@@ -12,7 +12,7 @@ import { CO_DEFAULTS, normalizeCobalt } from '../core/cobalt.js';
 import {
   uid, CHAMBER_DEFAULTS, newChamberRecord, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, saveBeamSettings, equipmentDue, equipmentNoDue,
   chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable, electronChamberForm, beamKind, cobaltCapable, cobaltChamberForm, myChambersToJournal, orgText, withChamberLength,
-  CAL_GEO_KEYS, machineCalGeo, calGeoKey, calGeoText, syncCalGeo, chamberUse, chamberUseSet, kvChamberInModes, dueStatus, chamberDueDates, certText,
+  CAL_GEO_KEYS, machineCalGeo, calGeoKey, calGeoText, syncCalGeo, chamberUse, chamberUseSet, kvChamberInModes, dueStatus, chamberDueDates, certText, STAFF_DEFAULTS,
 } from '../core/journal.js';
 import { certMeta, certHistory, certFilled, certIgnored, isIsoDate, archiveCert, restoreCert, removeCert } from '../core/chamber-certs.js';
 import {
@@ -898,10 +898,57 @@ function kvModeChambersHtml(j, machine) {
       <tbody>${ms.map((m) => m.modes.map((x, i) => row(m, x, i)).join('')).join('')}</tbody></table></div>`;
 }
 
+// ------------------------------------------------------------ сотрудники отделения (раздел 1, с 0.56.0)
+
+/** Строки «Сотрудники»: пустой список — одна пустая строка (она в журнал не пишется, пока не введено ФИО). */
+function renderStaffList(j) {
+  const box = $('#eq-staff-list');
+  const list = j.staff?.length ? j.staff : [{ ...STAFF_DEFAULTS }];
+  box.innerHTML = list
+    .map((x, i) => `<div class="staff-row"><input type="text" id="eq_staff_${i}" data-staff="${esc(x.id)}" aria-label="${esc(L(`Сотрудник ${i + 1}`, `Staff member ${i + 1}`))}" value="${esc(x.name)}" placeholder="${esc(L('Фамилия И. О.', 'Surname, initials'))}">${
+      x.id ? `<button type="button" class="icon-btn staff-remove" data-staff-del="${esc(x.id)}" aria-label="${esc(L(`Убрать сотрудника ${i + 1}`, `Remove staff member ${i + 1}`))}" title="${esc(L('Убрать из списка', 'Remove from the list'))}">−</button>` : ''
+    }</div>`)
+    .join('');
+}
+
+function onStaffInput(e) {
+  const el = e.target.closest('[data-staff]');
+  if (!el) return;
+  const id = el.dataset.staff;
+  if (id) {
+    updateJournal((j) => ({ ...j, staff: j.staff.map((x) => (x.id === id ? { ...x, name: el.value } : x)) }), 'equipment:input');
+    return;
+  }
+  // первое ФИО в пустой строке — новый сотрудник; строка получает id и кнопку «−» без перерисовки поля
+  if (!el.value.trim()) return;
+  const x = { ...STAFF_DEFAULTS, id: uid('st'), name: el.value };
+  el.dataset.staff = x.id;
+  updateJournal((j) => ({ ...j, staff: [...(j.staff || []), x] }), 'equipment:input');
+  const i = Number(el.id.replace('eq_staff_', '')) + 1;
+  el.insertAdjacentHTML('afterend', `<button type="button" class="icon-btn staff-remove" data-staff-del="${esc(x.id)}" aria-label="${esc(L(`Убрать сотрудника ${i}`, `Remove staff member ${i}`))}" title="${esc(L('Убрать из списка', 'Remove from the list'))}">−</button>`);
+}
+
+function onStaffClick(e) {
+  const del = e.target.closest('[data-staff-del]');
+  if (!del) return;
+  const id = del.dataset.staffDel;
+  updateJournal((j) => ({ ...j, staff: (j.staff || []).filter((x) => x.id !== id) }), 'equipment');
+}
+
+function addStaffRow() {
+  const j = getJournal();
+  // пустая строка уже есть — в неё
+  const empty = [...$('#eq-staff-list').querySelectorAll('[data-staff]')].find((x) => !x.value.trim());
+  if (empty) return empty.focus();
+  renderStaffList({ ...j, staff: [...(j.staff || []), { ...STAFF_DEFAULTS }] });
+  [...$('#eq-staff-list').querySelectorAll('input')].at(-1)?.focus();
+}
+
 function render() {
   const j = getJournal();
   $('#eq_institution').value = j.institution || '';
   $('#eq_department').value = j.department || '';
+  renderStaffList(j);
   const ch = openSheet(j, 'chamber');
   $('#eq-chambers').innerHTML = ch ? chamberCard(ch, j) : `<p class="sub-hint">${esc(L('Камер пока нет.', 'No chambers yet.'))}</p>`;
   const el = openSheet(j, 'electrometer');
@@ -1460,6 +1507,9 @@ export function initEquipment() {
   sheet.addEventListener('click', onClick);
   $('#eq_institution').addEventListener('input', (e) => updateJournal((j) => ({ ...j, institution: e.target.value }), 'equipment:input'));
   $('#eq_department').addEventListener('input', (e) => updateJournal((j) => ({ ...j, department: e.target.value }), 'equipment:input'));
+  $('#eq-staff-list').addEventListener('input', onStaffInput);
+  $('#eq-staff-list').addEventListener('click', onStaffClick);
+  $('#eq-add-staff').addEventListener('click', addStaffRow);
   onJournal(({ source }) => {
     if (source === 'equipment:input') return;
     render();

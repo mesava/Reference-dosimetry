@@ -1,7 +1,7 @@
 // Оборудование журнала: подразделение, список электрометров, длина полости камеры, сведения о калибровке камеры.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeJournal, newJournal, orgText, certText, calibrationChecks, withChamberLength, beamForm, computeSessionBeam, applyTabFormToBeam, SESSION_DEFAULTS, sessionEquipDefaults, chamberPreferred, equipmentNoDue, futureDateError, recordTabBeam } from '../src/core/journal.js';
+import { normalizeJournal, newJournal, orgText, staffNames, certText, calibrationChecks, withChamberLength, beamForm, computeSessionBeam, applyTabFormToBeam, SESSION_DEFAULTS, sessionEquipDefaults, chamberPreferred, equipmentNoDue, futureDateError, recordTabBeam } from '../src/core/journal.js';
 import { SAMPLE_FORM } from '../src/core/sample.js';
 import { parseElectrometer, ELECTROMETERS, electrometerName } from '../src/core/electrometers.js';
 
@@ -27,6 +27,18 @@ test('Подразделение: хранится в журнале, в про�
   const old = normalizeJournal({ ...newJournal(), institution: 'Старое', department: undefined });
   assert.equal(old.department, '');
   assert.equal(orgText(old), 'Старое');
+});
+
+test('Сотрудники отделения: хранятся в журнале с id, в списках вкладок — ФИО без пустых и повторов; старый журнал без них читается', () => {
+  const j = normalizeJournal({ ...newJournal(), staff: [{ id: 'st1', name: 'Иванов И. И.' }, { name: '  Петрова А. С. ' }, { name: '' }, 'Сидоров П. П.', { id: 'st9', name: 'Иванов И. И.' }, null] });
+  assert.equal(j.staff.length, 5);
+  assert.ok(j.staff.every((x) => typeof x.id === 'string' && x.id && typeof x.name === 'string'));
+  assert.equal(j.staff[0].id, 'st1');
+  assert.deepEqual(staffNames(j), ['Иванов И. И.', 'Петрова А. С.', 'Сидоров П. П.']);
+  const old = normalizeJournal({ ...newJournal(), staff: undefined });
+  assert.deepEqual(old.staff, []);
+  assert.deepEqual(staffNames(old), []);
+  assert.deepEqual(staffNames(null), []);
 });
 
 test('Электрометры: «производитель модель» из списка узнаётся, своё название — «другой»', () => {

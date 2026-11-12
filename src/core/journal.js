@@ -245,10 +245,12 @@ export const MACHINE_DEFAULTS = { id: '', name: '', serial: '', kind: 'linac', n
  * kind: 'photon' | 'electron' | 'cobalt'. geoOwn (фотоны и электроны): у пучка своя геометрия калибровки дозы; иначе — как
  * у аппарата (machine.calGeo, см. syncCalGeo). refSrc (⁶⁰Co): с чем сравнивать мощность дозы — 'last' (последняя калибровка в журнале с поправкой на распад) или 'profile' (значение из настроек пучка). */
 export const BEAM_DEFAULTS = { id: '', kind: 'photon', name: '', chamberId: '', electrometerId: '', form: {}, active: true, geoOwn: false };
+/** Сотрудник отделения: ФИО (как писать в протоколе, можно с должностью). */
+export const STAFF_DEFAULTS = { id: '', name: '' };
 export const SESSION_DEFAULTS = { id: '', machineId: '', date: '', mode: 'cal', protocol: 'trs', staff: [''], notes: '', env: { T: '', P: '', P_unit: 'kPa', H: '' }, beams: [], saved: '' };
 
 export function newJournal() {
-  return { ...JOURNAL_TAG, institution: '', department: '', chambers: [], electrometers: [], machines: [], sessions: [], plateChecks: [], kvRecords: [] };
+  return { ...JOURNAL_TAG, institution: '', department: '', staff: [], chambers: [], electrometers: [], machines: [], sessions: [], plateChecks: [], kvRecords: [] };
 }
 
 const arr = (v) => (Array.isArray(v) ? v : []);
@@ -269,6 +271,11 @@ export function normalizeJournal(obj) {
   const j = { ...newJournal(), ...obj, version: JOURNAL_TAG.version };
   j.institution = String(j.institution ?? '');
   j.department = String(j.department ?? '');
+  // сотрудники отделения (с 0.56.0): подсказки в полях «Сотрудник, выполняющий измерения» во вкладках
+  j.staff = arr(obj.staff)
+    .map((x) => (typeof x === 'string' ? { name: x } : x))
+    .filter((x) => x && typeof x === 'object')
+    .map((x) => withId({ ...STAFF_DEFAULTS, ...x, name: String(x.name ?? '') }, 'st'));
   j.chambers = arr(obj.chambers).map((c) => withId({ ...CHAMBER_DEFAULTS, ...c, form: { ...(c?.form || {}) } }, 'ch'));
   j.electrometers = arr(obj.electrometers).map((e) => withId({ ...ELECTROMETER_DEFAULTS, ...e, form: { ...(e?.form || {}) } }, 'el'));
   j.machines = arr(obj.machines).map((m) => {
@@ -440,6 +447,16 @@ export function calGeoText(kind, g = {}) {
 export function withChamberLength(form, ch) {
   if (!ch || isBlank(ch.length) || !isBlank(form.prof_length)) return form;
   return { ...form, prof_length: ch.length };
+}
+
+/** ФИО сотрудников отделения без пустых и повторов — для списков в полях сотрудников вкладок. */
+export function staffNames(j) {
+  const out = [];
+  for (const x of Array.isArray(j?.staff) ? j.staff : []) {
+    const v = String(x?.name ?? '').trim();
+    if (v && !out.includes(v)) out.push(v);
+  }
+  return out;
 }
 
 /** «Учреждение, подразделение» — для протоколов и вкладок дозиметрии. */

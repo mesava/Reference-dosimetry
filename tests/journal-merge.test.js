@@ -90,3 +90,21 @@ test('Слияние: та же запись дня, тот же пучок с �
   assert.ok(r.conflicts.length >= 1);
   assert.match(conflictSummary(r.conflicts, theirs), /запись журнала 19\.10\.2026/);
 });
+
+test('Слияние: сотрудников добавили на двух компьютерах — остаются все; одного переименовали по-разному — конфликт', () => {
+  const b = normalizeJournal({ ...base(), staff: [{ id: 'st1', name: 'Иванов И. И.' }] });
+  const mine = clone(b);
+  mine.staff.push({ id: 'st2', name: 'Петрова А. С.' });
+  const theirs = clone(b);
+  theirs.staff.push({ id: 'st3', name: 'Сидоров П. П.' });
+  const r = mergeJournals(b, mine, theirs);
+  assert.deepEqual(r.conflicts, []);
+  assert.deepEqual(r.journal.staff.map((x) => x.name), ['Иванов И. И.', 'Сидоров П. П.', 'Петрова А. С.']);
+  const m2 = clone(b);
+  m2.staff[0].name = 'Иванов Иван Иванович';
+  const t2 = clone(b);
+  t2.staff[0].name = 'Иванов И. И., медицинский физик';
+  const r2 = mergeJournals(b, m2, t2);
+  assert.equal(r2.conflicts.length, 1);
+  assert.match(conflictSummary(r2.conflicts, t2), /сотрудник/);
+});

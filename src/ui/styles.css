@@ -593,6 +593,13 @@ footer.page-foot .page-foot-legal { margin-top: 4px; font-size: 12px; }
 }
 .combo-del:hover { color: var(--err); background: var(--err-soft); }
 .combo-empty { padding: 8px; font-size: 13px; color: var(--muted); }
+.combo-src { flex: 0 0 auto; padding: 0 8px; font-size: 12px; color: var(--muted); }
+
+/* «Оборудование», раздел 1: учреждение и подразделение — каждое во всю ширину листа (длинное название видно целиком) */
+.eq-org { grid-template-columns: minmax(0, 1fr); }
+.eq-staff { margin-top: 12px; }
+.eq-staff .staff-row input { flex: 1 1 auto; min-width: 0; }
+.eq-staff > .link-btn { align-self: flex-start; }
 
 .staff-list { display: grid; gap: 6px; }
 .staff-row { display: flex; gap: 6px; align-items: center; }
