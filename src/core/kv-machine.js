@@ -213,7 +213,7 @@ export function kvMachineChecks(machine, j = null) {
     else if (!(num(m.hvl) > 0)) add('error', L('СПО — число миллиметров больше нуля', 'the HVL is a number of millimetres greater than zero'));
     if (m.hvlSource === 'measured' && isBlank(m.hvlDate)) add('info', L('СПО измерен: укажите дату измерения', 'the HVL is measured: enter the date of the measurement'));
     const ch = j?.chambers.find((c) => c.id === m.chamberId);
-    if (!m.chamberId) add('warn', L('камера не выбрана: её выбирают в разделе 4, «Камеры режимов»', 'no chamber selected: it is selected in section 4, Chambers of the modes'));
+    if (!m.chamberId) add('warn', L('камера не выбрана: её выбирают в таблице «Камеры режимов» ниже', 'no chamber selected: it is selected in the Chambers of the modes table below'));
     else if (j && !ch) add('error', L('камеры нет в «Оборудовании»', 'the chamber is not in Equipment'));
     else if (ch && !kvChamberFitsRange(ch, m.range)) add('error', L('плоскопараллельная камера не для средних энергий: по TRS-398 Rev.1 (разд. 9.2.1, табл. 31) — только цилиндрическая 0,1–1,0 см³ на глубине 2 г/см²; плоскопараллельную калибруют на поверхности фантома для низких энергий', 'a plane-parallel chamber is not for medium energies: TRS-398 Rev.1 (Sec. 9.2.1, Table 31) requires a cylindrical chamber of 0.1–1.0 cm³ at a depth of 2 g/cm²; a plane-parallel chamber is calibrated at the phantom surface for low energies'));
     else if (ch && !(ch.kv && (!isBlank(ch.kv.kv_n) || arr(ch.kv.kv_cq_val).some((v) => !isBlank(v))))) {

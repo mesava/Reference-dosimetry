@@ -113,12 +113,12 @@ test('замечания по аппарату kV', () => {
   assert.ok(texts({ ...ok, hvl: 'abc' }).includes('error: СПО — число миллиметров больше нуля'));
   assert.ok(texts({ ...ok, hvlSource: 'measured' }).includes('info: СПО измерен: укажите дату измерения'));
   assert.equal(texts({ ...ok, hvlSource: 'measured', hvlDate: '2026-10-01' }).filter((t) => /дату/.test(t)).length, 0);
-  assert.ok(texts({ ...ok, chamberId: '' }).includes('warn: камера не выбрана: её выбирают в разделе 4, «Камеры режимов»'));
+  assert.ok(texts({ ...ok, chamberId: '' }).includes('warn: камера не выбрана: её выбирают в таблице «Камеры режимов» ниже'));
   // камера без kV-сертификата — справка: он вводится во вкладке и сохраняется в запись камеры
   assert.ok(texts({ ...ok, chamberId: 'ch2' }).some((t) => /^info: у камеры нет kV-сертификата/.test(t)));
   assert.ok(texts({ ...ok, chamberId: 'ch9' }).includes('error: камеры нет в «Оборудовании»'));
   assert.ok(texts({ ...ok, applicators: [], refApplicator: '' }).includes('warn: не отмечено ни одного аппликатора'));
   // в полном тексте — номер и обозначение режима
   const full = kvMachineChecks(unit(apps, [{ ...ok, chamberId: '' }]), j).find((c) => c.modeId);
-  assert.equal(full.text, 'режим 1 (200 кВ / 15 мА / 0,5 мм Cu): камера не выбрана: её выбирают в разделе 4, «Камеры режимов»');
+  assert.equal(full.text, 'режим 1 (200 кВ / 15 мА / 0,5 мм Cu): камера не выбрана: её выбирают в таблице «Камеры режимов» ниже');
 });

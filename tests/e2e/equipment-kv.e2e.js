@@ -1,6 +1,6 @@
 // «Оборудование»: рентгенотерапевтический аппарат (0.41.0) — аппликаторы (форма, размер, РИП, Ø экв.), режимы (диапазон,
 // напряжение, ток, фильтр, СПО), отмеченные аппликаторы и референсный с проверкой по TRS-398 Rev.1 (табл. 31); камера
-// режима — в разделе 4, «Камеры режимов», kV-сертификат и «Применение» — в карточке камеры (0.50.0); подписи
+// режима — в таблице «Камеры режимов» карточки аппарата (с 0.53.1; до того — раздел 4), kV-сертификат и «Применение» — в карточке камеры (0.50.0); подписи
 // обновляются при вводе без потери фокуса; удаление аппликатора, режима и камеры; английский; телефон.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -30,8 +30,8 @@ async function modeAt(page, i) {
   }
   return kvCard(page).locator('.jkv-mode');
 }
-/** Камера режима i в таблице «Камеры режимов» (раздел 4). */
-const modeChamber = (page, i) => page.locator('#eq-kv-modes tbody tr').nth(i).locator('select[data-bind$="|chamberId"]');
+/** Камера режима i в таблице «Камеры режимов» (в карточке аппарата kV, с 0.53.1). */
+const modeChamber = (page, i) => page.locator('[data-kv-mch] tbody tr').nth(i).locator('select[data-bind$="|chamberId"]');
 
 async function addApplicators(page, list) {
   for (const [name, a, ssd] of list) {
@@ -64,7 +64,7 @@ test('оборудование: рентгенотерапевтический �
   const use = (key) => ch.locator(`input[data-bind$="|use.${key}"]`);
   assert.deepEqual([await use('photon').isChecked(), await use('electron').isChecked(), await use('kv').isChecked()], [true, true, false]);
   assert.equal(await ch.locator('input[data-bind$="|kv.kv_n"]').count(), 0);
-  assert.equal(await page.locator('#eq-kv-modes').innerText(), '');
+  assert.equal(await page.locator('[data-kv-mch]').count(), 0, 'таблица «Камеры режимов» — только в карточке аппарата kV');
 
   // аппарат
   await page.click('#eq-add-kv');
@@ -130,7 +130,7 @@ test('оборудование: рентгенотерапевтический �
   // камера режима — в таблице «Камеры режимов»: камеры, не отмеченные для kV, — отдельной группой
   assert.equal(await (await modeAt(page, 0)).locator('.jkv-ch').innerText(), 'не выбрана');
   assert.equal(await (await modeAt(page, 0)).locator('select[data-bind$="|chamberId"]').count(), 0, 'в карточке режима камеру не выбрать');
-  assert.match(await page.locator('#eq-kv-modes tbody tr').nth(0).innerText(), /Xstrahl 300\s+1 — 200 кВ \/ 15 мА \/ 0\.5 mm Cu/);
+  assert.match(await page.locator('[data-kv-mch] tbody tr').nth(0).innerText(), /^1 — 200 кВ \/ 15 мА \/ 0\.5 mm Cu/);
   assert.equal(await modeChamber(page, 0).locator('optgroup').getAttribute('label'), 'другие камеры — будут отмечены для kV-рентгена');
   await modeChamber(page, 0).selectOption({ index: 1 });
   await pause();
@@ -141,13 +141,13 @@ test('оборудование: рентгенотерапевтический �
   // у камеры нет kV-сертификата — только справка; в таблице — «нет»
   assert.deepEqual(await (await modeAt(page, 0)).locator('.jmsgs li').evaluateAll((li) => li.map((x) => x.className)), ['info']);
   assert.match(await (await modeAt(page, 0)).locator('.jmsgs').innerText(), /у камеры нет kV-сертификата: введите его в карточке камеры/);
-  assert.match(await page.locator('#eq-kv-modes tbody tr').nth(0).innerText(), /нет — введите в карточке камеры/);
+  assert.match(await page.locator('[data-kv-mch] tbody tr').nth(0).innerText(), /нет — введите в карточке камеры/);
   assert.equal(await kvCard(page).locator('.jcard-head .chip.warn, .jcard-head .chip.error').count(), 0);
   // электрометр режима — «Электрометр при калибровке» камеры
-  assert.match(await page.locator('#eq-kv-modes tbody tr').nth(0).innerText(), /укажите «Электрометр при калибровке» у камеры/);
+  assert.match(await page.locator('[data-kv-mch] tbody tr').nth(0).innerText(), /укажите «Электрометр при калибровке» у камеры/);
   await ch.locator('select[data-bind$="|kvCal.calEl"]').selectOption({ index: 1 });
   await pause();
-  assert.match(await page.locator('#eq-kv-modes tbody tr').nth(0).innerText(), /при калибровке камеры/);
+  assert.match(await page.locator('[data-kv-mch] tbody tr').nth(0).innerText(), /при калибровке камеры/);
   // kV-сертификат в карточке камеры: N_K, таблица качеств
   await ch.locator('select[data-bind$="|kv.kv_cal"]').selectOption('nk');
   await pause();
@@ -169,7 +169,7 @@ test('оборудование: рентгенотерапевтический �
   await ch.locator('input[data-bind$="|kv.kv_cq_hvl.1"]').fill('2,0');
   await ch.locator('input[data-bind$="|kv.kv_cq_val.1"]').fill('0,0455');
   await pause();
-  assert.match(await page.locator('#eq-kv-modes tbody tr').nth(0).innerText(), /есть/);
+  assert.match(await page.locator('[data-kv-mch] tbody tr').nth(0).innerText(), /есть/);
   assert.doesNotMatch(await (await modeAt(page, 0)).locator('.jmsgs').innerText(), /нет kV-сертификата/);
   assert.match(await ch.locator('h4 + .sub-hint').first().innerText(), /^NK \(воздушная керма\); N по качествам — 2 точки; СПО 1,0–2,0 мм/);
 
@@ -237,7 +237,7 @@ test('оборудование: рентгенотерапевтический �
   await delCh.click();
   await pause();
   assert.equal(await modeChamber(page, 0).inputValue(), '');
-  assert.match(await (await modeAt(page, 0)).locator('.jmsgs').innerText(), /камера не выбрана: её выбирают в разделе 4, «Камеры режимов»/);
+  assert.match(await (await modeAt(page, 0)).locator('.jmsgs').innerText(), /камера не выбрана: её выбирают в таблице «Камеры режимов»/);
   // удалить режим
   const delMode = (await modeAt(page, 1)).locator('[data-del^="kvmode:"]');
   await delMode.click();
@@ -268,7 +268,7 @@ test('оборудование: рентгенотерапевтический �
   await pause(600);
   const lines = (await kvCard(page).innerText()).split('\n').filter((l) => CYR.test(l));
   assert.deepEqual(lines, []);
-  assert.deepEqual((await page.locator('#eq-kv-modes').innerText()).split('\n').filter((l) => CYR.test(l)), []);
+  assert.deepEqual((await page.locator('[data-kv-mch]').innerText()).split('\n').filter((l) => CYR.test(l)), []);
   assert.match(await (await modeAt(page, 0)).locator('h4').innerText(), /^Mode 1 — 200 kV \/ 15 mA \/ 0\.5 mm Cu$/);
   await page.locator('#lang_ru').check();
   await pause(300);

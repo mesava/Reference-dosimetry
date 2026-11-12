@@ -59,7 +59,7 @@ test('kV-рентген ↔ «Оборудование»: сохранить а�
   assert.match(await page.locator('#kv-ch-lock').innerText(), /^Камера и kV-сертификат — из «Оборудования» \(раздел 4, карточка камеры\): здесь они только показываются\./);
   assert.ok(await page.locator('#kv-ch-lock a[data-module="equipment"]').isVisible());
   // «раздел 4» в пояснениях — раздел «Оборудования», а не вкладки
-  assert.deepEqual(await page.locator('#kv-ch-lock a.sec-link, #kv-rows-lock a.sec-link, #kv-mode-chamber-sub a.sec-link').evaluateAll((as) => as.map((a) => `${a.dataset.secModule} ${a.dataset.secNo}`)), ['equipment 4', 'equipment 4', 'equipment 2']);
+  assert.deepEqual(await page.locator('#kv-ch-lock a.sec-link, #kv-rows-lock a.sec-link, #kv-mode-chamber-sub a.sec-link').evaluateAll((as) => as.map((a) => `${a.dataset.secModule} ${a.dataset.secNo}`)), ['equipment 2', 'equipment 4', 'equipment 2']);
   assert.equal(await page.locator('#kv_hvl').getAttribute('title'), 'Из «Оборудования»: правится там');
 
   // измеренный СПО режима 1 не в расчёте: значение таблицы режимов в «Оборудование» не возвращается — вопроса нет
@@ -79,8 +79,8 @@ test('kV-рентген ↔ «Оборудование»: сохранить а�
   await page.locator('.jcard.jkv .jkv-mode').first().locator('input[data-bind$="|hvl"]').fill('1,10');
   await page.locator('[data-card^="chamber:"]').first().locator('input[data-bind$="|kv.kv_n"]').fill('0,04600');
   await pause();
-  assert.deepEqual(await page.locator('#eq-kv-modes select[data-bind$="|chamberId"] option:checked').allInnerTexts(), ['PTW 30013 № 0000', 'PTW 30013 № 0000']);
-  assert.match(await page.locator('#eq-kv-modes tbody tr').first().innerText(), /Электрометр \(демо\)/);
+  assert.deepEqual(await page.locator('[data-kv-mch] select[data-bind$="|chamberId"] option:checked').allInnerTexts(), ['PTW 30013 № 0000', 'PTW 30013 № 0000']);
+  assert.match(await page.locator('[data-kv-mch] tbody tr').first().innerText(), /Электрометр \(демо\)/);
   // вкладка: «Обновить из «Оборудования»» — СПО и N из журнала, показания остаются
   await page.goto(`${server.url}/index.html#kv/modes`);
   await page.waitForSelector('#kv-jbind [data-kvj="refresh"]');
@@ -263,7 +263,7 @@ test('kV-рентген ↔ «Оборудование»: у режима из �
   assert.equal(await page.locator('#kv_hvl').getAttribute('title'), 'From Equipment: edited there');
   assert.equal(await page.locator('#kv-mode-chamber').innerText(), 'Mode 1: PTW 30013 S/N 0000');
   await page.goto(`${server.url}/index.html#equipment`);
-  await page.waitForSelector('#eq-kv-modes table');
+  await page.waitForSelector('[data-kv-mch] table');
   // (электрометр «Электрометр (демо)» — введённое значение примера)
   assert.deepEqual((await page.locator('[data-card^="chamber:"]').first().innerText()).split('\n').filter((l) => CYR.test(l) && l !== 'Электрометр (демо)'), []);
   await page.locator('#lang_ru').check();

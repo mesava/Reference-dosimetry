@@ -534,7 +534,7 @@ function renderChamberPick() {
   const where = used.length > 1 ? L(`Камера ${cur + 1} выбрана в режимах ${used.join(', ')}: поля ниже меняют её во всех этих режимах.`, `Chamber ${cur + 1} is used in modes ${used.join(', ')}: the fields below change it in all of them.`) : '';
   // у режима из «Оборудования» откуда камера — в отметке ниже (applyLock); «раздел 4» — раздел «Оборудования»
   html($('#kv-mode-chamber-sub'), linked
-    ? `<span data-sec-target="equipment">${esc(L('Выбирается в «Оборудовании», раздел 4, «Камеры режимов».', 'Selected in Equipment, section 4, Chambers of the modes.'))}</span>`
+    ? `<span data-sec-target="equipment">${esc(L('Выбирается в «Оборудовании», раздел 2, карточка аппарата, таблица «Камеры режимов».', 'Selected in Equipment, section 2, the unit card, the Chambers of the modes table.'))}</span>`
     : esc([where, L('Камера режима выбирается в столбце «Камера» таблицы режимов (раздел 1); там же «+ новая камера…» — она берёт электрометр, T₀, P₀ и напряжения текущей.', 'The chamber of the mode is selected in the Chamber column of the modes table (section 1); “+ new chamber…” is there too: it takes the electrometer, T₀, P₀ and voltages of the current one.')].filter(Boolean).join(' ')));
 }
 
