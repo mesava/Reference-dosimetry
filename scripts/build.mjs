@@ -24,9 +24,11 @@ const bundle = await build({
 });
 const js = bundle.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 
-const cssTag = '<link rel="stylesheet" href="src/ui/styles.css">';
-const jsTag = '<script type="module" src="src/ui/app.js"></script>';
-if (!html.includes(cssTag) || !html.includes(jsTag)) throw new Error('index.html: не найдены теги стилей или скрипта');
+// у страницы на сервере ссылки на стили и скрипт — с номером версии (?v=…, с 0.57.1): после выкладки браузер и CDN
+// GitHub Pages не отдают вперемешку старый файл стилей и новые скрипты
+const cssTag = html.match(/<link rel="stylesheet" href="src\/ui\/styles\.css(\?v=[\w.-]+)?">/)?.[0];
+const jsTag = html.match(/<script type="module" src="src\/ui\/app\.js(\?v=[\w.-]+)?"><\/script>/)?.[0];
+if (!cssTag || !jsTag) throw new Error('index.html: не найдены теги стилей или скрипта');
 
 // установка как приложение (манифест, сервис-воркер) — только у страницы на сервере: у файла рядом нет ни манифеста,
 // ни значков; значок вкладки встраивается в файл

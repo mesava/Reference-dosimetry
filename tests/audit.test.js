@@ -135,6 +135,10 @@ test('Версия калькулятора совпадает с package.json',
   const cff = readFileSync(new URL('../CITATION.cff', import.meta.url), 'utf8');
   assert.match(cff, new RegExp(`^version: ${APP_VERSION.replace(/\./g, '\\.')}$`, 'm'), 'версия в CITATION.cff');
   assert.match(cff, new RegExp(`^license: ${pkg.license}$`, 'm'), 'лицензия в CITATION.cff');
+  // ссылки на стили и скрипт страницы — с номером версии (0.57.1): после выкладки браузер берёт новые файлы, а не старые
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.ok(html.includes(`href="src/ui/styles.css?v=${APP_VERSION}"`), 'версия в ссылке на styles.css');
+  assert.ok(html.includes(`src="src/ui/app.js?v=${APP_VERSION}"`), 'версия в ссылке на app.js');
 });
 
 test('⁶⁰Co: k_s лаборатории чуть больше измеренного — отношение < 1, расчёт не блокируется', () => {
