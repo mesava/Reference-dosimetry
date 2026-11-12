@@ -188,6 +188,8 @@ export const STATIC_EN = {
   "Измерение: РИК = 100 см, поле 10 × 10 см в плоскости камеры, глубины 20 и 10 см": "Measurement: SCD = 100 cm, 10 × 10 cm field in the plane of the chamber, depths of 20 and 10 cm",
   "Значение уже известно (система сканирования, прежнее измерение)": "The value is already known (scanning system, earlier measurement)",
   "TPR<sub>20,10</sub>, введённый": "TPR<sub>20,10</sub>, entered",
+  "Откуда взят TPR<sub>20,10</sub>": "Where TPR<sub>20,10</sub> comes from",
+  "система сканирования, дата; прежняя калибровка": "scanning system, date; earlier calibration",
   "Через PDD на глубинах 20 и 10 см (РИП 100 см, поле 10 × 10 см на поверхности)": "From PDD at depths of 20 and 10 cm (SSD 100 cm, 10 × 10 cm field at the surface)",
   "M на 20 см": "M at 20 cm",
   "M на 10 см": "M at 10 cm",

@@ -386,7 +386,7 @@ function init() {
   ]);
   const tabJournals = initTabJournal([
     { kind: 'cobalt', module: 'co60', bind: '#co-jbind', rec: '#co-jrec', check: '#co-jcheck', read: cobaltCurrentForm, patch: applyCobaltPatch, status: cobaltStatus, demo: () => !$('#co-demo-flag').hidden, blank: () => ({ ...CO_DEFAULTS, co_date: today() }) },
-    { kind: 'photon', module: 'photons', bind: '#ph-jbind', rec: '#ph-jrec', check: '#ph-jcheck', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden, blank: () => ({ ...FORM_DEFAULTS, meta_date: today() }) },
+    { kind: 'photon', module: 'photons', bind: '#ph-jbind', rec: '#ph-jrec', check: '#ph-jcheck', prev: '#ph-qprev', read: photonsCurrentForm, patch: applyPhotonsPatch, status: photonsStatus, demo: () => !$('#demo-flag').hidden, blank: () => ({ ...FORM_DEFAULTS, meta_date: today() }) },
     { kind: 'electron', module: 'electrons', bind: '#e-jbind', rec: '#e-jrec', check: '#e-jcheck', read: electronsCurrentForm, patch: applyElectronsPatch, status: electronsStatus, demo: () => !$('#e-demo-flag').hidden, blank: () => ({ ...E_DEFAULTS, e_date: today() }) },
   ]);
   // сеанс: пучок журнала открывается в своей вкладке, «Записать и далее» — запись вкладки в журнал

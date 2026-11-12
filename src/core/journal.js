@@ -63,7 +63,7 @@ export const PH_SESSION_KEYS = [
 /** Пучок: всё остальное — геометрия, напряжения, МЕ, способ определения качества и k_Q, k_vol, пересчёт на d_max, номинал. */
 export const PH_BEAM_KEYS = Object.keys(FORM_DEFAULTS).filter((k) => ![...PH_CHAMBER_KEYS, ...PH_ELECTROMETER_KEYS, ...PH_SESSION_KEYS].includes(k));
 /** Показатель качества: в профиле — последнее измеренное значение, в сеансе калибровки — новое. */
-export const PH_QUALITY_KEYS = ['qtrs_v20', 'qtrs_v10', 'qtrs_tpr', 'q51_pdd10', 'q51_pdd10pb', 'q51_manual'];
+export const PH_QUALITY_KEYS = ['qtrs_v20', 'qtrs_v10', 'qtrs_tpr', 'qtrs_tpr_src', 'q51_pdd10', 'q51_pdd10pb', 'q51_manual'];
 
 // ---------------------------------------------------------------- поля формы вкладки «Электроны» по владельцу
 export const E_CHAMBER_KEYS = [
@@ -754,6 +754,32 @@ export function lastCalibration(j, beamId, { before = '9999-12-31', exceptId = '
     rateMax: sum.rateMax,
     tauMin: sum.tauMin,
     actDate: String(best.beam.form?.co_act_date ?? ''),
+  };
+}
+
+/**
+ * TPR20,10 последней калибровки пучка МВ фотонов по TRS-398 Rev.1 до даты (не включая сеанс exceptId) — справочно во
+ * вкладке «МВ фотоны» при калибровке: показания на 20 и 10 см (или PDD), способ и сам TPR20,10. null — такой нет.
+ * Калибровки по TG-51 не берутся: у них показатель качества — %dd(10)x.
+ */
+export function lastPhotonQuality(j, beamId, { before = '9999-12-31', exceptId = '' } = {}) {
+  let best = null;
+  for (const s of j.sessions) {
+    if (s.mode !== 'cal' || s.protocol === 'tg51' || s.id === exceptId || !(String(s.date) <= before)) continue;
+    const b = s.beams.find((x) => x.beamId === beamId && x.include !== false && x.summary?.ok && Number.isFinite(x.summary.quality));
+    if (b && (!best || String(s.date) >= String(best.session.date))) best = { session: s, beam: b };
+  }
+  if (!best) return null;
+  const f = best.beam.form || {};
+  const method = ['ratio', 'pdd2010', 'known'].includes(f.qtrs_method) ? f.qtrs_method : 'ratio';
+  return {
+    date: best.session.date,
+    sessionId: best.session.id,
+    tpr: best.beam.summary.quality,
+    method,
+    v20: method === 'known' ? '' : String(f.qtrs_v20 ?? ''),
+    v10: method === 'known' ? '' : String(f.qtrs_v10 ?? ''),
+    src: method === 'known' ? String(f.qtrs_tpr_src ?? '') : '',
   };
 }
 

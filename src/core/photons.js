@@ -93,6 +93,7 @@ export const FORM_DEFAULTS = {
   qtrs_v20: '',
   qtrs_v10: '',
   qtrs_tpr: '', // TPR20,10, введённый вручную (способ 'known')
+  qtrs_tpr_src: '', // откуда взят введённый TPR20,10 (например, из прошлой калибровки в журнале) — в протокол
   qtrs_fff_pdd10: '',
 
   // поправка на рекомбинацию по глубине для показателя качества (TRS-398 Rev.1, разд. 4.4.3.4 e и разд. 6 о TPR20,10:
@@ -648,7 +649,9 @@ export function computePhotons(form) {
     if (known) {
       // TPR20,10 известен (система сканирования, прежнее измерение): берётся как есть — и для СВФ, и для БВФ
       tpr = read('qtrs_tpr', 'TPR20,10', 'trs');
-      trs.tprEquation = L('TPR20,10 введён вручную', 'TPR20,10 entered manually');
+      const src = String(f.qtrs_tpr_src ?? '').trim();
+      trs.tprEquation = src ? L(`TPR20,10 введён вручную — ${src}`, `TPR20,10 entered manually: ${src}`) : L('TPR20,10 введён вручную', 'TPR20,10 entered manually');
+      trs.tprSource = src;
       trs.tprKnown = true;
       add(
         'info',

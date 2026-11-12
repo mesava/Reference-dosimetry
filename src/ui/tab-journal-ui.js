@@ -3,7 +3,7 @@
 // журнал». Измерение идёт во вкладке со всеми поправками; в журнал попадает форма вкладки и итог (core/journal.js:
 // recordTabBeam). Пучки одного аппарата за день в одном режиме — одна запись журнала.
 import { L } from '../core/i18n.js';
-import { beamKind, machineOf, tabBeamPatch, recordTabBeam, tabRecordOf, tabSessionOf, tabWork, calibrationChecks, tabEquipment, tabDate, lastCalibration, chamberText, electrometerText, chamberOf, electrometerOf, saveBeamSettings, staleReadings, SESSION_DEFAULTS, CAL_GEO_KEYS, calGeoText, sameCalGeo } from '../core/journal.js';
+import { beamKind, machineOf, tabBeamPatch, recordTabBeam, tabRecordOf, tabSessionOf, tabWork, calibrationChecks, tabEquipment, tabDate, lastCalibration, chamberText, electrometerText, chamberOf, electrometerOf, saveBeamSettings, staleReadings, SESSION_DEFAULTS, CAL_GEO_KEYS, calGeoText, sameCalGeo, lastPhotonQuality } from '../core/journal.js';
 import { IMPLAUSIBLE_DEVIATION } from '../core/common.js';
 import { newCheck, withTabChecks, CHECK_REF } from '../core/journal-check.js';
 import { $, esc, richText, currentProtocol, fmt, fmtSigned, today } from './common.js';
@@ -20,7 +20,8 @@ const TAB = { photon: () => L('«МВ фотоны»', 'MV photons'), electron: 
  * cfg: { kind, module, bind — селектор блока в разделе 1, rec — селектор блока под результатом, read() — форма вкладки,
  * patch(поля) — подставить поля, status(текст) — строка состояния вкладки, demo() — открыт ли демонстрационный пример,
  * blank() — пустая форма вкладки (как после «Очистить»),
- * check — селектор раздела «Проверка дозиметра второй камерой» (по желанию; записывается вместе с измерением) }.
+ * check — селектор раздела «Проверка дозиметра второй камерой» (по желанию; записывается вместе с измерением),
+ * prev — селектор блока с качеством пучка прошлой калибровки (только «МВ фотоны», TRS-398: справочно, в расчёт не идёт) }.
  */
 function makeTabJournal(cfg) {
   const key = `reference-dosimetry.tabjournal.${cfg.kind}`;
@@ -36,6 +37,7 @@ function makeTabJournal(cfg) {
   // проверки второй камерой пучка журнала: { beamId, list } — черновик, записывается вместе с измерением
   let checks = { beamId: '', list: [] };
   let lastCheck = '';
+  let lastPrev = '';
   try {
     const v = JSON.parse(localStorage.getItem(key) || 'null');
     if (v && typeof v === 'object') bind = { machineId: String(v.machineId || ''), beamId: String(v.beamId || '') };
@@ -231,10 +233,75 @@ function makeTabJournal(cfg) {
     if (b) computeCheck(j, m, b, cfg.read());
   }
 
+  /** Источник TPR20,10, подставленного из прошлой калибровки, — в протокол (поле «Откуда взят TPR20,10»). */
+  const prevSrc = (q) => L(
+    `из калибровки этого пучка в журнале от ${fmtDate(q.date)}; в день измерения не измерялся`,
+    `from the calibration of this beam in the journal of ${fmtDate(q.date)}; not measured on the day of measurement`,
+  );
+  /** Прошлая калибровка пучка для качества пучка: та же, что видна в блоке (до даты вкладки, без своей записи). */
+  function prevQuality(j, m, b, form) {
+    const own = tabSessionOf(j, { machineId: m.id, form, kind: cfg.kind });
+    return lastPhotonQuality(j, b.id, { before: String(form[DATE[cfg.kind]] || '') || '9999-12-31', exceptId: own?.id || '' });
+  }
+  /**
+   * Качество пучка прошлой калибровки (раздел 4 «МВ фотоны», TRS-398): серым под полями 20 и 10 см — справочно, если
+   * в этот день качество не измеряли; кнопка подставляет TPR20,10 способом «Значение уже известно» с источником.
+   */
+  function renderPrev() {
+    const box = cfg.prev ? $(cfg.prev) : null;
+    if (!box) return;
+    const j = getJournal();
+    const { m, b } = current(j);
+    const form = cfg.read();
+    const q = b && !form[FIXED[cfg.kind]] && form.protocol !== 'tg51' && !cfg.demo?.() ? prevQuality(j, m, b, form) : null;
+    if (!q) {
+      box.hidden = true;
+      box.innerHTML = '';
+      lastPrev = '';
+      return;
+    }
+    const tprText = fmt(q.tpr, 4);
+    const pdd = q.method === 'pdd2010';
+    const vals = q.method === 'known'
+      ? [`TPR<sub>20,10</sub> = ${esc(tprText)}${q.src ? ` (${esc(L('введён', 'entered'))}: ${esc(q.src)})` : ` (${esc(L('введён вручную', 'entered manually'))})`}`]
+      : [
+        `${pdd ? 'PDD(20)' : esc(L('M на 20 см', 'M at 20 cm'))} = ${esc(q.v20 || '—')}`,
+        `${pdd ? 'PDD(10)' : esc(L('M на 10 см', 'M at 10 cm'))} = ${esc(q.v10 || '—')}`,
+        `TPR<sub>20,10</sub> = ${esc(tprText)}`,
+      ];
+    const src = prevSrc(q);
+    const used = form.qtrs_method === 'known' && String(form.qtrs_tpr || '').trim() === tprText && String(form.qtrs_tpr_src || '').trim() === src;
+    const html = `<p class="jprev-h">${esc(L(`Прошлая калибровка этого пучка в журнале — ${fmtDate(q.date)}. Справочно, в расчёт не идёт:`, `The previous calibration of this beam in the journal, ${fmtDate(q.date)}. For reference, not used in the calculation:`))}</p>
+      <p class="jprev-v">${vals.join(' · ')}</p>
+      ${used
+        ? `<p class="sub-hint">${esc(L('TPR20,10 этой калибровки подставлен способом «Значение уже известно»; в протоколе указано, откуда он взят.', 'The TPR20,10 of that calibration is used as a known value; the report states where it comes from.'))}</p>`
+        : `<div class="actions"><button type="button" data-jq="use">${esc(L('Взять TPR20,10 этой калибровки', 'Use the TPR20,10 of that calibration'))}</button></div>
+      <p class="sub-hint">${esc(L('Если качество пучка сегодня не измеряли. Способ станет «Значение уже известно», в протоколе будет указано, откуда взят TPR20,10. При калибровке качество пучка лучше измерить: по нему видно, не изменился ли пучок.', 'If the beam quality was not measured today. The method becomes "Value already known", and the report states where TPR20,10 comes from. At calibration it is better to measure the beam quality: it shows whether the beam has changed.'))}</p>`}`;
+    box.hidden = false;
+    if (html !== lastPrev) {
+      lastPrev = html;
+      box.innerHTML = html;
+    }
+  }
+  function usePrev() {
+    const j = getJournal();
+    const { m, b } = current(j);
+    if (!b) return;
+    const q = prevQuality(j, m, b, cfg.read());
+    if (!q) return;
+    cfg.patch({ qtrs_method: 'known', qtrs_tpr: fmt(q.tpr, 4), qtrs_tpr_src: prevSrc(q) });
+    cfg.status(L(
+      `Подставлен TPR20,10 = ${fmt(q.tpr, 4)} из калибровки «${b.name}» от ${fmtDate(q.date)}; источник записан в поле «Откуда взят TPR20,10» и попадёт в протокол.`,
+      `TPR20,10 = ${fmt(q.tpr, 4)} filled in from the calibration of "${b.name}" of ${fmtDate(q.date)}; the source is in the "Where TPR20,10 comes from" field and goes into the report.`,
+    ));
+    render();
+  }
+
   function render() {
     renderBind();
     renderRec();
     renderCheck();
+    renderPrev();
   }
 
   /**
@@ -423,6 +490,12 @@ function makeTabJournal(cfg) {
         renderCheck();
       });
     }
+    const pEl = cfg.prev ? $(cfg.prev) : null;
+    pEl?.addEventListener('click', (e) => {
+      if (!e.target.closest('[data-jq="use"]')) return;
+      e.preventDefault();
+      usePrev();
+    });
     rEl.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-jr]');
       if (!btn) return;
@@ -455,13 +528,14 @@ function makeTabJournal(cfg) {
       clearStale();
       renderRec();
       renderCheck();
+      renderPrev();
     });
     onJournal(() => {
-      lastBind = lastRec = '';
+      lastBind = lastRec = lastPrev = '';
       render();
     });
     document.addEventListener('langchange', () => {
-      lastBind = lastRec = '';
+      lastBind = lastRec = lastPrev = '';
       render();
     });
     lastFixed = !!cfg.read()[FIXED[cfg.kind]];

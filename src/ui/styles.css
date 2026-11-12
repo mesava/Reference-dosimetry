@@ -1173,6 +1173,13 @@ table.jkv-cert-t td:nth-child(4) { width: 9.5em; }
 .jlink-st.ok::before { color: var(--ok); }
 .jlink-st.warn::before { color: var(--warn); }
 .jlink-st.none::before { color: var(--muted); }
+/* качество пучка прошлой калибровки (раздел 4 «МВ фотоны») — серым, справочно */
+.jprev { border: 1px dashed var(--rule); border-radius: var(--radius); padding: 8px 12px; margin: 8px 0; color: var(--muted); display: grid; gap: 4px; }
+.jprev[hidden] { display: none; }
+.jprev p { margin: 0; }
+.jprev-h { font-size: 13px; }
+.jprev-v { font: 500 14px var(--font-mono); overflow-wrap: anywhere; }
+.jprev .actions { margin: 2px 0 0; }
 .jlink-st.warn { color: var(--ink); }
 .jlink-st .link-btn { white-space: nowrap; }
 .jlink-st .link-btn + .link-btn { margin-left: 12px; }

@@ -115,6 +115,28 @@ test('вкладка «МВ фотоны»: пучок журнала, запи�
   await pause(500);
   assert.match(await rec.innerText(), /kpol изменился на \+0,\d\d %.*Report 374/s);
 
+  // качество пучка прошлой калибровки — серым в разделе 4, справочно; по кнопке — TPR20,10 «значение известно» с источником
+  const prev = page.locator('#ph-qprev');
+  assert.ok(await prev.isVisible(), 'блок прошлой калибровки в разделе 4');
+  const prevText = await prev.innerText();
+  assert.match(prevText, /Прошлая калибровка этого пучка в журнале — 19\.10\.2026/);
+  assert.match(prevText, /M на 20 см = 39,16 · M на 10 см = 67,22 · TPR20,10 = 0,\d{4}/);
+  assert.equal(await page.inputValue('#qtrs_method'), 'ratio', 'подсказка ничего не подставляет сама');
+  await prev.locator('[data-jq=use]').click();
+  await pause(500);
+  assert.equal(await page.inputValue('#qtrs_method'), 'known');
+  assert.match(await page.inputValue('#qtrs_tpr'), /^0,\d{4}$/);
+  assert.match(await page.inputValue('#qtrs_tpr_src'), /из калибровки этого пучка в журнале от 19\.10\.2026/);
+  assert.match(await page.locator('#status').innerText(), /Подставлен TPR20,10 = 0,\d{4} из калибровки «6 МВ» от 19\.10\.2026/);
+  assert.match(await prev.innerText(), /подставлен способом «Значение уже известно»/);
+  assert.match(await page.locator('[data-out-text="trs.tprEquation"]').first().innerText(), /введён вручную — из калибровки этого пучка/);
+  // в проверке выхода блока нет: качество пучка и так из последней калибровки
+  await page.locator('#rd_fixed').check();
+  await pause(400);
+  assert.ok(await prev.isHidden());
+  await page.locator('#rd_fixed').uncheck();
+  await pause(400);
+
   // в «Журнале и трендах» — две записи аппарата
   await page.goto(`${server.url}/index.html#history`);
   await pause(600);
