@@ -23,6 +23,8 @@ const LOW_NDW = {
   kv_lab_f: '3', kv_lab_ssd: '30', kv_env_T: '21', kv_env_P: '100', kv_set_unit: 'min', kv_set: '1',
   kv_timer_mode: 'manual', kv_tau: '0,01', kv_M1: ['2,000', '2,001', '1,999'], kv_Mopp: ['2,004', '2,005', '2,003'],
   kv_phantom: 'pmma', kv_lab_phantom: 'pmma',
+  // тонкооконная камера до 100 кВ: k_pol всё же измерен (иначе k_pol = k_s = 1 без серий — отдельный тест)
+  kv_pk_measure: true,
 };
 // Средние энергии, N_K: PTW 30013 в воде на 2 см.
 const MED_NK = {

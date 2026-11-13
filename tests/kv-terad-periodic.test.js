@@ -223,7 +223,7 @@ test('Терад 200, 2025, 50–100 кВ: k_g протокола — тольк
   assert.ok(Math.abs(r85.trs.kg.value - 1.1165) < 1e-3);
 });
 
-test('Терад 200, 06.10.2024, 120–200 кВ: k_Q = 1, k_pol и k_s на каждое кВ; k_s < 1 — ошибка «перемерить k_s»', () => {
+test('Терад 200, 06.10.2024, 120–200 кВ: k_Q = 1, k_pol и k_s на каждое кВ; k_s < 1 в пределах разброса — k_s = 1', () => {
   for (const row of MED_2024) {
     const kv = row[0];
     const ks0 = ksProt(2024, kv) < 1;
@@ -232,10 +232,13 @@ test('Терад 200, 06.10.2024, 120–200 кВ: k_Q = 1, k_pol и k_s на к�
     assert.equal(x.blocked, false, `${kv} кВ ${row[1]}`);
     const ks = ksProt(2024, kv);
     if (ks < 1) {
-      // в протоколе k_s = 0,9985–0,9995 применён; калькулятор останавливает расчёт и просит перемерить k_s
+      // в протоколе k_s = 0,9985–0,9995 применён; M(V₂) больше M(V₁) на 0,05–0,15 % — в пределах разброса показаний
+      // (с 0.59.0): калькулятор берёт k_s = 1 с пометкой, а не останавливает расчёт
       const r1 = med(2024, row, { kv_qo: 'co60', kv_cert_form: 'co', kv_ks_on: true });
-      assert.equal(r1.trs.ctrl.blocked, true, `${kv} кВ`);
-      assert.ok(r1.messages.some((m) => m.level === 'error' && /k_s нужно перемерить/.test(m.text)), `${kv} кВ`);
+      assert.equal(r1.trs.ctrl.blocked, false, `${kv} кВ`);
+      assert.equal(r1.trs.ksRaw, 1, `${kv} кВ`);
+      assert.ok(r1.trs.ksNoise && r1.trs.ksNoise.raw < 1, `${kv} кВ`);
+      assert.ok(r1.messages.some((m) => m.level === 'info' && /в пределах разброса показаний/.test(m.text)), `${kv} кВ`);
     } else assert.ok(Math.abs(r.trs.ks - ks) < 1e-12);
     const d = pct(row[9], x.perUnit * Math.min(ks, 1));
     assert.ok(Math.abs(d - P0) < 0.002, `${kv} кВ ${row[1]}: ${d}`);

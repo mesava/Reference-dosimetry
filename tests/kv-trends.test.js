@@ -34,6 +34,8 @@ function checkVisit(v, date, k = 1) {
   w.modes.forEach((md, m) => {
     Object.assign(md.shared, { kv_tp_R1: ['', '', ''], kv_tp_R2: ['', '', ''] });
     for (const key of KV_HVL_OWN_KEYS) md.shared[key] = structuredClone(KV_DEFAULTS[key]);
+    // серии для k_pol и k_s — у режима (с 0.59.0)
+    Object.assign(md.shared, { kv_pk_M: ['', '', ''], kv_pk_Mopp: ['', '', ''], kv_pk_M2: ['', '', ''] });
     for (const r of md.rows) {
       Object.assign(r, { kv_Mopp: ['', '', ''], kv_M2: ['', '', ''], kv_ref: '' });
       if (m === 0) Object.assign(r, { kv_M1: scale(r.kv_M1, k), kv_Mc: scale(r.kv_Mc ?? [], k) });

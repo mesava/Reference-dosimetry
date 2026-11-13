@@ -15,7 +15,7 @@ import { KV_HVL_OWN_KEYS } from '../src/core/kv-hvl.js';
 const TODAY = '2026-11-03';
 const CAL = SAMPLE_KV.kv_date; // 2026-09-15
 
-/** Пример (два режима, одна камера) с k_s: серия при V₂ в строке 1 режима 1, режим 2 берёт её оттуда. */
+/** Пример (два режима, одна камера) с k_s: серия при V₂ у режима 1, режим 2 берёт k_s оттуда. */
 function sampleVisit() {
   const v = normalizeKvVisit({ form: SAMPLE_KV, rows: [SAMPLE_KV, ...SAMPLE_KV_ROWS], active: 0 });
   const m2 = newKvMode(v.modes[0]);
@@ -23,7 +23,8 @@ function sampleVisit() {
   m2.rows = SAMPLE_KV_MODE2.rows.map((r) => ({ ...r }));
   v.modes.push(m2);
   Object.assign(v.chambers[0], { kv_ks_on: true, kv_V2: '200' });
-  v.modes[0].rows[0].kv_M2 = ['21,90', '21,91', '21,90'];
+  // серии для k_pol и k_s — у режима 1 (с 0.59.0)
+  v.modes[0].shared.kv_pk_M2 = ['21,90', '21,91', '21,90'];
   return normalizeKvVisit(v);
 }
 
@@ -47,6 +48,8 @@ function checkVisit(v) {
   for (const md of w.modes) {
     Object.assign(md.shared, { kv_tp_R1: ['', '', ''], kv_tp_R2: ['', '', ''] });
     for (const k of KV_HVL_OWN_KEYS) md.shared[k] = structuredClone(KV_DEFAULTS[k]);
+    // серии для k_pol и k_s — у режима (с 0.59.0; в примере — перенесены из строки 1)
+    Object.assign(md.shared, { kv_pk_M: ['', '', ''], kv_pk_Mopp: ['', '', ''], kv_pk_M2: ['', '', ''] });
     for (const r of md.rows) Object.assign(r, { kv_Mopp: ['', '', ''], kv_M2: ['', '', ''], kv_ref: '' });
   }
   return normalizeKvVisit(w);
@@ -105,7 +108,7 @@ test('свои серии и введённая база важнее журна
   const { j, v } = calibrated();
   const w = checkVisit(v);
   w.modes[0].rows[1].kv_ref = '0,9000';
-  w.modes[0].rows[0].kv_Mopp = ['-21,80', '-21,81', '-21,80'];
+  Object.assign(w.modes[0].shared, { kv_pk_M: ['21,92', '21,93', '21,92'], kv_pk_Mopp: ['-21,80', '-21,81', '-21,80'] });
   const vr = computeKvVisit(w, kvJournalInputs(j, w, TODAY));
   const mr = vr.modes[0];
   assert.equal(mr.results[1].cmp.src, 'manual');

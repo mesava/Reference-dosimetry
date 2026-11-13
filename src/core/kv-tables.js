@@ -66,12 +66,13 @@ export const TRS_TABLE32 = {
 /**
  * Камеры вкладки. Плоскопараллельные для низких энергий — TRS-398 Rev.1, табл. 7 (PTW 23342, 23344) и PTW 34013
  * (в табл. 7 нет); цилиндрические — камеры табл. 32 (они же в табл. 4). Другие камеры вводятся как свои.
- * kgTable — табл. 28 или 29 для k_g; pch — столбец табл. 32.
+ * kgTable — табл. 28 или 29 для k_g; pch — столбец табл. 32. thinWindow — тонкое окно (мягкое излучение): до 100 кВ k_pol и k_s
+ * не измеряют, они равны 1 (kv.js).
  */
 export const KV_CHAMBERS = [
-  { id: 'PTW23342', maker: 'PTW', model: '23342', type: 'pp', volume: 0.02, table7: true, kgTable: 'T28' },
-  { id: 'PTW23344', maker: 'PTW', model: '23344', type: 'pp', volume: 0.2, table7: true, kgTable: 'T29' },
-  { id: 'PTW34013', maker: 'PTW', model: '34013', type: 'pp', volume: 0.0055, table7: false },
+  { id: 'PTW23342', maker: 'PTW', model: '23342', type: 'pp', volume: 0.02, table7: true, kgTable: 'T28', thinWindow: true },
+  { id: 'PTW23344', maker: 'PTW', model: '23344', type: 'pp', volume: 0.2, table7: true, kgTable: 'T29', thinWindow: true },
+  { id: 'PTW34013', maker: 'PTW', model: '34013', type: 'pp', volume: 0.0055, table7: false, thinWindow: true },
   { id: 'IBA-FC65-P', maker: 'IBA', model: 'FC65-P', type: 'cyl', volume: 0.65, pch: 'FC65-P' },
   { id: 'IBA-FC65-G', maker: 'IBA', model: 'FC65-G', type: 'cyl', volume: 0.65, pch: 'FC65-G' },
   { id: 'PTW30013', maker: 'PTW', model: '30013', type: 'cyl', volume: 0.6, pch: '30013' },

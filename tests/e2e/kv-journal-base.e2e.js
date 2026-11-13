@@ -45,19 +45,16 @@ test('kV-рентген: база «Сравнить с» из последне�
   await page.fill('#kvr0_kv_ref', '');
   await pause();
   const ref0 = page.locator('#kvr0_kv_ref');
-  assert.equal(await ref0.getAttribute('placeholder'), '1,0012');
+  assert.equal(await ref0.getAttribute('placeholder'), '1,0010');
   assert.match(await ref0.getAttribute('title'), /^Из калибровки 15\.09\.2026 \(журнал\)/);
   // те же показания и поправки — отклонение 0
   assert.match(await page.locator('#kv-rows-body tr[data-i="0"] [data-o="dev"]').innerText(), /^[+−±]0,00$/);
   assert.match(await page.locator('#kv-rows-note').innerText(), /«Сравнить с» строк без своего значения — мощность дозы того же аппликатора при калибровке 15\.09\.2026 \(журнал\)/);
-  // поле раздела 8 у выбранной строки — тоже подсказка
-  assert.equal(await page.locator('#kv_ref').getAttribute('placeholder'), '1,0012');
-  assert.match(await page.locator('#kv-ref-sub').innerText(), /^пусто — мощность дозы при калибровке 15\.09\.2026 \(журнал\)/);
 
   // протокол: база с датой калибровки
   await kvPage(page, 'summary');
   const first = (await page.locator('#kv-prot table.kv-prot-out tbody tr').first().innerText()).replace(/\s+/g, ' ').trim();
-  assert.match(first, /Ø 10 см ст\. 50 2 г\/см² 1,0012 калибровка 15\.09\.2026 1,0012 ±2 [+−±]0,00 не требуется/);
+  assert.match(first, /Ø 10 см ст\. 50 2 г\/см² 1,0010 калибровка 15\.09\.2026 1,0010 ±2 [+−±]0,00 не требуется/);
 
   // запись проверки — отдельная запись (другой день)
   await recBtn(page).click();

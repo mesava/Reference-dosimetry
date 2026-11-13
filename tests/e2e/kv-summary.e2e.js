@@ -41,11 +41,11 @@ test('kV-рентген: лист «Сводка и протокол» — св�
   assert.deepEqual(await page.locator('#kv-svd h4').allInnerTexts(), ['Средние энергии — на глубине 2 г/см², Гр/мин', 'Средние энергии — на поверхности (по PDD(2 см)), Гр/мин']);
   assert.deepEqual(await rowsText(page, '#kv-svd .kv-svd-block:first-child tr'), [
     'Аппликатор 1 200 кВ, СПО 1,00 мм Cu 2 150 кВ, СПО 0,50 мм Cu',
-    'Ø 10 см РИП 50 см 1,0012 +0,62 % 0,9140 +0,44 %',
+    'Ø 10 см РИП 50 см 1,0010 +0,61 % 0,9140 +0,44 %',
     '6 × 8 см РИП 50 см 0,9425 +0,59 % 0,8620 +0,40 %',
     'Ø 15 см РИП 50 см 1,0475 +0,53 % —',
   ]);
-  assert.deepEqual(await rowsText(page, '#kv-svd .kv-svd-block:last-child tbody tr'), ['Ø 10 см РИП 50 см 1,1300 1,0881', '6 × 8 см РИП 50 см 1,0846 1,0537', 'Ø 15 см РИП 50 см 1,1626 —']);
+  assert.deepEqual(await rowsText(page, '#kv-svd .kv-svd-block:last-child tbody tr'), ['Ø 10 см РИП 50 см 1,1298 1,0881', '6 × 8 см РИП 50 см 1,0846 1,0537', 'Ø 15 см РИП 50 см 1,1626 —']);
 
   // протокол: шапка, проверка выхода, итоги листов, заключение
   const head = await rowsText(page, '#kv-prot table.kv-prot-head tr');
@@ -55,7 +55,7 @@ test('kV-рентген: лист «Сводка и протокол» — св�
   assert.deepEqual(await page.locator('#kv-prot h4').allInnerTexts(), ['1. Проверка радиационного выхода (мощность дозы в воде)', '2. Слой половинного ослабления и kQ', '3. Ошибка таймера', '4. Линейность выхода', '5. Воспроизводимость выхода', 'Заключение', 'Примечания']);
   const out = await rowsText(page, '#kv-prot table.kv-prot-out tbody tr');
   assert.equal(out.length, 5);
-  assert.equal(out[0], '1. 200 кВ, СПО 1,00 мм Cu Ø 10 см ст. 50 2 г/см² 0,9950 1,0012 ±2 +0,62 не требуется');
+  assert.equal(out[0], '1. 200 кВ, СПО 1,00 мм Cu Ø 10 см ст. 50 2 г/см² 0,9950 1,0010 ±2 +0,61 не требуется');
   assert.equal(out[4], '6 × 8 см 50 2 г/см² 0,8585 0,8620 ±2 +0,40 не требуется');
   assert.match(await page.locator('#kv-prot').innerText(), /Радиационный выход в допуске у всех аппликаторов с базовым значением: калибровка не требуется\./);
 
@@ -91,7 +91,7 @@ test('kV-рентген: лист «Сводка и протокол» — св�
   // печать: рабочий лист — без протокола; протокол — только он
   await page.emulateMedia({ media: 'print' });
   const all = await shownSections(page);
-  assert.ok(all.includes('kv-sv1') && all.includes('9') && !all.includes('kv-pr1'));
+  assert.ok(all.includes('kv-sv1') && all.includes('7') && !all.includes('kv-pr1'));
   await page.evaluate(() => document.body.classList.add('print-kv-protocol'));
   assert.deepEqual(await shownSections(page), ['kv-pr1']);
   assert.ok(await page.locator('#kv-readout').isHidden());
@@ -103,7 +103,7 @@ test('kV-рентген: лист «Сводка и протокол» — св�
   await page.click('#kv-btn-copy-report');
   await pause();
   const report = await page.evaluate(() => navigator.clipboard.readText());
-  assert.match(report, /\nПроверка радиационного выхода \(D_изм\/D_баз − 1; допуск — по методике учреждения\):\n {2}Режим 1, Ø 10 см, РИП 50 см: D_баз 0,9950, D_изм 1,0012 Гр\/мин \(2 г\/см²\), отклонение \+0,62 % \(±2 %\); калибровка: не требуется\n {2}Режим 1, 6 × 8 см, РИП 50 см: D_баз 0,9100, D_изм 0,9425 Гр\/мин \(2 г\/см²\), отклонение \+3,57 % \(±2 %\); калибровка: требуется\n/);
+  assert.match(report, /\nПроверка радиационного выхода \(D_изм\/D_баз − 1; допуск — по методике учреждения\):\n {2}Режим 1, Ø 10 см, РИП 50 см: D_баз 0,9950, D_изм 1,0010 Гр\/мин \(2 г\/см²\), отклонение \+0,61 % \(±2 %\); калибровка: не требуется\n {2}Режим 1, 6 × 8 см, РИП 50 см: D_баз 0,9100, D_изм 0,9425 Гр\/мин \(2 г\/см²\), отклонение \+3,57 % \(±2 %\); калибровка: требуется\n/);
 
   // по-английски — без русского текста (кроме введённого пользователем)
   await page.locator('#lang_en').check();

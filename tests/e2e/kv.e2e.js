@@ -49,23 +49,27 @@ test('kV-рентген: пример, ветки расчёта, пометка
   await pause();
   const dose = await page.locator('#kv-dose-rows').innerText();
   assert.match(dose, /ур\. \(58\)/);
-  assert.match(dose, /1,0012\s*Гр\/мин на 2 г\/см²/);
-  assert.match(dose, /\+0,62 %/);
-  assert.match(dose, /На поверхности \(через PDD\): 1,1300 Гр\/мин/);
+  assert.match(dose, /1,0010\s*Гр\/мин на 2 г\/см²/);
+  assert.match(dose, /\+0,61 %/);
+  assert.match(dose, /На поверхности \(через PDD\): 1,1298 Гр\/мин/);
+  assert.match(dose, /По показаниям строки таблицы \(раздел 4\)/);
   assert.match(await page.locator('#kv-compliance').innerText(), /отступлений от условий TRS-398 Rev\.1 не найдено/);
   assert.ok(await page.locator('#kv-notrev1-flag').isHidden());
   assert.match(await page.locator('#kv-andreo-cite').innerText(), /Andreo P 2019.*205019/);
   assert.match(await page.locator('#kv-kg-sub').innerText(), /ур\. \(90\)/);
   assert.equal(await page.locator('#module-kv output[data-out="cert.NQ"]').innerText(), '0,045554');
   assert.match(await page.locator('#kv-factors').innerText(), /kg\s+0,9999/);
-  assert.match(await page.locator('#module-kv .inline-result').first().innerText(), /итог 1,0012 Гр\/мин на 2 г\/см²/i);
+  assert.match(await page.locator('#module-kv .inline-result').first().innerText(), /итог 1,0010 Гр\/мин на 2 г\/см²/i);
   assert.ok(await page.locator('#kv_qo').isVisible());
   await kvPage(page, 'dose');
-  assert.ok(await page.locator('#kv_pdd2').isVisible());
+  assert.ok(await page.locator('#kvr0_kv_pdd2').isVisible());
+  // раздел 6 «Подробно по строке и справочно» свёрнут
+  assert.equal(await page.locator('#kv-detail-box').evaluate((d) => d.open), false);
+  await page.click('#kv-detail-sum');
   // справочное сравнение для N_D,w: DIN 6809-4 и SSRMP No 9 без k_g; на итог не влияет
   const pc = await page.locator('#kv-proto-cmp').innerText();
   assert.match(pc, /Справочно · DIN 6809-4 и SSRMP No 9/);
-  assert.match(pc, /1,0013\s*Гр\/мин на 2 г\/см²/);
+  assert.match(pc, /1,0011\s*Гр\/мин на 2 г\/см²/);
   assert.match(pc, /\+0,01 %/);
   assert.match(await page.locator('#kv-pc-table').innerText(), /Отношение доз DIN \/ SSRMP \/ Rev\.1\s+1,0001/);
 
@@ -77,16 +81,16 @@ test('kV-рентген: пример, ветки расчёта, пометка
   assert.match(report, /TRS-398 Rev\.1, ур\. \(58\) \(разд\. 9, средние энергии\)/);
   assert.match(report, /0,20 мм Cu → 0,987/);
   assert.match(report, /k_g = 0,9999 \(ур\. \(90\)/);
-  assert.match(report, /1,0012 Гр\/мин; значение для сравнения 0,9950 Гр\/мин на 2 г\/см², отклонение \+0,62 %/);
+  assert.match(report, /1,0010 Гр\/мин; значение для сравнения 0,9950 Гр\/мин на 2 г\/см², отклонение \+0,61 %/);
   assert.match(report, /Andreo P 2019/);
-  assert.match(report, /— Справочно: DIN 6809-4 и SSRMP No 9, k_g = 1 \(на итог не влияет\) —\n1,0013 Гр\/мин на 2 г\/см²; отличие от TRS-398 Rev\.1 \+0,01 %/);
+  assert.match(report, /— Справочно: DIN 6809-4 и SSRMP No 9, k_g = 1 \(на итог не влияет\) —\n1,0011 Гр\/мин на 2 г\/см²; отличие от TRS-398 Rev\.1 \+0,01 %/);
 
   // сохранить и открыть файл: итог сверяется с сохранённым
   const [download] = await Promise.all([page.waitForEvent('download'), page.click('#kv-btn-save')]);
   const saved = JSON.parse(await readFile(await download.path(), 'utf8'));
   assert.equal(saved.module, 'kv');
   assert.equal(saved.form.kv_cq_hvl.length, 4);
-  assert.ok(Math.abs(saved.result.value - 1.0012) < 1e-4);
+  assert.ok(Math.abs(saved.result.value - 1.0010) < 1e-4);
   await page.click('#kv-btn-clear');
   await page.click('#kv-btn-clear');
   await pause();
@@ -126,10 +130,10 @@ test('kV-рентген: пример, ветки расчёта, пометка
   await kvPage(page, 'dose');
   await page.fill('#kvr0_kv_cone', '5');
   await page.fill('#kvr0_kv_ssd', '30');
-  await page.fill('#kv_ref', '');
+  await page.fill('#kvr0_kv_ref', '');
   await pause();
   assert.ok(await page.locator('#kv-s8').isVisible());
-  assert.ok(await page.locator('#kv_pdd2').isHidden());
+  assert.ok(await page.locator('#kvr0_kv_pdd2').isHidden());
   assert.equal(await page.locator('#kv-lbl-hvl').innerText(), 'СПО, мм Al');
   assert.match(await page.locator('#kv-dose-rows').innerText(), /ур\. \(52\)[\s\S]*на поверхности/);
   assert.match(await page.locator('#kv-kg-sub').innerText(), /табл\. 28/);
@@ -208,7 +212,7 @@ test('kV-рентген: пример, ветки расчёта, пометка
   await page.locator('#lang_en').check();
   await pause(600);
   assert.deepEqual(await cyrLines(page), []);
-  assert.match(await page.locator('#kv-dose-rows').innerText(), /1\.0012\s*Gy\/min at 2 g\/cm²/);
+  assert.match(await page.locator('#kv-dose-rows').innerText(), /1\.0010\s*Gy\/min at 2 g\/cm²/);
   assert.match(await page.locator('#kv-pages').innerText(), /Machine and modes[\s\S]*HVL and kQ[\s\S]*Timer error[\s\S]*Absorbed dose[\s\S]*Summary and report/);
   assert.match(await page.locator('#kv-eq-hint').innerText(), /Eq\. \(58\)/);
   assert.match(await page.locator('#kv-proto-cmp').innerText(), /For reference · DIN 6809-4 and SSRMP No 9/);
@@ -220,7 +224,7 @@ test('kV-рентген: пример, ветки расчёта, пометка
   await page.selectOption('#kv_cal', 'ndw');
   await page.locator('#lang_ru').check();
   await pause(400);
-  assert.match(await page.locator('#kv-dose-rows').innerText(), /1,0012\s*Гр\/мин/);
+  assert.match(await page.locator('#kv-dose-rows').innerText(), /1,0010\s*Гр\/мин/);
   assert.deepEqual(errors, []);
 });
 
@@ -243,7 +247,7 @@ test('kV-рентген → «Неопределённость»: перенос
   assert.equal(await page.inputValue('#unc_kv_cal'), 'ndw');
   assert.equal(await page.inputValue('#unc_kv_qo'), 'kv');
   assert.equal(await page.inputValue('#unc_kv_kg'), 'calc');
-  assert.equal(await page.inputValue('#unc_value'), '1,0012');
+  assert.equal(await page.inputValue('#unc_value'), '1,0010');
   assert.equal(await page.inputValue('#unc_unit'), 'Gymin');
   assert.match(await page.inputValue('#unc_beam'), /200 кВ, СПО 1,000 мм Cu/);
   assert.ok(await page.locator('#unc_route').isHidden());
@@ -387,6 +391,8 @@ test('kV-рентген: прямоугольный тубус, материал
   await page.fill('#kvr0_kv_cone_b', '10');
   await pause();
   assert.equal(await page.locator('#kvr0_kv_cone').getAttribute('aria-label'), 'Сторона a, см, строка 1');
+  // круг равной площади — в свёрнутом разделе 6 «Подробно по строке и справочно»
+  await page.locator('#kv-detail-box').evaluate((d) => (d.open = true));
   assert.equal(await page.locator('#module-kv output[data-out="inputs.fClin"]').innerText(), '10,09');
   assert.equal(await page.locator('#kv-feq-sub').innerText(), 'd = 2√(ab/π)');
   assert.match(await page.locator('#kv-messages').innerText(), /Прямоугольное поле 8 × 10 см заменено кругом равной площади диаметром 10,09 см/);

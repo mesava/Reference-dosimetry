@@ -67,7 +67,7 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   assert.equal(await sum.count(), 5);
   await kvPage(page, 'summary');
   const sumText = (await sum.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
-  assert.match(sumText[0], /^1\.1 200 кВ, СПО 1,00 мм Cu камера 1 Ø 10 см ст\. 50 1,0012 ?Гр\/мин, на 2 г\/см² 0,9950 \+0,62$/);
+  assert.match(sumText[0], /^1\.1 200 кВ, СПО 1,00 мм Cu камера 1 Ø 10 см ст\. 50 1,0010 ?Гр\/мин, на 2 г\/см² 0,9950 \+0,61$/);
   assert.match(sumText[3], /^2\.1 150 кВ, СПО 0,50 мм Cu камера 1 Ø 10 см ст\. 50 0,9140 ?Гр\/мин, на 2 г\/см² 0,9100 \+0,44$/);
   assert.match(sumText[4], /^2\.2 6 × 8 см 50 0,8620/);
   assert.equal(await text('#kv-sum-note'), 'Режим 2: kpol и τ — из режима 1 (200 кВ, СПО 1,00 мм Cu).');
@@ -196,7 +196,7 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   assert.equal(saved.mode, 1);
   assert.equal(saved.chambers.length, 1);
   assert.deepEqual(saved.modes.map((m) => m.rows.length), [3, 2]);
-  assert.deepEqual(saved.modeResults.map((m) => m.map((x) => Math.round(x.value * 1e4) / 1e4)), [[1.0012, 0.9425, 1.0475], [0.914, 0.862]]);
+  assert.deepEqual(saved.modeResults.map((m) => m.map((x) => Math.round(x.value * 1e4) / 1e4)), [[1.0010, 0.9425, 1.0475], [0.914, 0.862]]);
   assert.equal(saved.form.kv_kv, '150');
   await page.click('#kv-btn-clear');
   await page.click('#kv-btn-clear');
@@ -224,7 +224,7 @@ test('kV-рентген: режимы аппарата — k_pol и τ из со
   await pause();
   assert.equal(await chips.count(), 1);
   assert.equal(await page.locator('#kv-rows-body tr').count(), 3);
-  assert.equal(await cell(0, 'd'), '1,0012');
+  assert.equal(await cell(0, 'd'), '1,0010');
   assert.match(await text('#kv-row-of'), /^Строка 1 из 3 · /);
 
   // по-английски — без кириллицы, в том числе в режиме 2 (фильтр примера переводится)

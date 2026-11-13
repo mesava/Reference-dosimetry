@@ -16,7 +16,10 @@ import { setLang } from '../src/core/i18n.js';
 setLang('ru');
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''} ${a} ≠ ${b} (±${tol})`);
 const has = (r, level, re) => r.messages.some((m) => m.level === level && re.test(m.text));
-const sample = () => normalizeKvSession({ form: SAMPLE_KV, rows: [SAMPLE_KV, ...SAMPLE_KV_ROWS], active: 0 });
+// Файл до 0.59.0: серия при обратной полярности — в строке 1, а не в разделе 5 «k_pol и k_s» (серии режима).
+const E3 = ['', '', ''];
+const LEGACY = { ...SAMPLE_KV, kv_pk_app: '', kv_pk_M: E3, kv_pk_Mopp: E3, kv_Mopp: ['-21,93', '-21,94', '-21,93'] };
+const sample = () => normalizeKvSession({ form: LEGACY, rows: [LEGACY, ...SAMPLE_KV_ROWS], active: 0 });
 
 test('деление формы: поля строки и общие поля не пересекаются и вместе дают всю форму', () => {
   const { shared, row } = splitKvForm(SAMPLE_KV);
@@ -34,8 +37,8 @@ test('старый файл или черновик (плоская форма) 
   assert.equal(sess.rows.length, 1);
   assert.equal(sess.active, 0);
   const all = computeKvSession(sess);
-  assert.equal(all.results[0].trs.ctrl.perUnit, computeKv(SAMPLE_KV).trs.ctrl.perUnit);
-  near(all.results[0].trs.ctrl.perUnit, 1.0012, 5e-5);
+  assert.equal(all.results[0].trs.perUnit, computeKv(SAMPLE_KV).trs.perUnit);
+  near(all.results[0].trs.perUnit, 1.0010, 5e-5);
   // файл 0.35 { form } — тоже одна строка
   assert.equal(normalizeKvSession({ app: 'reference-dosimetry', module: 'kv', version: 1, form: SAMPLE_KV }).rows.length, 1);
   // пусто — одна пустая строка
@@ -228,7 +231,7 @@ test('режимы аппарата: старые файлы и черновик
   assert.equal(flat.modes.length, 1);
   assert.equal(flat.chambers.length, 1);
   assert.equal(flat.modes[0].rows.length, 1);
-  near(D(computeKvVisit(flat).modes[0].results[0]), 1.0012, 5e-5);
+  near(D(computeKvVisit(flat).modes[0].results[0]), 1.0010, 5e-5);
   // формат 2 (0.36): строки одного режима и выбранная строка
   const v2 = normalizeKvVisit({ form: kvRowForm(sample(), 2), rows: sample().rows, active: 2 });
   assert.equal(v2.modes[0].rows.length, 3);
@@ -260,7 +263,7 @@ test('режимы аппарата: режим без своих серий б�
   assert.deepEqual([m1.polMode, m1.ksMode, m1.tauMode], [-1, -1, -1]);
   assert.deepEqual([m2.polMode, m2.ksMode, m2.tauMode], [0, -1, 0]);
   // режим 1 — как раньше
-  assert.deepEqual(m1.results.map((x) => Math.round(D(x) * 1e4) / 1e4), [1.0012, 0.9425, 1.0475]);
+  assert.deepEqual(m1.results.map((x) => Math.round(D(x) * 1e4) / 1e4), [1.0010, 0.9425, 1.0475]);
   // режим 2: k_pol и τ режима 1, итог в допуске
   for (const x of m2.results) {
     assert.equal(x.trs.kpolRaw, m1.kpolFix);

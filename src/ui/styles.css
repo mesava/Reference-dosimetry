@@ -1323,6 +1323,13 @@ table.kv-rows .kv-row-del:hover:not(:disabled) { color: var(--err); }
 table.kv-rows .kv-row-del.armed { color: var(--accent-ink); background: var(--err); border-color: var(--err); }
 table.kv-rows .kv-row-del:disabled { visibility: hidden; }
 #kv-rows-note:empty { display: none; }
+/* режим из «Оборудования»: аппликатор одним столбцом по имени, без столбца РИП (с 0.59.0) */
+table.kv-rows.linked th.ssd { display: none; }
+table.kv-rows td.app { white-space: nowrap; }
+table.kv-rows .kv-app-name { display: inline-block; min-width: 4em; padding: 5px 2px; font-weight: 500; cursor: help; }
+.kv-mcells { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; }
+.kv-mcells .icon-btn { width: 26px; height: 26px; }
+#kv-pk-thin { margin-bottom: 8px; }
 #kv-sheet [data-row]::after { content: attr(data-row); color: var(--accent); font-weight: 600; }
 .kv-row-of { margin: -4px 0 8px; font: 500 13px var(--font-body); color: var(--display-dim); }
 

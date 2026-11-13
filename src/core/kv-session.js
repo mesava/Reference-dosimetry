@@ -2,9 +2,11 @@
 // «Аппликаторы»). У строки свои аппликатор, РИП, задание, температура, давление, показания, PDD и значение для сравнения
 // (KV_ROW_KEYS); пучок, фантом и ошибка таймера — общие для строк режима; камера с сертификатом — одна из введённых камер.
 // Каждая строка считается обычным computeKv по форме «общее + камера + режим + строка».
-// k_pol и k_s: серии при обратной полярности и при пониженном напряжении V₂ обычно снимают с одним аппликатором
-// режима. Строка без своей серии берёт k_pol (k_s) из первой строки, где серия есть; строка со своей серией считает
-// свой. Значения передаются в computeKv полями kv_pol_from / kv_kpol_fix и kv_ks_from / kv_ks_fix.
+// k_pol и k_s (с 0.59.0): серии режима при +V₁, −V₁ и V₂ с одним аппликатором (kv_pk_M, kv_pk_Mopp, kv_pk_M2 — поля
+// режима, раздел 5) — общие для всех строк. В файлах до 0.59.0 серии были у строк (kv_Mopp, kv_M2 при показании M₁
+// строки): серии одной строки-источника переносятся в серии режима (migrateKvPk), строка со своими сериями,
+// которые перенести нельзя, считает по ним; строка без своей серии берёт k_pol (k_s) из первой строки, где серия есть.
+// Значения передаются в computeKv полями kv_pol_from / kv_kpol_fix и kv_ks_from / kv_ks_fix.
 // Стандартный тубус (standardRow): по нему референсная доза; остальные тубусы, отличающиеся от стандартного только
 // полем, — измерения в нестандартных условиях (TRS-398 Rev.1, разд. 9.5), а не отступление от референсных условий.
 import { computeKv, KV_DEFAULTS, KV_SET_UNITS, normalizeKv } from './kv.js';
@@ -146,9 +148,19 @@ export function computeKvSession(sess, ext = {}) {
     return b && b.ref > 0 && isBlank(f.kv_ref) ? { ...f, kv_ref_j: b.ref, kv_ref_jd: b.date } : f;
   });
   const f0 = normalizeKv(forms[0] ?? sess.shared);
-  const polSrc = rows.findIndex((r) => hasSeries(r.kv_Mopp));
-  const ksOn = f0.kv_ks_on;
-  const ksSrc = ksOn ? rows.findIndex((r) => hasSeries(r.kv_M2)) : -1;
+  // серии режима (раздел 5) — свои у всех строк без своих серий (строки до 0.59.0)
+  const rowPol = (r) => hasSeries(r.kv_Mopp);
+  const rowKs = (r) => f0.kv_ks_on && hasSeries(r.kv_M2);
+  const ownRow = (r) => rowPol(r) || rowKs(r);
+  const polRow = rows.findIndex((r) => !rowPol(r));
+  const ksRow = rows.findIndex((r) => !rowKs(r));
+  const modePol = polRow >= 0 && hasSeries(f0.kv_pk_Mopp);
+  const modeKs = ksRow >= 0 && hasSeries(f0.kv_pk_M2);
+  const legacyPol = rows.findIndex(rowPol);
+  const polSrc = modePol ? polRow : legacyPol;
+  const ksOn = f0.kv_ks_on || modeKs;
+  const legacyKs = rows.findIndex(rowKs);
+  const ksSrc = modeKs ? ksRow : ksOn ? legacyKs : -1;
   const state = kvTimerState(f0);
   const tauExt = ext.tau && state === 'none' ? { kv_tau_from: ext.tau.from, kv_tau_fix: ext.tau.fix, ...(ext.tau.journal ? { kv_tau_j: true } : {}) } : {};
   // строки-источники считаются первыми: их k_pol и k_s нужны остальным строкам
@@ -158,16 +170,21 @@ export function computeKvSession(sess, ext = {}) {
     return first.get(i);
   };
   // значение источника — только если его серия без ошибок (k_s < 1 и k_s > 1,05 — ошибки, их не передаём)
-  const kpolFix = polSrc >= 0 && !bad(calc(polSrc), ['kv_Mopp', 'kv_M1', 'kpol']) ? calc(polSrc).trs.kpolRaw : NaN;
-  const ksFix = ksSrc >= 0 && !bad(calc(ksSrc), ['kv_M2', 'kv_M1', 'kv_V1', 'kv_V2', 'ks']) ? calc(ksSrc).trs.ksRaw : NaN;
-  const polExt = polSrc < 0 && ext.pol ? { kv_pol_from: ext.pol.from, kv_kpol_fix: ext.pol.fix, kv_pol_mode: ext.pol.journal ? 'journal' : true } : null;
-  const ksExt = ksSrc < 0 && ksOn && ext.ks ? { kv_ks_from: ext.ks.from, kv_ks_fix: ext.ks.fix, kv_ks_mode: ext.ks.journal ? 'journal' : true } : null;
+  const polKeys = modePol ? ['kv_pk_Mopp', 'kv_pk_M', 'kpol'] : ['kv_Mopp', 'kv_M1', 'kpol'];
+  const ksKeys = modeKs ? ['kv_pk_M2', 'kv_pk_M', 'kv_V1', 'kv_V2', 'ks'] : ['kv_M2', 'kv_M1', 'kv_V1', 'kv_V2', 'ks'];
+  // тонкооконная камера до 100 кВ (kv.js): k_pol = k_s = 1 без серий — свои значения режима
+  const thin = !!calc(0).trs.pkThin;
+  const kpolFix = thin ? 1 : polSrc >= 0 && !bad(calc(polSrc), polKeys) ? calc(polSrc).trs.kpolRaw : NaN;
+  const ksFix = thin ? 1 : ksSrc >= 0 && !bad(calc(ksSrc), ksKeys) ? calc(ksSrc).trs.ksRaw : NaN;
+  const polExt = !thin && polSrc < 0 && ext.pol ? { kv_pol_from: ext.pol.from, kv_kpol_fix: ext.pol.fix, kv_pol_mode: ext.pol.journal ? 'journal' : true } : null;
+  const ksExt = !thin && ksSrc < 0 && ext.ks ? { kv_ks_from: ext.ks.from, kv_ks_fix: ext.ks.fix, kv_ks_mode: ext.ks.journal ? 'journal' : true } : null;
   const results = rows.map((row, i) => {
     const extra = {};
-    if (polSrc >= 0 && polSrc !== i && !hasSeries(row.kv_Mopp)) Object.assign(extra, { kv_pol_from: fromText(rows, polSrc), kv_kpol_fix: kpolFix });
-    else if (polExt) Object.assign(extra, polExt);
-    if (ksSrc >= 0 && ksSrc !== i && !hasSeries(row.kv_M2)) Object.assign(extra, { kv_ks_from: fromText(rows, ksSrc), kv_ks_fix: ksFix });
-    else if (ksExt) Object.assign(extra, ksExt);
+    // строки без своих серий при сериях режима считают k_pol и k_s по ним сами; источник-строка — только у строк до 0.59.0
+    if (!thin && !modePol && polSrc >= 0 && polSrc !== i && !hasSeries(row.kv_Mopp)) Object.assign(extra, { kv_pol_from: fromText(rows, polSrc), kv_kpol_fix: kpolFix });
+    else if (polExt && !rowPol(row)) Object.assign(extra, polExt);
+    if (!thin && !modeKs && ksSrc >= 0 && ksSrc !== i && !hasSeries(row.kv_M2)) Object.assign(extra, { kv_ks_from: fromText(rows, ksSrc), kv_ks_fix: ksFix });
+    else if (ksExt && !rowKs(row)) Object.assign(extra, ksExt);
     if (!Object.keys(extra).length) return calc(i);
     return computeKv({ ...forms[i], ...tauExt, ...extra });
   });
@@ -179,7 +196,9 @@ export function computeKvSession(sess, ext = {}) {
   });
   let tau = NaN;
   if (state === 'own') tau = f0.kv_timer_mode === 'manual' ? parseNumber(f0.kv_tau) : bad(results[0], TIMER_KEYS) ? NaN : results[0].timer.tau;
-  return { results, polSrc, ksSrc, stdRow, nonRef, ksOn, kpolFix, ksFix, timer: { state, unit: f0.kv_set_unit, tau } };
+  // строки со своими сериями из файлов до 0.59.0 (их k_pol и k_s — не по сериям режима)
+  const ownRows = modePol || modeKs ? rows.map((r, i) => (ownRow(r) ? i : -1)).filter((i) => i >= 0) : [];
+  return { results, polSrc: thin ? 0 : polSrc, ksSrc: thin ? 0 : ksSrc, stdRow, nonRef, ksOn: thin || ksOn, kpolFix, ksFix, thin, modePol, modeKs, ownRows, timer: { state, unit: f0.kv_set_unit, tau } };
 }
 
 // ------------------------------------------------------------ несколько режимов аппарата и камер
@@ -209,7 +228,7 @@ const CHAMBER_SET = new Set(KV_CHAMBER_KEYS);
 /** Поля режима: всё, что не строка, не камера и не общее. */
 export const KV_MODE_KEYS = Object.keys(KV_DEFAULTS).filter((k) => !ROW_SET.has(k) && !COMMON_SET.has(k) && !CHAMBER_SET.has(k));
 /** Поля, которые новый режим не копирует из текущего: связь с режимом «Оборудования», пучок и данные ошибки таймера у него свои (задания T₁ и T₂ и задания серии облучений — те же). */
-const MODE_OWN_KEYS = ['kv_jmode', 'kv_kv', 'kv_ma', 'kv_filter', 'kv_hvl', 'kv_tau', 'kv_ts_R', 'kv_nx_t', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', ...KV_HVL_OWN_KEYS, ...KV_QA_OWN_KEYS];
+const MODE_OWN_KEYS = ['kv_jmode', 'kv_kv', 'kv_ma', 'kv_filter', 'kv_hvl', 'kv_tau', 'kv_ts_R', 'kv_pk_app', 'kv_pk_M', 'kv_pk_Mopp', 'kv_pk_M2', 'kv_nx_t', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', ...KV_HVL_OWN_KEYS, ...KV_QA_OWN_KEYS];
 /** Поля камеры, которые новая камера копирует из текущей: электрометр, условия сертификата и измерения заряда. */
 const CHAMBER_KEEP_KEYS = ['kv_el_model', 'kv_el_serial', 'kv_kelec', 'kv_T0', 'kv_P0', 'kv_V1', 'kv_V2', 'kv_polarity', 'kv_ks_on', 'kv_rec_trs', 'kv_kleak'];
 
@@ -243,12 +262,12 @@ export function normalizeKvVisit(input) {
   const src = input && typeof input === 'object' ? input : {};
   if (!Array.isArray(src.modes) || !src.modes.length) {
     const s = normalizeKvSession(src);
-    return {
+    return migrateKvPk({
       common: pick(s.shared, KV_COMMON_KEYS),
       chambers: [pick(s.shared, KV_CHAMBER_KEYS)],
       modes: [{ shared: pick(s.shared, KV_MODE_KEYS), chamber: 0, rows: s.rows, active: s.active }],
       mode: 0,
-    };
+    });
   }
   const obj = (v) => (v && typeof v === 'object' ? v : {});
   const common = splitKvVisitForm(obj(src.common)).common;
@@ -268,6 +287,35 @@ export function normalizeKvVisit(input) {
     visit.chambers[cur.chamber] = p.chamber;
     cur.shared = p.mode;
     cur.rows[cur.active] = p.row;
+  }
+  return migrateKvPk(visit);
+}
+
+/**
+ * Файлы до 0.59.0: серии для k_pol и k_s были у строки таблицы (kv_Mopp, kv_M2 при показании M₁ той же строки). Серии
+ * одной строки-источника переносятся в серии режима (раздел 5): M₁ строки — серия при +V₁, k_pol и k_s получаются те
+ * же. Если серии при обратной полярности и при V₂ сняты в разных строках, режим остаётся как был (строки считают по
+ * своим сериям). Серии при V₂ без метода двух напряжений (kv_ks_on = false) не учитывались и не переносятся.
+ */
+export function migrateKvPk(visit) {
+  for (const md of visit.modes) {
+    const sh = md.shared;
+    if (['kv_pk_M', 'kv_pk_Mopp', 'kv_pk_M2'].some((k) => hasSeries(sh[k]))) continue;
+    const ksOn = !!visit.chambers[md.chamber]?.kv_ks_on;
+    const j = md.rows.findIndex((r) => hasSeries(r.kv_Mopp));
+    const k = ksOn ? md.rows.findIndex((r) => hasSeries(r.kv_M2)) : -1;
+    if ((j < 0 && k < 0) || (j >= 0 && k >= 0 && j !== k)) continue;
+    const row = md.rows[j >= 0 ? j : k];
+    sh.kv_pk_M = copy(row.kv_M1);
+    sh.kv_pk_app = kvRowLabel(row);
+    if (j >= 0) {
+      sh.kv_pk_Mopp = copy(row.kv_Mopp);
+      row.kv_Mopp = ['', '', ''];
+    }
+    if (k >= 0) {
+      sh.kv_pk_M2 = copy(row.kv_M2);
+      row.kv_M2 = ['', '', ''];
+    }
   }
   return visit;
 }
@@ -399,8 +447,8 @@ export function computeKvVisit(visit, jx = null) {
     const jKs = o.ksOn && o.ksSrc < 0 && fin(J?.ks?.v) ? J.ks : null;
     const jTauV = o.timer.state === 'none' && fin(J?.tau?.v) ? convertTau(J.tau.v, J.tau.unit, unit) : NaN;
     const jTau = Number.isFinite(jTauV) ? { v: jTauV, date: J.tau.date } : null;
-    const polMode = o.polSrc < 0 && !jPol ? nearest(m, (j) => sameCh(j) && own[j].polSrc >= 0, hvlDistance) : -1;
-    const ksMode = o.ksOn && o.ksSrc < 0 && !jKs ? nearest(m, (j) => sameCh(j) && own[j].ksOn && own[j].ksSrc >= 0, hvlDistance) : -1;
+    const polMode = o.polSrc < 0 && !jPol ? nearest(m, (j) => sameCh(j) && own[j].polSrc >= 0 && !own[j].thin, hvlDistance) : -1;
+    const ksMode = o.ksOn && o.ksSrc < 0 && !jKs ? nearest(m, (j) => sameCh(j) && own[j].ksOn && own[j].ksSrc >= 0 && !own[j].thin, hvlDistance) : -1;
     const tauOf = (j) => convertTau(own[j].timer.tau, own[j].timer.unit, unit);
     const tauOk = (j) => own[j].timer.state === 'own' && Number.isFinite(convertTau(1, own[j].timer.unit, unit));
     const tauMode = o.timer.state === 'none' && !jTau ? nearest(m, tauOk, kvDistance) : -1;

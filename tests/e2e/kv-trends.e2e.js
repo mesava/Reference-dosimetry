@@ -65,18 +65,18 @@ test('kV-рентген: «Журнал и тренды» — выход по р
   assert.deepEqual((await head()).slice(3), ['15.09.2026']);
   const sum = await rowsText(page, '#hs-kv-sum tbody tr');
   assert.equal(sum.length, 5);
-  assert.match(sum[0], /^1\. .+ Гр\/мин, на 2 г\/см² Ø 10 см ст\. 50 1,0012 [+−]0,62 %$/);
+  assert.match(sum[0], /^1\. .+ Гр\/мин, на 2 г\/см² Ø 10 см ст\. 50 1,0010 [+−]0,61 %$/);
   await page.locator('#hs_kv_checks').check();
   await pause();
   assert.deepEqual((await head()).slice(3).map((s) => s.replace(/\s+/g, ' ').toLowerCase()), ['15.09.2026 калибровка', '20.10.2026 проверка']);
   assert.equal(await page.locator('#hs-kv-sum td.kv-sum-check').count(), 5);
-  assert.match((await rowsText(page, '#hs-kv-sum tbody tr'))[0], /1,0012 [+−]0,62 % 1,0012 ±0,00 %$/);
+  assert.match((await rowsText(page, '#hs-kv-sum tbody tr'))[0], /1,0010 [+−]0,61 % 1,0010 ±0,00 %$/);
   await page.click('#hs-kv-copy');
   await pause();
   const tsv = (await page.evaluate(() => navigator.clipboard.readText())).split('\n');
   assert.equal(tsv[0], 'Режим\tАппликатор\tРИП, см\tЕдиница\t15.09.2026\t20.10.2026');
   assert.equal(tsv.length, 6);
-  assert.match(tsv[1], /\tØ 10 см\t50\tГр\/мин\t1,0012\t1,0012$/);
+  assert.match(tsv[1], /\tØ 10 см\t50\tГр\/мин\t1,0010\t1,0010$/);
 
   // 4. режим по датам: новые сверху (у проверки свои серии вкладки — значения свои, без пометки «из калибровки»)
   const mode = await rowsText(page, '#hs-kv-mode tbody tr');

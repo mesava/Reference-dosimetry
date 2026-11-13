@@ -165,8 +165,8 @@ test('kV-рентген ↔ «Оборудование»: сохранить а�
   await kvPage(page, 'dose');
   assert.equal(await page.locator('#kv-rows-body tr').count(), 3);
   assert.equal(await page.getAttribute('#kv-rows-body tr.active', 'data-i'), '0');
-  assert.deepEqual(await page.locator('#kv-rows-body input[data-k="kv_cone"]').evaluateAll((xs) => xs.map((x) => x.value)), ['10', '6', '15']);
-  assert.deepEqual(await page.locator('#kv-rows-body input[data-k="kv_ssd"]').evaluateAll((xs) => xs.map((x) => x.value)), ['50', '50', '50']);
+  // режим из «Оборудования»: тубус и РИП — одним столбцом «Аппликатор» с именем аппликатора (0.59.0)
+  assert.deepEqual(await page.locator('#kv-rows-body .kv-app-name').allInnerTexts(), ['Ø 10 см, РИП 50 см', '6 × 8 см, РИП 50 см', 'Ø 15 см, РИП 50 см']);
   assert.equal((await page.locator('#kv-rows-body input[data-k="kv_M1"]').evaluateAll((xs) => xs.map((x) => x.value))).join(''), '');
   // на пустой вкладке (без показаний) подстановка — с первого нажатия
   await kvPage(page, 'modes');

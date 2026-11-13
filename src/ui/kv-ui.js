@@ -6,6 +6,8 @@ import {
   emptyKvRow, kvRowLabel, kvRowEmpty, KV_ROW_KEYS, normalizeKvVisit, splitKvVisitForm, kvVisitRowForm, computeKvVisit, newKvMode, newKvChamber,
   kvModeFrom } from '../core/kv-session.js';
 import { KV_CHAMBERS, kvChamberLabel, KV_PHANTOMS, resolveKvPhantom, kvPhantomStatus } from '../core/kv-tables.js';
+import { kvSameApp } from '../core/kv-journal.js';
+import { applicatorText } from '../core/kv-machine.js';
 import { TG61_T8_CHAMBER } from '../core/kv-tg61.js';
 import { SAMPLE_KV, SAMPLE_KV_EN, SAMPLE_KV_ROWS, SAMPLE_KV_MODE2, SAMPLE_KV_MODE2_EN } from '../core/sample-kv.js';
 import { L, getLang, refText } from '../core/i18n.js';
@@ -37,7 +39,7 @@ const DRAFT_KEY = 'reference-dosimetry.kv.v1';
 // формат 3 (0.37.0): режимы аппарата — общие поля common, камеры chambers, режимы modes со строками аппликаторов, выбранный
 // режим mode; form — плоская форма выбранной строки выбранного режима. Формат 2 (0.36): rows и active одного режима.
 const FILE_TAG = { app: 'reference-dosimetry', module: 'kv', version: 3 };
-const SERIES_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc', 'kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc', 'kv_ln_M1', 'kv_ln_M2', 'kv_ln_M3', 'kv_ln_M4', 'kv_ln_M5', 'kv_rp_M'];
+const SERIES_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_pk_M', 'kv_pk_Mopp', 'kv_pk_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc', 'kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc', 'kv_ln_M1', 'kv_ln_M2', 'kv_ln_M3', 'kv_ln_M4', 'kv_ln_M5', 'kv_rp_M'];
 // серия облучений с разным заданием: задания — столбцы таблицы, повторные показания — строки (раздел 3)
 const TS_KEYS = ['kv_ts_t', 'kv_ts_R'];
 const CERT_KEYS = ['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_mat', 'kv_cq_val'];
@@ -278,6 +280,8 @@ function writeForm(values) {
     else {
       const el = document.getElementById(key);
       if (!el) continue;
+      // список аппликатора серий строится по строкам режима: сохранённое значение — сразу вариантом списка
+      if (key === 'kv_pk_app' && value && ![...el.options].some((o) => o.value === value)) el.add(new Option(value, value));
       if (el.type === 'checkbox') el.checked = !!value;
       else el.value = value ?? '';
     }
@@ -334,8 +338,12 @@ function setVisit(v) {
 }
 const rowsBody = () => $('#kv-rows-body');
 const rowWord = (i) => L(`строка ${i + 1}`, `row ${i + 1}`);
-/** Ячеек показаний M₁ в строке таблицы: не меньше трёх и не меньше введённых (больше — кнопкой «+» в разделе 5). */
+/** Ячеек показаний M₁ в строке таблицы: не меньше трёх и не меньше введённых (больше — кнопкой «+» под таблицей). */
 const mCount = (row) => Math.max(3, Array.isArray(row.kv_M1) ? row.kv_M1.length : 0);
+/** Аппликатор аппарата «Оборудования» для строки режима из «Оборудования» (по форме, размеру и РИП); null — нет. */
+function rowApplicator(row, mach) {
+  return mach ? mach.applicators.find((a) => kvSameApp(a, row)) ?? null : null;
+}
 const coneLabel = (shape) => (shape === 'square' ? L('Сторона поля, см', 'Field side, cm') : shape === 'rect' ? L('Сторона a, см', 'Side a, cm') : L('Диаметр поля, см', 'Field diameter, cm'));
 
 function rowInput(i, key, value, label, j = null) {
@@ -343,7 +351,13 @@ function rowInput(i, key, value, label, j = null) {
   return `<input type="text" class="num" inputmode="decimal" id="${id}" data-k="${key}"${j === null ? '' : ` data-j="${j}"`} aria-label="${esc(`${label}, ${rowWord(i)}`)}" value="${esc(value ?? '')}">`;
 }
 
-/** Подписи колонок с единицами: задание, давление, мощность дозы. */
+/** Обозначение значения сертификата для пучка: k_Q, K (N_Д × K) или N_Q (N по качествам). */
+function kqName(data, result) {
+  const form = data.kv_cert_form;
+  return form === 'k' ? 'K' : form === 'n' ? (result.cal === 'nk' ? 'N_K,Q' : 'N_D,w,Q') : 'k_Q';
+}
+
+/** Подписи колонок с единицами: задание, давление, мощность дозы, значение сертификата. */
 function rowCaps(data, result) {
   const u = result.inputs.unitLabel;
   const pu = unitLabel(PRESSURE_UNITS[data.kv_env_P_unit]);
@@ -352,10 +366,22 @@ function rowCaps(data, result) {
     p: `P, ${pu}`,
     pLabel: L(`Давление, ${pu}`, `Pressure, ${pu}`),
     d: `D, ${result.trs.rateLabel}`,
+    kq: kqName(data, result),
   };
 }
 
-function rowHtml(row, i, n, caps) {
+/**
+ * Ячейка «Аппликатор» строки режима из «Оборудования»: имя аппликатора, как там (форма, размер и РИП — в подсказке);
+ * без имени — размер и РИП. Форма, размер и РИП правятся в «Оборудовании», поэтому здесь не вводятся.
+ */
+function appCell(row, i, mach) {
+  const a = rowApplicator(row, mach);
+  const full = a ? applicatorText(a) : [kvRowLabel(row), String(row.kv_ssd ?? '').trim() ? L(`РИП ${row.kv_ssd} см`, `SSD ${row.kv_ssd} cm`) : ''].filter(Boolean).join(', ');
+  const name = String(a?.name ?? '').trim() || full || '—';
+  return `<td class="cone app"${` data-cap="${esc(L('Аппликатор', 'Applicator'))}"`}><span class="kv-app-name" id="kvr${i}_app" title="${esc(full)}">${esc(name)}</span></td>`;
+}
+
+function rowHtml(row, i, n, caps, linked = null) {
   const shape = row.kv_cone_shape;
   const rect = shape === 'rect';
   const opt = (v, t, title) => `<option value="${v}" title="${esc(title)}"${shape === v ? ' selected' : ''}>${t}</option>`;
@@ -363,9 +389,10 @@ function rowHtml(row, i, n, caps) {
   const active = i === sess.active;
   const cap = (s) => ` data-cap="${esc(s)}"`;
   return `<tr data-i="${i}"${active ? ' class="active"' : ''}>
-    <td class="no"><span class="kv-std" hidden></span><button type="button" class="kv-row-pick" aria-pressed="${active}" aria-label="${esc(L(`Строка ${i + 1}: показать подробно в разделах ниже`, `Row ${i + 1}: show in detail in the sections below`))}" title="${esc(L('Показать строку подробно в разделах ниже', 'Show the row in detail in the sections below'))}">${i + 1}</button></td>
-    <td class="cone"${cap(L('Аппликатор, см', 'Applicator, cm'))}><span class="cone-in"><select data-k="kv_cone_shape" id="kvr${i}_kv_cone_shape" aria-label="${esc(`${L('Тубус', 'Applicator')}, ${rowWord(i)}`)}">${opt('circle', 'Ø', L('круглый', 'circular'))}${opt('square', '□', L('квадратный', 'square'))}${opt('rect', '▭', L('прямоугольный', 'rectangular'))}</select>${rowInput(i, 'kv_cone', row.kv_cone, coneLabel(shape))}<span class="x"${rect ? '' : ' hidden'}>×</span>${rowInput(i, 'kv_cone_b', row.kv_cone_b, L('Сторона b, см', 'Side b, cm')).replace('<input ', `<input${rect ? '' : ' hidden'} `)}</span></td>
-    <td${cap(L('РИП, см', 'SSD, cm'))}>${rowInput(i, 'kv_ssd', row.kv_ssd, L('РИП, см', 'SSD, cm'))}</td>
+    <td class="no"><span class="kv-std" hidden></span><button type="button" class="kv-row-pick" aria-pressed="${active}" aria-label="${esc(L(`Строка ${i + 1}: подробный расчёт в разделе 6`, `Row ${i + 1}: detailed calculation in section 6`))}" title="${esc(L('Подробный расчёт строки — в разделе 6', 'Detailed calculation of the row in section 6'))}">${i + 1}</button></td>
+    ${linked ? appCell(row, i, linked) : `<td class="cone"${cap(L('Аппликатор, см', 'Applicator, cm'))}><span class="cone-in"><select data-k="kv_cone_shape" id="kvr${i}_kv_cone_shape" aria-label="${esc(`${L('Тубус', 'Applicator')}, ${rowWord(i)}`)}">${opt('circle', 'Ø', L('круглый', 'circular'))}${opt('square', '□', L('квадратный', 'square'))}${opt('rect', '▭', L('прямоугольный', 'rectangular'))}</select>${rowInput(i, 'kv_cone', row.kv_cone, coneLabel(shape))}<span class="x"${rect ? '' : ' hidden'}>×</span>${rowInput(i, 'kv_cone_b', row.kv_cone_b, L('Сторона b, см', 'Side b, cm')).replace('<input ', `<input${rect ? '' : ' hidden'} `)}</span></td>
+    <td class="ssd"${cap(L('РИП, см', 'SSD, cm'))}>${rowInput(i, 'kv_ssd', row.kv_ssd, L('РИП, см', 'SSD, cm'))}</td>`}
+    <td class="v" data-o="kq"${cap(caps.kq)}></td>
     <td${cap(caps.set)}>${rowInput(i, 'kv_set', row.kv_set, caps.set)}</td>
     <td${cap('T, °C')}>${rowInput(i, 'kv_env_T', row.kv_env_T, L('Температура, °C', 'Temperature, °C'))}</td>
     <td${cap(caps.p)}>${rowInput(i, 'kv_env_P', row.kv_env_P, caps.pLabel)}</td>
@@ -383,7 +410,13 @@ function rowHtml(row, i, n, caps) {
 function renderRows(data, result) {
   const caps = rowCaps(data, result);
   const n = sess.rows.length;
-  rowsBody().innerHTML = sess.rows.map((row, i) => rowHtml(row, i, n, caps)).join('');
+  // режим из «Оборудования»: аппликатор — одним столбцом по имени, без полей формы, размера и РИП
+  const mach = linkedMachine();
+  const linked = modeLinked(visit.mode, mach) ? mach : null;
+  $('#kv-rows').classList.toggle('linked', !!linked);
+  rowsBody().innerHTML = sess.rows.map((row, i) => rowHtml(row, i, n, caps, linked)).join('');
+  $('#kv-rows-h-app').textContent = linked ? L('Аппликатор', 'Applicator') : L('Аппликатор, см', 'Applicator, cm');
+  html($('#kv-rows-h-kq'), richText(caps.kq));
   $('#kv-rows-h-set').textContent = caps.set;
   $('#kv-rows-h-p').textContent = caps.p;
   $('#kv-rows-h-d').textContent = caps.d;
@@ -430,6 +463,24 @@ function selectRow(i) {
   sess.active = i;
   writeForm(rowForm(i));
   update({ fromTable: true });
+}
+
+/** Ячеек показаний во всех строках режима: на одну больше или меньше (не меньше трёх; заполненные не убираются). */
+function setMCells(d) {
+  const n = Math.max(...sess.rows.map(mCount)) + d;
+  if (n < 3) return;
+  if (d < 0) {
+    const full = sess.rows.findIndex((row) => Array.isArray(row.kv_M1) && row.kv_M1.slice(n).some((v) => String(v ?? '').trim()));
+    if (full >= 0) return setStatus(L(`В строке ${full + 1} заполнена последняя ячейка показаний: сначала очистите её.`, `Row ${full + 1} has a reading in the last cell: clear it first.`));
+  }
+  for (const row of sess.rows) {
+    const a = Array.isArray(row.kv_M1) ? row.kv_M1.slice(0, n) : [];
+    while (a.length < n) a.push('');
+    row.kv_M1 = a;
+  }
+  writeForm(rowForm(sess.active));
+  openedFile = null;
+  update();
 }
 
 function addRow() {
@@ -705,7 +756,7 @@ function syncDinToJournal() {
   if (done) setStatus(L(`Пересчёт СПО по DIN 6809-4 ${on ? 'включён' : 'выключен'} и записан в kV-сертификат камеры в «Оборудовании». Сохраните журнал в файл.`, `The DIN 6809-4 HVL conversion is ${on ? 'on' : 'off'} and saved to the kV certificate of the chamber in Equipment. Save the journal to the file.`));
 }
 
-/** Номер режима и камеры у заголовков разделов 2–8, если их несколько. */
+/** Номер режима и камеры у заголовков разделов 2–6, если их несколько. */
 function renderSectionTags() {
   const tag = (id, t) => {
     const h = document.getElementById(id);
@@ -714,7 +765,7 @@ function renderSectionTags() {
     else h.removeAttribute('data-tag');
   };
   const mt = visit.modes.length > 1 ? L(` · режим ${visit.mode + 1}`, ` · mode ${visit.mode + 1}`) : '';
-  for (const id of ['kv-sh1', 'kv-s3', 'kv-ln1', 'kv-rp1', 'kv-s4', 'kv-s5', 'kv-s6', 'kv-s7', 'kv-s8']) tag(id, mt);
+  for (const id of ['kv-sh1', 'kv-s3', 'kv-ln1', 'kv-rp1', 'kv-s4', 'kv-s5', 'kv-s8']) tag(id, mt);
   tag('kv-s2', visit.chambers.length > 1 ? L(` · камера ${mode().chamber + 1}`, ` · chamber ${mode().chamber + 1}`) : '');
 }
 
@@ -742,7 +793,7 @@ function borrowedText(mr) {
   return out.join('; ');
 }
 
-/** Сводка по режимам (раздел 9): все режимы и строки, итог, отклонение и состояние; номер строки открывает её. */
+/** Сводка по режимам (раздел 7): все режимы и строки, итог, отклонение и состояние; номер строки открывает её. */
 function renderSummary(vr) {
   const cap = (t) => ` data-cap="${esc(t)}"`;
   const trs = [];
@@ -1259,7 +1310,7 @@ function rowCompliance(all, i) {
   };
 }
 
-/** Поле «Сравнить с» (в таблице или в разделе 8): база из журнала kV — подсказкой в поле и во всплывающей подписи. */
+/** Поле «Сравнить с» в таблице: база из журнала kV — подсказкой в поле и во всплывающей подписи. */
 function refHint(el, r) {
   if (!el) return;
   const j = r.cmp.src === 'journal';
@@ -1283,6 +1334,7 @@ function renderRowsState(all) {
       if (td && td.textContent !== s) td.textContent = s;
       return td;
     };
+    set('kq', fmt(r.cert?.value, r.cert?.form === 'n' ? 6 : 4));
     set('ktp', fmt(x.kTP, 4));
     set('kg', fmt(x.kg?.value, 4));
     set('d', none ? '—' : fmt(valueAt(p, r), 4));
@@ -1353,6 +1405,8 @@ function renderRowsState(all) {
   // номер выбранной строки у её полей в разделах формы и в окне результата
   const tag = n > 1 ? L(` · строка ${sess.active + 1}`, ` · row ${sess.active + 1}`) : '';
   for (const key of KV_ROW_KEYS) {
+    // влажность — одна на режим (вводится во все строки)
+    if (key === 'kv_env_H') continue;
     const els = [document.querySelector(`#kv-sheet label[for="${key}"]`), seriesBox(key)?.querySelector('.label'), key === 'kv_cone_largest' ? document.getElementById(key)?.nextElementSibling : null];
     for (const el of els) {
       if (!el) continue;
@@ -1421,7 +1475,7 @@ function renderDoseBeam(r, all) {
   html($('#kv-dose-beam'), parts.length ? richText(L(`${who}: ${parts.join(' · ')}. СПО и k_Q — лист «СПО и k_Q», τ — лист «Ошибка таймера».`, `${who}: ${parts.join(' · ')}. The HVL and k_Q come from the “HVL and k_Q” sheet, τ from the “Timer error” sheet.`)) : '');
 }
 
-/** Уравнение ветки: подсказка раздела 8. */
+/** Уравнение ветки: подсказка раздела 6. */
 function eqHint(r) {
   const key = `${r.range}-${r.cal}`;
   const co = r.qo === 'co60';
@@ -1453,12 +1507,92 @@ function eqHint(r) {
 function readingsHint(r) {
   const where =
     r.range === 'medium'
-      ? L('Цилиндрическая камера в воде, центр полости на глубине 2 г/см², поле на поверхности воды.', 'Cylindrical chamber in water, the cavity center at a depth of 2 g/cm², the field defined at the water surface.')
+      ? L('цилиндрическая камера в воде, центр полости на глубине 2 г/см²', 'cylindrical chamber in water, the cavity center at a depth of 2 g/cm²')
       : r.cal === 'nk'
-        ? L('Камера в свободном воздухе, опорная точка — на РИП, без фантома и других рассеивателей рядом.', 'Chamber free in air, the reference point at the SSD, with no phantom or other scattering material nearby.')
-        : L('Плоскопараллельная камера на поверхности фантома (ПММА или водоэквивалентного), опорная точка — на РИП.', 'Plane-parallel chamber at the surface of a PMMA or water-equivalent phantom, the reference point at the SSD.');
-  return `${where} ${L('Все серии — при одном задании строки (раздел 3 и таблица раздела 4); значения можно вводить со знаком или без. Кнопка «+» добавляет ячейку.', 'All series at the same setting of the row (section 3 and the table in section 4); values may be entered with or without a sign. The "+" button adds a cell.')}`;
+        ? L('камера в свободном воздухе, опорная точка — на РИП', 'chamber free in air, the reference point at the SSD')
+        : L('плоскопараллельная камера на поверхности фантома, опорная точка — на РИП', 'plane-parallel chamber at the phantom surface, the reference point at the SSD');
+  return L(
+    `Серии снимают на режим один раз, с одним аппликатором (${where}) и при одном задании: при рабочем напряжении V₁ и обычной полярности, при V₁ и обратной полярности и при пониженном напряжении V₂. k_pol — ур. (11) TRS-398 Rev.1, k_s — ур. (13) или (16), разд. 4.4.3.3–4.4.3.4; обычное показание для них — своя серия при V₁, а не строка таблицы. Поправки общие для всех строк режима. После смены полярности или напряжения дождитесь стабилизации показаний.`,
+    `The series are taken once per mode, with one applicator (${where}) and one setting: at the operating voltage V₁ and normal polarity, at V₁ and opposite polarity, and at the reduced voltage V₂. k_pol is TRS-398 Rev.1 Eq. (11), k_s Eq. (13) or (16), Secs 4.4.3.3–4.4.3.4; the normal reading for them is the series at V₁, not a table row. The corrections apply to all rows of the mode. After changing the polarity or voltage, wait for the readings to stabilise.`,
+  );
 }
+
+/** Подписи строк режима для списка «Аппликатор, с которым сняты серии»: имя из «Оборудования» или размер и РИП. */
+function pkAppOptions() {
+  const mach = linkedMachine();
+  const linked = modeLinked(visit.mode, mach) ? mach : null;
+  const seen = new Set();
+  const out = [];
+  sess.rows.forEach((row) => {
+    if (kvRowEmpty(row) && !String(row.kv_cone ?? '').trim()) return;
+    const a = rowApplicator(row, linked);
+    const t = a ? applicatorText(a) : [kvRowLabel(row), String(row.kv_ssd ?? '').trim() ? L(`РИП ${row.kv_ssd} см`, `SSD ${row.kv_ssd} cm`) : ''].filter(Boolean).join(', ');
+    if (t && !seen.has(t)) {
+      seen.add(t);
+      out.push(t);
+    }
+  });
+  return out;
+}
+
+/**
+ * Раздел 5: тонкооконная камера до 100 кВ — пояснение и флажок «всё же измерить» вместо серий; список аппликаторов серии;
+ * строки со своими сериями из файлов до 0.59.0.
+ */
+function renderPk(result, all) {
+  const t = result.trs;
+  const thin = !!t.pkThin;
+  const box = $('#kv-pk-thin');
+  box.hidden = !thin;
+  if (thin) {
+    html(box, richText(L(
+      `${result.chamber?.label ?? 'Камера'} — тонкооконная плоскопараллельная камера, режим до 100 кВ: k_pol = 1 и k_s = 1, серии не снимают. При смене полярности окно камеры может искажаться электростатически; калибровка проведена при той же полярности и том же напряжении в близких качествах пучка, поэтому по TRS-398 Rev.1, разд. 4.4.3.3 а) k_pol = 1; при мощности дозы меньше 2 Гр/мин общей рекомбинацией можно пренебречь (разд. 4.4.3.4 b).`,
+      `${result.chamber?.label ?? 'The chamber'} is a thin-window plane-parallel chamber and the mode is up to 100 kV: k_pol = 1 and k_s = 1, no series are taken. Reversing the polarity may distort the chamber window electrostatically; the calibration was performed at the same polarity and voltage in similar beam qualities, so by TRS-398 Rev.1, Sec. 4.4.3.3 a) k_pol = 1; at dose rates below 2 Gy/min general recombination is negligible (Sec. 4.4.3.4 b).`,
+    )));
+  }
+  $('#kv-pk-measure-box').hidden = !t.thinWindow;
+  $('#kv-pk-body').hidden = thin;
+  html($('#kv-readings-hint'), richText(readingsHint(result)));
+  // аппликатор серий: строки режима; сохранённое значение, которого среди них нет, остаётся в списке
+  const sel = $('#kv_pk_app');
+  const cur = String(mode().shared.kv_pk_app ?? '');
+  const opts = pkAppOptions();
+  if (cur && !opts.includes(cur)) opts.push(cur);
+  const want = `<option value="">${esc(L('— не указан —', '— not specified —'))}</option>${opts.map((o) => `<option value="${esc(o)}">${esc(o)}</option>`).join('')}`;
+  if (sel.dataset.opts !== want) {
+    sel.innerHTML = want;
+    sel.dataset.opts = want;
+  }
+  sel.value = cur;
+  const own = $('#kv-pk-own');
+  const rows = all?.ownRows ?? [];
+  own.hidden = !rows.length || thin;
+  if (rows.length && !thin) {
+    html(own, richText(L(
+      `${rows.length > 1 ? 'Строки' : 'Строка'} ${rows.map((i) => i + 1).join(', ')} — со своими сериями при обратной полярности или при V₂ из файла до 0.59.0: ${rows.length > 1 ? 'их' : 'её'} k_pol и k_s считаются по ним, а не по сериям этого раздела.`,
+      `${rows.length > 1 ? 'Rows' : 'Row'} ${rows.map((i) => i + 1).join(', ')} ${rows.length > 1 ? 'have their own' : 'has its own'} opposite-polarity or V₂ series from a file before 0.59.0: ${rows.length > 1 ? 'their' : 'its'} k_pol and k_s are calculated from them, not from the series of this section.`,
+    )));
+  }
+}
+
+/** Раздел 6: номер выбранной строки в заголовке раскрывающегося блока; контрольные измерения из файлов до 0.59.0. */
+function renderDetailHead(result) {
+  const lab = kvRowLabel(sess.rows[sess.active] ?? {});
+  html($('#kv-detail-sum'), richText(L(
+    `Расчёт строки ${sess.active + 1}${lab ? ` (${lab})` : ''}: k_g, множители, пересчёт на поверхность и сравнение с другими протоколами`,
+    `Calculation of row ${sess.active + 1}${lab ? ` (${lab})` : ''}: k_g, factors, transfer to the surface and comparison with other protocols`,
+  )));
+  const c = $('#kv-ctrl-legacy');
+  const on = !!result.ctrl?.on;
+  c.hidden = !on;
+  if (on) {
+    html(c, richText(L(
+      `В строке ${sess.active + 1} есть контрольные измерения из файла до 0.59.0 (${cellsText(sess.rows[sess.active]?.kv_Mc)} нКл): итог строки считается по ним, как раньше. В новых измерениях показания вводятся в таблице раздела 4.`,
+      `Row ${sess.active + 1} has check measurements from a file before 0.59.0 (${cellsText(sess.rows[sess.active]?.kv_Mc)} nC): the row result is calculated from them, as before. In new measurements, the readings are entered in the table of section 4.`,
+    )));
+  }
+}
+const cellsText = (a) => (Array.isArray(a) ? a.filter((v) => String(v ?? '').trim()).join('; ') : '');
 
 function kgSourceText(kg) {
   switch (kg?.source) {
@@ -1591,8 +1725,8 @@ function applyVisibility(data, result) {
     $('#kv-lab-hint'),
     richText(
       co
-        ? L('Поле и РИП, при которых измерены коэффициенты рентгеновских качеств (k_Q,M или K): по ним считается k_g (раздел 8).', 'The field and SSD at which the x-ray quality coefficients (k_Q,M or K) were measured: k_g is calculated from them (section 8).')
-        : L('Поле и РИП, при которых получены коэффициенты сертификата: если клинические другие, нужна поправка k_g (раздел 8).', 'The field and SSD at which the certificate coefficients were obtained: if the clinical ones differ, a k_g correction is needed (section 8).'),
+        ? L('Поле и РИП, при которых измерены коэффициенты рентгеновских качеств (k_Q,M или K): по ним считается k_g (раздел 6).', 'The field and SSD at which the x-ray quality coefficients (k_Q,M or K) were measured: k_g is calculated from them (section 6).')
+        : L('Поле и РИП, при которых получены коэффициенты сертификата: если клинические другие, нужна поправка k_g (раздел 6).', 'The field and SSD at which the certificate coefficients were obtained: if the clinical ones differ, a k_g correction is needed (section 6).'),
     ),
   );
 
@@ -1615,14 +1749,14 @@ function applyVisibility(data, result) {
   $('#kv-lbl-tp2').textContent = L(`Задание T₂, ${tpUnit}`, `Setting T₂, ${tpUnit}`);
   $('#kv-tp1-sub').textContent = timeSet ? L('короткое, например 6 с', 'short, e.g. 6 s') : L('меньшее задание', 'the smaller setting');
   $('#kv-tp2-sub').textContent = timeSet ? L('длинное, например 60 с', 'long, e.g. 60 s') : L('большее задание', 'the larger setting');
-  $('#kv-lbl-ctrl-set').textContent = windowMode ? L(`Время накопления заряда, ${unit}`, `Charge collection time, ${unit}`) : L(`Задание облучения, ${unit}`, `Exposure setting, ${unit}`);
   const winOpt = $('#kv_timer_mode option[value="window"]');
   if (winOpt) winOpt.disabled = !timeSet && !windowMode;
 
-  // показания
-  $('#kv-readings-hint').textContent = readingsHint(result);
+  // k_pol и k_s (раздел 5) и подробный расчёт строки (раздел 6)
+  renderPk(result, current.all);
+  renderDetailHead(result);
 
-  // раздел 8
+  // раздел 6
   html($('#kv-eq-hint'), richText(eqHint(result)));
   const autoOpt = $('#kv_kg_src option[value="auto"]');
   autoOpt.textContent = low ? L('по табл. 28–29 TRS-398 Rev.1 (PTW 23342, 23344)', 'by TRS-398 Rev.1 Tables 28–29 (PTW 23342, 23344)') : L('по ур. (90) TRS-398 Rev.1 (данные Andreo)', 'by TRS-398 Rev.1 Eq. (90) (Andreo data)');
@@ -1646,11 +1780,6 @@ function applyVisibility(data, result) {
   const std = c?.type === 'cyl' ? 5 : 10;
   html($('#kv-nkfs-sub'), L(`стандартное поле — Ø ${std} см; для другого поля — рис. 11 TRS-398 или от лаборатории; пусто — 1`, `standard field: ${std} cm diameter; for another field, from TRS-398 Fig. 11 or the laboratory; empty means 1`));
   $('#kv-lbl-surf').textContent = L(`На поверхности, ${rate}`, `At the surface, ${rate}`);
-  $('#kv-lbl-ref').textContent = L(`Значение для сравнения, ${rate}`, `Comparison value, ${rate}`);
-  refHint($('#kv_ref'), result);
-  html($('#kv-ref-sub'), esc(result.cmp.src === 'journal'
-    ? L(`пусто — мощность дозы при калибровке ${dateText(result.cmp.date)} (журнал); можно ввести другое`, `empty: the dose rate at the calibration of ${dateText(result.cmp.date)} (journal); you may enter another value`)
-    : L('при вводе в эксплуатацию или предыдущей калибровке; можно не заполнять', 'at commissioning or at the previous calibration; optional')));
 
   // справочное сравнение с другим протоколом
   html($('#kv-pc-hint'), symText(pcHint(result)));
@@ -1684,7 +1813,7 @@ function pcHint(r) {
   );
 }
 
-/** Таблица пар множителей «протокол — Rev.1» в разделе 8. */
+/** Таблица пар множителей «протокол — Rev.1» в разделе 6. */
 function renderPcTable(r) {
   const table = $('#kv-pc-table');
   const cmp = r.compare;
@@ -1718,7 +1847,7 @@ function protoCmpRow(result) {
   const chip = `<span class="chip" title="${L('Отличие от итога по TRS-398 Rev.1', 'Difference from the TRS-398 Rev.1 result')}">${fmtSigned(cmp.diffPct, 2)} %</span>`;
   return `<div class="proto"><span>${richText(head)}</span>${chip}</div>
     <div class="ref-value">${fmt(p.perUnit * cmp.ratio, 4)}<small>${x.rateLabel} ${zTxt}</small></div>
-    <div class="secondary">${L('отличие от Rev.1 — в разделе 8; на итог не влияет', 'the difference from Rev.1 is broken down in section 8; does not affect the result')}</div>`;
+    <div class="secondary">${L('отличие от Rev.1 — в разделе 6; на итог не влияет', 'the difference from Rev.1 is broken down in section 6; does not affect the result')}</div>`;
 }
 
 // ------------------------------------------------------------ вывод
@@ -1784,12 +1913,12 @@ function doseRow(result) {
         ? L(`На 2 г/см²: ${fmt(p.perUnit, 4)} ${unit}`, `At 2 g/cm²: ${fmt(p.perUnit, 4)} ${unit}`)
         : L(`На поверхности (через PDD): ${fmt(p.perUnitSurf, 4)} ${unit}`, `At the surface (via PDD): ${fmt(p.perUnitSurf, 4)} ${unit}`)
       : null,
-    fromCtrl ? null : L('Контрольные измерения не введены — по показанию M₁ раздела 5', 'No check measurements entered — from reading M₁ of section 5'),
+    fromCtrl ? null : L('По показаниям строки таблицы (раздел 4)', 'From the readings of the table row (section 4)'),
   ].filter(Boolean).join('<br>');
   return `<div class="dose-row ${none ? 'blocked' : ''}">
     <div class="proto"><span>${esc(methodText(result))}${fromCtrl || failed ? L(' · контрольные измерения', ' · check measurements') : ''}</span>${chip}</div>
     <div class="dose-big">${none || !Number.isFinite(main) ? '—' : fmt(main, 4)}<small>${unit} ${where}</small></div>
-    <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : failed ? ctrlErrorText(7, 5) : secondary}</div>
+    <div class="secondary">${x.blocked ? L('Исправьте ошибки из списка замечаний', 'Correct the errors listed under Messages') : failed ? ctrlErrorText(6, 4) : secondary}</div>
   </div>`;
 }
 
@@ -1819,7 +1948,7 @@ function renderReadout(result, data) {
     mv.textContent = n ? L(`Ошибок: ${n}`, `Errors: ${n}`) : '—';
   }
 
-  // строка итога в разделах 5 и 7 — те же числа, что в окне результата
+  // строка итога в разделах 5 и 6 — те же числа, что в окне результата
   setInlineResult(ROOT(), inlineResultHtml({
     value: none ? NaN : valueAt(p, result),
     digits: 4,
@@ -1829,10 +1958,10 @@ function renderReadout(result, data) {
     tol: result.cmp.tolerance,
     devLabel: L('от значения для сравнения', 'from the comparison value'),
     source: p !== x
-      ? L('по контрольным измерениям (раздел 7)', 'from the check measurements (section 7)')
-      : L('по показанию M₁ раздела 5 (контрольные измерения не введены)', 'from reading M₁ of section 5 (no check measurements entered)'),
+      ? L('по контрольным измерениям (файл до 0.59.0, раздел 6)', 'from the check measurements (file before 0.59.0, section 6)')
+      : L('по показаниям строки таблицы (раздел 4)', 'from the readings of the table row (section 4)'),
     errors: result.messages.filter((m) => m.level === 'error').length,
-    failedText: ctrlFailed(x) ? L('не посчитан — ошибки в контрольных измерениях (раздел 7)', 'not calculated: errors in the check measurements (section 7)') : '',
+    failedText: ctrlFailed(x) ? L('не посчитан — ошибки в контрольных измерениях (раздел 6)', 'not calculated: errors in the check measurements (section 6)') : '',
   }));
 
   const lvlName = { error: L('Ошибка', 'Error'), warn: L('Внимание', 'Warning'), info: L('Справка', 'Note') };
@@ -1886,7 +2015,10 @@ function renderReadout(result, data) {
   const bC = x.blocked || !!tc.blocked;
   const ctrlFinal = ctrlOn && x.ctrl && !bC;
   const i = result.inputs;
-  const title = doseGroupTitle({ ctrlOn, ctrlFinal, mainSec: 5, ctrlSec: 7, mainAmount: setText(result, i.X), ctrlAmount: setText(result, result.ctrl.X) });
+  // контрольные измерения — только в файлах до 0.59.0 (раздел 6); иначе доза — по показаниям строки таблицы (раздел 4)
+  const title = ctrlOn
+    ? doseGroupTitle({ ctrlOn, ctrlFinal, mainSec: 4, ctrlSec: 6, mainAmount: setText(result, i.X), ctrlAmount: setText(result, result.ctrl.X) })
+    : L(`Поглощённая доза — по показаниям строки ${sess.active + 1} (раздел 4), ${setText(result, i.X)}`, `Absorbed dose — from the readings of row ${sess.active + 1} (section 4), ${setText(result, i.X)}`);
   rows.push([title, '', NaN, 0, 'group']);
   const y = ctrlOn ? tc : x;
   const blocked = ctrlOn ? bC : x.blocked;
@@ -2112,18 +2244,31 @@ function reportText(data, r, all = null, vr = null) {
   if (data.kv_timer_mode === 'window') {
     line(L('Время', 'Time'), L(`заряд накоплен электрометром за ${data.kv_set} ${u} при включённой трубке; ошибка таймера в результат не входит`, `charge collected by the electrometer over ${data.kv_set} ${u} with the tube on; the timer error does not enter the result`));
   } else line(L('Задание облучения', 'Exposure setting'), `X = ${data.kv_set} ${u}; τ = ${fmt(tm.tau, 4)} ${u} (${timerFull}); X + τ = ${fmt(i.Xeff, 4)} ${u}`);
-  line(L('Напряжения', 'Voltages'), data.kv_ks_on ? L(`V1 = ${data.kv_V1} В, V2 = ${data.kv_V2} В, обычная полярность ${data.kv_polarity}`, `V1 = ${data.kv_V1} V, V2 = ${data.kv_V2} V, normal polarity ${data.kv_polarity}`) : L(`V1 = ${data.kv_V1} В, обычная полярность ${data.kv_polarity}`, `V1 = ${data.kv_V1} V, normal polarity ${data.kv_polarity}`));
   const mean = L('среднее', 'mean');
   line(L('M(V1, обычная), нКл', 'M(V1, normal), nC'), `${cells(data.kv_M1)} → ${mean} ${fmt(Math.abs(i.M1.mean), 4)}`);
-  if (i.Mopp.n > 0) line(L('M(V1, обратная), нКл', 'M(V1, opposite), nC'), `${cells(data.kv_Mopp)} → ${mean} ${fmt(Math.abs(i.Mopp.mean), 4)}`);
-  else if (x.kpolFrom && all?.jx?.pol) line(L('M(V1, обратная)', 'M(V1, opposite)'), L(`при проверке выхода не измерялось; k_pol из ${x.kpolFrom}`, `not measured in the output check; k_pol from ${x.kpolFrom}`));
-  else if (x.kpolFrom && all?.polMode >= 0) line(L('M(V1, обратная)', 'M(V1, opposite)'), L(`в этом режиме не измерялось; k_pol из ${x.kpolFrom}`, `not measured in this mode; k_pol from ${x.kpolFrom}`));
-  else if (x.kpolFrom) line(L('M(V1, обратная)', 'M(V1, opposite)'), L(`в этой строке не измерялось; k_pol из ${x.kpolFrom}`, `not measured in this row; k_pol from ${x.kpolFrom}`));
-  else line(L('M(V1, обратная)', 'M(V1, opposite)'), L('не измерялось (k_pol = 1)', 'not measured (k_pol = 1)'));
-  if (data.kv_ks_on && x.ksFrom && all?.jx?.ks) line(L('M(V2)', 'M(V2)'), L(`при проверке выхода не измерялось; k_s из ${x.ksFrom}`, `not measured in the output check; k_s from ${x.ksFrom}`));
-  else if (data.kv_ks_on && x.ksFrom && all?.ksMode >= 0) line(L('M(V2)', 'M(V2)'), L(`в этом режиме не измерялось; k_s из ${x.ksFrom}`, `not measured in this mode; k_s from ${x.ksFrom}`));
-  else if (data.kv_ks_on && x.ksFrom) line(L('M(V2)', 'M(V2)'), L(`в этой строке не измерялось; k_s из ${x.ksFrom}`, `not measured in this row; k_s from ${x.ksFrom}`));
-  else if (data.kv_ks_on) line(L('M(V2), нКл', 'M(V2), nC'), `${cells(data.kv_M2)} → ${mean} ${fmt(Math.abs(i.M2.mean), 4)}`);
+  // k_pol и k_s: серии режима (с 0.59.0), серии строки (файлы до 0.59.0), из другого режима или журнала, тонкое окно
+  const pkM = x.pkSeries && !x.pkRowOwn;
+  if (x.pkThin) {
+    line(L('k_pol, k_s', 'k_pol, k_s'), L('= 1, не измерялись: тонкооконная камера до 100 кВ (TRS-398 Rev.1, разд. 4.4.3.3 а, 4.4.3.4 b)', '= 1, not measured: thin-window chamber up to 100 kV (TRS-398 Rev.1, Secs 4.4.3.3 a, 4.4.3.4 b)'));
+  } else {
+    line(L('Напряжения', 'Voltages'), L(`V1 = ${data.kv_V1} В, V2 = ${data.kv_V2} В, обычная полярность ${data.kv_polarity}`, `V1 = ${data.kv_V1} V, V2 = ${data.kv_V2} V, normal polarity ${data.kv_polarity}`));
+    if (pkM) {
+      if (String(data.kv_pk_app ?? '').trim()) line(L('Серии для k_pol и k_s', 'Series for k_pol and k_s'), L(`аппликатор ${data.kv_pk_app}`, `applicator ${data.kv_pk_app}`));
+      line(L('M(V1, обычная), серия, нКл', 'M(V1, normal), series, nC'), `${cells(data.kv_pk_M)} → ${mean} ${fmt(Math.abs(i.Mref.mean), 4)}`);
+    }
+    const oppCells = parseCells(data.kv_Mopp).n > 0 ? data.kv_Mopp : data.kv_pk_Mopp;
+    const m2Cells = data.kv_ks_on && parseCells(data.kv_M2).n > 0 ? data.kv_M2 : data.kv_pk_M2;
+    if (i.Mopp.n > 0) line(L('M(V1, обратная), нКл', 'M(V1, opposite), nC'), `${cells(oppCells)} → ${mean} ${fmt(Math.abs(i.Mopp.mean), 4)}`);
+    else if (x.kpolFrom && all?.jx?.pol) line(L('M(V1, обратная)', 'M(V1, opposite)'), L(`при проверке выхода не измерялось; k_pol из ${x.kpolFrom}`, `not measured in the output check; k_pol from ${x.kpolFrom}`));
+    else if (x.kpolFrom && all?.polMode >= 0) line(L('M(V1, обратная)', 'M(V1, opposite)'), L(`в этом режиме не измерялось; k_pol из ${x.kpolFrom}`, `not measured in this mode; k_pol from ${x.kpolFrom}`));
+    else if (x.kpolFrom) line(L('M(V1, обратная)', 'M(V1, opposite)'), L(`в этой строке не измерялось; k_pol из ${x.kpolFrom}`, `not measured in this row; k_pol from ${x.kpolFrom}`));
+    else line(L('M(V1, обратная)', 'M(V1, opposite)'), L('не измерялось (k_pol = 1)', 'not measured (k_pol = 1)'));
+    if (x.ksFrom && all?.jx?.ks) line(L('M(V2)', 'M(V2)'), L(`при проверке выхода не измерялось; k_s из ${x.ksFrom}`, `not measured in the output check; k_s from ${x.ksFrom}`));
+    else if (x.ksFrom && all?.ksMode >= 0) line(L('M(V2)', 'M(V2)'), L(`в этом режиме не измерялось; k_s из ${x.ksFrom}`, `not measured in this mode; k_s from ${x.ksFrom}`));
+    else if (x.ksFrom) line(L('M(V2)', 'M(V2)'), L(`в этой строке не измерялось; k_s из ${x.ksFrom}`, `not measured in this row; k_s from ${x.ksFrom}`));
+    else if (i.M2.n > 0) line(L('M(V2), нКл', 'M(V2), nC'), `${cells(m2Cells)} → ${mean} ${fmt(Math.abs(i.M2.mean), 4)}${x.ksNoise ? L(` (больше M(V1) в пределах разброса: k_s = 1)`, ` (exceeds M(V1) within the spread: k_s = 1)`) : ''}`);
+    else line(L('M(V2)', 'M(V2)'), L('не измерялось (k_s = 1)', 'not measured (k_s = 1)'));
+  }
   if (r.ctrl.on) line(L('Контрольные измерения M(V1), нКл', 'Check measurements M(V1), nC'), `${cells(data.kv_Mc)} → ${mean} ${fmt(r.ctrl.mean, 4)} ${L('за', 'for')} ${setText(r, r.ctrl.X)}`);
   out.push('');
   out.push(`— ${PROTO_NAME} —`);
@@ -2160,9 +2305,9 @@ function reportText(data, r, all = null, vr = null) {
         out.push(L(`  PDD(2 см) = ${fmt(r.depth.pdd, 1)} %${pp}; на поверхности ${fmt(y.perUnitSurf, 4)} ${x.rateLabel}`, `  PDD(2 cm) = ${fmt(r.depth.pdd, 1)} %${pp}; at the surface ${fmt(y.perUnitSurf, 4)} ${x.rateLabel}`));
       }
     };
-    if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (раздел 7)', 'From check measurements (section 7)'));
-    else if (r.ctrl.on) out.push(L('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: в контрольных измерениях (раздел 7) ошибки (см. замечания).', 'RESULT NOT CALCULATED: the check measurements (section 7) contain errors (see Messages).'));
-    else describe(x, L('По показанию M₁ раздела 5 (контрольные измерения не введены)', 'From reading M₁ of section 5 (no check measurements entered)'));
+    if (x.ctrl && !x.ctrl.blocked) describe(x.ctrl, L('По контрольным измерениям (файл до 0.59.0)', 'From check measurements (file before 0.59.0)'));
+    else if (r.ctrl.on) out.push(L('РЕЗУЛЬТАТ НЕ ВЫЧИСЛЕН: в контрольных измерениях ошибки (см. замечания).', 'RESULT NOT CALCULATED: the check measurements contain errors (see Messages).'));
+    else describe(x, L('По показаниям строки таблицы (раздел 4)', 'From the readings of the table row (section 4)'));
     const cl = complianceLine((all && rowCompliance(all, sess.active)) ?? r.compliance, PROTO_NAME);
     if (cl) out.push(cl);
   }
@@ -2673,6 +2818,8 @@ export function initKv() {
   const inModes = (el) => !!el?.closest?.('#kv-modes');
   sheet.addEventListener('input', (e) => {
     if (inTable(e.target)) return onRowInput(e.target);
+    // влажность — одна на режим: в каждую строку (в расчёт не входит, идёт в протокол)
+    if (e.target.id === 'kv_env_H') for (const row of sess.rows) row.kv_env_H = e.target.value;
     if (inTimer(e.target)) return onTimerInput(e.target);
     // камера в таблице режимов — по событию change
     if (inModes(e.target)) return e.target.dataset.ch === undefined ? onModeInput(e.target) : undefined;
@@ -2713,8 +2860,10 @@ export function initKv() {
     if (del) onDeleteClick(del);
   });
   $('#kv-btn-add-row').addEventListener('click', addRow);
+  $('#kv-mcells-add').addEventListener('click', () => setMCells(1));
+  $('#kv-mcells-remove').addEventListener('click', () => setMCells(-1));
 
-  // режимы аппарата (раздел 1), камера режима (раздел 2), сводка (раздел 9)
+  // режимы аппарата (раздел 1), камера режима (раздел 2), сводка (раздел 7)
   $('#kv-modes').addEventListener('click', (e) => {
     const b = e.target.closest('.kv-mode');
     if (b) selectMode(Number(b.dataset.m));

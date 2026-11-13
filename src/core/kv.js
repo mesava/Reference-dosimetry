@@ -233,10 +233,18 @@ export const KV_DEFAULTS = {
   kv_polarity: '+',
   kv_M1: ['', '', ''],
   kv_Mopp: ['', '', ''],
-  kv_ks_on: false, // метод двух напряжений; без него k_s = 1 (разд. 9.4.2)
+  // метод двух напряжений: с 0.59.0 всегда (без серии при V₂ k_s = 1, разд. 9.4.2); false — формы до 0.59.0 без него,
+  // их серии строк при V₂ не учитываются
+  kv_ks_on: true,
   kv_M2: ['', '', ''],
   kv_rec_trs: 'eq13', // 'eq13' | 'eq16'
   kv_kleak: '1,000',
+  // k_pol и k_s режима (с 0.59.0): серии с одним аппликатором — при +V₁ (обычная полярность), −V₁ и V₂
+  kv_pk_app: '', // аппликатор, с которым сняты серии (подпись строки таблицы)
+  kv_pk_M: ['', '', ''],
+  kv_pk_Mopp: ['', '', ''],
+  kv_pk_M2: ['', '', ''],
+  kv_pk_measure: false, // тонкооконная камера до 100 кВ: всё же измерить k_pol и k_s
 
   // контрольные измерения
   kv_Mc: ['', '', ''],
@@ -250,8 +258,10 @@ export const KV_DEFAULTS = {
   kv_tol: '2',
 };
 
-const CELL_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc', 'kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc', 'kv_ln_M1', 'kv_ln_M2', 'kv_ln_M3', 'kv_ln_M4', 'kv_ln_M5', 'kv_rp_M'];
-const BOOL_KEYS = ['kv_cone_largest', 'kv_foil', 'kv_lab_pol_applied', 'kv_lab_ks_applied', 'kv_ks_on', 'kv_hl_apply', 'kv_cq_din'];
+const CELL_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_pk_M', 'kv_pk_Mopp', 'kv_pk_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc', 'kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc', 'kv_ln_M1', 'kv_ln_M2', 'kv_ln_M3', 'kv_ln_M4', 'kv_ln_M5', 'kv_rp_M'];
+const BOOL_KEYS = ['kv_cone_largest', 'kv_foil', 'kv_lab_pol_applied', 'kv_lab_ks_applied', 'kv_ks_on', 'kv_hl_apply', 'kv_cq_din', 'kv_pk_measure'];
+/** M(V₂) больше M(V₁) не больше чем на столько (доля) или на размах серий — k_s = 1 (шум показаний), иначе ошибка. */
+export const KS_NOISE_MIN = 0.001;
 const CERT_ROW_KEYS = ['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_mat', 'kv_cq_val'];
 const PLATE_KEYS = ['kv_pl_name', 'kv_pl_mat', 'kv_pl_nom', 'kv_pl_t', 'kv_pl_u'];
 
@@ -903,20 +913,62 @@ export function computeKv(form) {
   const V1 = read('kv_V1', L('Рабочее напряжение V₁', 'Operating voltage V₁'));
   const M1 = readCells('kv_M1', L('M при V₁, обычная полярность', 'M at V₁, normal polarity'));
   spread(M1, L('при V₁', 'at V₁'), 'kv_M1');
-  const MoppRaw = parseCells(f.kv_Mopp);
-  // строка таблицы аппликаторов без своей серии при обратной полярности: k_pol снят с другим аппликатором того же
-  // режима (kv-session.js передаёт, откуда — kv_pol_from, и значение — kv_kpol_fix)
-  const polFrom = MoppRaw.n === 0 && !MoppRaw.error && !isBlank(f.kv_pol_from) ? String(f.kv_pol_from) : '';
-  const Mopp = MoppRaw.n > 0 || MoppRaw.error ? readCells('kv_Mopp', L('M при V₁, обратная полярность', 'M at V₁, opposite polarity')) : MoppRaw;
-  spread(Mopp, L('обратной полярности', 'at opposite polarity'), 'kv_Mopp');
   const kleak = read('kv_kleak', L('Поправка на утечку', 'Leakage correction'));
   if (Number.isFinite(kleak) && Math.abs(kleak - 1) > 0.001) add('warn', 'common', L('Утечка больше 0,1 % показания: причину нужно выяснить.', 'Leakage exceeds 0.1 % of the reading: the cause must be found.'), `${REF.trs}, табл. 3`, 'kv_kleak');
   const readingsOk = M1.n > 0 && !M1.error && M1.mean !== 0;
   const m1 = readingsOk ? Math.abs(M1.mean) : NaN;
 
+  // k_pol и k_s (с 0.59.0): серии режима при +V₁, −V₁ и V₂ с одним аппликатором (kv_pk_M, kv_pk_Mopp, kv_pk_M2) — как
+  // в рабочих книгах: обычное показание для ур. (11) и (13) — своя серия при +V₁, а не показание строки таблицы.
+  // Строка со своими сериями (файлы до 0.59.0: kv_Mopp, kv_M2 строки при показании M₁ строки) считается по ним.
+  // Тонкооконная плоскопараллельная камера для низких энергий (PTW 23342, 23344, 34013) до 100 кВ: k_pol = k_s = 1,
+  // серии не снимают — при смене полярности окно может искажаться электростатически; калибровка — при той же полярности
+  // и напряжении в близких качествах (разд. 4.4.3.3 а), мощность дозы мала (разд. 4.4.3.4 b). Флажок kv_pk_measure —
+  // всё же измерить.
+  const has = (k) => {
+    const s = parseCells(f[k]);
+    return s.n > 0 || !!s.error;
+  };
+  const thinWindow = !!chamber?.thinWindow && Number.isFinite(kv) && kv <= 100;
+  const pkThin = thinWindow && !f.kv_pk_measure;
+  // своя серия строки (до 0.59.0) — отдельно для k_pol и для k_s; иначе серия режима
+  const rowPol = has('kv_Mopp');
+  const rowKs = f.kv_ks_on && has('kv_M2');
+  const rowOwn = rowPol || rowKs;
+  const modePol = !rowPol && has('kv_pk_Mopp');
+  const modeKs = !rowKs && has('kv_pk_M2');
+  const modeSeries = modePol || modeKs || (!rowOwn && has('kv_pk_M'));
+  const kMopp = rowPol ? 'kv_Mopp' : 'kv_pk_Mopp';
+  const kM2 = rowKs ? 'kv_M2' : 'kv_pk_M2';
+  const ksOn = !pkThin && (f.kv_ks_on || modeKs);
+  // обычное показание для k_pol и k_s: своя серия режима при +V₁ или (строки до 0.59.0) показание M₁ строки
+  let Mpk = parseCells([]);
+  if (!pkThin && modeSeries) {
+    Mpk = readCells('kv_pk_M', L('M при V₁, обычная полярность (серия для k_pol и k_s)', 'M at V₁, normal polarity (series for k_pol and k_s)'));
+    spread(Mpk, L('при V₁ (серия для k_pol и k_s)', 'at V₁ (series for k_pol and k_s)'), 'kv_pk_M');
+    if (readingsOk && Mpk.n > 0 && !Mpk.error && Mpk.mean !== 0 && Math.sign(Mpk.mean) !== Math.sign(M1.mean)) add('error', 'common', L('Серию при +V₁ для k_pol и k_s снимают при той же (обычной) полярности, что и показания таблицы.', 'The +V₁ series for k_pol and k_s is taken at the same (normal) polarity as the table readings.'), null, 'kv_pk_M');
+  }
+  const okCells = (c) => c.n > 0 && !c.error && c.mean !== 0;
+  const MrefPol = rowPol ? M1 : Mpk;
+  const MrefKs = rowKs ? M1 : Mpk;
+  const Mref = modeSeries ? Mpk : M1;
+
+  const MoppRaw = pkThin ? parseCells([]) : parseCells(f[kMopp]);
+  // режим или строка без своей серии при обратной полярности: k_pol снят в другом режиме или строке (kv-session.js
+  // передаёт, откуда — kv_pol_from, и значение — kv_kpol_fix)
+  const polFrom = !pkThin && MoppRaw.n === 0 && !MoppRaw.error && !isBlank(f.kv_pol_from) ? String(f.kv_pol_from) : '';
+  const Mopp = MoppRaw.n > 0 || MoppRaw.error ? readCells(kMopp, L('M при V₁, обратная полярность', 'M at V₁, opposite polarity')) : MoppRaw;
+  spread(Mopp, L('обратной полярности', 'at opposite polarity'), kMopp);
+
   let kpolRaw = NaN;
-  if (readingsOk && Mopp.n > 0 && !Mopp.error && Mopp.mean !== 0) {
-    kpolRaw = polarity(M1.mean, Mopp.mean);
+  if (pkThin) {
+    kpolRaw = 1;
+    add('info', 'common', L(
+      `k_pol = 1 и k_s = 1 не измеряются: у тонкооконной плоскопараллельной камеры (${chamber.label}) до 100 кВ при смене полярности окно может искажаться электростатически. Калибровка проведена при той же полярности и том же напряжении в близких качествах пучка — по TRS-398 Rev.1, разд. 4.4.3.3 а) это равнозначно k_pol = 1; при мощности дозы меньше 2 Гр/мин общей рекомбинацией можно пренебречь (разд. 4.4.3.4 b). Если лаборатория вносила поправку на полярность, это указано в сертификате: тогда k_pol нужно измерить (флажок в разделе 5).`,
+      `k_pol = 1 and k_s = 1 are not measured: with a thin-window plane-parallel chamber (${chamber.label}) up to 100 kV, the window may be distorted electrostatically when the polarity is reversed. The calibration was performed at the same polarity and voltage in similar beam qualities, which by TRS-398 Rev.1, Sec. 4.4.3.3 a) is equivalent to k_pol = 1; at dose rates below 2 Gy/min general recombination is negligible (Sec. 4.4.3.4 b). If the laboratory applied a polarity correction, the certificate says so: then k_pol must be measured (checkbox in section 5).`,
+    ), `${REF.trs}, разд. 4.4.3.3, 4.4.3.4`, null);
+  } else if (okCells(MrefPol) && okCells(Mopp)) {
+    kpolRaw = polarity(MrefPol.mean, Mopp.mean);
     if (Math.abs(kpolRaw - 1) > 0.004) add('warn', 'common', L(`k_pol = ${ru(kpolRaw, 4)} выходит за пределы 1 ± 0,004: для камеры эталонного класса эффект полярности должен быть меньше 0,4 %.`, `k_pol = ${ru(kpolRaw, 4)} is outside 1 ± 0.004: for a reference-class chamber the polarity effect should be below 0.4 %.`), `${REF.trs}, табл. 3`, 'kpol');
   } else if (polFrom) {
     kpolRaw = parseNumber(f.kv_kpol_fix);
@@ -934,28 +986,30 @@ export function computeKv(form) {
         : L(
           `k_pol = ${ru(kpolRaw, 4)} взят из ${polFrom}: серия при обратной полярности снята там, с другим аппликатором того же режима.`,
           `k_pol = ${ru(kpolRaw, 4)} is taken from ${polFrom}: the opposite-polarity series was measured there, with another applicator of the same beam.`,
-        ), `${REF.trs}, разд. 4.4.3.3`, 'kv_Mopp');
+        ), `${REF.trs}, разд. 4.4.3.3`, kMopp);
     } else {
-      add('error', 'common', L(`k_pol из ${polFrom} не вычислен: проверьте там показания при обратной полярности.`, `k_pol from ${polFrom} could not be calculated: check the opposite-polarity readings there.`), null, 'kv_Mopp');
+      add('error', 'common', L(`k_pol из ${polFrom} не вычислен: проверьте там показания при обратной полярности.`, `k_pol from ${polFrom} could not be calculated: check the opposite-polarity readings there.`), null, kMopp);
     }
   } else if (Mopp.n === 0) {
-    add('warn', 'common', L('Показания при обратной полярности не введены: k_pol принят равным 1. Эффект полярности нужно проверить, особенно у плоскопараллельных камер в пучках низких энергий.', 'No readings at opposite polarity: k_pol is taken as 1. The polarity effect must be checked, especially for plane-parallel chambers in low-energy beams.'), `${REF.trs}, разд. 4.4.3.3`, 'kv_Mopp');
+    add('warn', 'common', L('Показания при обратной полярности не введены: k_pol принят равным 1. Эффект полярности нужно проверить (раздел 5).', 'No readings at opposite polarity: k_pol is taken as 1. The polarity effect must be checked (section 5).'), `${REF.trs}, разд. 4.4.3.3`, kMopp);
   }
   let kpolQ0 = 1;
-  if (!f.kv_lab_pol_applied) kpolQ0 = read('kv_lab_kpol', L('Поправка на полярность при калибровке', 'Polarity correction at calibration'));
+  if (!pkThin && !f.kv_lab_pol_applied) kpolQ0 = read('kv_lab_kpol', L('Поправка на полярность при калибровке', 'Polarity correction at calibration'));
   const kpol = (Number.isFinite(kpolRaw) ? kpolRaw : 1) / kpolQ0;
 
   let ksRaw = 1;
-  let ksEquation = L('k_s = 1: рекомбинация ионов пренебрежимо мала при мощности дозы меньше нескольких Гр/мин', 'k_s = 1: ion recombination is negligible at dose rates below a few Gy/min');
+  let ksEquation = pkThin
+    ? L('k_s = 1: тонкооконная камера до 100 кВ, серии не снимаются', 'k_s = 1: thin-window chamber up to 100 kV, no series taken')
+    : L('k_s = 1: рекомбинация ионов пренебрежимо мала при мощности дозы меньше нескольких Гр/мин', 'k_s = 1: ion recombination is negligible at dose rates below a few Gy/min');
   let M2 = parseCells([]);
   let V2 = NaN;
   let ksFrom = '';
-  if (f.kv_ks_on) {
-    // строка таблицы аппликаторов без своей серии при V₂: k_s снят с другим аппликатором того же режима
-    const M2Raw = parseCells(f.kv_M2);
-    ksFrom = M2Raw.n === 0 && !M2Raw.error && !isBlank(f.kv_ks_from) ? String(f.kv_ks_from) : '';
-  }
-  if (f.kv_ks_on && ksFrom) {
+  // k_s в пределах разброса меньше 1 (M(V₂) чуть больше M(V₁)) — принимается равным 1
+  let ksNoise = null;
+  const M2Raw = ksOn ? parseCells(f[kM2]) : parseCells([]);
+  // режим или строка без своей серии при V₂: k_s снят в другом режиме или строке
+  if (ksOn) ksFrom = M2Raw.n === 0 && !M2Raw.error && !isBlank(f.kv_ks_from) ? String(f.kv_ks_from) : '';
+  if (ksOn && ksFrom) {
     ksRaw = parseNumber(f.kv_ks_fix);
     if (Number.isFinite(ksRaw)) {
       ksEquation = L(`взят из ${ksFrom}`, `taken from ${ksFrom}`);
@@ -972,44 +1026,59 @@ export function computeKv(form) {
         : L(
           `k_s = ${ru(ksRaw, 4)} взят из ${ksFrom}: серия при пониженном напряжении V₂ снята там, с другим аппликатором того же режима.`,
           `k_s = ${ru(ksRaw, 4)} is taken from ${ksFrom}: the series at the reduced voltage V₂ was measured there, with another applicator of the same beam.`,
-        ), `${REF.trs}, разд. 4.4.3.4`, 'kv_M2');
+        ), `${REF.trs}, разд. 4.4.3.4`, kM2);
     } else {
-      add('error', 'common', L(`k_s из ${ksFrom} не вычислен: проверьте там показания при V₂.`, `k_s from ${ksFrom} could not be calculated: check the readings at V₂ there.`), null, 'kv_M2');
+      add('error', 'common', L(`k_s из ${ksFrom} не вычислен: проверьте там показания при V₂.`, `k_s from ${ksFrom} could not be calculated: check the readings at V₂ there.`), null, kM2);
     }
-  } else if (f.kv_ks_on) {
+  } else if (ksOn && M2Raw.n === 0 && !M2Raw.error) {
+    add('info', 'common', L('Показания при пониженном напряжении V₂ не введены: k_s = 1. Рекомбинация ионов пренебрежимо мала, когда мощность дозы меньше нескольких Гр/мин; при большей мощности снимите серию при V₂ (раздел 5).', 'No readings at the reduced voltage V₂: k_s = 1. Ion recombination is negligible when the dose rate is below a few Gy/min; at higher dose rates, take a series at V₂ (section 5).'), `${REF.trs}, разд. 9.4.2`, kM2);
+  } else if (ksOn) {
     V2 = read('kv_V2', L('Пониженное напряжение V₂', 'Reduced voltage V₂'));
-    M2 = readCells('kv_M2', L('M при V₂', 'M at V₂'));
-    spread(M2, L('при V₂', 'at V₂'), 'kv_M2');
+    M2 = readCells(kM2, L('M при V₂', 'M at V₂'));
+    spread(M2, L('при V₂', 'at V₂'), kM2);
     if (Number.isFinite(V1) && Number.isFinite(V2) && Math.abs(V1) <= Math.abs(V2)) add('error', 'common', L('Рабочее напряжение V₁ должно быть больше пониженного V₂.', 'Operating voltage V₁ must be higher than reduced voltage V₂.'), null, ['kv_V1', 'kv_V2']);
     const nV = Math.abs(V1) / Math.abs(V2);
-    const recOk = readingsOk && M2.n > 0 && !M2.error && M2.mean !== 0 && Number.isFinite(nV) && nV > 1;
-    if (readingsOk && M2.n > 0 && Math.sign(M1.mean) !== Math.sign(M2.mean)) add('error', 'common', L('Показания при V₁ и V₂ должны быть сняты при одной и той же (обычной) полярности.', 'Readings at V₁ and V₂ must be taken at the same (normal) polarity.'), null, 'kv_M2');
+    const recOk = okCells(MrefKs) && okCells(M2) && Number.isFinite(nV) && nV > 1;
+    if (okCells(MrefKs) && M2.n > 0 && Math.sign(MrefKs.mean) !== Math.sign(M2.mean)) add('error', 'common', L('Показания при V₁ и V₂ должны быть сняты при одной и той же (обычной) полярности.', 'Readings at V₁ and V₂ must be taken at the same (normal) polarity.'), null, kM2);
     if (recOk) {
-      const ratio12 = Math.abs(M1.mean) / Math.abs(M2.mean);
+      const ratio12 = Math.abs(MrefKs.mean) / Math.abs(M2.mean);
       if (f.kv_rec_trs === 'eq16') {
         ksRaw = (nV * nV - 1) / (nV * nV - ratio12);
         ksEquation = L('ур. (16): k_s = (n² − 1)/(n² − M₁/M₂), общая рекомбинация в непрерывном пучке', 'Eq. (16): k_s = (n² − 1)/(n² − M₁/M₂), general recombination in a continuous beam');
       } else {
-        const r = TRS.ks({ m1: M1.mean, m2: M2.mean, v1: Math.abs(V1), v2: Math.abs(V2), beam: 'pulsed' });
+        const r = TRS.ks({ m1: MrefKs.mean, m2: M2.mean, v1: Math.abs(V1), v2: Math.abs(V2), beam: 'pulsed' });
         ksRaw = r.value;
         ksEquation = L(`${r.equation}; в непрерывном пучке преобладает начальная рекомбинация (разд. 4.4.3.4 b)`, `${r.equation}; initial recombination dominates in a continuous beam (Sec. 4.4.3.4 b)`);
         if (r.error) add('error', 'common', r.error[0].toUpperCase() + r.error.slice(1) + '.', `${REF.trs}, табл. 10`, 'ks');
         r.notes.forEach((n) => add('warn', 'common', n[0].toUpperCase() + n.slice(1) + '.', `${REF.trs}, разд. 4.4.3.4`, 'ks'));
       }
       if (ratio12 < 1) {
-        // M(V₂) > M(V₁): по формуле k_s < 1, чего не бывает — при пониженном напряжении заряда собирается меньше.
-        // Расчёт останавливается: k_s нужно перемерить.
-        add('error', 'common', L(
-          `Показание при V₂ больше, чем при V₁: по формуле k_s = ${ru(ksRaw, 4)} < 1, а k_s не может быть меньше 1 (при пониженном напряжении собирается меньше заряда). k_s нужно перемерить, проверив показания и напряжения.`,
-          `The reading at V₂ is higher than at V₁: the formula gives k_s = ${ru(ksRaw, 4)} < 1, but k_s cannot be less than 1 (less charge is collected at the reduced voltage). k_s must be re-measured, checking the readings and voltages.`,
-        ), `${REF.trs}, разд. 4.4.3.4`, ['ks', 'kv_M2']);
+        // M(V₂) > M(V₁): по формуле k_s < 1, чего не бывает — при пониженном напряжении заряда собирается меньше. Разница
+        // в пределах разброса показаний (размах серий, не меньше 0,1 %) — шум: k_s = 1; больше — k_s нужно перемерить.
+        const excess = 1 / ratio12 - 1;
+        const rel = (s) => (s.n > 1 ? (Math.max(...s.values) - Math.min(...s.values)) / Math.abs(s.mean) : 0);
+        const noise = Math.max(rel(MrefKs), rel(M2), KS_NOISE_MIN);
+        if (excess <= noise + 1e-12) {
+          ksNoise = { raw: ksRaw, excessPct: excess * 100, noisePct: noise * 100 };
+          add('info', 'common', L(
+            `Показание при V₂ больше, чем при V₁, на ${ru(excess * 100, 2)} % — в пределах разброса показаний (${ru(noise * 100, 2)} %): по формуле k_s = ${ru(ksRaw, 4)} < 1, а меньше 1 k_s не бывает, поэтому принят k_s = 1. Рекомбинация пренебрежимо мала.`,
+            `The reading at V₂ exceeds that at V₁ by ${ru(excess * 100, 2)} %, within the spread of the readings (${ru(noise * 100, 2)} %): the formula gives k_s = ${ru(ksRaw, 4)} < 1, but k_s cannot be below 1, so k_s = 1 is taken. Recombination is negligible.`,
+          ), `${REF.trs}, разд. 4.4.3.4`, 'ks');
+          ksRaw = 1;
+          ksEquation = L(`k_s = 1: M(V₂) больше M(V₁) в пределах разброса показаний (по формуле ${ru(ksNoise.raw, 4)})`, `k_s = 1: M(V₂) exceeds M(V₁) within the spread of the readings (formula: ${ru(ksNoise.raw, 4)})`);
+        } else {
+          add('error', 'common', L(
+            `Показание при V₂ больше, чем при V₁, на ${ru(excess * 100, 2)} % — больше разброса показаний (${ru(noise * 100, 2)} %): по формуле k_s = ${ru(ksRaw, 4)} < 1, а k_s не может быть меньше 1 (при пониженном напряжении собирается меньше заряда). k_s нужно перемерить, проверив показания и напряжения.`,
+            `The reading at V₂ exceeds that at V₁ by ${ru(excess * 100, 2)} %, more than the spread of the readings (${ru(noise * 100, 2)} %): the formula gives k_s = ${ru(ksRaw, 4)} < 1, but k_s cannot be less than 1 (less charge is collected at the reduced voltage). k_s must be re-measured, checking the readings and voltages.`,
+          ), `${REF.trs}, разд. 4.4.3.4`, ['ks', kM2]);
+        }
       } else if (ksRaw > 1.05) add('error', 'common', L(`k_s = ${ru(ksRaw, 4)} > 1,05: метод двух напряжений неприменим.`, `k_s = ${ru(ksRaw, 4)} > 1.05: the two-voltage method is not applicable.`), `${REF.trs}, табл. 3`, 'ks');
     } else ksRaw = NaN;
-  } else {
-    add('info', 'common', L('k_s = 1: рекомбинация ионов пренебрежимо мала, когда мощность дозы меньше нескольких Гр/мин. При большей мощности дозы включите метод двух напряжений.', 'k_s = 1: ion recombination is negligible when the dose rate is below a few Gy/min. At higher dose rates, enable the two-voltage method.'), `${REF.trs}, разд. 9.4.2`, 'kv_ks_on');
+  } else if (!pkThin) {
+    add('info', 'common', L('k_s = 1: рекомбинация ионов пренебрежимо мала, когда мощность дозы меньше нескольких Гр/мин. При большей мощности дозы снимите серию при пониженном напряжении V₂ (раздел 5).', 'k_s = 1: ion recombination is negligible when the dose rate is below a few Gy/min. At higher dose rates, take a series at the reduced voltage V₂ (section 5).'), `${REF.trs}, разд. 9.4.2`, 'kv_pk_M2');
   }
   let ksQ0 = 1;
-  if (!f.kv_lab_ks_applied) ksQ0 = read('kv_lab_ks', L('Поправка на рекомбинацию при калибровке', 'Recombination correction at calibration'));
+  if (!pkThin && !f.kv_lab_ks_applied) ksQ0 = read('kv_lab_ks', L('Поправка на рекомбинацию при калибровке', 'Recombination correction at calibration'));
   const ks = ksRaw / ksQ0;
 
   // ------------------------------------------------------- контрольные измерения
@@ -1200,7 +1269,7 @@ export function computeKv(form) {
   // ------------------------------------------------------------- доза
   const kTP = temperaturePressure({ T, P, T0, P0, abs0: TRS.TRS_ABS0 });
   const product = kTP * kelec * kpol * ks * kleak;
-  const trs = { enabled: true, equation: eqText, kTP, kelec, kpol, kpolRaw, kpolQ0, kpolFrom: polFrom || null, ks, ksRaw, ksQ0, ksEquation, ksFrom: ksFrom || null, kleak, NQ: cert.NQ, phys, kg };
+  const trs = { enabled: true, equation: eqText, kTP, kelec, kpol, kpolRaw, kpolQ0, kpolFrom: polFrom || null, ks, ksRaw, ksQ0, ksEquation, ksFrom: ksFrom || null, ksNoise, pkThin, thinWindow, pkSeries: modeSeries, pkRowOwn: rowOwn, ksOn, kleak, NQ: cert.NQ, phys, kg };
   const depth = { on: range === 'medium' && !isBlank(f.kv_pdd2), zref: range === 'medium' ? 2 : 0 };
   if (depth.on) {
     depth.pdd = read('kv_pdd2', L('PDD(2 см)', 'PDD(2 cm)'), 'depth');
@@ -1303,7 +1372,7 @@ export function computeKv(form) {
     compliance,
     notRev1,
     phantom: { clin: phantom, lab: labPhantom, status: phantomStatus, customUsed },
-    inputs: { kv, hvl, hvlSource: hvlFrom ? 'journal' : Number.isFinite(hvlMeas) ? 'measured' : 'table', hvlFrom, hvlNominal, ssd, coneSize, coneB, fClin, fLab, ssdLab, sameGeometry, T, P, H: env.H, T0, P0, V1, V2, kelec, kleak, M1, Mopp, M2, X, Xeff, unit: f.kv_set_unit, unitLabel: uLabel },
+    inputs: { kv, hvl, hvlSource: hvlFrom ? 'journal' : Number.isFinite(hvlMeas) ? 'measured' : 'table', hvlFrom, hvlNominal, ssd, coneSize, coneB, fClin, fLab, ssdLab, sameGeometry, T, P, H: env.H, T0, P0, V1, V2, kelec, kleak, M1, Mref, Mopp, M2, X, Xeff, unit: f.kv_set_unit, unitLabel: uLabel },
     timer,
     ctrl,
     depth,
