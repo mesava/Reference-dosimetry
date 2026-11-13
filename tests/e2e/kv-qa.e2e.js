@@ -35,7 +35,14 @@ test('kV-рентген: листы «Линейность» и «Воспрои
 
   // пустой лист: две строки заданий, выводов нет; в печать не идёт
   assert.deepEqual(await page.locator('#kv-sheet [data-ln-row]').evaluateAll((rs) => rs.map((r) => !r.hidden)), [true, true, false, false, false]);
+  // задания Q — в своей единице, по умолчанию Гр (0.58.0), хотя облучение задаётся в минутах
+  assert.equal(await page.inputValue('#kv_set_unit'), 'min');
+  assert.equal(await page.locator('#kv-ln-q1-lbl').innerText(), 'Задание Q₁, Гр');
+  await page.selectOption('#kv_ln_unit', 'min');
+  await pause();
   assert.equal(await page.locator('#kv-ln-q1-lbl').innerText(), 'Задание Q₁, мин');
+  await page.selectOption('#kv_ln_unit', 'Gy');
+  await pause();
   assert.equal(await ln(page, 'dmax'), '—');
   assert.ok(await page.locator('#kv-ln-cl-box').isHidden());
   await page.emulateMedia({ media: 'print' });

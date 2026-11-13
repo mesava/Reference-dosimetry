@@ -1,7 +1,7 @@
 // Проверки выхода рентгенотерапевтического аппарата на листах «Линейность» и «Воспроизводимость» вкладки «kV-рентген»
 // (с 0.44.0). В TRS-398 Rev.1 этих проверок нет: способ и допуски — по методике учреждения (в программе — поля
 // «по методике учреждения», пусто — без проверки). Расчёт — как в рабочих листах пользователя:
-//   линейность — несколько заданий облучения Qᵢ (Гр, МЕ или время — в единице задания режима) с сериями показаний;
+//   линейность — несколько заданий облучения Qᵢ (Гр, МЕ или время — единица выбирается на листе, с 0.58.0) с сериями показаний;
 //     Xᵢ = M̄ᵢ/Qᵢ; отклонение от пропорциональности dᵢ = Xᵢ/X₁ − 1 относительно первого задания (для двух заданий
 //     0,5 и 2 Гр это |1 − K₂/(4·K₁)| листа пользователя); коэффициент линейности для каждой пары
 //     CLᵢⱼ = |Xᵢ − Xⱼ|/(Xᵢ + Xⱼ) и наибольший из них;
@@ -23,6 +23,9 @@ export const KV_RP_SERIES = 'kv_rp_M';
 export const KV_QA_TOL_KEYS = ['kv_ln_tol', 'kv_ln_cl_tol', 'kv_rp_tol'];
 /** Поля режима, которые новый режим не копирует: задания и показания (аппликатор и расстояние копируются). */
 export const KV_QA_OWN_KEYS = [...KV_LN_Q, ...KV_LN_SERIES, KV_RP_SERIES];
+
+/** Единица заданий Q линейности: своя (kv_ln_unit, с 0.58.0), иначе — единица задания облучения режима (до 0.58.0). */
+export const qaUnit = (f) => KV_SET_UNITS[f?.kv_ln_unit] ?? KV_SET_UNITS[f?.kv_set_unit] ?? KV_SET_UNITS.Gy;
 
 const tol = (f, k) => {
   const v = parseNumber(f?.[k]);
@@ -67,7 +70,7 @@ function seriesStats(s) {
  * messages, flags, ok }. ok — посчитано (два задания и больше, без ошибок).
  */
 export function computeKvLinearity(f) {
-  const U = KV_SET_UNITS[f?.kv_set_unit] ?? KV_SET_UNITS.min;
+  const U = qaUnit(f);
   const { messages, flags, add } = collector();
   const res = { state: 'empty', unit: { label: U.label, labelEn: U.labelEn }, points: [], ref: -1, dMax: NaN, dMaxAt: -1, cl: [], clMax: NaN, clAt: null, messages, flags, ok: false };
   if (!kvLinEntered(f)) return res;

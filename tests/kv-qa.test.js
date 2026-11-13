@@ -148,3 +148,20 @@ test('режимы: линейность и воспроизводимость �
   assert.deepEqual([m.shared.kv_ln_q1, m.shared.kv_ln_M1.join(''), m.shared.kv_rp_M.join('')], ['', '', '']);
   assert.deepEqual([m.shared.kv_ln_app, m.shared.kv_rp_app, m.shared.kv_rp_dist], ['Ø 10 см', 'Ø 3 см', '20']);
 });
+
+test('линейность: задания Q — в своей единице (по умолчанию Гр, 0.58.0); старые формы — в единице задания облучения', async () => {
+  const { normalizeKv } = await import('../src/core/kv.js');
+  // как в рабочей книге: 0,5 / 1 / 1,5 / 2 Гр при задании облучения в минутах
+  const f = lnForm([[0.5, [0.4994, 0.4994, 0.4994]], [1, [1.008, 1.008, 1.008]], [1.5, [1.517, 1.517, 1.517]], [2, [2.026, 2.026, 2.026]]], { kv_set_unit: 'min' });
+  const nf = normalizeKv({ ...f, kv_ln_unit: 'Gy' });
+  const r = computeKvLinearity(nf);
+  assert.equal(r.unit.label, 'Гр');
+  close(r.clMax, 0.007058355701361904, 1e-12);
+  // единица — только подпись: X и CL те же
+  close(computeKvLinearity({ ...nf, kv_ln_unit: 'MU' }).clMax, r.clMax);
+  assert.equal(normalizeKv({}).kv_ln_unit, 'Gy');
+  assert.equal(normalizeKv({ kv_set_unit: 'min' }).kv_ln_unit, 'Gy');
+  // форма до 0.58.0 с данными линейности — задания в единице задания облучения
+  assert.equal(normalizeKv(f).kv_ln_unit, 'min');
+  assert.equal(normalizeKv({ ...f, kv_ln_unit: 'junk' }).kv_ln_unit, 'min');
+});

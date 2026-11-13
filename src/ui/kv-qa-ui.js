@@ -2,8 +2,7 @@
 // ключи KV_DEFAULTS, их читает kv-ui.js), выводы, таблицы по всем режимам и строки протокола. Расчёт — core/kv-qa.js
 // (computeKvVisit кладёт его в режим: ln, rp). Данные вкладки (visit) живут в kv-ui.js: сюда приходят функции доступа.
 import { L } from '../core/i18n.js';
-import { KV_LN_N, KV_LN_Q, KV_LN_SERIES } from '../core/kv-qa.js';
-import { KV_SET_UNITS } from '../core/kv.js';
+import { KV_LN_N, KV_LN_Q, KV_LN_SERIES, qaUnit } from '../core/kv-qa.js';
 import { parseCells } from '../core/units.js';
 import { linearFit } from '../core/jaffe.js';
 import { $, $$, esc, fmt, fmtSigned, richText } from './common.js';
@@ -23,7 +22,7 @@ const sig = (v, n = 5) => {
 const pct = (x, d = 2) => (Number.isFinite(x) ? `${fmt(x * 100, d)} %` : '—');
 const pctSigned = (x, d = 2) => (Number.isFinite(x) ? `${fmtSigned(x * 100, d)} %` : '—');
 const unitOf = (f) => {
-  const U = KV_SET_UNITS[f?.kv_set_unit] ?? KV_SET_UNITS.min;
+  const U = qaUnit(f);
   return L(U.label, U.labelEn);
 };
 const setOut = (sel, htmlText) => {

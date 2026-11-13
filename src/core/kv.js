@@ -181,6 +181,9 @@ export const KV_DEFAULTS = {
   // по методике учреждения): аппликатор (для протокола), задания Qᵢ в единице задания режима и серии показаний;
   // серия воспроизводимости, аппликатор и расстояние; допуски (общие) — пусто, без проверки
   kv_ln_app: '',
+  // единица заданий Q линейности (с 0.58.0 своя, по умолчанию Гр, как в рабочей книге отделения; до 0.58.0 — единица
+  // задания облучения режима): только подпись — X = M̄/Q сравниваются между собой
+  kv_ln_unit: 'Gy',
   kv_ln_q1: '',
   kv_ln_q2: '',
   kv_ln_q3: '',
@@ -270,6 +273,11 @@ export function normalizeKv(input) {
   delete f.kv_tt;
   delete f.kv_tm;
   if (f.kv_ts_unit !== 'min') f.kv_ts_unit = 's';
+  // линейность до 0.58.0: задания Q — в единице задания облучения режима
+  if (!KV_SET_UNITS[input?.kv_ln_unit]) {
+    const lnOld = Object.keys(input ?? {}).some((k) => /^kv_ln_(q|M)\d$/.test(k) && (Array.isArray(input[k]) ? input[k].some((v) => !isBlank(v)) : !isBlank(input[k])));
+    f.kv_ln_unit = lnOld && KV_SET_UNITS[f.kv_set_unit] ? f.kv_set_unit : 'Gy';
+  }
   const n = Math.max(1, ...CERT_ROW_KEYS.map((k) => (Array.isArray(f[k]) ? f[k].length : 0)));
   for (const k of CERT_ROW_KEYS) {
     const a = Array.isArray(f[k]) ? [...f[k]] : [];

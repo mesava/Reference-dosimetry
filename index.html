@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0d6670">
-<link rel="stylesheet" href="src/ui/styles.css?v=0.57.1">
+<link rel="stylesheet" href="src/ui/styles.css?v=0.58.0">
 </head>
 <body>
 <header class="topbar">
@@ -2112,6 +2112,7 @@
         <p class="hint">Несколько заданий облучения Q одного режима (например, 0,5 и 2 Гр или 0,5; 1; 1,5 и 2 Гр) при одних условиях — аппликатор, камера и фантом, как при дозиметрии, — по нескольку показаний при каждом. Для каждого задания X = M̄/Q; отклонение от пропорциональности — X задания, делённый на X первого задания, минус 1 (для 0,5 и 2 Гр это K₂/(4·K₁) − 1); коэффициент линейности CL = |Xᵢ − Xⱼ|/(Xᵢ + Xⱼ) — для каждой пары заданий. В TRS-398 Rev.1 этой проверки нет: способ и допуски — по методике учреждения. Показания — в любых одинаковых единицах при одних T и P: поправки в отношениях сокращаются.</p></header>
       <div class="grid">
         <div class="field"><label for="kv_ln_app">Аппликатор</label><input type="text" id="kv_ln_app" placeholder="Ø 3 см"><span class="sub">для протокола; обычно референсный аппликатор режима</span></div>
+        <div class="field"><label for="kv_ln_unit">Задания Q в</label><select id="kv_ln_unit"><option value="Gy">Гр</option><option value="min">мин</option><option value="s">с</option><option value="MU">МЕ</option></select><span class="sub">одна для всех заданий; на X = M̄/Q в сравнении не влияет</span></div>
       </div>
       <div class="kv-ln-list">
       <div class="kv-ln-row" data-ln-row="0">
@@ -4141,6 +4142,6 @@
   <div class="dlg-body" id="kv-din-body"></div>
 </dialog>
 
-<script type="module" src="src/ui/app.js?v=0.57.1"></script>
+<script type="module" src="src/ui/app.js?v=0.58.0"></script>
 </body>
 </html>

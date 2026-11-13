@@ -859,6 +859,8 @@ export const STATIC_EN = {
   "заряд накоплен при включённой трубке": "charge collected with the tube on",
   "Облучения в той же геометрии, при одном напряжении и полярности; поправки к показаниям для τ не нужны. При каждом задании — повторные облучения (обычно не меньше трёх), клавиша Tab идёт вниз по столбцу. Через средние показания проводится прямая M̄ = a·T + b, τ = b/a; на графике — только средние.": "Exposures in the same geometry, at one voltage and polarity; no corrections to the readings are needed for τ. Repeat the exposures at each setting (usually at least three); the Tab key moves down the column. A straight line M̄ = a·T + b is fitted through the mean readings, τ = b/a; the chart shows the means only.",
   "Задания серии": "Series settings",
+  "Задания Q в": "Settings Q in",
+  "одна для всех заданий; на X = M̄/Q в сравнении не влияет": "the same for all settings; it does not affect the comparison of X = M̄/Q",
   "в секундах": "in seconds",
   "в минутах": "in minutes",
   "τ пересчитывается в единицы задания облучения": "τ is converted to the units of the exposure setting",
