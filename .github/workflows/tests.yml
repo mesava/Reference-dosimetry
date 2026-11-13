@@ -59,6 +59,13 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      # номер версии в адресах всех модулей (с 0.58.1): после выкладки браузер не берёт из кэша старые скрипты
+      # вместе с новой страницей; меняется только копия на сервере сборки, не репозиторий
+      - name: версия в адресах модулей сайта
+        run: node scripts/stamp-site.mjs
       - uses: actions/configure-pages@v6
       # сайт — корень репозитория, как и раньше (index.html, src/, dist/, docs/, значки, манифест, сервис-воркер);
       # скрытые файлы (.git, .github) в архив сайта не попадают
