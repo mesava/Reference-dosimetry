@@ -305,6 +305,13 @@ function kvRows(ctx) {
         'Some certificate qualities give the HVL in a metal other than the beam one and are converted with DIN 6809-4, Table 5. The value is the change of k_Q (K, N) for the beam for a ±5% deviation of the converted HVLs, divided by √3 (rectangular distribution); the kV x-ray tab calculates it. Rev.1 Tables 30 and 33 have no such row.',
       ),
     },
+    st_kgext: {
+      label: L('Экстраполяция k_g за табл. 28–29 (поле меньше 2 см)', 'Extrapolation of k_g beyond Tables 28–29 (field below 2 cm)'),
+      how: L(
+        'Табл. 28–29 начинаются с поля 2 см; для меньшего тубуса k_g продолжен прямой по строкам 2 и 3 см. Значение — |k_g / k_g(2 см) − 1| / √3: истинный k_g считается равновероятным между «ниже 2 см не меняется» и «меняется вдвое сильнее прямой» (прямоугольное распределение); его считает вкладка «kV-рентген». В табл. 30 Rev.1 этой строки нет.',
+        'Tables 28–29 start at a 2 cm field; for a smaller applicator k_g is extended by the straight line through the 2 and 3 cm rows. The value is |k_g / k_g(2 cm) − 1| / √3: the true k_g is taken as equally likely anywhere between “no change below 2 cm” and “twice the change of the line” (rectangular distribution); the kV x-ray tab calculates it. Rev.1 Table 30 has no such row.',
+      ),
+    },
     st_kq1: {
       label: L('k_Q = 1: калибровки камеры в рентгене нет', 'k_Q = 1: no x-ray calibration of the chamber'),
       how: L(
@@ -361,7 +368,7 @@ function kvKgRow(R, ctx, def) {
     ...R.st_kg,
     def,
     how: low
-      ? L('k_g по табл. 28–29, ур. (85) или от лаборатории. При k_g по табл. 28–29 в эту строку входит и расхождение значений по кВ и по СПО, показанное на вкладке «kV-рентген».', 'k_g from Tables 28–29, Eq. (85) or the laboratory. With k_g from Tables 28–29 this row also covers the difference between the values by kV and by HVL shown on the kV x-rays tab.')
+      ? L('k_g по табл. 28–29, ур. (85) или от лаборатории. При k_g по табл. 28–29 в эту строку входит и выбор интерполяции между качествами TW по СПО (по ln(СПО) или линейно; разница показана на вкладке «kV-рентген»).', 'k_g from Tables 28–29, Eq. (85) or the laboratory. With k_g from Tables 28–29 this row also covers the choice of interpolation between the TW qualities by HVL (by ln(HVL) or linearly; the difference is shown on the kV x-rays tab).')
       : L('k_g по ур. (90) (данные Andreo) или от лаборатории.', 'k_g from Eq. (90) (Andreo data) or from the laboratory.'),
   };
 }
@@ -404,6 +411,11 @@ function buildTemplate(id, ctx) {
     if (Number.isFinite(ctx.kvHvlDin)) {
       const at = st2.findIndex((r) => r.key === 'st_interp') + 1;
       st2.splice(at, 0, { key: 'st_hvldin', ...R.st_hvldin, def: ctx.kvHvlDin, ref: `${T.din}, табл. 5` });
+    }
+    // k_g экстраполирован за табл. 28–29 (поле меньше 2 см): строка после k_g
+    if (Number.isFinite(ctx.kvKgExtrap) && ctx.kvCal !== 'nk') {
+      const at = st2.findIndex((r) => r.key === 'st_kg') + 1;
+      st2.splice(at, 0, { key: 'st_kgext', ...R.st_kgext, def: ctx.kvKgExtrap, ref: L('не TRS-398 Rev.1: продолжение табл. 28–29', 'not TRS-398 Rev.1: extension of Tables 28–29') });
     }
     // коэффициенты на 5 см (DIN 6809-4): к табл. 33 добавляется k_z = 1 — пересчёт с 5 см на 2 см
     if (id === 't33ndw' && ctx.kvDepth5) {
@@ -564,6 +576,7 @@ function templateInfo(id, ctx) {
  * @param {'cert'|'one'} [o.kvKq]   kV-рентген, Qo = ⁶⁰Co: k_Q,M из калибровки в рентгене или k_Q = 1 без неё
  * @param {boolean} [o.kvDepth5]     kV-рентген, средние энергии, N_D,w: коэффициенты на 5 см (DIN 6809-4), строка k_z = 1
  * @param {number} [o.kvHvlDin]     kV-рентген: u, %, от пересчёта СПО качеств сертификата по DIN 6809-4 (NaN — пересчёта нет)
+ * @param {number} [o.kvKgExtrap]   kV-рентген, N_D,w: u, %, от экстраполяции k_g за табл. 28–29 (NaN — экстраполяции нет)
  * @param {'trs'|'tg51'} o.protocol
  * @param {'cyl'|'pp'} [o.chamberType]   тип камеры (электроны)
  * @param {boolean} [o.crossQ]   фотоны: рабочая камера откалибрована в клиническом пучке Q_cross (TRS-398, разд. 4.5.2)
@@ -600,6 +613,9 @@ export function uncertaintyBudget(o) {
   }
   if (o.beam === 'kv' && Number.isFinite(o.kvHvlDin)) {
     add('warn', L('СПО части качеств сертификата пересчитан из другого металла по DIN 6809-4, табл. 5 — оценка, не TRS-398 Rev.1: её неопределённость добавлена строкой «Пересчёт СПО качеств сертификата».', 'The HVL of some certificate qualities is converted from the other metal with DIN 6809-4, Table 5. This is an estimate, not TRS-398 Rev.1: its uncertainty is added as the “Conversion of the certificate quality HVLs” row.'), `${prefix}unc_kv_hvldin`, `${T.din}, табл. 5`);
+  }
+  if (o.beam === 'kv' && o.kvCal !== 'nk' && Number.isFinite(o.kvKgExtrap)) {
+    add('warn', L('k_g экстраполирован за табл. 28–29 (поле меньше 2 см) — не TRS-398 Rev.1: его неопределённость добавлена строкой «Экстраполяция k_g за табл. 28–29».', 'k_g is extrapolated beyond Tables 28–29 (field below 2 cm), which is not TRS-398 Rev.1: its uncertainty is added as the “Extrapolation of k_g beyond Tables 28–29” row.'), `${prefix}unc_kv_kgext`, `${T.trs}, табл. 28–29`);
   }
   if (o.beam === 'kv' && o.kvCal !== 'nk' && o.kvKg === 'one') {
     add('warn', L('k_g = 1 при другом поле или РИП — подход DIN 6809-4 и SSRMP No 9, не TRS-398 Rev.1: строка k_g — их оценка неопределённости.', 'k_g = 1 with a different field or SSD is the DIN 6809-4 and SSRMP No 9 approach, not TRS-398 Rev.1: the k_g row is their uncertainty estimate.'), `${prefix}unc_kv_kg`, `${T.din}, разд. 6.3, 6.4`);

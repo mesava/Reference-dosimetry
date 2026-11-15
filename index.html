@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0d6670">
-<link rel="stylesheet" href="src/ui/styles.css?v=0.59.0">
+<link rel="stylesheet" href="src/ui/styles.css?v=0.60.0">
 </head>
 <body>
 <header class="topbar">
@@ -2487,13 +2487,13 @@
             </select>
             <span class="sub" id="kv-kg-sub"></span>
           </div>
+          <div class="field span-2" id="kv-kgextrap-field"><label class="check"><input type="checkbox" id="kv_kg_extrap"> <span>Экстраполировать табл. 28–29 до 1,5 см (не по TRS-398 Rev.1)</span></label><span class="sub">для тубуса 1,5–2 см без k<sub>g</sub> лаборатории: прямая по строкам 2 и 3 см, добавка к неопределённости, пометка «нестандартные условия»</span></div>
           <div class="field" id="kv-kglab-field"><label for="kv_kg_lab">k<sub>g</sub> лаборатории</label><input type="text" id="kv_kg_lab" class="num" inputmode="decimal"><span class="sub" id="kv-kglab-sub">только для тубуса вне табл. 28–29 (у других — по таблице)</span></div>
           <div class="field" data-show="kv_kg_src:eq85;kv_range:low"><label for="kv_kg_nk">N<sub>K</sub><sup>ПММА</sup>(клин.)/N<sub>K</sub><sup>ПММА</sup>(лаб.)</label><input type="text" id="kv_kg_nk" class="num" inputmode="decimal"><span class="sub">отношение от лаборатории, TRS-398, прил. I</span></div>
         </div>
         <div class="grid four">
           <div class="field out-cell used"><span class="label">k<sub>g</sub></span><output data-out="trs.kg.value" data-digits="4" data-flag="kv_kg_src"></output></div>
-          <div class="field out-cell" id="kv-kg-bykv"><span class="label">k<sub>g</sub> по кВ</span><output data-out="trs.kg.byKv" data-digits="4"></output><span class="sub">для сравнения</span></div>
-          <div class="field out-cell" id="kv-kg-spread"><span class="label">Расхождение</span><output data-out="trs.kg.spreadPct" data-digits="2" data-suffix=" %"></output><span class="sub">входит в неопределённость k<sub>g</sub></span></div>
+          <div class="field out-cell" id="kv-kg-2cm"><span class="label">k<sub>g</sub> при 2 см</span><output data-out="trs.kg.value2" data-digits="4"></output><span class="sub">для тубуса меньше 2 см — откуда продолжена прямая</span></div>
           <div class="field out-cell" id="kv-kg-bw"><span class="label">B<sub>w</sub>(клин.)/B<sub>w</sub>(лаб.)</span><output data-out="trs.kg.bwRatio" data-digits="4"></output></div>
           <div class="field out-cell" id="kv-kz-field" data-show="kv_range:medium"><span class="label">k<sub>z</sub></span><output data-out="cert.kz" data-digits="3"></output><span class="sub">DIN 6809-4: калибровка на 5 см, измерение на 2 см</span></div>
         </div>
@@ -3331,6 +3331,11 @@
           </select>
           <span class="sub">от него зависит строка k<sub>g</sub> бюджета</span>
         </div>
+        <div class="field" data-show="unc_beam_type:kv;unc_kv_cal:ndw">
+          <label for="unc_kv_kgext">Экстраполяция k<sub>g</sub> за табл. 28–29, u, %</label>
+          <input type="text" id="unc_kv_kgext" class="num" inputmode="decimal" placeholder="нет">
+          <span class="sub">если тубус меньше 2 см и k<sub>g</sub> продолжен за таблицу (вкладка «kV-рентген»); пусто — экстраполяции нет</span>
+        </div>
       </div>
       <div class="grid subgrid">
         <div class="field"><label for="unc_institution">Учреждение</label><div class="combo" data-list="institutions"><input type="text" id="unc_institution"></div></div>
@@ -4132,6 +4137,6 @@
   <div class="dlg-body" id="kv-din-body"></div>
 </dialog>
 
-<script type="module" src="src/ui/app.js?v=0.59.0"></script>
+<script type="module" src="src/ui/app.js?v=0.60.0"></script>
 </body>
 </html>

@@ -33,6 +33,7 @@ export const UT_DEFAULTS = {
   unc_kv_depth: '2', // средние энергии, N_D,w: глубина калибровки, см: '2' — Rev.1; '5' — DIN 6809-4 (k_z = 1)
   unc_kv_kg: 'calc', // N_D,w: 'calc' — рассчитан или от лаборатории; 'same' — геометрия как в лаборатории; 'one' — k_g = 1 (DIN)
   unc_kv_kq: 'cert', // Qo = ⁶⁰Co: 'cert' — k_Q,M из калибровки в рентгене; 'one' — калибровки в рентгене нет, k_Q = 1 (не по Rev.1 и DIN)
+  unc_kv_kgext: '', // N_D,w: u, %, от экстраполяции k_g за табл. 28–29 до поля 1,5–2 см (вкладка kV); пусто — экстраполяции нет
   unc_kv_hvldin: '', // u, %, от пересчёта СПО качеств сертификата Al ↔ Cu по DIN 6809-4, табл. 5 (вкладка kV); пусто — пересчёта нет
 
   unc_cert_U: '', // расширенная неопределённость N_D,w из свидетельства, %
@@ -131,6 +132,16 @@ export function computeUncertaintyTool(form) {
     if (!(kvHvlDin >= 0) || kvHvlDin > 10) {
       add('warn', L('Неопределённость от пересчёта СПО сертификата вводится в процентах, от 0 до 10.', 'The uncertainty from the certificate HVL conversion is entered in per cent, from 0 to 10.'), null, 'unc_kv_hvldin');
       kvHvlDin = NaN;
+    }
+  }
+
+  // k_g экстраполирован за табл. 28–29 (не по Rev.1): своя строка бюджета
+  let kvKgExtrap = NaN;
+  if (kv && f.unc_kv_cal === 'ndw' && !isBlank(f.unc_kv_kgext)) {
+    kvKgExtrap = parseNumber(f.unc_kv_kgext);
+    if (!(kvKgExtrap >= 0) || kvKgExtrap > 10) {
+      add('warn', L('Неопределённость от экстраполяции k_g вводится в процентах, от 0 до 10.', 'The uncertainty from the k_g extrapolation is entered in per cent, from 0 to 10.'), null, 'unc_kv_kgext');
+      kvKgExtrap = NaN;
     }
   }
 
@@ -241,6 +252,7 @@ export function computeUncertaintyTool(form) {
     kvKq,
     kvDepth5,
     kvHvlDin,
+    kvKgExtrap,
     certU: f.unc_cert_U,
     certK: f.unc_cert_k,
     over: f.unc_over,

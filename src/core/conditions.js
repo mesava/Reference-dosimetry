@@ -334,11 +334,13 @@ export const KV_CONDITIONS = [
     scope: 'trs',
     label: () => L('поле и РИП как при калибровке или поправка k_g по TRS-398 Rev.1', 'field and SSD as at calibration, or a k_g correction according to TRS-398 Rev.1'),
     ref: `${TRS}, табл. 27, ур. (52), (58)`,
-    check: (c) => (c.cal !== 'ndw' ? 'na' : c.sameGeometry ? true : c.kgSource ? !['one', 'nocal'].includes(c.kgSource) : null),
+    check: (c) => (c.cal !== 'ndw' ? 'na' : c.sameGeometry ? true : c.kgSource ? !['one', 'nocal', 'extrap'].includes(c.kgSource) : null),
     reason: (c) =>
       c.kgSource === 'nocal'
         ? L('калибровки в рентгене нет: k_g не к чему отнести, принят равным 1', 'no x-ray calibration: k_g has nothing to refer to and is taken as 1')
-        : L('поле или РИП не как в лаборатории, а k_g принят равным 1 (как DIN 6809-4 и SSRMP No 9)', 'field or SSD different from the laboratory, with k_g taken as 1 (as in DIN 6809-4 and SSRMP No 9)'),
+        : c.kgSource === 'extrap'
+          ? L('поле меньше 2 см: k_g экстраполирован за табл. 28–29', 'field smaller than 2 cm: k_g extrapolated beyond Tables 28–29')
+          : L('поле или РИП не как в лаборатории, а k_g принят равным 1 (как DIN 6809-4 и SSRMP No 9)', 'field or SSD different from the laboratory, with k_g taken as 1 (as in DIN 6809-4 and SSRMP No 9)'),
   },
   {
     id: 'kvMedChamber',

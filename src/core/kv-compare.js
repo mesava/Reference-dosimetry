@@ -194,5 +194,6 @@ function kgSourceName(src) {
     eq90: L('ур. (90), данные Andreo', 'Eq. (90), Andreo data'),
     eq85: L('ур. (85)', 'Eq. (85)'),
     table: L('табл. 28–29', 'Tables 28–29'),
+    extrap: L('табл. 28–29, экстраполяция (не по Rev.1)', 'Tables 28–29, extrapolated (not Rev.1)'),
   }[src] ?? '';
 }

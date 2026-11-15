@@ -4,8 +4,11 @@
 // Табл. 28 и 29 (данные PTB [190]): k_g для серии качеств PTB TW при РИП 30 см и диаметре поля f; каждый столбец —
 // своё качество, нормированное на f = 3 см внутри столбца (TRS-398 Rev.1, ур. 84). Столбцам присвоены СПО качеств TW
 // по DIN 6809-4:2020, табл. 2 (при 30 см). Пучок между столбцами ставится линейно по ln(СПО), как k_Q
-// (рабочие записи 8.7 и 9.7); значение по кВ даётся рядом, их расхождение относится к неопределённости k_g
-// (в Rev.1 этот выбор не описан). По полю — линейно между строками, без экстраполяции.
+// (рабочие записи 8.7 и 9.7); в Rev.1 этот выбор не описан. По кВ пучок не ставится: клинические пучки мягче серии TW
+// при том же напряжении (100 кВ с СПО 2,8 мм Al — это почти TW70, а не TW100), и по зависимости B_w от поля (данные
+// Andreo) они ложатся между столбцами по СПО. Для сравнения считается и линейная интерполяция по СПО: их разница — часть
+// неопределённости k_g 1,0 % табл. 30. По полю — линейно между строками. Ниже 2 см таблицы нет: по выбору пользователя
+// k_g экстраполируется до 1,5 см по строкам 2 и 3 см (не по Rev.1, см. kgFromTable).
 
 import { L } from './i18n.js';
 
@@ -122,50 +125,70 @@ function interpLin(xs, ys, x) {
   return ys[i] + t * (ys[i + 1] - ys[i]);
 }
 
-/** Столбец табл. 28/29 при диаметре поля f (линейно между строками; вне 2–20 см — NaN). */
-function columnAtF(rows, col, f) {
+/** Наименьший диаметр поля, до которого табл. 28–29 экстраполируется по выбору пользователя, см (не по Rev.1). */
+export const KG_EXTRAP_FMIN = 1.5;
+
+/**
+ * Столбец табл. 28/29 при диаметре поля f: линейно между строками; вне 2–20 см — NaN. extrap — при 1,5 ≤ f < 2 см
+ * продолжить прямую по строкам 2 и 3 см (не по Rev.1).
+ */
+function columnAtF(rows, col, f, extrap = false) {
+  if (extrap && f >= KG_EXTRAP_FMIN - 1e-9 && f < KG_TABLE_F[0] - 1e-9) {
+    const y2 = rows[0][col];
+    const y3 = rows[1][col];
+    return y2 + ((y2 - y3) * (KG_TABLE_F[0] - f)) / (KG_TABLE_F[1] - KG_TABLE_F[0]);
+  }
   return interpLin(KG_TABLE_F, rows.map((r) => r[col]), f);
 }
 
 /**
- * Значение табл. 28/29 для качества и поля: по ln(СПО) между столбцами TW (основное) и по кВ (для сравнения).
- * Возвращает { byHvl, byKv } — значения T(f), NaN вне таблицы.
+ * Значение табл. 28/29 для качества и поля: по ln(СПО) между столбцами TW (основное) и линейно по СПО (для оценки
+ * неопределённости интерполяции). Возвращает { byHvl, byHvlLin } — значения T(f), NaN вне таблицы.
  */
-function tableValue(rows, { kv, hvl }, f) {
-  const cols = TW_COLUMNS.map((_, j) => columnAtF(rows, j, f));
-  const lnH = TW_COLUMNS.map((c) => Math.log(c.hvl));
+function tableValue(rows, hvl, f, extrap = false) {
+  const cols = TW_COLUMNS.map((_, j) => columnAtF(rows, j, f, extrap));
   const inHvl = hvl >= TW_COLUMNS[0].hvl - 1e-12 && hvl <= TW_COLUMNS[TW_COLUMNS.length - 1].hvl + 1e-12;
-  const inKv = kv >= TW_COLUMNS[0].kv - 1e-9 && kv <= TW_COLUMNS[TW_COLUMNS.length - 1].kv + 1e-9;
   return {
-    byHvl: inHvl ? interpLin(lnH, cols, Math.log(hvl)) : NaN,
-    byKv: inKv ? interpLin(TW_COLUMNS.map((c) => c.kv), cols, kv) : NaN,
+    byHvl: inHvl ? interpLin(TW_COLUMNS.map((c) => Math.log(c.hvl)), cols, Math.log(hvl)) : NaN,
+    byHvlLin: inHvl ? interpLin(TW_COLUMNS.map((c) => c.hvl), cols, hvl) : NaN,
   };
 }
 
 /**
  * k_g по табл. 28 или 29: T(f_clin) / T(f_lab) — таблица нормирована на f = 3 см, для другого поля лаборатории
  * перенормируется (TRS-398 Rev.1, текст перед табл. 28). hvl — мм Al, f — диаметры, см.
- * @returns {{ value, byKv, spreadPct, table, inRange: {hvl, kv, f} }}
+ * spreadPct — разница с линейной интерполяцией по СПО, %: входит в неопределённость k_g табл. 30.
+ * opts.extrap — клиническое поле 1,5–2 см: продолжить строки 2 и 3 см линейно (не по Rev.1). Тогда extrapolated = true,
+ * value2 — k_g при 2 см, uExtrapPct = |k_g / k_g(2 см) − 1| / √3 · 100 — добавка к неопределённости: истинное значение
+ * считается равновероятным между «за 2 см k_g не меняется» и «меняется вдвое сильнее прямой».
+ * @returns {{ value, byHvlLin, spreadPct, table, extrapolated, value2?, uExtrapPct?, inRange: {hvl, f, fExtrap} }}
  */
-export function kgFromTable(key, { kv, hvl }, fClin, fLab) {
+export function kgFromTable(key, { hvl }, fClin, fLab, { extrap = false } = {}) {
   const t = KG_TABLES[key];
   if (!t) return null;
-  const c = tableValue(t.rows, { kv, hvl }, fClin);
-  const l = tableValue(t.rows, { kv, hvl }, fLab);
-  const value = c.byHvl / l.byHvl;
-  const byKv = c.byKv / l.byKv;
   const inF = (f) => f >= KG_TABLE_F[0] - 1e-9 && f <= KG_TABLE_F[KG_TABLE_F.length - 1] + 1e-9;
-  return {
+  const fExtrap = extrap && inF(fLab) && fClin >= KG_EXTRAP_FMIN - 1e-9 && fClin < KG_TABLE_F[0] - 1e-9;
+  const c = tableValue(t.rows, hvl, fClin, fExtrap);
+  const l = tableValue(t.rows, hvl, fLab);
+  const value = c.byHvl / l.byHvl;
+  const byHvlLin = c.byHvlLin / l.byHvlLin;
+  const out = {
     value,
-    byKv,
-    spreadPct: Number.isFinite(value) && Number.isFinite(byKv) ? Math.abs(byKv / value - 1) * 100 : NaN,
+    byHvlLin,
+    spreadPct: Number.isFinite(value) && Number.isFinite(byHvlLin) ? Math.abs(byHvlLin / value - 1) * 100 : NaN,
     table: t.table,
+    extrapolated: fExtrap,
     inRange: {
       hvl: hvl >= TW_COLUMNS[0].hvl - 1e-12 && hvl <= TW_COLUMNS[TW_COLUMNS.length - 1].hvl + 1e-12,
-      kv: kv >= TW_COLUMNS[0].kv - 1e-9 && kv <= TW_COLUMNS[TW_COLUMNS.length - 1].kv + 1e-9,
       f: inF(fClin) && inF(fLab),
+      fExtrap,
     },
   };
+  if (fExtrap) {
+    out.value2 = tableValue(t.rows, hvl, KG_TABLE_F[0]).byHvl / l.byHvl;
+    out.uExtrapPct = (Math.abs(value / out.value2 - 1) / Math.sqrt(3)) * 100;
+  }
+  return out;
 }
 
 /**

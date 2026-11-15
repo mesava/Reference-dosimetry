@@ -26,7 +26,7 @@ import { L } from './i18n.js';
 import { temperaturePressure, polarity, environmentChecks, readTolerance } from './common.js';
 import { timerError, timerErrorMultiple } from './cobalt.js';
 import { KV_CONDITIONS, evaluateConditions, complianceFromConditions } from './conditions.js';
-import { resolveKvChamber, interpLog, kgFromTable, pchFromTable32, resolveKvPhantom, kvPhantomStatus, KV_PHANTOMS } from './kv-tables.js';
+import { resolveKvChamber, interpLog, kgFromTable, KG_EXTRAP_FMIN, pchFromTable32, resolveKvPhantom, kvPhantomStatus, KV_PHANTOMS } from './kv-tables.js';
 import { kvCalculator, ANDREO_CITATION } from './kv-data.js';
 import { compareKv } from './kv-compare.js';
 import { dinHvlConvert, DIN_HVL_DEV } from './kv-din.js';
@@ -136,6 +136,7 @@ export const KV_DEFAULTS = {
   // k_g и p_ch
   kv_kg_src: 'auto', // 'auto' | 'lab' | 'table' (табл. 28–29) | 'eq85' | 'one' (k_g = 1, как DIN/SSRMP — не по Rev.1)
   kv_kg_lab: '',
+  kv_kg_extrap: false, // низкие энергии, табл. 28–29: тубус 1,5–2 см — экстраполировать по строкам 2 и 3 см (не по Rev.1)
   kv_kg_nk: '', // ур. (85): отношение N_K^PMMA(клин.)/N_K^PMMA(лаб.) из лаборатории
   kv_pch: '', // средние энергии, N_K: p_ch для камеры не из табл. 32
 
@@ -259,7 +260,7 @@ export const KV_DEFAULTS = {
 };
 
 const CELL_KEYS = ['kv_M1', 'kv_Mopp', 'kv_M2', 'kv_pk_M', 'kv_pk_Mopp', 'kv_pk_M2', 'kv_nx_M1', 'kv_nx_Mn', 'kv_tp_R1', 'kv_tp_R2', 'kv_Mc', 'kv_hl_D0', 'kv_hl_D1', 'kv_hl_D2', 'kv_hl_Dc', 'kv_ln_M1', 'kv_ln_M2', 'kv_ln_M3', 'kv_ln_M4', 'kv_ln_M5', 'kv_rp_M'];
-const BOOL_KEYS = ['kv_cone_largest', 'kv_foil', 'kv_lab_pol_applied', 'kv_lab_ks_applied', 'kv_ks_on', 'kv_hl_apply', 'kv_cq_din', 'kv_pk_measure'];
+const BOOL_KEYS = ['kv_cone_largest', 'kv_foil', 'kv_lab_pol_applied', 'kv_lab_ks_applied', 'kv_ks_on', 'kv_hl_apply', 'kv_cq_din', 'kv_pk_measure', 'kv_kg_extrap'];
 /** M(V₂) больше M(V₁) не больше чем на столько (доля) или на размах серий — k_s = 1 (шум показаний), иначе ошибка. */
 export const KS_NOISE_MIN = 0.001;
 const CERT_ROW_KEYS = ['kv_cq_kv', 'kv_cq_hvl', 'kv_cq_mat', 'kv_cq_val'];
@@ -1216,49 +1217,70 @@ export function computeKv(form) {
       kg.value = kg.nkRatio * kg.bwRatio;
       kg.source = 'eq85';
     } else {
-      // 'auto' или 'table': табл. 28–29 для PTW 23342 и 23344
-      const t = chamber?.kgTable ? kgFromTable(chamber.kgTable, { kv, hvl }, fClin, fLab) : null;
+      // 'auto' или 'table': табл. 28–29 для PTW 23342 и 23344; поле 1,5–2 см — экстраполяция, если её выбрали
+      const extrapOn = f.kv_kg_extrap === true;
+      const t = chamber?.kgTable ? kgFromTable(chamber.kgTable, { kv, hvl }, fClin, fLab, { extrap: extrapOn }) : null;
+      const interpText = (tt) => L(
+        `качество поставлено между столбцами TW по ln(СПО) (СПО столбцов — DIN 6809-4, табл. 2)${Number.isFinite(tt.spreadPct) ? `; линейно по СПО k_g = ${ru(tt.byHvlLin, 4)}, разница ${ru(tt.spreadPct, 2)} % входит в неопределённость k_g 1,0 % (табл. 30)` : ''}`,
+        `the quality is placed between the TW columns by ln(HVL) (column HVLs from DIN 6809-4, Table 2)${Number.isFinite(tt.spreadPct) ? `; linearly by HVL, k_g = ${ru(tt.byHvlLin, 4)}, and the ${ru(tt.spreadPct, 2)} % difference is within the 1.0 % k_g uncertainty (Table 30)` : ''}`,
+      );
+      const labNorm = Math.abs(fLab - 3) > 1e-6;
       if (t && t.inRange.hvl && t.inRange.f) {
         kg.value = t.value;
-        kg.byKv = t.byKv;
+        kg.byHvlLin = t.byHvlLin;
         kg.spreadPct = t.spreadPct;
         kg.table = t.table;
         kg.source = 'table';
-        const kvTxt = Number.isFinite(t.byKv) ? ru(t.byKv, 4) : L('— (кВ вне 10–100)', '— (kV outside 10–100)');
         add('info', 'trs', L(
-          `k_g по табл. ${t.table}: качество поставлено между столбцами TW по ln(СПО) (СПО столбцов — DIN 6809-4, табл. 2), поле — линейно между строками${Math.abs(fLab - 3) > 1e-6 ? `, таблица перенормирована на поле лаборатории ${ru(fLab, 1)} см` : ''}. По кВ k_g = ${kvTxt}${Number.isFinite(t.spreadPct) ? `; расхождение ${ru(t.spreadPct, 2)} % относится к неопределённости k_g` : ''}.`,
-          `k_g from Table ${t.table}: the quality is placed between the TW columns by ln(HVL) (column HVLs from DIN 6809-4, Table 2), the field linearly between rows${Math.abs(fLab - 3) > 1e-6 ? `, the table is renormalized to the laboratory field of ${ru(fLab, 1)} cm` : ''}. By kV, k_g = ${kvTxt}${Number.isFinite(t.spreadPct) ? `; the ${ru(t.spreadPct, 2)} % difference is part of the k_g uncertainty` : ''}.`,
+          `k_g по табл. ${t.table}: ${interpText(t)}; поле — линейно между строками${labNorm ? `, таблица перенормирована на поле лаборатории ${ru(fLab, 1)} см` : ''}.`,
+          `k_g from Table ${t.table}: ${interpText(t)}; the field linearly between rows${labNorm ? `, the table is renormalized to the laboratory field of ${ru(fLab, 1)} cm` : ''}.`,
         ), `${REF.trs}, табл. ${t.table}`, 'kv_kg_src');
         if (Math.abs(ssd - 30) > 1e-6 || Math.abs(ssdLab - 30) > 1e-6) {
           add('info', 'trs', L(`Табл. ${t.table} получена при РИП 30 см; k_g зависит в основном от поля и мало — от РИП, поэтому таблицу можно применять при обычных клинических РИП.`, `Table ${t.table} was obtained at 30 cm SSD; k_g depends mainly on the field and only slightly on the SSD, so the table may be used at the usual clinical SSDs.`), `${REF.trs}, разд. 8.4.2`);
         }
       } else if (!isBlank(f.kv_kg_lab)) {
         // таблица этот тубус не покрывает, а у строки свой k_g лаборатории: он и берётся, остальные строки режима — по
-        // таблице (TRS-398 Rev.1, разд. 8.4.2: k_g от лаборатории — законный источник для любого поля)
+        // таблице (TRS-398 Rev.1, разд. 8.4.2: k_g от лаборатории — законный источник для любого поля); он важнее
+        // экстраполяции таблицы
         kg.value = readFactor('kv_kg_lab', L('k_g лаборатории', 'k_g from the laboratory'));
         kg.source = 'lab';
         add('info', 'trs', L(
           'Поле вне табл. 28–29 или камеры в них нет: для этого тубуса взят его k_g лаборатории (поле «k_g лаборатории» строки).',
           'The field is outside Tables 28–29 or the chamber is not in them: for this applicator its k_g from the laboratory is used (the row’s “k_g from the laboratory” field).',
         ), `${REF.trs}, разд. 8.4.2`, 'kv_kg_lab');
+      } else if (t && t.inRange.hvl && t.inRange.fExtrap) {
+        // поле 1,5–2 см: продолжение прямой по строкам 2 и 3 см — выбор пользователя, не TRS-398 Rev.1
+        kg.value = t.value;
+        kg.value2 = t.value2;
+        kg.uExtrapPct = t.uExtrapPct;
+        kg.byHvlLin = t.byHvlLin;
+        kg.spreadPct = t.spreadPct;
+        kg.table = t.table;
+        kg.source = 'extrap';
+        notRev1.push(L(`k_g экстраполирован за табл. ${t.table} (поле ${ru(fClin, 2)} см < 2 см)`, `k_g extrapolated beyond Table ${t.table} (a ${ru(fClin, 2)} cm field < 2 cm)`));
+        add('warn', 'trs', L(
+          `Поле ${ru(fClin, 2)} см меньше 2 см — в табл. ${t.table} таких строк нет. k_g = ${ru(t.value, 4)} получен продолжением прямой по строкам 2 и 3 см (при 2 см k_g = ${ru(t.value2, 4)}); ${interpText(t)}. Это не TRS-398 Rev.1: значения таблицы округлены до 0,01, а ход k_g ниже 2 см не измерен. К неопределённости добавлено u = |k_g / k_g(2 см) − 1| / √3 = ${ru(t.uExtrapPct, 2)} %. Если лаборатория даст k_g для этого тубуса, введите его в поле «k_g лаборатории» — он заменит экстраполяцию.`,
+          `The ${ru(fClin, 2)} cm field is smaller than 2 cm, and Table ${t.table} has no such rows. k_g = ${ru(t.value, 4)} is obtained by extending the straight line through the 2 and 3 cm rows (at 2 cm, k_g = ${ru(t.value2, 4)}); ${interpText(t)}. This is not TRS-398 Rev.1: the table values are rounded to 0.01, and the behaviour of k_g below 2 cm is not measured. An uncertainty of u = |k_g / k_g(2 cm) − 1| / √3 = ${ru(t.uExtrapPct, 2)} % is added. If the laboratory provides k_g for this applicator, enter it in the “k_g from the laboratory” field: it replaces the extrapolation.`,
+        ), `${REF.trs}, разд. 8.4.2, табл. ${t.table}`, ['kv_kg_extrap', 'kv_cone']);
       } else {
+        const small = t && t.inRange.hvl && Number.isFinite(fClin) && fClin >= KG_EXTRAP_FMIN - 1e-9 && fClin < 2 - 1e-9;
         const why = !chamber?.kgTable
           ? L('для этой камеры нет табл. 28–29 (они только для PTW 23342 и 23344)', 'there is no Table 28–29 for this chamber (they are only for PTW 23342 and 23344)')
           : !t.inRange.f
             ? L('поле вне табл. 28–29 (2–20 см)', 'the field is outside Tables 28–29 (2–20 cm)')
             : L('СПО вне качеств табл. 28–29 (TW10–TW100, 0,030–4,41 мм Al)', 'the HVL is outside the qualities of Tables 28–29 (TW10–TW100, 0.030–4.41 mm Al)');
         add('error', 'trs', L(
-          `Поле или РИП отличаются от лабораторных, а k_g взять неоткуда: ${why}. Введите для этого тубуса k_g лаборатории (поле «k_g лаборатории»; остальные тубусы режима останутся по таблице) или выберите ур. (85) с отношением N_K^PMMA от лаборатории.`,
-          `The field or SSD differ from the laboratory, and there is no source for k_g: ${why}. Enter k_g from the laboratory for this applicator (the “k_g from the laboratory” field; the other applicators of the mode stay on the table) or choose Eq. (85) with the N_K^PMMA ratio from the laboratory.`,
-        ), `${REF.trs}, разд. 8.4.2, прил. I, ур. (84)–(85)`, 'kv_kg_src');
+          `Поле или РИП отличаются от лабораторных, а k_g взять неоткуда: ${why}. Введите для этого тубуса k_g лаборатории (поле «k_g лаборатории»; остальные тубусы режима останутся по таблице)${small ? ', отметьте «Экстраполировать табл. 28–29 до 1,5 см» (не по Rev.1)' : ''} или выберите ур. (85) с отношением N_K^PMMA от лаборатории.`,
+          `The field or SSD differ from the laboratory, and there is no source for k_g: ${why}. Enter k_g from the laboratory for this applicator (the “k_g from the laboratory” field; the other applicators of the mode stay on the table)${small ? ', tick “Extrapolate Tables 28–29 down to 1.5 cm” (not Rev.1)' : ''} or choose Eq. (85) with the N_K^PMMA ratio from the laboratory.`,
+        ), `${REF.trs}, разд. 8.4.2, прил. I, ур. (84)–(85)`, small ? ['kv_kg_src', 'kv_kg_extrap'] : 'kv_kg_src');
         kg.value = NaN;
       }
     }
     kgCheck();
-    if (range === 'low' && phantom && phantom.kind !== 'pmma' && (kg.source === 'table' || kg.source === 'eq85')) {
+    if (range === 'low' && phantom && phantom.kind !== 'pmma' && ['table', 'extrap', 'eq85'].includes(kg.source)) {
       add('info', 'trs', L(
-        `k_g в ур. (52) определён для фантома из ПММА, а фантом — ${phantom.name}: применимость ${kg.source === 'table' ? 'табл. 28–29' : 'ур. (85)'} к другому материалу в TRS-398 Rev.1 не рассматривается.`,
-        `k_g in Eq. (52) is defined for a PMMA phantom, while the phantom is ${phantom.name}: TRS-398 Rev.1 does not consider whether ${kg.source === 'table' ? 'Tables 28–29 apply' : 'Eq. (85) applies'} to another material.`,
+        `k_g в ур. (52) определён для фантома из ПММА, а фантом — ${phantom.name}: применимость ${kg.source === 'eq85' ? 'ур. (85)' : 'табл. 28–29'} к другому материалу в TRS-398 Rev.1 не рассматривается.`,
+        `k_g in Eq. (52) is defined for a PMMA phantom, while the phantom is ${phantom.name}: TRS-398 Rev.1 does not consider whether ${kg.source === 'eq85' ? 'Eq. (85) applies' : 'Tables 28–29 apply'} to another material.`,
       ), `${REF.trs}, разд. 8.4.2, ур. (52)`, ['kv_kg_src', 'kv_phantom']);
     }
     phys.kg = kg.value;

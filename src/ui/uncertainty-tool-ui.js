@@ -208,6 +208,7 @@ function reportText(data, r) {
       if (f.unc_kv_range === 'medium') line(L('Глубина калибровки', 'Calibration depth'), f.unc_kv_depth === '5' ? L('5 см (DIN 6809-4, k_z = 1; не по TRS-398 Rev.1)', '5 cm (DIN 6809-4, k_z = 1; not TRS-398 Rev.1)') : L('2 г/см² (TRS-398 Rev.1)', '2 g/cm² (TRS-398 Rev.1)'));
       if (f.unc_kv_range === 'medium' && f.unc_kv_qo === 'co60') line('k_Q,M', f.unc_kv_kq === 'one' ? L('калибровки в рентгене нет: k_Q = 1 (не по TRS-398 Rev.1 и не по DIN 6809-4)', 'no x-ray calibration: k_Q = 1 (neither TRS-398 Rev.1 nor DIN 6809-4)') : L('из калибровки камеры в рентгене (DIN 6809-4)', 'from an x-ray calibration of the chamber (DIN 6809-4)'));
       line('k_g', kvKgText(f.unc_kv_kg));
+      if (String(f.unc_kv_kgext ?? '').trim()) line(L('Экстраполяция k_g за табл. 28–29', 'k_g extrapolation beyond Tables 28–29'), L(`поле меньше 2 см (не TRS-398 Rev.1): u = ${f.unc_kv_kgext} %`, `field below 2 cm (not TRS-398 Rev.1): u = ${f.unc_kv_kgext} %`));
     }
     if (String(f.unc_kv_hvldin ?? '').trim()) line(L('Пересчёт СПО сертификата Al ↔ Cu', 'Certificate HVL conversion Al ↔ Cu'), L(`DIN 6809-4, табл. 5 (оценка, не TRS-398 Rev.1): u = ${f.unc_kv_hvldin} %`, `DIN 6809-4, Table 5 (an estimate, not TRS-398 Rev.1): u = ${f.unc_kv_hvldin} %`));
   } else line(L('Калибровка камеры', 'Chamber calibration'), routeText(r.beam, r.route));
@@ -313,6 +314,7 @@ function pull(target) {
     patch.unc_kv_kg = s.kvKg;
     patch.unc_kv_kq = s.kvKq ?? 'cert';
     patch.unc_kv_hvldin = Number.isFinite(s.kvHvlDin) ? fmt(s.kvHvlDin, 2) : '';
+    patch.unc_kv_kgext = Number.isFinite(s.kvKgExtrap) ? fmt(s.kvKgExtrap, 2) : '';
   }
   // серии для раскрытия k_i: заменяются данными вкладки; свои оценки, u(T) и u(P) остаются
   const ki = parseKi(cur.unc_ki);

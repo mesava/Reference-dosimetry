@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeKv, certValue, equivalentDiameter } from '../src/core/kv.js';
-import { kgFromTable, pchFromTable32, interpLog, TRS_TABLE28, TRS_TABLE29, TW_COLUMNS, KG_TABLE_F, TRS_TABLE32 } from '../src/core/kv-tables.js';
+import { kgFromTable, KG_EXTRAP_FMIN, pchFromTable32, interpLog, TRS_TABLE28, TRS_TABLE29, TW_COLUMNS, KG_TABLE_F, TRS_TABLE32 } from '../src/core/kv-tables.js';
 import { kvCalculator } from '../src/core/kv-data.js';
 import { setLang } from '../src/core/i18n.js';
 
@@ -49,7 +49,7 @@ test('Табл. 28, 29: в узлах — значения таблиц, меж�
   // узлы: TW70 (2,94 мм Al), f = 10 см → 0,93 (табл. 28) и 0,93 (табл. 29); лаборатория 3 см
   near(kgFromTable('T28', { kv: 70, hvl: 2.94 }, 10, 3).value, 0.93, 1e-12);
   near(kgFromTable('T29', { kv: 100, hvl: 4.41 }, 15, 3).value, 0.9, 1e-12);
-  near(kgFromTable('T28', { kv: 70, hvl: 2.94 }, 10, 3).byKv, 0.93, 1e-12);
+  near(kgFromTable('T28', { kv: 70, hvl: 2.94 }, 10, 3).byHvlLin, 0.93, 1e-12);
   // середина по ln(СПО) между TW40 и TW50 при f = 15 см: (0,98 + 0,95)/2
   const mid = Math.sqrt(0.741 * 0.94);
   near(kgFromTable('T28', { kv: 45, hvl: mid }, 15, 3).value, (0.98 + 0.95) / 2, 1e-12);
@@ -102,8 +102,12 @@ test('Низкие энергии, N_D,w (ур. 52): доза = M · k_TP · k_p
   near(r.trs.perUnit, D / 1.01, 1e-12 * D);
   assert.equal(r.trs.kg.source, 'table');
   near(r.trs.kg.value, 0.98 + (0.97 - 0.98) * (Math.log(1 / 0.94) / Math.log(2.94 / 0.94)), 1e-12);
-  near(r.trs.kg.byKv, 0.98, 1e-12);
+  // для сравнения — линейно по СПО; разница входит в неопределённость k_g табл. 30
+  near(r.trs.kg.byHvlLin, 0.98 + (0.97 - 0.98) * ((1 - 0.94) / (2.94 - 0.94)), 1e-12);
   assert.ok(r.trs.kg.spreadPct > 0 && r.trs.kg.spreadPct < 0.1);
+  assert.equal(r.trs.kg.byKv, undefined);
+  assert.ok(has(r, 'info', /линейно по СПО k_g = .*входит в неопределённость k_g 1,0 %/));
+  assert.ok(!r.messages.some((m) => /По кВ/.test(m.text)));
   assert.equal(r.compliance.status, 'standard');
   assert.equal(r.andreo.citation, null); // табл. 28 — без данных Andreo
 });
@@ -301,6 +305,65 @@ test('Квадратный тубус → круг равной площади; 
   try {
     const r = computeKv({ ...LOW_NDW, kv_hvl: '8' });
     assert.ok(r.messages.every((m) => !/[А-Яа-яЁё]/.test(m.text)), r.messages.map((m) => m.text).join('\n'));
+  } finally {
+    setLang('ru');
+  }
+});
+
+test('Табл. 28–29 ниже 2 см: экстраполяция по строкам 2 и 3 см только по выбору, до 1,5 см, с добавкой к неопределённости', () => {
+  // TW70, f = 1,5 см: 1,02 + (1,02 − 1,00) · 0,5 = 1,03; при 2 см — 1,02
+  const t = kgFromTable('T28', { hvl: 2.94 }, 1.5, 3, { extrap: true });
+  near(t.value, 1.03, 1e-12);
+  near(t.value2, 1.02, 1e-12);
+  assert.equal(t.extrapolated, true);
+  assert.equal(t.inRange.f, false);
+  near(t.uExtrapPct, ((1.03 / 1.02 - 1) / Math.sqrt(3)) * 100, 1e-12);
+  // табл. 29, TW100, f = 1,8 см: 1,04 + 0,04 · 0,2
+  near(kgFromTable('T29', { hvl: 4.41 }, 1.8, 3, { extrap: true }).value, 1.048, 1e-12);
+  // без выбора, ниже 1,5 см и при поле лаборатории вне таблицы — нет
+  assert.ok(Number.isNaN(kgFromTable('T28', { hvl: 2.94 }, 1.5, 3).value));
+  assert.ok(Number.isNaN(kgFromTable('T28', { hvl: 2.94 }, 1.4, 3, { extrap: true }).value));
+  assert.equal(kgFromTable('T28', { hvl: 2.94 }, 1.5, 1.8, { extrap: true }).extrapolated, false);
+  assert.equal(KG_EXTRAP_FMIN, 1.5);
+  // в таблице экстраполяция не вмешивается
+  near(kgFromTable('T28', { hvl: 2.94 }, 2, 3, { extrap: true }).value, 1.02, 1e-12);
+  assert.equal(kgFromTable('T28', { hvl: 2.94 }, 2, 3, { extrap: true }).extrapolated, false);
+  // линейно по СПО — как в независимом расчёте в электронной таблице: 100 кВ, СПО 2,839 мм Al, Ø 1,5 см → 1,0292425
+  near(kgFromTable('T28', { hvl: 2.839 }, 1.5, 3, { extrap: true }).byHvlLin, 1.0292425, 1e-12);
+});
+
+test('Тубус 1,5 см на вкладке: без выбора — ошибка с подсказкой, с выбором — «не по Rev.1», k_g лаборатории важнее', () => {
+  const small = { ...LOW_NDW, kv_cone: '1,5' };
+  const off = computeKv(small);
+  assert.ok(errors(off).some((t) => /k_g взять неоткуда.*Экстраполировать табл\. 28–29 до 1,5 см/.test(t)));
+  assert.equal(off.flags.kv_kg_extrap, 'error');
+  const on = computeKv({ ...small, kv_kg_extrap: true });
+  assert.deepEqual(errors(on), []);
+  assert.equal(on.trs.kg.source, 'extrap');
+  const t = kgFromTable('T28', { hvl: 1 }, 1.5, 3, { extrap: true });
+  near(on.trs.kg.value, t.value, 1e-12);
+  near(on.trs.kg.uExtrapPct, t.uExtrapPct, 1e-12);
+  assert.ok(on.trs.kg.value > 1.01 && on.trs.kg.value < 1.02);
+  assert.equal(on.compliance.status, 'nonstandard');
+  assert.ok(on.notRev1.some((x) => /экстраполирован за табл\. 28/.test(x)));
+  assert.ok(has(on, 'warn', /не TRS-398 Rev\.1/));
+  // строковое значение из файла — тоже булево
+  assert.equal(computeKv({ ...small, kv_kg_extrap: 'true' }).trs.kg.source, 'extrap');
+  // k_g лаборатории строки заменяет экстраполяцию
+  const lab = computeKv({ ...small, kv_kg_extrap: true, kv_kg_lab: '1,012' });
+  assert.equal(lab.trs.kg.source, 'lab');
+  assert.equal(lab.trs.kg.value, 1.012);
+  // поле в таблице — галочка ничего не меняет
+  const in5 = computeKv({ ...LOW_NDW, kv_kg_extrap: true });
+  assert.equal(in5.trs.kg.source, 'table');
+  assert.equal(in5.compliance.status, 'standard');
+  // 1,4 см — и с выбором нет источника
+  assert.ok(errors(computeKv({ ...LOW_NDW, kv_cone: '1,4', kv_kg_extrap: true })).some((x) => /k_g взять неоткуда/.test(x)));
+  setLang('en');
+  try {
+    const en = computeKv({ ...small, kv_kg_extrap: true });
+    for (const m of en.messages) assert.ok(!/[а-яё]/i.test(m.text), m.text);
+    for (const x of en.notRev1) assert.ok(!/[а-яё]/i.test(x), x);
   } finally {
     setLang('ru');
   }

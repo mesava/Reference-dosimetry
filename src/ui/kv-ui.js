@@ -1598,6 +1598,7 @@ function kgSourceText(kg) {
   switch (kg?.source) {
     case 'same': return L('поле и РИП как в лаборатории: k_g = 1', 'field and SSD as at the laboratory: k_g = 1');
     case 'table': return L(`табл. ${kg.table}: по ln(СПО) между качествами TW, по полю — между строками`, `Table ${kg.table}: by ln(HVL) between the TW qualities, by field between rows`);
+    case 'extrap': return L(`табл. ${kg.table}, экстраполяция по строкам 2 и 3 см до поля меньше 2 см — не по TRS-398 Rev.1`, `Table ${kg.table}, extrapolated from the 2 and 3 cm rows to a field below 2 cm, not TRS-398 Rev.1`);
     case 'eq90': return L('ур. (90): [μen/ρ]z=2 клиники / лаборатории по данным Andreo', 'Eq. (90): clinical / laboratory [μen/ρ]z=2 from the Andreo data');
     case 'eq85': return L('ур. (85): отношение N_K^PMMA × отношение B_w', 'Eq. (85): N_K^PMMA ratio × B_w ratio');
     case 'lab': return L('значение лаборатории', 'laboratory value');
@@ -1766,13 +1767,14 @@ function applyVisibility(data, result) {
   const kg = result.trs.kg;
   $('#kv_kg_src').disabled = kg.source === 'nocal';
   html($('#kv-kg-sub'), richText(kgSourceText(kg)));
-  $('#kv-kg-bykv').hidden = kg.source !== 'table';
-  $('#kv-kg-spread').hidden = kg.source !== 'table';
   $('#kv-kg-bw').hidden = kg.source !== 'eq85';
+  $('#kv-kg-2cm').hidden = kg.source !== 'extrap';
   // k_g лаборатории: при «лаборатории» — у каждой строки; при табл. 28–29 — только для тубуса, которого в таблице нет
   const kgSrc = $('#kv_kg_src').value;
   $('#kv-kglab-field').hidden = !(kgSrc === 'lab' || (kgSrc === 'auto' && low));
   $('#kv-kglab-sub').hidden = kgSrc !== 'auto';
+  // экстраполяция табл. 28–29 до 1,5 см — только для камер с таблицей
+  $('#kv-kgextrap-field').hidden = !(kgSrc === 'auto' && low && c?.kgTable);
   $('#kv-pch-field').hidden = !(result.range === 'medium' && result.cal === 'nk' && c && !c.pch);
   const ph = result.trs.phys;
   html($('#kv-muen-sub'), low ? L('FIA, по СПО', 'FIA, by HVL') : L('на 2 см, по кВ, СПО, полю и РИП', 'at 2 cm, by kV, HVL, field and SSD'));
@@ -2404,6 +2406,8 @@ export function kvUncSource() {
     kvDepth: result.depth5 ? '5' : '2',
     // калибровки в рентгене нет: k_g = 1 — в бюджете как k_g = 1 по DIN
     kvKg: src === 'same' || src === 'one' ? src : src === 'nocal' ? 'one' : 'calc',
+    // k_g экстраполирован за табл. 28–29: своя строка бюджета, %
+    kvKgExtrap: src === 'extrap' ? x.kg.uExtrapPct : NaN,
     kvKq: result.cert.kq1 ? 'one' : 'cert',
     // u от пересчёта СПО строк сертификата по DIN 6809-4, %
     kvHvlDin: result.cert.din?.uPct,

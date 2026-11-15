@@ -137,8 +137,11 @@ test('kV-рентген: пример, ветки расчёта, пометка
   assert.equal(await page.locator('#kv-lbl-hvl').innerText(), 'СПО, мм Al');
   assert.match(await page.locator('#kv-dose-rows').innerText(), /ур\. \(52\)[\s\S]*на поверхности/);
   assert.match(await page.locator('#kv-kg-sub').innerText(), /табл\. 28/);
-  assert.ok(await page.locator('#kv-kg-bykv').isVisible());
-  assert.equal(await page.locator('#module-kv output[data-out="trs.kg.byKv"]').innerText(), '0,9800');
+  // значение по кВ не показывается: для сравнения — линейно по СПО, разница входит в 1,0 % табл. 30 (0.60.0)
+  assert.equal(await page.locator('#kv-kg-bykv').count(), 0);
+  assert.match(await page.locator('#kv-messages').innerText(), /линейно по СПО kg = [\d,]+, разница [\d,]+ % входит в неопределённость kg 1,0 %/);
+  assert.ok(await page.locator('#kv-kgextrap-field').isVisible());
+  assert.ok(await page.locator('#kv-kg-2cm').isHidden());
   assert.ok(await page.locator('#kv-andreo-cite').isHidden(), 'табл. 28 — без данных Andreo');
   assert.match(await page.locator('#kv-compliance').innerText(), /не найдено/);
 
@@ -154,6 +157,18 @@ test('kV-рентген: пример, ветки расчёта, пометка
   assert.equal(await page.locator('#module-kv output[data-out="trs.kg.value"]').innerText(), '0,9500');
   assert.match(await page.locator('#kv-messages').innerText(), /для этого тубуса взят его kg лаборатории/);
   await page.fill('#kv_kg_lab', '');
+  // экстраполяция табл. 28 до 1,5 см (0.60.0): по выбору, «не по Rev.1», k_g при 2 см рядом
+  await pause();
+  assert.match(await page.locator('#kv-messages').innerText(), /Экстраполировать табл\. 28–29 до 1,5 см/);
+  await page.check('#kv_kg_extrap');
+  await pause();
+  assert.equal(await page.locator('#module-kv output[data-out="trs.kg.value"]').innerText(), '1,0158');
+  assert.ok(await page.locator('#kv-kg-2cm').isVisible());
+  assert.equal(await page.locator('#module-kv output[data-out="trs.kg.value2"]').innerText(), '1,0105');
+  assert.match(await page.locator('#kv-kg-sub').innerText(), /экстраполяция по строкам 2 и 3 см/);
+  assert.match(await page.locator('#kv-notrev1-flag').innerText(), /kg экстраполирован за табл\. 28/);
+  assert.match(await page.locator('#kv-compliance').innerText(), /Нестандартные условия/);
+  await page.uncheck('#kv_kg_extrap');
   await page.fill('#kvr0_kv_cone', cone0);
   await pause();
 

@@ -161,3 +161,26 @@ test('по-английски: замечания пересчёта СПО бе
     setLang('ru');
   }
 });
+
+test('Бюджет неопределённости: строка экстраполяции k_g после k_g, только для N_D,w, предупреждение «не по Rev.1»', () => {
+  const tool = (o) => computeUncertaintyTool({ ...UT_DEFAULTS, unc_beam_type: 'kv', unc_kv_range: 'low', ...o });
+  const plain = tool({});
+  const t = tool({ unc_kv_kgext: '0,4' });
+  const keys = t.budget.rows.map((r) => r.key.split('.')[1]);
+  assert.equal(keys.indexOf('st_kgext'), keys.indexOf('st_kg') + 1);
+  assert.equal(t.budget.rows.find((r) => r.key.endsWith('.st_kgext')).def, 0.4);
+  near(t.ucPct, Math.hypot(plain.ucPct, 0.4), 1e-12);
+  assert.equal(t.flags.unc_kv_kgext, 'warn');
+  // N_K — k_g нет, строки нет
+  assert.ok(!tool({ unc_kv_cal: 'nk', unc_kv_kgext: '0,4' }).budget.rows.some((r) => r.key.endsWith('.st_kgext')));
+  const bad = tool({ unc_kv_kgext: '-1' });
+  assert.ok(!bad.budget.rows.some((r) => r.key.endsWith('.st_kgext')));
+  assert.equal(bad.flags.unc_kv_kgext, 'warn');
+  setLang('en');
+  try {
+    const row = tool({ unc_kv_kgext: '0,4' }).budget.rows.find((r) => r.key.endsWith('.st_kgext'));
+    assert.ok(!/[а-яё]/i.test(row.label + row.how + row.ref), row.label);
+  } finally {
+    setLang('ru');
+  }
+});
