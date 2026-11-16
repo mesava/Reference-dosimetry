@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0d6670">
-<link rel="stylesheet" href="src/ui/styles.css?v=0.60.0">
+<link rel="stylesheet" href="src/ui/styles.css?v=0.60.1">
 </head>
 <body>
 <header class="topbar">
@@ -2303,16 +2303,16 @@
             <th class="no">№</th>
             <th class="cone" id="kv-rows-h-app">Аппликатор</th>
             <th class="ssd">РИП, см</th>
-            <th class="v" id="kv-rows-h-kq">k<sub>Q</sub></th>
             <th id="kv-rows-h-set">Задание, мин</th>
             <th>T, °C</th>
             <th id="kv-rows-h-p">P, кПа</th>
+            <th class="v">k<sub>TP</sub></th>
+            <th class="v" id="kv-rows-h-kq">k<sub>Q</sub></th>
+            <th class="v" data-show="kv_cal:ndw">k<sub>g</sub></th>
             <th class="m">M, нКл</th>
             <th data-show="kv_range:medium">PDD(2 см), %</th>
-            <th id="kv-rows-h-ref">Сравнить с</th>
-            <th class="v">k<sub>TP</sub></th>
-            <th class="v" data-show="kv_cal:ndw">k<sub>g</sub></th>
             <th class="v fix fix-d" id="kv-rows-h-d">D, Гр/мин</th>
+            <th class="fix fix-ref" id="kv-rows-h-ref">Сравнить с</th>
             <th class="v fix fix-dev">Откл., %</th>
             <th class="act fix fix-act"><span class="visually-hidden">Состояние и удаление строки</span></th>
           </tr></thead>
@@ -4137,6 +4137,6 @@
   <div class="dlg-body" id="kv-din-body"></div>
 </dialog>
 
-<script type="module" src="src/ui/app.js?v=0.60.0"></script>
+<script type="module" src="src/ui/app.js?v=0.60.1"></script>
 </body>
 </html>

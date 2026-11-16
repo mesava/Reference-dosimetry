@@ -1311,7 +1311,9 @@ table.kv-rows td.v.good { color: var(--ok); }
 table.kv-rows td.v.bad { color: var(--err); font-weight: 600; }
 table.kv-rows th.fix, table.kv-rows td.fix { position: sticky; z-index: 1; background: var(--sheet); }
 table.kv-rows tbody tr.active td.fix { background: var(--accent-soft); }
-table.kv-rows .fix-d { right: 100px; width: 64px; min-width: 64px; box-shadow: inset 1px 0 0 var(--rule); }
+table.kv-rows .fix-d { right: 182px; width: 64px; min-width: 64px; box-shadow: inset 1px 0 0 var(--rule); }
+table.kv-rows .fix-ref { right: 100px; width: 82px; min-width: 82px; }
+table.kv-rows td.fix-ref input[data-k="kv_ref"] { min-width: 0; }
 table.kv-rows .fix-dev { right: 48px; width: 52px; min-width: 52px; }
 table.kv-rows .fix-act { right: 0; width: 48px; min-width: 48px; white-space: nowrap; text-align: right; }
 table.kv-rows .st { display: inline-block; width: 9px; height: 9px; margin-right: 4px; border-radius: 50%; background: var(--rule); vertical-align: middle; }

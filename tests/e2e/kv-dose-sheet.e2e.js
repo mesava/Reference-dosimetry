@@ -113,5 +113,13 @@ test('kV-рентген: режим из «Оборудования» — оди
   const kq = await page.locator('#kv-rows tbody tr:first-child [data-o="kq"]').innerText();
   assert.match(kq, /^\d,\d{4,6}$/);
   assert.match(await page.locator('#kv-rows-h-kq').innerText(), /k\s*Q|N\s*D,w,Q/);
+  // порядок столбцов (0.60.1) — по ходу расчёта: задание, T, P, k_TP, k_Q, k_g, M, D, «Сравнить с», отклонение
+  const order = await page.locator('#kv-rows tbody tr:first-child > td').evaluateAll((tds) => tds.map((td) => td.dataset.o || td.querySelector('[data-k]')?.dataset.k || td.className));
+  const at = (k) => order.indexOf(k);
+  const want = ['kv_set', 'kv_env_T', 'kv_env_P', 'ktp', 'kq', 'kg', 'kv_M1', 'd', 'kv_ref', 'dev'];
+  assert.ok(want.every((k) => at(k) >= 0), order.join(' | '));
+  assert.deepEqual([...want].sort((a, b) => at(a) - at(b)), want, order.join(' | '));
+  const heads = await page.locator('#kv-rows thead th').evaluateAll((ths) => ths.map((th) => th.textContent.replace(/\s+/g, ' ').trim()));
+  assert.ok(heads.indexOf('Сравнить с') === heads.findIndex((h) => h.startsWith('D,')) + 1, heads.join(' | '));
   assert.deepEqual(errors, []);
 });

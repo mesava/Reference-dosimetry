@@ -392,16 +392,16 @@ function rowHtml(row, i, n, caps, linked = null) {
     <td class="no"><span class="kv-std" hidden></span><button type="button" class="kv-row-pick" aria-pressed="${active}" aria-label="${esc(L(`Строка ${i + 1}: подробный расчёт в разделе 6`, `Row ${i + 1}: detailed calculation in section 6`))}" title="${esc(L('Подробный расчёт строки — в разделе 6', 'Detailed calculation of the row in section 6'))}">${i + 1}</button></td>
     ${linked ? appCell(row, i, linked) : `<td class="cone"${cap(L('Аппликатор, см', 'Applicator, cm'))}><span class="cone-in"><select data-k="kv_cone_shape" id="kvr${i}_kv_cone_shape" aria-label="${esc(`${L('Тубус', 'Applicator')}, ${rowWord(i)}`)}">${opt('circle', 'Ø', L('круглый', 'circular'))}${opt('square', '□', L('квадратный', 'square'))}${opt('rect', '▭', L('прямоугольный', 'rectangular'))}</select>${rowInput(i, 'kv_cone', row.kv_cone, coneLabel(shape))}<span class="x"${rect ? '' : ' hidden'}>×</span>${rowInput(i, 'kv_cone_b', row.kv_cone_b, L('Сторона b, см', 'Side b, cm')).replace('<input ', `<input${rect ? '' : ' hidden'} `)}</span></td>
     <td class="ssd"${cap(L('РИП, см', 'SSD, cm'))}>${rowInput(i, 'kv_ssd', row.kv_ssd, L('РИП, см', 'SSD, cm'))}</td>`}
-    <td class="v" data-o="kq"${cap(caps.kq)}></td>
     <td${cap(caps.set)}>${rowInput(i, 'kv_set', row.kv_set, caps.set)}</td>
     <td${cap('T, °C')}>${rowInput(i, 'kv_env_T', row.kv_env_T, L('Температура, °C', 'Temperature, °C'))}</td>
     <td${cap(caps.p)}>${rowInput(i, 'kv_env_P', row.kv_env_P, caps.pLabel)}</td>
+    <td class="v" data-o="ktp"${cap('k_TP')}></td>
+    <td class="v" data-o="kq"${cap(caps.kq)}></td>
+    <td class="v" data-o="kg" data-show="kv_cal:ndw"${cap('k_g')}></td>
     <td class="m"${cap(L('M₁, нКл', 'M₁, nC'))}><span class="m-in">${m}</span></td>
     <td data-show="kv_range:medium"${cap(L('PDD(2 см), %', 'PDD(2 cm), %'))}>${rowInput(i, 'kv_pdd2', row.kv_pdd2, L('PDD(2 см), %', 'PDD(2 cm), %'))}</td>
-    <td${cap(L('Сравнить с', 'Compare with'))}>${rowInput(i, 'kv_ref', row.kv_ref, L('Значение для сравнения', 'Comparison value'))}</td>
-    <td class="v" data-o="ktp"${cap('k_TP')}></td>
-    <td class="v" data-o="kg" data-show="kv_cal:ndw"${cap('k_g')}></td>
     <td class="v fix fix-d" data-o="d"${cap(caps.d)}></td>
+    <td class="fix fix-ref"${cap(L('Сравнить с', 'Compare with'))}>${rowInput(i, 'kv_ref', row.kv_ref, L('Значение для сравнения', 'Comparison value'))}</td>
     <td class="v fix fix-dev" data-o="dev"${cap(L('откл., %', 'dev., %'))}></td>
     <td class="act fix fix-act"><span class="st" role="img"></span><button type="button" class="kv-row-del" aria-label="${esc(L(`Удалить строку ${i + 1}`, `Delete row ${i + 1}`))}" title="${esc(L('Удалить строку', 'Delete the row'))}"${n <= 1 ? ' disabled' : ''}>×</button></td>
   </tr>`;
