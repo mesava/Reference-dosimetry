@@ -165,7 +165,8 @@ test('вкладка «МВ фотоны»: пучок журнала, запи�
   assert.deepEqual((await page.locator('.modules a').allInnerTexts()).map((t) => t.trim()), ['Начало', 'Оборудование', 'Дозиметрия', 'Камера и пучок', 'Неопределённость', 'Журнал и тренды']);
   assert.equal(await page.locator('#tab-equipment').getAttribute('aria-current'), 'page');
   assert.ok(await page.locator('.protocol-switch').isHidden(), 'в «Оборудовании» переключателя протокола нет');
-  // #session — с 0.27.0 подраздел «Сеанс» вкладки «Дозиметрия» (до 0.23.0 так назывался подраздел журнала)
+  // #session — с 0.27.0 подраздел «Сеанс» вкладки «Дозиметрия» (до 0.23.0 так назывался подраздел журнала), с 0.63.0 —
+  // лист «Сеанс» вкладки «МВ фотоны»: старая ссылка ведёт туда
   await page.goto(`${server.url}/index.html#session`);
   await pause(500);
   assert.ok(await page.locator('#module-session').isVisible());

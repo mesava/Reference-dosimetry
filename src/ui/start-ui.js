@@ -67,8 +67,8 @@ export function renderStart() {
       <section class="start-card">
         <h3>${esc(L('Дозиметрия', 'Dosimetry'))}</h3>
         <p class="start-when">${L(
-          '<b>Когда:</b> калибровка в воде в референсных условиях TRS-398 Rev.1 — одного пучка или всех пучков аппарата подряд, с подробным протоколом: все поправки со ссылками на протокол, PDF со строками для подписей, файл с данными.',
-          '<b>When:</b> calibration in water under TRS-398 Rev.1 reference conditions, of a single beam or of all beams of a machine in a row, with a detailed report: all corrections with protocol references, a PDF with signature lines, a data file.',
+          '<b>Когда:</b> калибровка в воде в референсных условиях TRS-398 Rev.1 — одной энергии или всех энергий аппарата подряд, с подробным протоколом: все поправки со ссылками на протокол, PDF со строками для подписей, файл с данными.',
+          '<b>When:</b> calibration in water under TRS-398 Rev.1 reference conditions, of a single energy or of all energies of a machine in a row, with a detailed report: all corrections with protocol references, a PDF with signature lines, a data file.',
         )}</p>
         <p class="start-note">${esc(L('Один пучок:', 'A single beam:'))}</p>
         <div class="start-row">
@@ -76,11 +76,18 @@ export function renderStart() {
           ${go('photons', esc(L('МВ фотоны', 'MV photons')))}
           ${go('electrons', esc(L('Электроны', 'Electrons')))}
         </div>
-        <p class="start-note">${esc(L('Несколько пучков аппарата подряд, каждый записывается в журнал:', 'Several beams of a machine in a row, each recorded to the journal:'))}</p>
-        <div class="start-row">${go('session', esc(L('Сеанс — пучки аппарата', 'Session: machine beams')))}</div>
+        <p class="start-note">${esc(L('Все энергии аппарата подряд, каждая записывается в журнал (лист «Сеанс» вкладки):', 'All energies of a machine in a row, each recorded to the journal (the Session sheet of the tab):'))}</p>
+        <div class="start-row">
+          ${go('photons/session', esc(L('МВ фотоны: сеанс', 'MV photons: session')))}
+          ${go('electrons/session', esc(L('Электроны: сеанс', 'Electrons: session')))}
+        </div>
         <p class="start-note">${esc(L('Пучок журнала выбирается в разделе 1 вкладки; записанный пучок открывается из журнала кнопкой «Открыть во вкладке».', 'A journal beam is selected in section 1 of the tab; a recorded beam opens from the journal with the Open in the tab button.'))}</p>
-        <p class="start-note">${esc(L('Не референсные условия: ежедневная проверка выхода в пластинах относительно калибровки пучка в воде.', 'Not reference conditions: a routine output check in plates against the calibration of the beam in water.'))}</p>
-        <div class="start-row">${go('plates', esc(L('В пластинах — проверка выхода', 'In plates: output check')))}</div>
+        <p class="start-note">${esc(L('Не референсные условия: ежедневная проверка выхода в пластинах относительно калибровки пучка в воде (лист «В пластинах» вкладки):', 'Not reference conditions: a routine output check in plates against the calibration of the beam in water (the In plates sheet of the tab):'))}</p>
+        <div class="start-row">
+          ${go('co60/plates', esc(L('⁶⁰Co: в пластинах', '⁶⁰Co: in plates')))}
+          ${go('photons/plates', esc(L('МВ фотоны: в пластинах', 'MV photons: in plates')))}
+          ${go('electrons/plates', esc(L('Электроны: в пластинах', 'Electrons: in plates')))}
+        </div>
       </section>
       <section class="start-card">
         <h3>${esc(L('Камера и пучок — до измерений', 'Chamber and beam: before measurements'))}</h3>

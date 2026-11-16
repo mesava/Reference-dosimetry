@@ -957,7 +957,7 @@ export const STATIC_EN = {
   "Сеанс": "Session",
   "В пластинах": "In plates",
   "Проверки в пластинах": "Checks in plates",
-  "Проверки выхода в пластинах — не референсные условия: выход относительно калибровки пучка в воде, к которой привязан набор пластин. Контрольная карта каждого пучка — в «Дозиметрии», подраздел «В пластинах».": "Output checks in plates are not reference conditions: the output relative to the calibration of the beam in water to which the plate set is bound. The control chart of each beam is in Dosimetry, the In plates subsection.",
+  "Проверки выхода в пластинах — не референсные условия: выход относительно калибровки пучка в воде, к которой привязан набор пластин. Контрольная карта каждого пучка — на листе «В пластинах» его вкладки («⁶⁰Co», «МВ фотоны», «Электроны»).": "Output checks in plates are not reference conditions: the output relative to the calibration of the beam in water to which the plate set is bound. The control chart of each beam is on the In plates sheet of its tab (⁶⁰Co, MV photons, Electrons).",
   "Что планируется": "What is planned",
   "протокол и файл с данными, как на остальных вкладках дозиметрии.": "a report and a data file, as on the other dosimetry tabs.",
   "Пока раздел в разработке, для пучков ⁶⁰Co, МВ фотонов и электронов используйте соседние вкладки.": "While this section is in development, use the neighbouring tabs for ⁶⁰Co, MV photon and electron beams.",

@@ -1,5 +1,5 @@
-// «Дозиметрия» → «Сеанс»: пучки аппарата подряд — выбор аппарата, даты и пучков, полоса сеанса во вкладке,
-// «Записать и далее», итог сеанса по записям журнала.
+// Лист «Сеанс: все энергии» вкладки «МВ фотоны» (с 0.63.0): энергии аппарата подряд — выбор аппарата, даты и энергий,
+// полоса сеанса на рабочем листе, «Записать и далее», итог сеанса по записям журнала; старая ссылка #session.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer, launch, openPage, CYR, fillPhotonReadings } from './helpers.js';
@@ -23,13 +23,19 @@ test('сеанс: два пучка фотонов подряд записыва
   await page.waitForSelector('#start-root .start-card');
   const start = await page.locator('#start-root').innerText();
   assert.doesNotMatch(start, /Измерение во вкладке дозиметрии|Калибровка одного пучка/);
-  assert.match(start, /Дозиметрия[\s\S]*Сеанс — пучки аппарата/);
-  // без журнала сеанс отправляет в «Оборудование»
+  assert.match(start, /Дозиметрия[\s\S]*МВ фотоны: сеанс[\s\S]*Электроны: сеанс/);
+  // старая ссылка #session — лист «Сеанс» вкладки «МВ фотоны»; без журнала сеанс отправляет в «Оборудование»
   await page.goto(`${server.url}/index.html#session`);
   await pause();
-  assert.match(await page.locator('#session-root').innerText(), /нужны аппарат и его пучки в журнале/);
-  // подвкладки «Дозиметрии»: «Сеанс» и «В пластинах» — в конце
-  assert.deepEqual((await page.locator('#module-session .subtools a').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()), ['Сеанс', '⁶⁰Co', 'МВ фотоны', 'Электроны', 'kV-рентген', 'Брахитерапия в разработке', 'В пластинах']);
+  assert.equal(await page.evaluate(() => location.hash), '#photons/session');
+  assert.match(await page.locator('#session-root').innerText(), /нужны аппарат и его пучки фотонов в журнале/);
+  // подвкладки «Дозиметрии» — без «Сеанса» и «В пластинах»; они — листы вкладки, открыта вкладка «МВ фотоны»
+  const norm = (xs) => xs.map((t) => t.replace(/\s+/g, ' ').trim());
+  assert.deepEqual(norm(await page.locator('#module-session .subtools a').allInnerTexts()), ['⁶⁰Co', 'МВ фотоны', 'Электроны', 'kV-рентген', 'Брахитерапия в разработке']);
+  assert.equal(await page.locator('#module-session .subtools a[aria-current]').innerText(), 'МВ фотоны');
+  assert.deepEqual(norm(await page.locator('#module-session .beam-sheets a').allInnerTexts()), ['Одна энергия', 'Сеанс: все энергии', 'В пластинах']);
+  assert.equal(await page.locator('#module-session .beam-sheets a[aria-current]').innerText(), 'Сеанс: все энергии');
+  assert.match(await page.title(), /МВ фотоны — сеанс/);
 
   // оборудование: аппарат с двумя пучками, электрометр, камера
   await page.goto(`${server.url}/index.html#equipment`);
@@ -63,28 +69,32 @@ test('сеанс: два пучка фотонов подряд записыва
   await pause();
   assert.ok(await page.locator('#ph-sbar').isHidden(), 'без сеанса полосы нет');
 
-  // новый сеанс: аппарат, дата, пучки (отмечены все), порядок — 10 МВ первым
-  await page.goto(`${server.url}/index.html#session`);
+  // новый сеанс: ярлык «Сеанс» рабочего листа; аппарат, дата, энергии (отмечены все), порядок — 10 МВ первым
+  assert.deepEqual(norm(await page.locator('#module-photons .beam-sheets a').allInnerTexts()), ['Одна энергия', 'Сеанс: все энергии', 'В пластинах']);
+  await page.locator('#module-photons .beam-sheets a', { hasText: 'Сеанс' }).click();
   await pause();
+  assert.equal(await page.evaluate(() => location.hash), '#photons/session');
   await page.fill('#ss_date', '2026-10-22');
   await pause();
   const setup = page.locator('#session-root');
-  assert.match(await setup.innerText(), /6 МВ · фотоны · калибровок в журнале нет[\s\S]*10 МВ/);
+  assert.match(await setup.innerText(), /6 МВ · калибровок в журнале нет[\s\S]*10 МВ/);
   await setup.locator('[data-down="0"]').click();
   await pause();
   assert.match(await setup.innerText(), /10 МВ[\s\S]*6 МВ/);
-  assert.match(await setup.locator('[data-ss=start]').innerText(), /Начать сеанс: 2 пучка/);
+  assert.match(await setup.locator('[data-ss=start]').innerText(), /Начать сеанс: 2 энергии/);
   await setup.locator('[data-ss=start]').click();
   await pause(600);
 
-  // первый пучок открыт во вкладке «МВ фотоны» с пучком журнала, датой сеанса и полосой сеанса
-  assert.equal(await page.evaluate(() => location.hash), '#photons');
+  // первая энергия открыта на рабочем листе «МВ фотонов» (ярлык «Сеанс») с пучком журнала, датой и полосой сеанса
+  assert.equal(await page.evaluate(() => location.hash), '#photons/session');
+  assert.ok(await page.locator('#module-photons').isVisible());
+  assert.equal(await page.locator('#module-photons .beam-sheets a[aria-current]').innerText(), 'Сеанс: все энергии · 0 из 2');
   assert.equal(await page.inputValue('#meta_beam'), '10 МВ');
   assert.equal(await page.inputValue('#meta_date'), '2026-10-22');
   assert.equal(await page.inputValue('#ch_serial'), '47364');
   const bar = page.locator('#ph-sbar');
   assert.ok(await bar.isVisible());
-  assert.match(await bar.innerText(), /Сеанс · Versa HD · 22\.10\.2026 · калибровка в воде · пучок 1 из 2/);
+  assert.match(await bar.innerText(), /Сеанс · Versa HD · 22\.10\.2026 · калибровка в воде · энергия 1 из 2/);
   // показания примера при выборе пучка журнала очищаются — вводятся во вкладке
   assert.equal(await page.locator('#sheet .cells[data-series="rd_M1"] input').first().inputValue(), '');
   const measure = async () => {
@@ -100,18 +110,36 @@ test('сеанс: два пучка фотонов подряд записыва
   await pause(600);
   // записан, открыт следующий пучок
   assert.equal(await page.inputValue('#meta_beam'), '6 МВ');
-  assert.match(await bar.innerText(), /пучок 2 из 2/);
+  assert.match(await bar.innerText(), /энергия 2 из 2/);
   assert.match(await bar.innerText(), /✓ 10 МВ · [+−±]\d/);
+  assert.equal(await page.locator('#module-photons .beam-sheets a[aria-current]').innerText(), 'Сеанс: все энергии · 1 из 2');
+  // лист «Одна энергия» — тот же рабочий лист без полосы сеанса; «Сеанс» возвращает к ней
+  await page.locator('#module-photons .beam-sheets a', { hasText: 'Одна энергия' }).click();
+  await pause();
+  assert.ok(await bar.isHidden());
+  assert.equal(await page.evaluate(() => location.hash), '#photons');
+  // подвкладка «МВ фотоны» возвращает к листу, с которым работали
+  await page.locator('#module-photons .beam-sheets a', { hasText: 'Сеанс' }).click();
+  await pause();
+  assert.ok(await bar.isVisible());
+  await page.locator('#module-photons .subtools a', { hasText: 'Электроны' }).click();
+  await pause();
+  await page.locator('#module-electrons .subtools a', { hasText: 'МВ фотоны' }).click();
+  await pause();
+  assert.equal(await page.evaluate(() => location.hash), '#photons/session');
+  assert.ok(await bar.isVisible());
+  assert.equal(await page.inputValue('#meta_beam'), '6 МВ');
   assert.match(await bar.locator('[data-ss=record]').innerText(), /Записать и завершить/);
   await measure();
   await bar.locator('[data-ss=record]').click();
   await pause(600);
 
-  // все пучки записаны: страница сеанса с итогом
-  assert.equal(await page.evaluate(() => location.hash), '#session');
+  // все энергии записаны: план сеанса с итогом
+  assert.equal(await page.evaluate(() => location.hash), '#photons/session/plan');
   const done = await page.locator('#session-root').innerText();
   assert.match(done, /Записано в журнал: 2 из 2/);
-  assert.match(done, /Все пучки сеанса записаны в журнал/);
+  assert.match(done, /Все энергии сеанса записаны в журнал/);
+  assert.equal(await page.locator('#module-session .beam-sheets a[aria-current]').innerText(), 'Сеанс: все энергии · 2 из 2');
   // одна запись журнала (аппарат за день) с обоими пучками
   const journal = await page.evaluate(() => JSON.parse(localStorage.getItem('reference-dosimetry.journal.v1') || 'null')?.journal);
   if (journal) {
@@ -126,8 +154,14 @@ test('сеанс: два пучка фотонов подряд записыва
   await pause();
   assert.ok(await page.locator('#ph-sbar').isHidden(), 'после завершения полосы нет');
 
+  // у «Электронов» — свой план: энергий электронов у аппарата нет
+  await page.goto(`${server.url}/index.html#electrons/session`);
+  await pause();
+  assert.match(await page.locator('#session-root').innerText(), /нужны аппарат и его пучки электронов/);
+  assert.equal(await page.locator('#module-session .subtools a[aria-current]').innerText(), 'Электроны');
+
   // по-английски — без кириллицы на странице сеанса (кроме названий)
-  await page.goto(`${server.url}/index.html#session`);
+  await page.goto(`${server.url}/index.html#photons/session`);
   await page.locator('#lang_en').check();
   await pause(500);
   const lines = (await page.locator('#session-root').innerText()).split('\n').filter((l) => CYR.test(l) && !/Versa HD|МВ/.test(l));

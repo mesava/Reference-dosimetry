@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { newJournal, normalizeJournal, recordTabBeam, PH_BEAM_KEYS, PH_CHAMBER_KEYS, PH_ELECTROMETER_KEYS } from '../src/core/journal.js';
-import { normalizePlan, planProgress, nextPending, sessionMachines, machineBeams, beamRecord, MODULE_OF } from '../src/core/session.js';
+import { normalizePlan, planProgress, nextPending, sessionMachines, machineBeams, beamRecord, splitPlan, MODULE_OF } from '../src/core/session.js';
 import { SAMPLE_FORM } from '../src/core/sample.js';
 
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]]));
@@ -84,4 +84,36 @@ test('Сеанс: пучок, записанный по обоим проток�
   assert.equal(beamRecord(j, plan(), 'b6').session.protocol, 'tg51');
   j = recordTabBeam(j, { machineId: 'm1', beamId: 'b6', form: tab({ protocol: 'trs' }), kind: 'photon' }).journal;
   assert.equal(beamRecord(j, plan(), 'b6').session.protocol, 'trs');
+});
+
+test('Сеанс по виду пучков (0.63.0): лист вкладки — только её энергии', () => {
+  const j = journal();
+  assert.deepEqual(machineBeams(j, 'm1', 'photon').map((b) => b.id), ['b6', 'b6f', 'b10']);
+  assert.deepEqual(machineBeams(j, 'm1', 'electron').map((b) => b.id), ['e6']);
+  assert.deepEqual(sessionMachines(j, 'electron').map((m) => m.id), ['m1']);
+  assert.deepEqual(sessionMachines(j, 'cobalt'), []);
+  // в плане фотонов пучок электронов отбрасывается; неизвестный вид — как раньше, любые пучки
+  const p = normalizePlan(j, plan({ kind: 'photon', beamIds: ['b10', 'e6', 'b6'] }));
+  assert.equal(p.kind, 'photon');
+  assert.deepEqual(p.beamIds, ['b10', 'b6']);
+  assert.deepEqual(normalizePlan(j, plan({ kind: 'cobalt', beamIds: ['b10', 'e6'] })).beamIds, ['b10', 'e6']);
+  assert.equal(normalizePlan(j, plan({ kind: 'electron', beamIds: ['b10'] })).active, false);
+});
+
+test('Сеанс: план до 0.63.0 (фотоны и электроны вместе) делится по видам, текущий пучок сохраняется', () => {
+  const j = journal();
+  const by = splitPlan(j, plan({ beamIds: ['b10', 'e6', 'b6'], index: 2 }));
+  assert.deepEqual(by.photon.beamIds, ['b10', 'b6']);
+  assert.equal(by.photon.index, 1, 'текущий 6 МВ — второй в плане фотонов');
+  assert.equal(by.photon.active, true);
+  assert.deepEqual(by.electron.beamIds, ['e6']);
+  assert.equal(by.electron.active, true);
+  assert.equal(by.electron.index, 0);
+  // только фотоны: план электронов пустой и не начат
+  const ph = splitPlan(j, plan({ active: false }));
+  assert.deepEqual(ph.photon.beamIds, ['b10', 'b6', 'b6f']);
+  assert.equal(ph.photon.active, false);
+  assert.deepEqual(ph.electron.beamIds, []);
+  assert.equal(ph.electron.active, false);
+  assert.deepEqual(splitPlan(j, null).photon.beamIds, []);
 });

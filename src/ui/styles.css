@@ -1440,6 +1440,9 @@ table.kv-sum-dates td.kv-sum-check { font-style: italic; }
 .kv-pages a[data-state="error"]::before { background: var(--err); border-color: var(--err); }
 .kv-pages a[data-state="none"]::before { display: none; }
 .kv-pages a.wip { color: var(--muted); font-weight: 400; }
+/* листы вкладок пучков («Одна энергия», «Сеанс», «В пластинах»; с 0.63.0) — как листы kV */
+.beam-sheets { margin-bottom: 14px; }
+.start .beam-sheets { margin-top: 0; }
 .kv-pages a.wip::before { border-style: dashed; }
 @media (max-width: 560px) { .kv-pages { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; } }
 /* «Оборудование»: аппараты — листы раздела 2 (с 0.52.0); кнопки добавления — над ярлыками */

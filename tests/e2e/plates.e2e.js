@@ -32,13 +32,28 @@ test('в пластинах: привязка к калибровке в вод�
   const pause = (ms = 300) => page.waitForTimeout(ms);
   await page.goto(`${server.url}/index.html#start`);
   await page.waitForSelector('#start-root .start-card');
-  assert.match(await page.locator('#start-root').innerText(), /Сеанс — пучки аппарата[\s\S]*Не референсные условия[\s\S]*В пластинах — проверка выхода/);
+  assert.match(await page.locator('#start-root').innerText(), /МВ фотоны: сеанс[\s\S]*Не референсные условия[\s\S]*⁶⁰Co: в пластинах[\s\S]*МВ фотоны: в пластинах[\s\S]*Электроны: в пластинах/);
 
-  // без журнала — в «Оборудование»
+  // старая ссылка #plates — лист «В пластинах» вкладки «МВ фотоны»; без журнала — в «Оборудование»
   await page.goto(`${server.url}/index.html#plates`);
   await pause();
-  assert.match(await page.locator('#plates-root').innerText(), /нужны аппарат и его пучки в журнале/);
-  assert.deepEqual((await page.locator('#module-plates .subtools a').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()), ['Сеанс', '⁶⁰Co', 'МВ фотоны', 'Электроны', 'kV-рентген', 'Брахитерапия в разработке', 'В пластинах']);
+  assert.equal(await page.evaluate(() => location.hash), '#photons/plates');
+  assert.match(await page.locator('#plates-root').innerText(), /нужны аппарат и его пучки фотонов в журнале/);
+  const norm = (xs) => xs.map((t) => t.replace(/\s+/g, ' ').trim());
+  assert.deepEqual(norm(await page.locator('#module-plates .subtools a').allInnerTexts()), ['⁶⁰Co', 'МВ фотоны', 'Электроны', 'kV-рентген', 'Брахитерапия в разработке']);
+  assert.deepEqual(norm(await page.locator('#module-plates .beam-sheets a').allInnerTexts()), ['Одна энергия', 'Сеанс: все энергии', 'В пластинах']);
+  assert.equal(await page.locator('#module-plates .beam-sheets a[aria-current]').innerText(), 'В пластинах');
+  // у ⁶⁰Co — «В воде» и «В пластинах», без сеанса
+  await page.goto(`${server.url}/index.html#co60`);
+  await pause();
+  assert.deepEqual(norm(await page.locator('#module-co60 .beam-sheets a').allInnerTexts()), ['В воде', 'В пластинах']);
+  await page.locator('#module-co60 .beam-sheets a', { hasText: 'В пластинах' }).click();
+  await pause();
+  assert.equal(await page.evaluate(() => location.hash), '#co60/plates');
+  assert.equal(await page.locator('#module-plates .subtools a[aria-current]').innerText(), '⁶⁰Co');
+  assert.match(await page.locator('#plates-root').innerText(), /нужны аппарат и его пучки ⁶⁰Co/);
+  await page.goto(`${server.url}/index.html#photons/plates`);
+  await pause();
 
   await page.evaluate((j) => localStorage.setItem('reference-dosimetry.journal.v1', JSON.stringify({ journal: j })), JOURNAL);
   await page.reload();
@@ -89,9 +104,11 @@ test('в пластинах: привязка к калибровке в вод�
   // записи в воде не изменились
   assert.equal(journal.sessions.length, 1);
 
-  // пучок электронов без калибровки в воде: привязать нельзя
-  await page.selectOption('#pl_beam', 'b2');
+  // на листе фотонов — только энергии фотонов; пучок электронов — на листе «Электронов», без калибровки в воде
+  assert.deepEqual(await root.locator('#pl_beam option').allInnerTexts(), ['6 МВ']);
+  await page.goto(`${server.url}/index.html#electrons/plates`);
   await pause();
+  assert.deepEqual(await root.locator('#pl_beam option').allInnerTexts(), ['9 МэВ']);
   assert.match(await root.innerText(), /нет калибровки в воде в журнале/);
 
   // «Журнал и тренды»: раздел «Проверки в пластинах»
@@ -99,6 +116,10 @@ test('в пластинах: привязка к калибровке в вод�
   await pause();
   assert.ok(await page.locator('#hs-plates-sec').isVisible());
   assert.match(await page.locator('#hs-plates').innerText(), /22\.10\.2026\s+6 МВ\s+1,0215\s+\+2,66 %/);
+  // «Открыть „В пластинах“» — лист вкладки вида пучка
+  await page.locator('#hs-plates a', { hasText: 'Открыть «В пластинах»' }).click();
+  await pause();
+  assert.equal(await page.evaluate(() => location.hash), '#photons/plates');
 
   assert.deepEqual(errors, []);
 });

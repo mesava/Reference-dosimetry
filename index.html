@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0d6670">
-<link rel="stylesheet" href="src/ui/styles.css?v=0.62.0">
+<link rel="stylesheet" href="src/ui/styles.css?v=0.63.0">
 </head>
 <body>
 <header class="topbar">
@@ -59,15 +59,13 @@
 <main class="layout">
   <form id="co-sheet" class="sheet" autocomplete="off" novalidate>
     <nav class="subtools" aria-label="Дозиметрия">
-      <a href="#session" data-module="session">Сеанс</a>
       <a href="#co60" data-module="co60" aria-current="page">⁶⁰Co</a>
       <a href="#photons" data-module="photons">МВ фотоны</a>
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv">kV-рентген</a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
-      <a href="#plates" data-module="plates">В пластинах</a>
     </nav>
-    <div class="session-bar no-print" id="co-sbar" hidden data-i18n-skip></div>
+    <nav class="kv-pages beam-sheets" data-owner="co60" aria-label="Листы вкладки" data-i18n-skip></nav>
     <p class="intro">Рабочий лист калибровки пучка гамма-излучения ⁶⁰Co: мощность поглощённой дозы в воде на опорной глубине и на z<sub>max</sub>. Для ⁶⁰Co k<sub>Q</sub> = 1, качество пучка не измеряют: D<sub>w</sub> = M · N<sub>D,w</sub>. Числа можно вводить с запятой или точкой; обозначения с пунктирным подчёркиванием открывают справку.</p>
     <div class="journal-bar no-print" id="co-journal-bar" hidden data-i18n-skip></div>
 
@@ -510,14 +508,13 @@
 <main class="layout">
   <form id="sheet" class="sheet" autocomplete="off" novalidate>
     <nav class="subtools" aria-label="Дозиметрия">
-      <a href="#session" data-module="session">Сеанс</a>
       <a href="#co60" data-module="co60">⁶⁰Co</a>
       <a href="#photons" data-module="photons" aria-current="page">МВ фотоны</a>
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv">kV-рентген</a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
-      <a href="#plates" data-module="plates">В пластинах</a>
     </nav>
+    <nav class="kv-pages beam-sheets" data-owner="photons" aria-label="Листы вкладки" data-i18n-skip></nav>
     <div class="session-bar no-print" id="ph-sbar" hidden data-i18n-skip></div>
     <p class="intro">Рабочий лист калибровки пучка МВ фотонов: поглощённая доза в воде на опорной глубине и на d<sub>max</sub>. Числа можно вводить с запятой или точкой. Обозначения коэффициентов с пунктирным подчёркиванием открывают справку. Всё считается в браузере, данные никуда не отправляются.</p>
     <div class="journal-bar no-print" id="ph-journal-bar" hidden data-i18n-skip></div>
@@ -1075,14 +1072,13 @@
 <main class="layout">
   <form id="e-sheet" class="sheet" autocomplete="off" novalidate>
     <nav class="subtools" aria-label="Дозиметрия">
-      <a href="#session" data-module="session">Сеанс</a>
       <a href="#co60" data-module="co60">⁶⁰Co</a>
       <a href="#photons" data-module="photons">МВ фотоны</a>
       <a href="#electrons" data-module="electrons" aria-current="page">Электроны</a>
       <a href="#kv" data-module="kv">kV-рентген</a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
-      <a href="#plates" data-module="plates">В пластинах</a>
     </nav>
+    <nav class="kv-pages beam-sheets" data-owner="electrons" aria-label="Листы вкладки" data-i18n-skip></nav>
     <div class="session-bar no-print" id="e-sbar" hidden data-i18n-skip></div>
     <p class="intro">Рабочий лист калибровки пучка электронов: поглощённая доза в воде на опорной глубине z<sub>ref</sub> = 0,6·R50 − 0,1 и на z<sub>max</sub>. TRS-398 Rev.1 — глава 7; TG-51 — с аддендумом для электронов WGTG51 Report 385 (2024). Числа можно вводить с запятой или точкой; обозначения с пунктирным подчёркиванием открывают справку.</p>
     <div class="journal-bar no-print" id="e-journal-bar" hidden data-i18n-skip></div>
@@ -1546,13 +1542,11 @@
 <main class="layout">
   <form id="kv-sheet" class="sheet" autocomplete="off" novalidate>
     <nav class="subtools" aria-label="Дозиметрия">
-      <a href="#session" data-module="session">Сеанс</a>
       <a href="#co60" data-module="co60">⁶⁰Co</a>
       <a href="#photons" data-module="photons">МВ фотоны</a>
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv" aria-current="page">kV-рентген</a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
-      <a href="#plates" data-module="plates">В пластинах</a>
     </nav>
     <nav class="kv-pages" id="kv-pages" aria-label="Листы вкладки">
       <a href="#kv/modes" data-kv-go="modes">Аппарат и режимы</a>
@@ -2649,13 +2643,11 @@
 <div class="module" id="module-brachy" role="tabpanel" aria-labelledby="tab-dosimetry" hidden>
 <main class="start wip">
     <nav class="subtools" aria-label="Дозиметрия">
-      <a href="#session" data-module="session">Сеанс</a>
       <a href="#co60" data-module="co60">⁶⁰Co</a>
       <a href="#photons" data-module="photons">МВ фотоны</a>
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv">kV-рентген</a>
       <a href="#brachy" data-module="brachy" class="wip-link" aria-current="page">Брахитерапия <span class="wip-tag">в разработке</span></a>
-      <a href="#plates" data-module="plates">В пластинах</a>
     </nav>
     <section class="start-card wip-card">
       <h2>Брахитерапия <span class="wip-tag">в разработке</span></h2>
@@ -2676,14 +2668,13 @@
 <div class="module" id="module-session" role="tabpanel" aria-labelledby="tab-dosimetry" hidden>
 <main class="start session">
     <nav class="subtools" aria-label="Дозиметрия">
-      <a href="#session" data-module="session" aria-current="page">Сеанс</a>
       <a href="#co60" data-module="co60">⁶⁰Co</a>
       <a href="#photons" data-module="photons">МВ фотоны</a>
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv">kV-рентген</a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
-      <a href="#plates" data-module="plates">В пластинах</a>
     </nav>
+    <nav class="kv-pages beam-sheets" data-owner="" aria-label="Листы вкладки" data-i18n-skip></nav>
     <div id="session-root" data-i18n-skip></div>
     <p class="status-line" id="session-status" role="status"></p>
 </main>
@@ -2692,14 +2683,13 @@
 <div class="module" id="module-plates" role="tabpanel" aria-labelledby="tab-dosimetry" hidden>
 <main class="start plates">
     <nav class="subtools" aria-label="Дозиметрия">
-      <a href="#session" data-module="session">Сеанс</a>
       <a href="#co60" data-module="co60">⁶⁰Co</a>
       <a href="#photons" data-module="photons">МВ фотоны</a>
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv">kV-рентген</a>
       <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
-      <a href="#plates" data-module="plates" aria-current="page">В пластинах</a>
     </nav>
+    <nav class="kv-pages beam-sheets" data-owner="" aria-label="Листы вкладки" data-i18n-skip></nav>
     <div id="plates-root" data-i18n-skip></div>
     <p class="status-line" id="plates-status" role="status"></p>
 </main>
@@ -4052,7 +4042,7 @@
     </section>
     <section class="step hs-beam" aria-labelledby="hs-s8" id="hs-plates-sec" hidden>
       <header><span class="step-no">8</span><h2 id="hs-s8">Проверки в пластинах</h2>
-        <p class="hint">Проверки выхода в пластинах — не референсные условия: выход относительно калибровки пучка в воде, к которой привязан набор пластин. Контрольная карта каждого пучка — в «Дозиметрии», подраздел «В пластинах».</p></header>
+        <p class="hint">Проверки выхода в пластинах — не референсные условия: выход относительно калибровки пучка в воде, к которой привязан набор пластин. Контрольная карта каждого пучка — на листе «В пластинах» его вкладки («⁶⁰Co», «МВ фотоны», «Электроны»).</p></header>
       <div class="table-wrap" id="hs-plates" data-i18n-skip></div>
     </section>
   </form>
@@ -4142,6 +4132,6 @@
   <div class="dlg-body" id="kv-din-body"></div>
 </dialog>
 
-<script type="module" src="src/ui/app.js?v=0.62.0"></script>
+<script type="module" src="src/ui/app.js?v=0.63.0"></script>
 </body>
 </html>

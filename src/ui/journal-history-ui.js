@@ -188,14 +188,16 @@ function renderPlates(j) {
   // раздел виден всегда: номера разделов не скачут
   $('#hs-plates-sec').hidden = false;
   if (!rows.length) {
-    $('#hs-plates').innerHTML = `<p class="chart-empty">${esc(L('Проверок этого аппарата в пластинах пока нет: «Дозиметрия» → «В пластинах».', 'There are no checks of this machine in plates yet: Dosimetry → In plates.'))}</p>`;
+    $('#hs-plates').innerHTML = `<p class="chart-empty">${esc(L('Проверок этого аппарата в пластинах пока нет: лист «В пластинах» во вкладке пучка («⁶⁰Co», «МВ фотоны», «Электроны»).', 'There are no checks of this machine in plates yet: the In plates sheet in the beam tab (⁶⁰Co, MV photons, Electrons).'))}</p>`;
     return;
   }
   const name = (id) => m?.beams.find((b) => b.id === id)?.name || '—';
   const co = (id) => beamKind(m?.beams.find((b) => b.id === id)) === 'cobalt';
+  // лист «В пластинах» — во вкладке вида пучка последней проверки
+  const platesTab = { cobalt: 'co60', electron: 'electrons' }[beamKind(m?.beams.find((b) => b.id === rows[0].beamId))] ?? 'photons';
   $('#hs-plates').innerHTML = `<table class="factors"><thead><tr><th>${esc(L('Дата', 'Date'))}</th><th>${esc(L('Пучок', 'Beam'))}</th><th class="v">${esc(L('Отношение к привязке', 'Ratio to the binding'))}</th><th class="v">${esc(L('Отклонение', 'Deviation'))}</th><th class="v">${esc(L('В пластинах без перевода', 'In plates, not converted'))}</th><th>${esc(L('Привязка', 'Binding'))}</th></tr></thead><tbody>${rows
     .map((r) => `<tr class="${r.summary?.status === 'out' ? 'st-out' : ''}"><td>${esc(fmtDate(r.date))}</td><td>${esc(name(r.beamId))}</td><td class="v">${esc(fmt(r.summary?.ratio, 4))}</td><td class="v">${esc(fmtSigned(r.summary?.deviation, 2))} %${co(r.beamId) ? ` ${esc(L('от ожидаемой', 'from expected'))}` : ''}</td><td class="v">${Number.isFinite(r.summary?.Dpl) ? `${esc(fmt(r.summary.Dpl, co(r.beamId) ? 2 : 4))} ${esc(co(r.beamId) ? L('сГр/мин', 'cGy/min') : L('сГр/МЕ', 'cGy/MU'))}` : '—'}</td><td>${esc(L(`к калибровке ${fmtDate(r.binding?.calDate)}`, `to the calibration of ${fmtDate(r.binding?.calDate)}`))}</td></tr>`)
-    .join('')}</tbody></table><div class="actions"><a class="link-btn" href="#plates" data-goto="plates">${esc(L('Открыть «В пластинах»', 'Open In plates'))}</a></div>`;
+    .join('')}</tbody></table><div class="actions"><a class="link-btn" href="#${esc(platesTab)}/plates" data-goto="${esc(platesTab)}/plates">${esc(L('Открыть «В пластинах»', 'Open In plates'))}</a></div>`;
 }
 
 // ------------------------------------------------------------ рентгенотерапевтический аппарат (записи kV)

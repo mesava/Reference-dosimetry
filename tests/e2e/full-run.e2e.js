@@ -171,8 +171,8 @@ test('сквозной прогон: оборудование → фотоны �
   await pause(500);
   assert.match(await page.locator('#e-status').innerText(), /Записано в журнал: Линак-Т1 — 12 МэВ/);
 
-  // пластины: привязка 6 МВ к калибровке в воде и проверка
-  await page.goto(`${server.url}/index.html#plates`);
+  // пластины (лист «В пластинах» вкладки «МВ фотоны»): привязка 6 МВ к калибровке в воде и проверка
+  await page.goto(`${server.url}/index.html#photons/plates`);
   await page.waitForSelector('#plates-root .plates-card');
   const root = page.locator('#plates-root');
   await pick('#pl_beam', '^6 МВ');
@@ -201,12 +201,18 @@ test('сквозной прогон: оборудование → фотоны �
   for (let i = 0; i < 3; i++) await page.fill(`#plc-M_${i}`, '13,420');
   await pause();
   assert.match(await root.locator('#plc-result').innerText(), /в будущем/);
-  // другой пучок — температуру и давление измеряют заново
+  // пучок электронов — на листе «В пластинах» вкладки «Электроны» (с 0.63.0): своя форма, T и P измеряют заново
   await page.fill('#plc_T', '22,0');
   await page.fill('#plc_P', '100,1');
-  await pick('#pl_beam', '^12 МэВ');
+  await page.goto(`${server.url}/index.html#electrons/plates`);
+  await pause();
+  assert.deepEqual(await page.locator('#pl_beam option').allInnerTexts(), ['12 МэВ']);
   assert.equal(await page.inputValue('#plb_T'), '');
   assert.equal(await page.inputValue('#plb_P'), '');
+  // лист фотонов помнит свою форму
+  await page.goto(`${server.url}/index.html#photons/plates`);
+  await pause();
+  assert.equal(await page.inputValue('#plc_T'), '22,0');
 
   // «Журнал и тренды»
   await page.goto(`${server.url}/index.html#history`);
@@ -223,8 +229,8 @@ test('сквозной прогон: оборудование → фотоны �
   const sessions = await page.locator('#hs-sessions').innerText();
   for (const k of [-5, -4, -3, -2, -1]) assert.match(sessions, new RegExp(dmy(day(k)).replace(/\./g, '\\.')));
 
-  // сеанс: дата в будущем — начать нельзя
-  await page.goto(`${server.url}/index.html#session`);
+  // сеанс (лист «Сеанс» вкладки «МВ фотоны»): дата в будущем — начать нельзя
+  await page.goto(`${server.url}/index.html#photons/session`);
   await pause();
   await page.fill('#ss_date', day(3));
   await page.locator('#ss_date').dispatchEvent('change');

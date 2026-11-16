@@ -1,10 +1,11 @@
-// «Дозиметрия» → «В пластинах»: проверка выхода в пластинах (твёрдая вода, ПММА, полистирол) — не референсные условия.
+// Лист «В пластинах» во вкладках «⁶⁰Co», «МВ фотоны» и «Электроны» (с 0.63.0; раньше — подвкладка «Дозиметрии»):
+// проверка выхода в пластинах (твёрдая вода, ПММА, полистирол) — не референсные условия. На листе — пучки вида вкладки.
 // Набор пластин привязывается к калибровке пучка в воде (TRS-398 Rev.1, разд. 4.2.3): показание в пластинах сразу после
 // калибровки; затем выход считается относительно неё. Расчёт — core/plates.js; привязка хранится у пучка журнала,
-// проверки — в журнале (j.plateChecks); черновик формы — в этом браузере.
+// проверки — в журнале (j.plateChecks); черновики формы (свой у каждого вида пучков) — в этом браузере.
 import { L } from '../core/i18n.js';
 import { PRESSURE_UNITS, unitLabel, parseNumber } from '../core/units.js';
-import { machineOf, beamKind, chamberOf, electrometerOf, chamberText, electrometerText } from '../core/journal.js';
+import { machineOf, beamOf, beamKind, chamberOf, electrometerOf, chamberText, electrometerText } from '../core/journal.js';
 import {
   PLASTICS, plasticOf, plasticName, waterDepth, BINDING_DEFAULTS, CHECK_DEFAULTS, amountUnit, correctedReading,
   waterCalibrations, makeBinding, bindingOf, platesResult, recordPlates, setBinding, platesPoints, waterReading, kspolFactor,
@@ -17,27 +18,45 @@ import { renderPlatesSpc } from './journal-spc-ui.js';
 import { sessionMachines, machineBeams } from '../core/session.js';
 
 const KEY = 'reference-dosimetry.plates';
-const KIND_TEXT = { photon: () => L('фотоны', 'photons'), electron: () => L('электроны', 'electrons'), cobalt: () => '⁶⁰Co' };
+const KIND_TEXT = { photon: () => L('фотонов', 'photon'), electron: () => L('электронов', 'electron'), cobalt: () => '⁶⁰Co' };
 const AT_TEXT = { zref: 'z_ref', dmax: 'd_max', zmax: 'z_max' };
 // диэлектрики: в пучках электронов в них накапливается заряд (TRS-398 Rev.1, разд. 7.8)
 const INSULATORS = new Set(['pmma', 'clearps', 'whiteps']);
 
 const DRAFT_DEFAULTS = { machineId: '', beamId: '', rebind: false, bind: { ...BINDING_DEFAULTS }, check: { ...CHECK_DEFAULTS } };
-let draft = structuredClone(DRAFT_DEFAULTS);
+const KINDS = ['photon', 'electron', 'cobalt'];
+// черновики по видам пучков; draft — черновик вида открытого листа (kind)
+const drafts = Object.fromEntries(KINDS.map((k) => [k, structuredClone(DRAFT_DEFAULTS)]));
+let kind = 'photon';
+let draft = drafts[kind];
+// вид пучков, с листом которого работали последним (для старой ссылки #plates)
+let lastKind = 'photon';
 let statusEl = null;
 
+// даты не запоминаются: по умолчанию — сегодня
+const restore = (v) => ({ ...DRAFT_DEFAULTS, ...v, bind: { ...BINDING_DEFAULTS, ...v.bind, date: '' }, check: { ...CHECK_DEFAULTS, ...v.check, date: '' } });
 function load() {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) || 'null');
-    // даты не запоминаются: по умолчанию — сегодня
-    if (v && typeof v === 'object') draft = { ...DRAFT_DEFAULTS, ...v, bind: { ...BINDING_DEFAULTS, ...v.bind, date: '' }, check: { ...CHECK_DEFAULTS, ...v.check, date: '' } };
+    if (!v || typeof v !== 'object') return;
+    if (v.v === 2) {
+      for (const k of KINDS) if (v[k] && typeof v[k] === 'object') drafts[k] = restore(v[k]);
+      if (KINDS.includes(v.last)) lastKind = v.last;
+    } else {
+      // до 0.63.0 черновик был один: он переходит на лист вида своего пучка
+      const found = beamOf(getJournal(), String(v.beamId || ''));
+      lastKind = found ? beamKind(found.beam) : 'photon';
+      drafts[lastKind] = restore(v);
+    }
+    draft = drafts[kind];
   } catch {
     /* хранилище недоступно */
   }
 }
 function persist() {
+  drafts[kind] = draft;
   try {
-    localStorage.setItem(KEY, JSON.stringify(draft));
+    localStorage.setItem(KEY, JSON.stringify({ v: 2, last: lastKind, ...drafts }));
   } catch {
     /* хранилище недоступно */
   }
@@ -48,13 +67,13 @@ const status = (t) => {
 
 /** Аппарат и пучок черновика, согласованные с журналом. */
 function current(j) {
-  const ms = sessionMachines(j);
+  const ms = sessionMachines(j, kind);
   const m = ms.find((x) => x.id === draft.machineId) ?? ms[0] ?? null;
-  const beams = m ? machineBeams(j, m.id) : [];
+  const beams = m ? machineBeams(j, m.id, kind) : [];
   const beam = beams.find((b) => b.id === draft.beamId) ?? beams[0] ?? null;
   draft.machineId = m?.id ?? '';
   draft.beamId = beam?.id ?? '';
-  return { ms, m, beams, beam, kind: beam ? beamKind(beam) : 'photon' };
+  return { ms, m, beams, beam, kind };
 }
 
 const opt = (v, t, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(t)}</option>`;
@@ -79,11 +98,11 @@ function bannerHtml() {
 
 function beamCardHtml(c) {
   const machineOpts = c.ms.map((m) => opt(m.id, [m.name || L('аппарат без названия', 'unnamed machine'), m.serial ? `№ ${m.serial}` : ''].filter(Boolean).join(', '), c.m.id)).join('');
-  const beamOpts = c.beams.map((b) => opt(b.id, `${b.name || L('пучок без названия', 'unnamed beam')} · ${KIND_TEXT[beamKind(b)]()}`, c.beam.id)).join('');
+  const beamOpts = c.beams.map((b) => opt(b.id, b.name || L('пучок без названия', 'unnamed beam'), c.beam.id)).join('');
   return `<section class="start-card plates-card"><h2><span class="step-no">1</span> ${esc(L('Аппарат и пучок', 'Machine and beam'))}</h2>
     <div class="grid">
       <div class="field"><label for="pl_machine">${esc(L('Аппарат', 'Machine'))}</label><select id="pl_machine" data-full>${machineOpts}</select></div>
-      <div class="field"><label for="pl_beam">${esc(L('Пучок', 'Beam'))}</label><select id="pl_beam" data-full>${beamOpts}</select></div>
+      <div class="field"><label for="pl_beam">${esc(c.kind === 'cobalt' ? L('Пучок', 'Beam') : L('Энергия', 'Energy'))}</label><select id="pl_beam" data-full>${beamOpts}</select></div>
     </div></section>`;
 }
 
@@ -187,7 +206,7 @@ function historyHtml(j, c) {
 
 function emptyHtml() {
   return `<section class="start-card plates-card"><h2>${esc(L('В пластинах', 'In plates'))}</h2>${bannerHtml()}
-    <p class="start-when">${esc(L('Для проверки в пластинах нужны аппарат и его пучки в журнале отделения и калибровка пучка в воде.', 'A check in plates needs a machine and its beams in the department journal and a calibration of the beam in water.'))}</p>
+    <p class="start-when">${esc(L(`Для проверки в пластинах нужны аппарат и его пучки ${KIND_TEXT[kind]()} в журнале отделения и калибровка пучка в воде.`, `A check in plates needs a machine and its ${KIND_TEXT[kind]()} beams in the department journal and a calibration of the beam in water.`))}</p>
     <div class="start-row"><a class="start-go" href="#equipment" data-goto="equipment"><span>${esc(L('Оборудование', 'Equipment'))}</span><small>${esc(L('аппараты и пучки, камеры, электрометры', 'machines and beams, chambers, electrometers'))}</small></a></div></section>`;
 }
 
@@ -406,8 +425,20 @@ export function initPlates() {
   render();
 }
 
-/** Перерисовать страницу (при её открытии). */
-export const renderPlatesPage = () => render();
+/** Открыть лист вида пучков k ('photon' | 'electron' | 'cobalt') и перерисовать его. */
+export function renderPlatesPage(k) {
+  drafts[kind] = draft;
+  kind = KINDS.includes(k) ? k : 'photon';
+  draft = drafts[kind];
+  if (lastKind !== kind) {
+    lastKind = kind;
+    persist();
+  }
+  render();
+}
+
+/** Вид пучков, с листом «В пластинах» которого работали последним (старая ссылка #plates). */
+export const platesLastKind = () => lastKind;
 
 /** Сообщение в строке состояния. */
 export const platesStatus = (t) => status(t);
