@@ -60,6 +60,21 @@ test('kV-рентген: металл СПО сертификата, перес�
   assert.match(body, /±5 % по СПО внутри TH 100–300/);
   assert.match(body, /1\s+100\s+2,480\s+≈ 0,067\s+вне табл\. 5 — экстраполяция/);
   assert.match(body, /Сейчас пересчёт выключен/);
+  // прокручивается только текст окна: само окно не уезжает в пустоту, шапка на месте, металл калькулятора — не во всю ширину
+  // (0.62.0: скрытая подпись .visually-hidden с position: absolute раздувала прокрутку окна)
+  const geo = () => page.evaluate(() => {
+    const d = document.querySelector('#kv-din-dialog');
+    const h = d.querySelector('.dlg-head').getBoundingClientRect();
+    return { over: d.scrollHeight - d.clientHeight, dTop: d.scrollTop, headTop: h.top - d.getBoundingClientRect().top, sel: document.querySelector('#kv-din-from').getBoundingClientRect().width, bodyScroll: document.querySelector('#kv-din-body').scrollHeight > document.querySelector('#kv-din-body').clientHeight };
+  });
+  await page.locator('#kv-din-body').evaluate((b) => { b.scrollTop = b.scrollHeight; });
+  await page.locator('#kv-din-dialog').evaluate((d) => { d.scrollTop = d.scrollHeight; });
+  await pause();
+  const g = await geo();
+  assert.equal(g.dTop, 0, 'окно само не прокручивается');
+  assert.ok(Math.abs(g.headTop) < 2, 'шапка окна наверху');
+  assert.ok(g.bodyScroll, 'текст прокручивается внутри окна');
+  assert.ok(g.sel < 200, `выбор металла не во всю ширину: ${g.sel}`);
   await page.fill('#kv-din-x', '5,58');
   await pause();
   assert.equal(await page.locator('#kv-din-out').innerText(), '≈ 0,242 мм Cu (±5 %)');
