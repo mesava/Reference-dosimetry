@@ -379,6 +379,7 @@ export const TERMS_EN = {
 <li><b>Medium energies</b>: Eq. (90), the ratio of [μ<sub>en</sub>/ρ]<sub>w,air</sub> at a depth of 2 cm for the clinical and laboratory field and SSD (Andreo data); the p<sub>ch</sub> ratios cancel.</li>
 </ul>
 <p>DIN 6809-4 and SSRMP No 9 take k<sub>g</sub> = 1 with an increased uncertainty; the calculator allows this, but the result is flagged as not conforming to TRS-398 Rev.1.</p>
+<p>The calculation for each applicator with numbers (TW columns, the ln(HVL) weight, the field rows, the ratio) is in the tooltip shown on hovering over the k<sub>g</sub> of a row in the applicator table or over the k<sub>g</sub> field in section 6.</p>
 <p class="src">TRS-398 Rev.1, Secs 8.4.2, 9.4.1, App. I, Eqs (52), (58), (84)–(90), Tables 28, 29.</p>`,
   },
 

@@ -420,6 +420,7 @@ function renderRows(data, result) {
   $('#kv-rows-h-set').textContent = caps.set;
   $('#kv-rows-h-p').textContent = caps.p;
   $('#kv-rows-h-d').textContent = caps.d;
+  setPop($('#kv-rows-h-kg'), kgHowGeneral());
   localizeDecimals(rowsBody());
 }
 
@@ -1336,7 +1337,7 @@ function renderRowsState(all) {
     };
     set('kq', fmt(r.cert?.value, r.cert?.form === 'n' ? 6 : 4));
     set('ktp', fmt(x.kTP, 4));
-    set('kg', fmt(x.kg?.value, 4));
+    setPop(set('kg', fmt(x.kg?.value, 4)), kgHowHtml(r, sess.rows[i], i));
     set('d', none ? '—' : fmt(valueAt(p, r), 4));
     const dev = none ? NaN : p.deviation;
     const tol = r.cmp.tolerance;
@@ -1594,6 +1595,138 @@ function renderDetailHead(result) {
 }
 const cellsText = (a) => (Array.isArray(a) ? a.filter((v) => String(v ?? '').trim()).join('; ') : '');
 
+/** Всплывающая подсказка элемента (setupHoverPop): HTML в data-pop, фокус с клавиатуры — tabindex. */
+function setPop(el, s) {
+  if (!el) return;
+  if (el.dataset.pop !== s) el.dataset.pop = s;
+  if (!el.hasAttribute('tabindex')) el.tabIndex = 0;
+}
+
+/**
+ * Подсказка «как считается k_g» — общая схема (заголовок столбца k_g): источники по порядку выбора, как в расчёте
+ * (kv.js, блок k_g). TRS-398 Rev.1, разд. 8.4.2, 9.4.1, прил. I, ур. (52), (58), (84)–(90), табл. 28–30.
+ */
+function kgHowGeneral() {
+  return L(
+    `<h4>Как считается k<sub>g</sub></h4>
+<p>N<sub>D,w</sub> сертификата действителен для поля и РИП, при которых камеру калибровали. Для другого тубуса или РИП D<sub>w</sub> = M<sub>Q</sub> · N<sub>D,w,Q</sub> · k<sub>g</sub> (ур. 52 — низкие энергии, ур. 58 — средние). Источник выбирается в разделе 6 и применяется по порядку:</p>
+<ol>
+<li>Поле и РИП как в лаборатории — k<sub>g</sub> = 1.</li>
+<li><b>Низкие энергии, PTW 23342 и 23344</b> — табл. 28 (23342) или 29 (23344), данные PTB при РИП 30 см, нормированы на поле 3 см: k<sub>g</sub> = T(f<sub>клин</sub>) / T(f<sub>лаб</sub>). T(f) берётся в два шага:
+<ul><li>по качеству — между соседними столбцами TW10…TW100 по ln(СПО): w = ln(СПО / СПО<sub>1</sub>) / ln(СПО<sub>2</sub> / СПО<sub>1</sub>), T = T<sub>1</sub> + w · (T<sub>2</sub> − T<sub>1</sub>); СПО столбцов — DIN 6809-4, табл. 2; по кВ не ставится: клинические пучки мягче серии TW того же напряжения;</li>
+<li>по полю — линейно между соседними строками (2, 3, 5, 6, 8, 10, 15, 20 см); квадратный и прямоугольный тубус — круг той же площади.</li></ul>
+Если в лаборатории поле не 3 см, таблица перенормируется делением на T(f<sub>лаб</sub>). Тубус 1,5–2 см — только по галочке «Экстраполировать»: прямая через строки 2 и 3 см, это не TRS-398 Rev.1 (пометка «нестандартные условия», к неопределённости добавляется |k<sub>g</sub> / k<sub>g</sub>(2 см) − 1| / √3). Вне таблицы или для другой камеры — k<sub>g</sub> лаборатории для этого тубуса или ур. (85): отношение N<sub>K</sub><sup>ПММА</sup> клиники и лаборатории × отношение B<sub>w</sub>.</li>
+<li><b>Средние энергии</b> — ур. (90): k<sub>g</sub> = [μ<sub>en</sub>/ρ]<sub>w,air</sub> на глубине 2 см при поле и РИП клиники / то же при поле и РИП лаборатории (данные Andreo, 2019); отношения p<sub>ch</sub> сокращаются.</li>
+<li>k<sub>g</sub> = 1 по выбору, как в DIN 6809-4 и SSRMP No 9, — не по TRS-398 Rev.1.</li>
+</ol>
+<p>Неопределённость k<sub>g</sub> по табл. 28–29 — 1,0 % (табл. 30); разница с линейной интерполяцией по СПО в неё входит. Наведите курсор на k<sub>g</sub> строки — там расчёт с числами.</p>
+<p class="src">TRS-398 Rev.1, разд. 8.4.2, 9.4.1, прил. I, ур. (52), (58), (84)–(90), табл. 28–30.</p>`,
+    `<h4>How k<sub>g</sub> is calculated</h4>
+<p>The certificate N<sub>D,w</sub> is valid for the field and SSD at which the chamber was calibrated. For another applicator or SSD, D<sub>w</sub> = M<sub>Q</sub> · N<sub>D,w,Q</sub> · k<sub>g</sub> (Eq. 52 for low energies, Eq. 58 for medium). The source is chosen in section 6 and applied in this order:</p>
+<ol>
+<li>Field and SSD as at the laboratory: k<sub>g</sub> = 1.</li>
+<li><b>Low energies, PTW 23342 and 23344</b>: Table 28 (23342) or 29 (23344), PTB data at 30 cm SSD normalized to a 3 cm field: k<sub>g</sub> = T(f<sub>clin</sub>) / T(f<sub>lab</sub>). T(f) is found in two steps:
+<ul><li>by quality, between the neighbouring TW10…TW100 columns by ln(HVL): w = ln(HVL / HVL<sub>1</sub>) / ln(HVL<sub>2</sub> / HVL<sub>1</sub>), T = T<sub>1</sub> + w · (T<sub>2</sub> − T<sub>1</sub>); the column HVLs are from DIN 6809-4, Table 2; not by kV, since clinical beams are softer than the TW series of the same voltage;</li>
+<li>by field, linearly between the neighbouring rows (2, 3, 5, 6, 8, 10, 15, 20 cm); a square or rectangular applicator is replaced by the circle of the same area.</li></ul>
+If the laboratory field is not 3 cm, the table is renormalized by dividing by T(f<sub>lab</sub>). A 1.5–2 cm applicator only with the “Extrapolate” box ticked: a straight line through the 2 and 3 cm rows, which is not TRS-398 Rev.1 (marked “non-standard conditions”, and |k<sub>g</sub> / k<sub>g</sub>(2 cm) − 1| / √3 is added to the uncertainty). Outside the table or for another chamber: k<sub>g</sub> from the laboratory for this applicator, or Eq. (85): the ratio of the clinical and laboratory N<sub>K</sub><sup>PMMA</sup> × the B<sub>w</sub> ratio.</li>
+<li><b>Medium energies</b>: Eq. (90): k<sub>g</sub> = [μ<sub>en</sub>/ρ]<sub>w,air</sub> at 2 cm depth at the clinical field and SSD / the same at the laboratory field and SSD (Andreo 2019 data); the p<sub>ch</sub> ratios cancel.</li>
+<li>k<sub>g</sub> = 1 by choice, as in DIN 6809-4 and SSRMP No 9: not TRS-398 Rev.1.</li>
+</ol>
+<p>The uncertainty of k<sub>g</sub> from Tables 28–29 is 1.0 % (Table 30); the difference from linear interpolation by HVL is within it. Hover over the k<sub>g</sub> of a row to see the calculation with numbers.</p>
+<p class="src">TRS-398 Rev.1, Sects 8.4.2, 9.4.1, Annex I, Eqs (52), (58), (84)–(90), Tables 28–30.</p>`,
+  );
+}
+
+/** Шаг по полю табл. 28–29 для подсказки k_g: строки таблицы и T(f) по ln(СПО). */
+function kgFieldHtml(s, q, who) {
+  const f1 = (v) => fmt(v, 2);
+  const f4 = (v) => fmt(v, 4);
+  const t = (v) => fmt(v, 2);
+  let rows;
+  if (s.extrap) {
+    rows = L(
+      `меньше 2 см — прямая через строки 2 и 3 см: T(f) = T(2) + (T(2) − T(3)) · (2 − f); ${q.lo}: ${t(s.rowA[0])} + (${t(s.rowA[0])} − ${t(s.rowB[0])}) · ${fmt(2 - s.f, 2)} = ${f4(s.tLo)}; ${q.hi}: ${t(s.rowA[1])} + (${t(s.rowA[1])} − ${t(s.rowB[1])}) · ${fmt(2 - s.f, 2)} = ${f4(s.tHi)}`,
+      `below 2 cm: a straight line through the 2 and 3 cm rows, T(f) = T(2) + (T(2) − T(3)) · (2 − f); ${q.lo}: ${t(s.rowA[0])} + (${t(s.rowA[0])} − ${t(s.rowB[0])}) · ${fmt(2 - s.f, 2)} = ${f4(s.tLo)}; ${q.hi}: ${t(s.rowA[1])} + (${t(s.rowA[1])} − ${t(s.rowB[1])}) · ${fmt(2 - s.f, 2)} = ${f4(s.tHi)}`,
+    );
+  } else if (s.exact) {
+    const r = Math.abs(s.f - s.fA) < 1e-9 ? s.rowA : s.rowB;
+    rows = L(`строка ${f1(s.f)} см: ${q.lo} = ${t(r[0])}, ${q.hi} = ${t(r[1])}`, `the ${f1(s.f)} cm row: ${q.lo} = ${t(r[0])}, ${q.hi} = ${t(r[1])}`);
+  } else {
+    const u = (s.f - s.fA) / (s.fB - s.fA);
+    rows = L(
+      `между строками ${f1(s.fA)} и ${f1(s.fB)} см, доля ${fmt(u, 3)}: ${q.lo} ${t(s.rowA[0])} → ${t(s.rowB[0])} = ${f4(s.tLo)}; ${q.hi} ${t(s.rowA[1])} → ${t(s.rowB[1])} = ${f4(s.tHi)}`,
+      `between the ${f1(s.fA)} and ${f1(s.fB)} cm rows, fraction ${fmt(u, 3)}: ${q.lo} ${t(s.rowA[0])} → ${t(s.rowB[0])} = ${f4(s.tLo)}; ${q.hi} ${t(s.rowA[1])} → ${t(s.rowB[1])} = ${f4(s.tHi)}`,
+    );
+  }
+  return `<li>${who} Ø ${f1(s.f)} ${L('см', 'cm')}: ${rows}; T = ${f4(s.tLo)} + ${fmt(q.w, 3)} · (${f4(s.tHi)} − ${f4(s.tLo)}) = <b>${f4(s.T)}</b></li>`;
+}
+
+/** Подсказка «как считается k_g» для строки r таблицы аппликаторов (и раздела 6) — с числами расчёта. */
+function kgHowHtml(r, row, i) {
+  const kg = r.trs?.kg;
+  const inp = r.inputs ?? {};
+  const f2 = (v) => fmt(v, 2);
+  const f4 = (v) => fmt(v, 4);
+  const label = esc(kvRowLabel(row ?? {}) || '');
+  const head = `<h4>${L(`k<sub>g</sub> строки ${i + 1}`, `k<sub>g</sub> of row ${i + 1}`)}${label ? ` · ${label}` : ''}: ${f4(kg?.value)}</h4>`;
+  const equiv = row && row.kv_cone_shape && row.kv_cone_shape !== 'circle' && Number.isFinite(inp.fClin)
+    ? `<p>${L(`Тубус не круглый: в таблицах и данных Andreo он заменён кругом той же площади, Ø ${f2(inp.fClin)} см.`, `The applicator is not circular: in the tables and the Andreo data it is replaced by the circle of the same area, ${f2(inp.fClin)} cm in diameter.`)}</p>`
+    : '';
+  const geo = L(
+    `Клиника: Ø ${f2(inp.fClin)} см, РИП ${fmt(inp.ssd, 1)} см; лаборатория: Ø ${f2(inp.fLab)} см, РИП ${fmt(inp.ssdLab, 1)} см.`,
+    `Clinic: ${f2(inp.fClin)} cm diameter, ${fmt(inp.ssd, 1)} cm SSD; laboratory: ${f2(inp.fLab)} cm diameter, ${fmt(inp.ssdLab, 1)} cm SSD.`,
+  );
+  const foot = `<p class="src">${L('Общая схема — при наведении на заголовок столбца k<sub>g</sub>.', 'The general scheme is on the k<sub>g</sub> column header.')}</p>`;
+  let body;
+  switch (kg?.source) {
+    case 'table':
+    case 'extrap': {
+      const d = kg.detail;
+      if (!d) { body = `<p>${richText(esc(kgSourceText(kg)))}</p>`; break; }
+      const q = d.quality;
+      const hv = (v) => fmt(v, 3);
+      const chamber = kg.table === 29 ? 'PTW 23344' : 'PTW 23342';
+      body = `<p>${L(`Табл. ${kg.table} TRS-398 Rev.1 (${chamber}). ${geo}`, `TRS-398 Rev.1 Table ${kg.table} (${chamber}). ${geo}`)}</p>
+<ol>
+<li>${L(
+    `Качество: СПО ${hv(inp.hvl)} мм Al — между столбцами ${q.lo} (${hv(q.hvlLo)} мм Al) и ${q.hi} (${hv(q.hvlHi)} мм Al), вес по ln(СПО): w = ln(${hv(inp.hvl)} / ${hv(q.hvlLo)}) / ln(${hv(q.hvlHi)} / ${hv(q.hvlLo)}) = <b>${fmt(q.w, 3)}</b>.`,
+    `Quality: HVL ${hv(inp.hvl)} mm Al lies between the ${q.lo} (${hv(q.hvlLo)} mm Al) and ${q.hi} (${hv(q.hvlHi)} mm Al) columns; weight by ln(HVL): w = ln(${hv(inp.hvl)} / ${hv(q.hvlLo)}) / ln(${hv(q.hvlHi)} / ${hv(q.hvlLo)}) = <b>${fmt(q.w, 3)}</b>.`,
+  )}</li>
+${kgFieldHtml(d.clin, q, L('Поле клиники', 'Clinical field'))}
+${kgFieldHtml(d.lab, q, L('Поле лаборатории', 'Laboratory field'))}
+<li>k<sub>g</sub> = T(f<sub>${L('клин', 'clin')}</sub>) / T(f<sub>${L('лаб', 'lab')}</sub>) = ${f4(d.clin.T)} / ${f4(d.lab.T)} = <b>${f4(kg.value)}</b>${Math.abs(d.lab.f - 3) < 1e-9 ? L(' (при 3 см T = 1: таблица нормирована на это поле)', ' (T = 1 at 3 cm: the table is normalized to this field)') : ''}.</li>
+</ol>
+${Number.isFinite(kg.spreadPct) ? `<p>${L(`Для сравнения линейно по СПО k<sub>g</sub> = ${f4(kg.byHvlLin)}: разница ${f2(kg.spreadPct)} % входит в неопределённость k<sub>g</sub> 1,0 % (табл. 30).`, `For comparison, linearly by HVL k<sub>g</sub> = ${f4(kg.byHvlLin)}: the ${f2(kg.spreadPct)} % difference is within the 1.0 % k<sub>g</sub> uncertainty (Table 30).`)}</p>` : ''}
+${kg.source === 'extrap' ? `<p class="warn">${L(`Поле меньше 2 см — экстраполяция по выбору, не по TRS-398 Rev.1: при 2 см k<sub>g</sub> = ${f4(kg.value2)}, к неопределённости добавлено u = |k<sub>g</sub> / k<sub>g</sub>(2 см) − 1| / √3 = ${f2(kg.uExtrapPct)} %, статус «нестандартные условия». k<sub>g</sub> лаборатории для этого тубуса заменит экстраполяцию.`, `The field is below 2 cm: an extrapolation by choice, not TRS-398 Rev.1. At 2 cm k<sub>g</sub> = ${f4(kg.value2)}; u = |k<sub>g</sub> / k<sub>g</sub>(2 cm) − 1| / √3 = ${f2(kg.uExtrapPct)} % is added to the uncertainty; status “non-standard conditions”. A laboratory k<sub>g</sub> for this applicator replaces the extrapolation.`)}</p>` : ''}`;
+      break;
+    }
+    case 'eq90':
+      body = `<p>${L(
+        `Ур. (90) TRS-398 Rev.1: отношение [μ<sub>en</sub>/ρ]<sub>w,air</sub> на глубине 2 см (данные Andreo) при ${inp.kv} кВ, СПО ${fmt(inp.hvl, 3)} мм Cu. ${geo}`,
+        `TRS-398 Rev.1 Eq. (90): the ratio of [μ<sub>en</sub>/ρ]<sub>w,air</sub> at 2 cm depth (Andreo data) at ${inp.kv} kV, HVL ${fmt(inp.hvl, 3)} mm Cu. ${geo}`,
+      )}</p><p>k<sub>g</sub> = ${f4(kg.clin)} / ${f4(kg.ref)} = <b>${f4(kg.value)}</b>${L('; отношения N<sub>K</sub> и p<sub>ch</sub> сокращаются.', '; the N<sub>K</sub> and p<sub>ch</sub> ratios cancel.')}</p>`;
+      break;
+    case 'eq85':
+      body = `<p>${L(`Ур. (85) TRS-398 Rev.1. ${geo}`, `TRS-398 Rev.1 Eq. (85). ${geo}`)}</p><p>k<sub>g</sub> = N<sub>K</sub><sup>${L('ПММА', 'PMMA')}</sup>(${L('клин./лаб.', 'clin./lab.')}) · B<sub>w</sub>(${L('клин.', 'clin.')}) / B<sub>w</sub>(${L('лаб.', 'lab.')}) = ${f4(kg.nkRatio)} · ${f4(kg.clin)} / ${f4(kg.ref)} = <b>${f4(kg.value)}</b>${L('; B<sub>w</sub> — данные Andreo, отношение p<sub>ch</sub> сокращается.', '; B<sub>w</sub> from the Andreo data, the p<sub>ch</sub> ratio cancels.')}</p>`;
+      break;
+    case 'same':
+      body = `<p>${geo} ${L('Поле и РИП как при калибровке: поправка не нужна, k<sub>g</sub> = 1 (ур. 52, 58).', 'The field and SSD are as at the calibration: no correction is needed, k<sub>g</sub> = 1 (Eqs 52, 58).')}</p>`;
+      break;
+    case 'lab':
+      body = `<p>${geo} ${L(`k<sub>g</sub> = ${f4(kg.value)} — значение лаборатории для этого тубуса (раздел 6, поле «k<sub>g</sub> лаборатории»); TRS-398 Rev.1, разд. 8.4.2.`, `k<sub>g</sub> = ${f4(kg.value)} is the laboratory value for this applicator (section 6, the “k<sub>g</sub> from the laboratory” field); TRS-398 Rev.1, Sect. 8.4.2.`)}</p>`;
+      break;
+    case 'one':
+      body = `<p>${geo} ${L('k<sub>g</sub> принят равным 1 по выбору, как в DIN 6809-4 и SSRMP No 9 (неопределённость 2,0 % для низких и 1,3 % для средних энергий), — не по TRS-398 Rev.1.', 'k<sub>g</sub> is taken as 1 by choice, as in DIN 6809-4 and SSRMP No 9 (uncertainty 2.0 % for low and 1.3 % for medium energies): not TRS-398 Rev.1.')}</p>`;
+      break;
+    case 'nocal':
+      body = `<p>${richText(esc(kgSourceText(kg)))}.</p>`;
+      break;
+    default:
+      body = `<p>${L('k<sub>g</sub> не определён: причина — в замечаниях строки (выберите её номером).', 'k<sub>g</sub> is not determined: the reason is in the row’s messages (select the row by its number).')}</p>`;
+  }
+  return `${head}${equiv}${body}${foot}`;
+}
+
 function kgSourceText(kg) {
   switch (kg?.source) {
     case 'same': return L('поле и РИП как в лаборатории: k_g = 1', 'field and SSD as at the laboratory: k_g = 1');
@@ -1767,6 +1900,8 @@ function applyVisibility(data, result) {
   const kg = result.trs.kg;
   $('#kv_kg_src').disabled = kg.source === 'nocal';
   html($('#kv-kg-sub'), richText(kgSourceText(kg)));
+  // как считается k_g: с числами выбранной строки — на поле k_g (общая схема — у заголовка столбца k_g и в справке)
+  setPop($('#kv-kg-out'), kgHowHtml(result, sess.rows[sess.active], sess.active));
   $('#kv-kg-bw').hidden = kg.source !== 'eq85';
   $('#kv-kg-2cm').hidden = kg.source !== 'extrap';
   // k_g лаборатории: при «лаборатории» — у каждой строки; при табл. 28–29 — только для тубуса, которого в таблице нет

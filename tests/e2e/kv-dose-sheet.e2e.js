@@ -121,5 +121,17 @@ test('kV-рентген: режим из «Оборудования» — оди
   assert.deepEqual([...want].sort((a, b) => at(a) - at(b)), want, order.join(' | '));
   const heads = await page.locator('#kv-rows thead th').evaluateAll((ths) => ths.map((th) => th.textContent.replace(/\s+/g, ' ').trim()));
   assert.ok(heads.indexOf('Сравнить с') === heads.findIndex((h) => h.startsWith('D,')) + 1, heads.join(' | '));
+  // подсказка «как считается k_g» (0.61.0): у заголовка — общая схема, у строки — расчёт с числами
+  await page.locator('#kv-rows').scrollIntoViewIfNeeded();
+  await pause();
+  await page.hover('#kv-rows-h-kg');
+  assert.ok(await page.locator('#hover-pop').isVisible());
+  assert.match(await page.locator('#hover-pop').innerText(), /Как считается k\s*g[\s\S]*табл\. 28[\s\S]*ур\. \(90\)/i);
+  await page.locator('#kv-rows tbody tr:first-child [data-o="kg"]').scrollIntoViewIfNeeded();
+  await pause();
+  await page.hover('#kv-rows tbody tr:first-child [data-o="kg"]');
+  assert.match(await page.locator('#hover-pop').innerText(), /строки 1[\s\S]*Ур\. \(90\)[\s\S]*k\s*g = \d,\d{4} \/ \d,\d{4} = \d,\d{4}/);
+  await page.mouse.move(0, 0);
+  assert.ok(await page.locator('#hover-pop').isHidden());
   assert.deepEqual(errors, []);
 });

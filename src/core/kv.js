@@ -1214,6 +1214,8 @@ export function computeKv(form) {
       const r = kvx.kgBw(kv, hvl, { ssd: ssdLab, f: fLab }, { ssd, f: fClin });
       dataWarnings(r.warnings, 'B_w');
       kg.bwRatio = kvx.bw(kv, hvl, ssd, fClin).raw / kvx.bw(kv, hvl, ssdLab, fLab).raw;
+      kg.ref = r.ref;
+      kg.clin = r.clin;
       kg.value = kg.nkRatio * kg.bwRatio;
       kg.source = 'eq85';
     } else {
@@ -1230,6 +1232,7 @@ export function computeKv(form) {
         kg.byHvlLin = t.byHvlLin;
         kg.spreadPct = t.spreadPct;
         kg.table = t.table;
+        kg.detail = t.detail;
         kg.source = 'table';
         add('info', 'trs', L(
           `k_g по табл. ${t.table}: ${interpText(t)}; поле — линейно между строками${labNorm ? `, таблица перенормирована на поле лаборатории ${ru(fLab, 1)} см` : ''}.`,
@@ -1256,6 +1259,7 @@ export function computeKv(form) {
         kg.byHvlLin = t.byHvlLin;
         kg.spreadPct = t.spreadPct;
         kg.table = t.table;
+        kg.detail = t.detail;
         kg.source = 'extrap';
         notRev1.push(L(`k_g экстраполирован за табл. ${t.table} (поле ${ru(fClin, 2)} см < 2 см)`, `k_g extrapolated beyond Table ${t.table} (a ${ru(fClin, 2)} cm field < 2 cm)`));
         add('warn', 'trs', L(

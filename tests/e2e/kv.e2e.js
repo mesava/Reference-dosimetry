@@ -144,6 +144,13 @@ test('kV-рентген: пример, ветки расчёта, пометка
   assert.ok(await page.locator('#kv-kg-2cm').isHidden());
   assert.ok(await page.locator('#kv-andreo-cite').isHidden(), 'табл. 28 — без данных Andreo');
   assert.match(await page.locator('#kv-compliance').innerText(), /не найдено/);
+  // подсказка «как считается k_g» у строки (0.61.0): столбцы TW вокруг СПО 1,0 мм Al, строки по полю, отношение
+  const kgCell = page.locator('#kv-rows-body tr[data-i="0"] [data-o="kg"]');
+  await kgCell.scrollIntoViewIfNeeded();
+  await pause();
+  await kgCell.hover();
+  assert.match(await page.locator('#hover-pop').innerText(), /Табл\. 28 TRS-398 Rev\.1 \(PTW 23342\)[\s\S]*между столбцами TW50 \(0,940 мм Al\) и TW70 \(2,940 мм Al\)[\s\S]*строка 5,00 см[\s\S]*Поле лаборатории Ø 3,00 см[\s\S]*kg = T\(fклин\) \/ T\(fлаб\) = [\d,]+ \/ 1,0000 = [\d,]+/);
+  await page.mouse.move(0, 0);
 
   // тубус вне табл. 28 (Ø 1,5 см): поле «k_g лаборатории» строки — его k_g, способ режима остаётся «по табл. 28» (0.49.2)
   assert.ok(await page.locator('#kv_kg_lab').isVisible());

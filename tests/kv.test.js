@@ -62,6 +62,28 @@ test('Табл. 28, 29: в узлах — значения таблиц, меж�
   assert.ok(Number.isNaN(kgFromTable('T28', { kv: 120, hvl: 6 }, 10, 3).value));
 });
 
+test('Табл. 28: шаги расчёта k_g для подсказки (0.61.0) — столбцы TW, вес по ln(СПО), строки по полю', () => {
+  // середина по ln(СПО) между TW40 и TW50 (w = 0,5), поле 12,5 см — середина строк 10 и 15 см; лаборатория 10 см
+  const mid = Math.sqrt(0.741 * 0.94);
+  const t = kgFromTable('T28', { kv: 45, hvl: mid }, 12.5, 10);
+  const { quality: q, clin, lab } = t.detail;
+  assert.deepEqual([q.lo, q.hi, q.hvlLo, q.hvlHi], ['TW40', 'TW50', 0.741, 0.94]);
+  near(q.w, 0.5, 1e-12);
+  assert.deepEqual([clin.fA, clin.fB, clin.exact, clin.extrap], [10, 15, false, false]);
+  assert.deepEqual([clin.rowA, clin.rowB], [[TRS_TABLE28[5][3], TRS_TABLE28[5][4]], [TRS_TABLE28[6][3], TRS_TABLE28[6][4]]]);
+  near(clin.tLo, (TRS_TABLE28[5][3] + TRS_TABLE28[6][3]) / 2, 1e-12);
+  assert.equal(lab.exact, true);
+  // шаги дают то же k_g, что и расчёт
+  near(clin.T / lab.T, t.value, 1e-12);
+  // экстраполяция до 1,5 см: прямая по строкам 2 и 3 см
+  const e = kgFromTable('T28', { kv: 50, hvl: 0.94 }, 1.5, 3, { extrap: true });
+  assert.equal(e.detail.clin.extrap, true);
+  near(e.detail.clin.T, TRS_TABLE28[0][4] + (TRS_TABLE28[0][4] - TRS_TABLE28[1][4]) * 0.5, 1e-12);
+  near(e.detail.clin.T / e.detail.lab.T, e.value, 1e-12);
+  // СПО вне таблицы — шагов нет
+  assert.equal(kgFromTable('T28', { kv: 120, hvl: 6 }, 10, 3).detail, undefined);
+});
+
 test('Табл. 32: p_ch в узлах, между узлами по ln(СПО), за пределами — крайнее значение', () => {
   assert.equal(TRS_TABLE32.hvl.length, 9);
   for (const k of Object.keys(TRS_TABLE32.pch)) assert.equal(TRS_TABLE32.pch[k].length, 9);

@@ -17,7 +17,7 @@ import { initJaffe, importJaffe, jaffeStatus } from './jaffe-ui.js';
 import { initEdepth, importEdepth, edepthStatus, setEdepthTransfer } from './edepth-ui.js';
 import { initSectionNavs, refreshSectionNav } from './section-nav.js';
 import { initJournalStore, importJournalObject, onJournal, onFileState, getJournal } from './journal-store.js';
-import { setListSource } from './widgets.js';
+import { setListSource, setupHoverPop } from './widgets.js';
 import { staffNames } from '../core/journal.js';
 import { initStart, renderStart } from './start-ui.js';
 import { initPwa } from './pwa.js';
@@ -363,6 +363,7 @@ function init() {
   initTheme();
   initProtocol();
   initTerms();
+  setupHoverPop();
   initHowto();
   // журнал — до вкладок: вкладки при запуске считаются по журналу (kV — связь с аппаратом, база из калибровки), а
   // загрузка черновика журнала их не оповещает

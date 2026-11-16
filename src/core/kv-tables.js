@@ -155,13 +155,45 @@ function tableValue(rows, hvl, f, extrap = false) {
 }
 
 /**
+ * Шаг по качеству для подсказки «как считается k_g»: соседние столбцы TW вокруг СПО и вес w по ln(СПО) —
+ * T = T_lo + w · (T_hi − T_lo), w = ln(СПО / СПО_lo) / ln(СПО_hi / СПО_lo) (как в tableValue).
+ */
+function kgQualityStep(hvl) {
+  let j = 0;
+  while (j < TW_COLUMNS.length - 2 && hvl > TW_COLUMNS[j + 1].hvl) j++;
+  const lo = TW_COLUMNS[j];
+  const hi = TW_COLUMNS[j + 1];
+  return { j, lo: lo.name, hi: hi.name, hvlLo: lo.hvl, hvlHi: hi.hvl, w: Math.log(hvl / lo.hvl) / Math.log(hi.hvl / lo.hvl) };
+}
+
+/**
+ * Шаг по полю для подсказки: соседние строки табл. вокруг f (или строки 2 и 3 см при экстраполяции), значения двух
+ * столбцов TW шага по качеству при f и итог T(f) по ln(СПО).
+ */
+function kgFieldStep(rows, hvl, f, extrap = false) {
+  const q = kgQualityStep(hvl);
+  const n = KG_TABLE_F.length;
+  let i = 0;
+  while (i < n - 2 && f > KG_TABLE_F[i + 1] + 1e-9) i++;
+  const exact = KG_TABLE_F.findIndex((x) => Math.abs(x - f) < 1e-9);
+  const tLo = columnAtF(rows, q.j, f, extrap);
+  const tHi = columnAtF(rows, q.j + 1, f, extrap);
+  return {
+    f, extrap, exact: exact >= 0, fA: KG_TABLE_F[i], fB: KG_TABLE_F[i + 1],
+    rowA: [rows[i][q.j], rows[i][q.j + 1]], rowB: [rows[i + 1][q.j], rows[i + 1][q.j + 1]],
+    tLo, tHi, T: tLo + q.w * (tHi - tLo),
+  };
+}
+
+/**
  * k_g по табл. 28 или 29: T(f_clin) / T(f_lab) — таблица нормирована на f = 3 см, для другого поля лаборатории
  * перенормируется (TRS-398 Rev.1, текст перед табл. 28). hvl — мм Al, f — диаметры, см.
  * spreadPct — разница с линейной интерполяцией по СПО, %: входит в неопределённость k_g табл. 30.
  * opts.extrap — клиническое поле 1,5–2 см: продолжить строки 2 и 3 см линейно (не по Rev.1). Тогда extrapolated = true,
  * value2 — k_g при 2 см, uExtrapPct = |k_g / k_g(2 см) − 1| / √3 · 100 — добавка к неопределённости: истинное значение
  * считается равновероятным между «за 2 см k_g не меняется» и «меняется вдвое сильнее прямой».
- * @returns {{ value, byHvlLin, spreadPct, table, extrapolated, value2?, uExtrapPct?, inRange: {hvl, f, fExtrap} }}
+ * detail — шаги расчёта для подсказки: quality (столбцы TW и вес по ln СПО), clin и lab (строки по полю и T(f)).
+ * @returns {{ value, byHvlLin, spreadPct, table, extrapolated, value2?, uExtrapPct?, detail?, inRange: {hvl, f, fExtrap} }}
  */
 export function kgFromTable(key, { hvl }, fClin, fLab, { extrap = false } = {}) {
   const t = KG_TABLES[key];
@@ -184,6 +216,7 @@ export function kgFromTable(key, { hvl }, fClin, fLab, { extrap = false } = {}) 
       fExtrap,
     },
   };
+  if (out.inRange.hvl) out.detail = { quality: kgQualityStep(hvl), clin: kgFieldStep(t.rows, hvl, fClin, fExtrap), lab: kgFieldStep(t.rows, hvl, fLab) };
   if (fExtrap) {
     out.value2 = tableValue(t.rows, hvl, KG_TABLE_F[0]).byHvl / l.byHvl;
     out.uExtrapPct = (Math.abs(value / out.value2 - 1) / Math.sqrt(3)) * 100;

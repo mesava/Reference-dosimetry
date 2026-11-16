@@ -275,3 +275,83 @@ export function setupPairs(container, onChange) {
     onChange();
   });
 }
+
+// ------------------------------------------------------------ всплывающая подсказка с разметкой
+// У элемента data-pop — HTML подсказки (собирается кодом, пользовательский текст экранирован). Окно одно на страницу и
+// стоит в position: fixed, поэтому прокрутка таблиц его не обрезает. Мышь — по наведению, клавиатура — по фокусу,
+// касание — по нажатию (повторное нажатие или касание вне элемента — закрыть).
+let popEl = null;
+let popFor = null;
+
+function placePop(el) {
+  const r = el.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth;
+  const vh = document.documentElement.clientHeight;
+  popEl.style.left = '0px';
+  popEl.style.top = '0px';
+  const w = popEl.offsetWidth;
+  const h = popEl.offsetHeight;
+  const left = Math.max(8, Math.min(r.left, vw - w - 8));
+  const below = r.bottom + 6;
+  const top = below + h <= vh - 8 || r.top - h - 6 < 8 ? Math.min(below, Math.max(8, vh - h - 8)) : r.top - h - 6;
+  popEl.style.left = `${left}px`;
+  popEl.style.top = `${top}px`;
+}
+
+function showPop(el) {
+  if (!el.dataset.pop) return;
+  popFor = el;
+  popEl.innerHTML = el.dataset.pop;
+  popEl.hidden = false;
+  placePop(el);
+}
+
+function hidePop() {
+  popFor = null;
+  if (popEl) popEl.hidden = true;
+}
+
+export function setupHoverPop() {
+  if (popEl) return;
+  popEl = document.createElement('div');
+  popEl.className = 'hover-pop';
+  popEl.id = 'hover-pop';
+  popEl.setAttribute('role', 'tooltip');
+  popEl.setAttribute('data-i18n-skip', '');
+  popEl.hidden = true;
+  document.body.append(popEl);
+  const target = (e) => e.target?.closest?.('[data-pop]');
+  document.addEventListener('pointerover', (e) => {
+    if (e.pointerType === 'touch') return;
+    const el = target(e);
+    if (el && el !== popFor) showPop(el);
+  });
+  document.addEventListener('pointerout', (e) => {
+    if (e.pointerType === 'touch' || !popFor) return;
+    if (target(e) === popFor && !popFor.contains(e.relatedTarget)) hidePop();
+  });
+  let touch = false;
+  document.addEventListener('pointerdown', (e) => { touch = e.pointerType === 'touch'; });
+  document.addEventListener('click', (e) => {
+    if (!touch) return;
+    const el = target(e);
+    if (el && el !== popFor) showPop(el);
+    else hidePop();
+  });
+  document.addEventListener('focusin', (e) => {
+    const el = target(e);
+    if (el && !touch) showPop(el);
+  });
+  document.addEventListener('focusout', (e) => {
+    if (!touch && target(e) === popFor) hidePop();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hidePop(); });
+  // прокрутка: окно идёт за элементом, ушедшим из виду — закрывается
+  window.addEventListener('scroll', () => {
+    if (!popFor) return;
+    const r = popFor.getBoundingClientRect();
+    if (!popFor.isConnected || r.bottom < 0 || r.top > document.documentElement.clientHeight || r.width === 0) hidePop();
+    else placePop(popFor);
+  }, { capture: true, passive: true });
+  window.addEventListener('resize', hidePop);
+}

@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0d6670">
-<link rel="stylesheet" href="src/ui/styles.css?v=0.60.1">
+<link rel="stylesheet" href="src/ui/styles.css?v=0.61.0">
 </head>
 <body>
 <header class="topbar">
@@ -2308,7 +2308,7 @@
             <th id="kv-rows-h-p">P, кПа</th>
             <th class="v">k<sub>TP</sub></th>
             <th class="v" id="kv-rows-h-kq">k<sub>Q</sub></th>
-            <th class="v" data-show="kv_cal:ndw">k<sub>g</sub></th>
+            <th class="v kv-pop-h" id="kv-rows-h-kg" data-show="kv_cal:ndw">k<sub>g</sub></th>
             <th class="m">M, нКл</th>
             <th data-show="kv_range:medium">PDD(2 см), %</th>
             <th class="v fix fix-d" id="kv-rows-h-d">D, Гр/мин</th>
@@ -2492,7 +2492,7 @@
           <div class="field" data-show="kv_kg_src:eq85;kv_range:low"><label for="kv_kg_nk">N<sub>K</sub><sup>ПММА</sup>(клин.)/N<sub>K</sub><sup>ПММА</sup>(лаб.)</label><input type="text" id="kv_kg_nk" class="num" inputmode="decimal"><span class="sub">отношение от лаборатории, TRS-398, прил. I</span></div>
         </div>
         <div class="grid four">
-          <div class="field out-cell used"><span class="label">k<sub>g</sub></span><output data-out="trs.kg.value" data-digits="4" data-flag="kv_kg_src"></output></div>
+          <div class="field out-cell used" id="kv-kg-out"><span class="label">k<sub>g</sub></span><output data-out="trs.kg.value" data-digits="4" data-flag="kv_kg_src"></output></div>
           <div class="field out-cell" id="kv-kg-2cm"><span class="label">k<sub>g</sub> при 2 см</span><output data-out="trs.kg.value2" data-digits="4"></output><span class="sub">для тубуса меньше 2 см — откуда продолжена прямая</span></div>
           <div class="field out-cell" id="kv-kg-bw"><span class="label">B<sub>w</sub>(клин.)/B<sub>w</sub>(лаб.)</span><output data-out="trs.kg.bwRatio" data-digits="4"></output></div>
           <div class="field out-cell" id="kv-kz-field" data-show="kv_range:medium"><span class="label">k<sub>z</sub></span><output data-out="cert.kz" data-digits="3"></output><span class="sub">DIN 6809-4: калибровка на 5 см, измерение на 2 см</span></div>
@@ -4137,6 +4137,6 @@
   <div class="dlg-body" id="kv-din-body"></div>
 </dialog>
 
-<script type="module" src="src/ui/app.js?v=0.60.1"></script>
+<script type="module" src="src/ui/app.js?v=0.61.0"></script>
 </body>
 </html>
