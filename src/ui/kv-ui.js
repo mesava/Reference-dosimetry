@@ -367,6 +367,7 @@ function rowCaps(data, result) {
     pLabel: L(`Давление, ${pu}`, `Pressure, ${pu}`),
     d: `D, ${result.trs.rateLabel}`,
     kq: kqName(data, result),
+    pdd: data.kv_pdd_unit === 'frac' ? L('PDD(2 см), доля', 'PDD(2 cm), fraction') : L('PDD(2 см), %', 'PDD(2 cm), %'),
   };
 }
 
@@ -399,7 +400,7 @@ function rowHtml(row, i, n, caps, linked = null) {
     <td class="v" data-o="kq"${cap(caps.kq)}></td>
     <td class="v" data-o="kg" data-show="kv_cal:ndw"${cap('k_g')}></td>
     <td class="m"${cap(L('M₁, нКл', 'M₁, nC'))}><span class="m-in">${m}</span></td>
-    <td data-show="kv_range:medium"${cap(L('PDD(2 см), %', 'PDD(2 cm), %'))}>${rowInput(i, 'kv_pdd2', row.kv_pdd2, L('PDD(2 см), %', 'PDD(2 cm), %'))}</td>
+    <td data-show="kv_range:medium"${cap(caps.pdd)}>${rowInput(i, 'kv_pdd2', row.kv_pdd2, caps.pdd)}</td>
     <td class="v fix fix-d" data-o="d"${cap(caps.d)}></td>
     <td class="fix fix-ref"${cap(L('Сравнить с', 'Compare with'))}>${rowInput(i, 'kv_ref', row.kv_ref, L('Значение для сравнения', 'Comparison value'))}</td>
     <td class="v fix fix-dev" data-o="dev"${cap(L('откл., %', 'dev., %'))}></td>
@@ -420,6 +421,7 @@ function renderRows(data, result) {
   $('#kv-rows-h-set').textContent = caps.set;
   $('#kv-rows-h-p').textContent = caps.p;
   $('#kv-rows-h-d').textContent = caps.d;
+  $('#kv-rows-h-pdd').textContent = caps.pdd;
   setPop($('#kv-rows-h-kg'), kgHowGeneral());
   localizeDecimals(rowsBody());
 }

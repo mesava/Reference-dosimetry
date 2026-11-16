@@ -252,7 +252,8 @@ export const KV_DEFAULTS = {
   kv_ctrl_set: '', // пусто — то же задание, что в основных сериях
 
   // глубина (средние энергии) и сравнение
-  kv_pdd2: '', // PDD(2 см), % от дозы на поверхности; пусто — без пересчёта
+  kv_pdd2: '', // PDD(2 см) от дозы на поверхности, в процентах или в долях (kv_pdd_unit); пусто — без пересчёта
+  kv_pdd_unit: 'pct', // в чём вводится PDD(2 см): 'pct' — проценты, 'frac' — доли единицы (с 0.62.0)
   kv_pdd_phantom: '', // в каком фантоме снята PDD (SSRMP No 9, разд. 5.7.1.2)
   kv_ref: '', // значение для сравнения в единицах итога
   kv_ref_at: 'zref', // 'zref' | 'surface'
@@ -313,6 +314,7 @@ export function normalizeKv(input) {
   if (!['circle', 'square', 'rect'].includes(f.kv_cone_shape)) f.kv_cone_shape = 'circle';
   if (f.kv_lab_shape !== 'square') f.kv_lab_shape = 'circle';
   if (f.kv_rec_mode !== 'check') f.kv_rec_mode = 'cal';
+  if (f.kv_pdd_unit !== 'frac') f.kv_pdd_unit = 'pct';
   const phantomIds = ['custom', ...KV_PHANTOMS.map((p) => p.id)];
   for (const k of ['kv_phantom', 'kv_lab_phantom', 'kv_pdd_phantom']) if (!phantomIds.includes(f[k])) f[k] = '';
   return f;
@@ -1298,8 +1300,16 @@ export function computeKv(form) {
   const trs = { enabled: true, equation: eqText, kTP, kelec, kpol, kpolRaw, kpolQ0, kpolFrom: polFrom || null, ks, ksRaw, ksQ0, ksEquation, ksFrom: ksFrom || null, ksNoise, pkThin, thinWindow, pkSeries: modeSeries, pkRowOwn: rowOwn, ksOn, kleak, NQ: cert.NQ, phys, kg };
   const depth = { on: range === 'medium' && !isBlank(f.kv_pdd2), zref: range === 'medium' ? 2 : 0 };
   if (depth.on) {
-    depth.pdd = read('kv_pdd2', L('PDD(2 см)', 'PDD(2 cm)'), 'depth');
-    if (Number.isFinite(depth.pdd) && (depth.pdd < 20 || depth.pdd > 100)) add('error', 'depth', L('PDD(2 см) вводится в процентах от дозы на поверхности, от 20 до 100.', 'PDD(2 cm) is entered as a percentage of the surface dose, from 20 to 100.'), null, 'kv_pdd2');
+    // PDD в долях (0,72) переводится в проценты (72): дальше расчёт и протокол — в процентах
+    const frac = f.kv_pdd_unit === 'frac';
+    const pddIn = read('kv_pdd2', L('PDD(2 см)', 'PDD(2 cm)'), 'depth');
+    depth.unit = frac ? 'frac' : 'pct';
+    depth.pdd = frac ? pddIn * 100 : pddIn;
+    if (Number.isFinite(depth.pdd) && (depth.pdd < 20 || depth.pdd > 100)) {
+      add('error', 'depth', frac
+        ? L(`PDD(2 см) выбрана в долях дозы на поверхности: от 0,2 до 1${pddIn > 1 ? '. Если вводите в процентах, выберите «PDD(2 см) в: %»' : ''}.`, `PDD(2 cm) is set as a fraction of the surface dose: from 0.2 to 1${pddIn > 1 ? '. If you enter percentages, choose “PDD(2 cm) in: %”' : ''}.`)
+        : L(`PDD(2 см) вводится в процентах от дозы на поверхности, от 20 до 100${pddIn > 0 && pddIn <= 1 ? '. Если вводите в долях, выберите «PDD(2 см) в: долях»' : ''}.`, `PDD(2 cm) is entered as a percentage of the surface dose, from 20 to 100${pddIn > 0 && pddIn <= 1 ? '. If you enter fractions, choose “PDD(2 cm) in: fractions”' : ''}.`), null, ['kv_pdd2', 'kv_pdd_unit']);
+    }
     depth.ok = !messages.some((m) => m.level === 'error' && m.scope === 'depth');
     // в каком фантоме снята PDD: SSRMP No 9, разд. 5.7.1.2
     depth.phantom = resolveKvPhantom(f.kv_pdd_phantom, f.kv_ph_name);

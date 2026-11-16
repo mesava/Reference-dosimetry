@@ -167,6 +167,23 @@ test('Средние энергии, N_K (ур. 57): доза = M · попра�
   assert.ok(bad.messages.some((m) => m.level === 'error' && m.scope === 'depth'));
 });
 
+test('PDD(2 см) в долях (с 0.62.0): 0,9 при «в долях» = 90 %; 90 при «в долях» и 0,9 при «%» — ошибка с подсказкой о единице', () => {
+  const pct = computeKv({ ...MED_NK, kv_pdd2: '90' });
+  const frac = computeKv({ ...MED_NK, kv_pdd2: '0,9', kv_pdd_unit: 'frac' });
+  assert.deepEqual(errors(frac), []);
+  assert.equal(frac.depth.pdd, 90);
+  assert.equal(frac.depth.unit, 'frac');
+  near(frac.trs.Dsurf, pct.trs.Dsurf, 1e-12 * pct.trs.Dsurf);
+  near(frac.trs.D, pct.trs.D, 1e-12 * pct.trs.D);
+  const wrongFrac = computeKv({ ...MED_NK, kv_pdd2: '90', kv_pdd_unit: 'frac' });
+  assert.equal(wrongFrac.trs.Dsurf, undefined);
+  assert.ok(wrongFrac.messages.some((m) => m.level === 'error' && m.scope === 'depth' && /в: %/.test(m.text)));
+  const wrongPct = computeKv({ ...MED_NK, kv_pdd2: '0,9' });
+  assert.ok(wrongPct.messages.some((m) => m.level === 'error' && m.scope === 'depth' && /в долях/.test(m.text)));
+  // незнакомое значение — проценты
+  assert.equal(computeKv({ ...MED_NK, kv_pdd2: '90', kv_pdd_unit: 'xx' }).depth.pdd, 90);
+});
+
 test('Средние энергии, N_D,w (ур. 58): k_g по ур. (90) = отношение [μen/ρ]z=2 клиника/лаборатория', () => {
   const r = computeKv({ ...MED_NK, kv_cal: 'ndw', kv_n: '0,05', kv_lab_f: '10', kv_lab_ssd: '100', kv_cone: '5' });
   assert.deepEqual(errors(r), []);

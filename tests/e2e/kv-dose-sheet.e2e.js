@@ -135,3 +135,29 @@ test('kV-рентген: режим из «Оборудования» — оди
   assert.ok(await page.locator('#hover-pop').isHidden());
   assert.deepEqual(errors, []);
 });
+
+test('kV-рентген: PDD(2 см) в долях (0.62.0) — подпись столбца и тот же итог на поверхности', async () => {
+  const { page, errors } = await openPage(browser);
+  const pause = (ms = 300) => page.waitForTimeout(ms);
+  await page.goto(`${server.url}/index.html#kv/modes`);
+  await page.waitForSelector('#kv-messages li');
+  await page.click('#kv-btn-sample');
+  await pause();
+  await kvPage(page, 'dose');
+  const surf = () => page.locator('#module-kv output[data-out="trs.perUnitSurf"]').first().textContent();
+  assert.equal(await page.locator('#kv-rows-h-pdd').innerText(), 'PDD(2 см), %');
+  assert.equal(await page.inputValue('#kv_pdd_unit'), 'pct');
+  const before = await surf();
+  assert.match(before, /^\d+,\d{4}$/);
+  // в долях: то же число в процентах — ошибка с подсказкой переключить выбор, итог на поверхности пропадает
+  await page.selectOption('#kv_pdd_unit', 'frac');
+  await pause();
+  assert.equal(await page.locator('#kv-rows-h-pdd').innerText(), 'PDD(2 см), доля');
+  assert.match(await page.locator('#kv-messages').innerText(), /в долях дозы на поверхности: от 0,2 до 1\. Если вводите в процентах/);
+  await page.fill('#kvr0_kv_pdd2', '0,886');
+  await pause();
+  assert.equal(await surf(), before);
+  assert.doesNotMatch(await page.locator('#kv-messages').innerText(), /PDD\(2 см\) выбрана в долях/);
+  assert.deepEqual(errors, []);
+  await page.close();
+});

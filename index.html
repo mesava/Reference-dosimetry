@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0d6670">
-<link rel="stylesheet" href="src/ui/styles.css?v=0.61.1">
+<link rel="stylesheet" href="src/ui/styles.css?v=0.62.0">
 </head>
 <body>
 <header class="topbar">
@@ -2310,7 +2310,7 @@
             <th class="v" id="kv-rows-h-kq">k<sub>Q</sub></th>
             <th class="v kv-pop-h" id="kv-rows-h-kg" data-show="kv_cal:ndw">k<sub>g</sub></th>
             <th class="m">M, нКл</th>
-            <th data-show="kv_range:medium">PDD(2 см), %</th>
+            <th data-show="kv_range:medium" id="kv-rows-h-pdd">PDD(2 см), %</th>
             <th class="v fix fix-d" id="kv-rows-h-d">D, Гр/мин</th>
             <th class="fix fix-ref" id="kv-rows-h-ref">Сравнить с</th>
             <th class="v fix fix-dev">Откл., %</th>
@@ -2358,6 +2358,11 @@
           <label for="kv_env_P_unit">Единица давления</label>
           <select id="kv_env_P_unit"></select>
           <span class="sub">по поверенному барометру в помещении, без приведения к уровню моря</span>
+        </div>
+        <div class="field" data-show="kv_range:medium">
+          <label for="kv_pdd_unit">PDD(2 см) в</label>
+          <select id="kv_pdd_unit"><option value="pct">%</option><option value="frac">долях</option></select>
+          <span class="sub">как вводится столбец PDD(2 см): 72 % или 0,72 — от дозы на поверхности</span>
         </div>
         <div class="field">
           <label for="kv_env_H">Относительная влажность, %</label>
@@ -4137,6 +4142,6 @@
   <div class="dlg-body" id="kv-din-body"></div>
 </dialog>
 
-<script type="module" src="src/ui/app.js?v=0.61.1"></script>
+<script type="module" src="src/ui/app.js?v=0.62.0"></script>
 </body>
 </html>
