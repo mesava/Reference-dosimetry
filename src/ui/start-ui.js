@@ -47,8 +47,8 @@ export function renderStart() {
     <header class="start-head">
       <h2>${esc(L('С чего начать', 'Where to start'))}</h2>
       <p class="intro">${L(
-        'Калькулятор референсной дозиметрии пучков ⁶⁰Co, МВ фотонов и электронов по TRS-398 Rev.1 и TG-51 (протокол выбирается в шапке на страницах расчёта и действует во всех разделах). Выберите, что нужно сделать.',
-        'A reference dosimetry calculator for ⁶⁰Co, MV photon and electron beams according to TRS-398 Rev.1 and TG-51 (the protocol is selected in the header on the calculation pages and applies everywhere). Choose what you need to do.',
+        'Калибровка пучков ⁶⁰Co, МВ фотонов, электронов и kV-рентгена по TRS-398 Rev.1, проверки рентгенотерапевтического аппарата и журнал отделения. TG-51 — справочное сравнение: его можно выбрать в шапке на страницах, где он меняет расчёт (⁶⁰Co, МВ фотоны, электроны, «Камера и пучок», «Неопределённость»). Выберите, что нужно сделать.',
+        'Calibration of ⁶⁰Co, MV photon, electron and kV x-ray beams according to TRS-398 Rev.1, x-ray unit checks and the department journal. TG-51 is a reference comparison: it can be selected in the header on the pages where it changes the calculation (⁶⁰Co, MV photons, electrons, Chamber and beam, Uncertainty). Choose what you need to do.',
       )}</p>
     </header>
     <div class="start-cards">
