@@ -24,7 +24,7 @@ import { initPwa } from './pwa.js';
 import { initSecLinks, revealSection } from './sec-links.js';
 import { initTabEquipment } from './tab-equipment-ui.js';
 import { initTabJournal } from './tab-journal-ui.js';
-import { initEquipment, equipmentStatus, setEquipmentBridge, saveBeamFromTab, revealBeam, renderMyChambersTool } from './journal-equipment-ui.js';
+import { initEquipment, equipmentStatus, setEquipmentBridge, saveBeamFromTab, revealBeam, renderMyChambersTool, equipmentShown } from './journal-equipment-ui.js';
 import { initHistory, historyStatus, setHistoryBridge } from './journal-history-ui.js';
 import { initSession, renderSessionPage, sessionStatus, setSessionSheet, sessionInfo, sessionLastKind } from './session-ui.js';
 import { initPlates, renderPlatesPage, platesStatus, platesLastKind } from './plates-ui.js';
@@ -207,7 +207,10 @@ function showModule(raw) {
   // kV-рентген: лист из адреса #kv/<лист> или тот, с которым работали
   if (name === 'kv') kvShown();
   // «Мои камеры» меняются на вкладках дозиметрии: кнопку переноса в журнал обновить при открытии «Оборудования»
-  if (name === 'equipment') renderMyChambersTool();
+  if (name === 'equipment') {
+    renderMyChambersTool();
+    equipmentShown();
+  }
   refreshSectionNav($(`#module-${name}`));
 }
 

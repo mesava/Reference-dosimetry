@@ -309,6 +309,8 @@ input:disabled, select:disabled, textarea:disabled { opacity: 0.55; cursor: not-
 input.num, textarea.num { font-family: var(--font-mono); font-size: 14px; font-variant-numeric: tabular-nums; }
 textarea { resize: vertical; min-height: 64px; }
 textarea.mono { font: 13px/1.5 var(--font-mono); min-height: 140px; }
+/* «Примечания» карточек «Оборудования»: во всю ширину, высота по тексту (подгоняет fitNotes в journal-equipment-ui.js) */
+textarea.eq-notes { min-height: 38px; line-height: 22px; overflow-y: hidden; overflow-wrap: anywhere; }
 select { cursor: pointer; }
 /* WebKit (Safari на iPhone и Mac): текст выбранного пункта длинного списка не обрезается рамкой select и расширяет
    страницу — на телефоне страница «уезжает» вбок. Отрисовка содержимого select ограничена его рамкой. */

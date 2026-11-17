@@ -288,3 +288,63 @@ test('оборудование: разметка из файла журнала 
   assert.deepEqual(names, [[`b${X}`, '6 МВ БВФ'], ['b2', '10 МВ']]);
   assert.deepEqual(errors, []);
 });
+
+test('оборудование: «Примечания» карточек — во всю ширину, многострочные, высота по тексту (0.63.1)', async () => {
+  const { ctx, page, errors } = await openPage(browser);
+  const LONG = 'Данные для калибровки в ⁶⁰Co — из сертификата производителя, для kV — из свидетельства о поверке. При смене электрометра камеру калибровать вместе с ним; заводской номер сверять по паспорту.';
+  const journal = {
+    app: 'reference-dosimetry', module: 'journal', version: 2,
+    chambers: [{ id: 'c1', kind: 'photon', form: { ch_model: 'PTW30013', ch_serial: '1' }, notes: LONG }],
+    electrometers: [{ id: 'e1', form: { el_model: 'PTW UNIDOS webline', el_serial: '2' }, notes: 'коротко' }],
+    machines: [
+      { id: 'm1', name: 'Ускоритель', kind: 'linac', notes: LONG, beams: [{ id: 'b1', kind: 'photon', name: '6 МВ', form: {} }] },
+      { id: 'k1', name: 'Рентген', kind: 'kv', notes: '', applicators: [], modes: [{ id: 'x1', kv: '100', notes: '' }], beams: [] },
+    ],
+    sessions: [],
+  };
+  await ctx.addInitScript((d) => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.setItem('reference-dosimetry.journal.v1', d);
+      sessionStorage.setItem('seeded', '1');
+    }
+  }, JSON.stringify({ journal }));
+  // журнал загружается, пока открыта другая вкладка: высота подгоняется при открытии «Оборудования»
+  await page.goto(`${server.url}/index.html#start`);
+  await page.waitForTimeout(300);
+  await page.locator('nav a[data-goto="equipment"], a[href="#equipment"]').first().click();
+  await page.waitForSelector('[data-card="chamber:c1"]');
+  await page.waitForTimeout(200);
+  const geo = (card) => page.locator(`[data-card="${card}"]`).evaluate((c) => {
+    const ta = c.querySelector('textarea[data-bind$="|notes"]');
+    const grid = ta.closest('.grid');
+    return { w: ta.getBoundingClientRect().width, gw: grid.getBoundingClientRect().width, h: ta.offsetHeight, sh: ta.scrollHeight, inputs: c.querySelectorAll('input[data-bind$="|notes"]').length };
+  });
+  for (const card of ['chamber:c1', 'electrometer:e1', 'machine:m1']) {
+    const g = await geo(card);
+    assert.equal(g.inputs, 0, `${card}: однострочного поля нет`);
+    assert.ok(Math.abs(g.w - g.gw) < 1, `${card}: поле во всю ширину (${g.w} из ${g.gw})`);
+    assert.ok(g.h >= g.sh, `${card}: текст виден целиком (${g.h} < ${g.sh})`);
+  }
+  assert.ok((await geo('chamber:c1')).h > 70, 'длинное примечание — в несколько строк');
+  assert.ok((await geo('electrometer:e1')).h < 50, 'короткое — в одну строку');
+  // ввод: поле растёт, перевод строки сохраняется в журнале
+  const ta = page.locator('[data-card="electrometer:e1"] textarea');
+  const h0 = await ta.evaluate((x) => x.offsetHeight);
+  await ta.click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' — строка 1');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('строка 2');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('строка 3');
+  assert.ok((await ta.evaluate((x) => x.offsetHeight)) > h0 + 30, 'поле выросло по вводу');
+  await page.waitForTimeout(300);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('reference-dosimetry.journal.v1')).journal.electrometers[0].notes);
+  assert.equal(saved, 'коротко — строка 1\nстрока 2\nстрока 3');
+  // аппарат kV и его режим: тоже многострочные во всю ширину
+  await page.locator('#eq-mtabs a[data-eq-id="k1"]').click();
+  await page.waitForSelector('[data-card="machine:k1"]');
+  const kv = await page.locator('[data-card="machine:k1"] [data-bind$="|notes"]').evaluateAll((l) => l.map((x) => [x.tagName, x.dataset.bind.split('|')[0], Math.abs(x.getBoundingClientRect().width - x.closest('.grid').getBoundingClientRect().width) < 1]));
+  assert.deepEqual(kv, [['TEXTAREA', 'machine', true], ['TEXTAREA', 'kvmode', true]]);
+  assert.deepEqual(errors, []);
+});

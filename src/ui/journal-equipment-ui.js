@@ -44,6 +44,25 @@ const bind = (kind, id, path) => `id="${val(fieldId(kind, id, path))}" data-bind
 function input(kind, id, path, value, { num = false, type = 'text', placeholder = '', aria = '', livePh = '' } = {}) {
   return `<input type="${type}" ${bind(kind, id, path)}${num ? ' class="num" inputmode="decimal"' : ''} value="${val(value)}"${placeholder ? ` placeholder="${val(placeholder)}"` : ''}${aria ? ` aria-label="${val(aria)}"` : ''}${livePh ? ` data-live-ph="${val(livePh)}"` : ''}>`;
 }
+/**
+ * «Примечания» карточки: многострочное поле во всю ширину карточки, высота — по тексту (с 0.63.1; раньше короткое
+ * однострочное поле, длинный комментарий в нём был виден не целиком).
+ */
+function notesArea(kind, id, path, value) {
+  return `<textarea rows="1" class="eq-notes" ${bind(kind, id, path)}>${val(value)}</textarea>`;
+}
+const notesField = (kind, id, value) => field(L('Примечания', 'Notes'), notesArea(kind, id, 'notes', value), { forId: fieldId(kind, id, 'notes'), cls: 'span-all' });
+/** Высота полей «Примечания» по тексту; у скрытого поля (вкладка не открыта) высоты нет — подгоняется при открытии. */
+function fitNotes(root = ROOT()) {
+  for (const ta of root?.querySelectorAll('textarea.eq-notes') ?? []) {
+    if (!ta.offsetParent) continue;
+    ta.style.height = 'auto';
+    const cs = getComputedStyle(ta);
+    ta.style.height = `${ta.scrollHeight + parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth)}px`;
+  }
+}
+/** Вкладка «Оборудование» открыта: подогнать высоту «Примечаний» (при отрисовке вкладка могла быть скрыта). */
+export const equipmentShown = () => fitNotes();
 function select(kind, id, path, value, options, { aria = '' } = {}) {
   return `<select ${bind(kind, id, path)}${aria ? ` aria-label="${val(aria)}"` : ''}>${options.map(([v, t]) => `<option value="${val(v)}"${String(v) === String(value ?? '') ? ' selected' : ''}>${esc(plainSymbols(t))}</option>`).join('')}</select>`;
 }
@@ -387,7 +406,7 @@ function chamberCard(c, j = getJournal()) {
     ${certTools(j, c, 'mv')}</div>` : ''}
     ${use.kv ? `<div data-cert-pane="kv"${mv && pane !== 'kv' ? ' hidden' : ''}>${kvCertBlock(j, c)}</div>` : ''}
     <div class="grid">
-      ${field(L('Примечания', 'Notes'), input(k, c.id, 'notes', c.notes), { forId: fieldId(k, c.id, 'notes'), cls: 'span-2' })}
+      ${notesField(k, c.id, c.notes)}
     </div>
     <div class="row-tools"><button type="button" class="link-btn danger" data-del="chamber:${esc(c.id)}"${usedInRecords(j, 'chamberId', c.id) ? ` disabled title="${esc(RECORDS_TITLE())}"` : ''}>${esc(L('Удалить камеру', 'Delete chamber'))}</button></div>
   </div>`;
@@ -418,7 +437,7 @@ function electrometerCard(e) {
       ${field('k<sub>elec</sub>', input(k, e.id, 'form.el_kelec', f.el_kelec ?? '1,000', { num: true }), { forId: fieldId(k, e.id, 'form.el_kelec'), sub: L('1,000, если камера калибровалась вместе с электрометром', '1.000 if the chamber was calibrated together with the electrometer') })}
       ${field(L('Дата калибровки', 'Calibration date'), input(k, e.id, 'calDate', e.calDate, { type: 'date' }), { forId: fieldId(k, e.id, 'calDate') })}
       ${field(L('Действует до', 'Valid until'), input(k, e.id, 'dueDate', e.dueDate, { type: 'date' }), { forId: fieldId(k, e.id, 'dueDate') })}
-      ${field(L('Примечания', 'Notes'), input(k, e.id, 'notes', e.notes), { forId: fieldId(k, e.id, 'notes') })}
+      ${notesField(k, e.id, e.notes)}
     </div>
     <div class="row-tools"><button type="button" class="link-btn danger" data-del="electrometer:${esc(e.id)}"${usedInRecords(getJournal(), 'electrometerId', e.id) ? ` disabled title="${esc(RECORDS_TITLE())}"` : ''}>${esc(L('Удалить электрометр', 'Delete electrometer'))}</button></div>
   </div>`;
@@ -598,7 +617,7 @@ function kvModeBlock(j, m, x, i, checks) {
     <div class="field"><span class="label">${esc(L('Аппликаторы режима', 'Applicators of the mode'))}</span><div class="jkv-apps" data-live="kvmode-apps-${val(x.id)}">${apps}</div></div>
     <div class="grid">
       ${field(L('Стандартный аппликатор (необязательно)', 'Standard applicator (optional)'), select(k, x.id, 'refApplicator', x.refApplicator, refOpts), { forId: fid('refApplicator'), cls: 'span-2', live: `kvmode-ref-${x.id}`, sub: esc(`${kvRefHint(m, x)}. ${REF_ROLE()}`) })}
-      ${field(L('Примечания', 'Notes'), input(k, x.id, 'notes', x.notes), { forId: fid('notes'), cls: 'span-2' })}
+      ${notesField(k, x.id, x.notes)}
     </div>
     ${kvMsgs(checks.filter((ch) => ch.modeId === x.id), `kvmode-msgs-${x.id}`)}
     <div class="row-tools"><button type="button" class="link-btn danger" data-del="kvmode:${esc(m.id)}:${esc(x.id)}"${kvModeUsed(j, m.id, x.id) ? ` disabled title="${esc(L('Режим есть в записях журнала', 'The mode is used in journal records'))}"` : ''}>${esc(L('Удалить режим', 'Delete mode'))}</button></div>
@@ -634,7 +653,7 @@ function kvMachineCard(j, m) {
       ${field(L('Аппарат', 'Machine'), input(k, m.id, 'name', m.name, { placeholder: 'Xstrahl 300' }), { forId: fieldId(k, m.id, 'name') })}
       ${field(L('Заводской №', 'Serial No.'), input(k, m.id, 'serial', m.serial), { forId: fieldId(k, m.id, 'serial') })}
       ${field(L('№ рентгеновской трубки', 'X-ray tube No.'), input(k, m.id, 'tube', m.tube), { forId: fieldId(k, m.id, 'tube'), sub: L('после замены трубки СПО режимов меряют заново', 'after a tube replacement the HVLs of the modes are measured again') })}
-      ${field(L('Примечания', 'Notes'), input(k, m.id, 'notes', m.notes), { forId: fieldId(k, m.id, 'notes') })}
+      ${notesField(k, m.id, m.notes)}
     </div>
     <h3 class="sub-h">${esc(L('Аппликаторы', 'Applicators'))}</h3>
     ${m.applicators.length
@@ -685,7 +704,7 @@ function machineCard(j, m) {
     <div class="grid">
       ${field(L('Аппарат', 'Machine'), input(k, m.id, 'name', m.name, { placeholder: cobalt ? L('Тератрон', 'Theratron') : 'Elekta Versa HD' }), { forId: fieldId(k, m.id, 'name') })}
       ${field(L('Заводской №', 'Serial No.'), input(k, m.id, 'serial', m.serial), { forId: fieldId(k, m.id, 'serial') })}
-      ${field(L('Примечания', 'Notes'), input(k, m.id, 'notes', m.notes), { forId: fieldId(k, m.id, 'notes') })}
+      ${notesField(k, m.id, m.notes)}
     </div>
     ${cobalt ? coSection : ''}
     ${linacPart ? `<h3 class="sub-h">${esc(L('Пучки фотонов', 'Photon beams'))}</h3>
@@ -975,6 +994,7 @@ function render() {
   }
   renderMyChambersTool();
   localizeDecimals(ROOT());
+  fitNotes();
   renderReadout();
   notifyUpdate(ROOT());
 }
@@ -1505,6 +1525,9 @@ export function initEquipment() {
   sheet.addEventListener('input', onInput);
   sheet.addEventListener('change', onInput);
   sheet.addEventListener('click', onClick);
+  // «Примечания» растут по мере ввода и при смене ширины окна (перенос строк другой)
+  sheet.addEventListener('input', (e) => { if (e.target.matches?.('textarea.eq-notes')) fitNotes(e.target.parentElement); });
+  window.addEventListener('resize', () => fitNotes());
   $('#eq_institution').addEventListener('input', (e) => updateJournal((j) => ({ ...j, institution: e.target.value }), 'equipment:input'));
   $('#eq_department').addEventListener('input', (e) => updateJournal((j) => ({ ...j, department: e.target.value }), 'equipment:input'));
   $('#eq-staff-list').addEventListener('input', onStaffInput);
