@@ -51,3 +51,24 @@ test('сервис-воркер: без сети — сохранённая ко
   assert.equal((await sw.request('https://x.test/app/src/core/version.js')).body, 'cached');
   assert.equal(sw.request('https://fonts.example/x.css'), undefined);
 });
+
+test('сервис-воркер: миниатюры «Литературы» из index.html — в копии при установке, и каждая есть в img/refs/', async () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const used = [...new Set([...html.matchAll(/src="(img\/refs\/[\w.-]+\.webp)"/g)].map((m) => m[1]))];
+  assert.equal(used.length, 11);
+  let shell = [];
+  const handlers = {};
+  vm.runInNewContext(SRC, {
+    self: { location: { origin: 'https://x.test' }, addEventListener: (t, fn) => (handlers[t] = fn), skipWaiting: () => {}, clients: { claim: () => {} } },
+    caches: { open: async () => ({ addAll: async (list) => (shell = list) }), keys: async () => [], delete: async () => true },
+    URL,
+  });
+  let done;
+  handlers.install({ waitUntil: (p) => (done = p) });
+  await done;
+  for (const src of used) {
+    assert.ok(shell.includes(`./${src}`), src);
+    assert.ok(readFileSync(new URL(`../${src}`, import.meta.url)).length < 16 * 1024, `${src}: больше 16 КБ`);
+  }
+  assert.deepEqual([...shell].filter((s) => s.includes('img/refs/')).sort(), used.map((s) => `./${s}`).sort());
+});

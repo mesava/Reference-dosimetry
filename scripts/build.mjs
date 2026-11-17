@@ -47,6 +47,15 @@ for (const name of new Set([...fontsCss.matchAll(/url\(([\w.-]+\.woff2)\)/g)].ma
   fontsCss = fontsCss.replaceAll(`url(${name})`, `url(data:font/woff2;base64,${b64})`);
 }
 
+// миниатюры «Литературы» (img/refs/*.webp, с 0.64.0) и значок у «Как цитировать» — встраиваются в файл как data: URL
+// (политика CSP разрешает img-src data:): файл открывается без интернета и без папки img/ рядом
+const imgData = new Map([['icons/icon.svg', iconData]]);
+for (const name of new Set([...html.matchAll(/src="img\/refs\/([\w.-]+\.webp)"/g)].map((m) => m[1]))) {
+  const b64 = (await readFile(new URL(`img/refs/${name}`, root))).toString('base64');
+  imgData.set(`img/refs/${name}`, `data:image/webp;base64,${b64}`);
+}
+const embedImages = (h) => h.replace(/<img ([^>]*?)src="(img\/refs\/[\w.-]+\.webp|icons\/icon\.svg)"/g, (m, pre, src) => `<img ${pre}src="${imgData.get(src)}"`);
+
 // политика CSP: у страницы на сервере скрипт — файлом ('self'), у автономного файла — встроен; разрешается только он
 // (по хешу SHA-256), шрифты — встроенные (data:)
 const cspRe = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/;
@@ -55,8 +64,7 @@ if (!csp || !/script-src 'self'/.test(csp) || !/font-src 'self'/.test(csp)) thro
 const jsHash = createHash('sha256').update(js, 'utf8').digest('base64');
 const distCsp = csp.replace("script-src 'self'", `script-src 'sha256-${jsHash}'`).replace("font-src 'self'", 'font-src data:');
 
-const full = pwaTags
-  .reduce((h, t) => h.replace(t, ''), html)
+const full = embedImages(pwaTags.reduce((h, t) => h.replace(t, ''), html))
   .replace(cspRe, () => `<meta http-equiv="Content-Security-Policy" content="${distCsp}">`)
   .replace(iconTag, () => `<link rel="icon" href="${iconData}" type="image/svg+xml">`)
   .replace(fontsTag, () => `<style>\n${fontsCss}</style>`)

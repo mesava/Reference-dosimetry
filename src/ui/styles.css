@@ -37,6 +37,7 @@
   --radius: 6px;
   --gap: 16px;
   --page-max: 1320px;
+  --cover-filter: none; /* миниатюры обложек «Литературы»: в тёмной теме чуть приглушены */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -63,6 +64,7 @@
     --info: #a3c6d1;
     --info-soft: #15262b;
     --ok: #6fd3a0;
+  --cover-filter: brightness(0.85);
     --series-1: #13a3b0;
     --series-2: #e0672a;
     --trend-1: #3987e5; --trend-2: #d95926; --trend-3: #199e70; --trend-4: #c98500;
@@ -93,6 +95,7 @@
   --info: #a3c6d1;
   --info-soft: #15262b;
   --ok: #6fd3a0;
+  --cover-filter: brightness(0.85);
   --series-1: #13a3b0;
   --series-2: #e0672a;
   --trend-1: #3987e5; --trend-2: #d95926; --trend-3: #199e70; --trend-4: #c98500;
@@ -455,17 +458,39 @@ table.factors tr.group td { padding-top: 12px; color: var(--accent); font: 600 1
 .status-line { font-size: 12px; color: var(--muted); min-height: 1.4em; }
 
 footer.page-foot { max-width: var(--page-max); margin: 0 auto; padding: 0 16px 40px; color: var(--muted); font-size: 13px; }
-footer.page-foot p { max-width: 90ch; }
+/* подвал — на всю ширину страницы, как шапка (с 0.64.0) */
+footer.page-foot p { max-width: none; }
 footer.page-foot .page-foot-legal { margin-top: 4px; font-size: 12px; }
-.refs { margin-top: 20px; max-width: 110ch; }
-.refs h2 { font-size: 15px; margin: 0 0 8px; color: var(--ink); }
-.refs-list { list-style: none; margin: 0; padding: 0; }
-.refs-list li { margin: 0 0 6px; padding-left: 1.5em; text-indent: -1.5em; overflow-wrap: anywhere; }
-.refs-list a { color: inherit; }
-.refs-page .refs { margin-top: 0; max-width: 110ch; }
+/* «Литература» (с 0.64.0): на всю ширину страницы; источники — карточки с миниатюрой обложки или первой страницы
+   (img/refs/, 200×270, webp), по группам; на широком экране — в два столбца */
+.start.refs-page { max-width: var(--page-max); }
+.refs-page .refs { margin-top: 0; }
 .refs-page .refs h2 { font-size: 20px; margin: 0; }
-.refs-page .refs-list { font-size: 14px; line-height: 1.45; }
-.refs-page .refs-list li { margin-bottom: 8px; }
+.refs-group { display: grid; gap: 10px; margin-top: 6px; }
+.refs-group h3 { margin: 0; font: 600 13px var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
+.refs-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+/* два столбца на широком экране: в группах по 2 и 4 источника — без пустых мест */
+@media (min-width: 900px) { .refs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ref-item { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 14px; align-items: start; padding: 12px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--calc); }
+.ref-cover { display: block; width: 100px; height: 135px; object-fit: cover; object-position: top; border: 1px solid var(--rule); border-radius: 3px; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14); filter: var(--cover-filter); }
+.ref-cover-app { object-fit: contain; padding: 22px 14px; background: var(--sheet); filter: none; }
+.ref-stub { display: flex; flex-direction: column; gap: 6px; padding: 12px 9px 10px; background: var(--accent-soft); border-color: var(--accent); border-top-width: 6px; filter: none; overflow: hidden; }
+.ref-stub-pub { font: 600 10.5px var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
+.ref-stub-title { font: 600 13px/1.2 var(--font-display); color: var(--ink); overflow-wrap: anywhere; }
+.ref-stub-year { margin-top: auto; font: 500 10.5px var(--font-body); color: var(--muted); }
+.ref-body { min-width: 0; display: grid; gap: 4px; align-content: start; }
+.ref-short { margin: 0; font: 600 15px/1.25 var(--font-display); color: var(--ink); }
+.ref-cite { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+.ref-cite a { color: var(--accent); }
+@media (max-width: 560px) {
+  .ref-item { grid-template-columns: 64px minmax(0, 1fr); gap: 10px; padding: 10px; }
+  .ref-cover { width: 64px; height: 86px; }
+  .ref-cover-app { padding: 12px 8px; }
+  .ref-stub { padding: 7px 5px 6px; gap: 3px; border-top-width: 4px; }
+  .ref-stub-pub, .ref-stub-year { font-size: 8.5px; }
+  .ref-stub-title { font-size: 10px; }
+  .ref-cite { font-size: 13px; }
+}
 
 /* мобильная строка с результатом */
 .mobile-result {
