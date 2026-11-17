@@ -11,14 +11,18 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0d6670">
-<link rel="stylesheet" href="src/ui/styles.css?v=0.64.1">
+<link rel="stylesheet" href="src/ui/styles.css?v=0.65.0">
 </head>
 <body>
 <header class="topbar">
   <div class="topbar-inner">
     <div class="brand">
+      <button type="button" class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="topbar-menu" aria-label="Разделы" title="Разделы">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+      </button>
       <h1>Клиническая дозиметрия</h1>
     </div>
+    <div class="topbar-menu" id="topbar-menu">
     <nav class="modules" aria-label="Разделы">
       <a href="#start" id="tab-start" data-module="start" aria-controls="module-start">Начало</a>
       <a href="#equipment" id="tab-equipment" data-module="equipment" aria-controls="module-equipment">Оборудование</a>
@@ -37,6 +41,7 @@
         <label><input type="radio" name="lang" id="lang_ru" value="ru" checked><span>RU</span></label>
         <label><input type="radio" name="lang" id="lang_en" value="en"><span>EN</span></label>
       </div>
+    </div>
     </div>
     <div class="protocol-switch">
       <span id="protocol-label">Протокол</span>
@@ -4149,6 +4154,6 @@
   <div class="dlg-body" id="kv-din-body"></div>
 </dialog>
 
-<script type="module" src="src/ui/app.js?v=0.64.1"></script>
+<script type="module" src="src/ui/app.js?v=0.65.0"></script>
 </body>
 </html>

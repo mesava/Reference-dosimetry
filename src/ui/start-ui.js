@@ -6,10 +6,16 @@ import { $, esc, today, versionText } from './common.js';
 import { getJournal, journalFile } from './journal-store.js';
 import { fmtDate, countWord } from './journal-common.js';
 import { canInstall, onInstallChange, promptInstall } from './pwa.js';
+import { BEAM_LOOK } from './look.js';
+import { mountSphere } from './sphere.js';
 
 /** Кнопка-ссылка на подраздел: обрабатывается общим переходом (app.js) по data-goto. */
-const go = (module, text, { primary = false, sub = '' } = {}) =>
-  `<a class="start-go${primary ? ' primary' : ''}" href="#${module}" data-goto="${module}"><span>${text}</span>${sub ? `<small>${sub}</small>` : ''}</a>`;
+const go = (module, text, { primary = false, sub = '' } = {}) => {
+  // кнопки вкладок пучков — в цвете пучка, с пиктограммой (styles.css, data-beam)
+  const head = module.split('/')[0];
+  const beam = BEAM_LOOK.includes(head) ? ` data-beam="${head}"` : '';
+  return `<a class="start-go${primary ? ' primary' : ''}" href="#${module}" data-goto="${module}"${beam}><span>${text}</span>${sub ? `<small>${sub}</small>` : ''}</a>`;
+};
 
 /** Строка о состоянии журнала: открыт ли, что в нём, сроки калибровки. */
 function journalLine() {
@@ -44,13 +50,23 @@ export function renderStart() {
   const root = $('#start-root');
   if (!root) return;
   root.innerHTML = `
-    <header class="start-head">
-      <h2>${esc(L('С чего начать', 'Where to start'))}</h2>
-      <p class="intro">${L(
-        'Калибровка пучков ⁶⁰Co, МВ фотонов, электронов и kV-рентгена по TRS-398 Rev.1, проверки рентгенотерапевтического аппарата и журнал отделения. TG-51 — справочное сравнение: его можно выбрать в шапке на страницах, где он меняет расчёт (⁶⁰Co, МВ фотоны, электроны, «Камера и пучок», «Неопределённость»). Выберите, что нужно сделать.',
-        'Calibration of ⁶⁰Co, MV photon, electron and kV x-ray beams according to TRS-398 Rev.1, x-ray unit checks and the department journal. TG-51 is a reference comparison: it can be selected in the header on the pages where it changes the calculation (⁶⁰Co, MV photons, electrons, Chamber and beam, Uncertainty). Choose what you need to do.',
-      )}</p>
-    </header>
+    <section class="hero">
+      <div class="hero-text">
+        <p class="hero-eyebrow">${esc(L('Референсная дозиметрия · расчёт в браузере · работает без интернета', 'Reference dosimetry · runs in the browser · works offline'))}</p>
+        <h2 class="hero-title">${esc(L('Клиническая дозиметрия', 'Clinical dosimetry'))}</h2>
+        <p class="hero-lead">${L(
+          'Поглощённая доза в воде для пучков <b class="bt" data-beam="co60">⁶⁰Co</b>, <b class="bt" data-beam="photons">МВ фотонов</b>, <b class="bt" data-beam="electrons">электронов</b> и <b class="bt" data-beam="kv">kV-рентгена</b> по TRS-398 Rev.1 — с протоколом, журналом отделения и трендами.',
+          'Absorbed dose to water for <b class="bt" data-beam="co60">⁶⁰Co</b>, <b class="bt" data-beam="photons">MV photon</b>, <b class="bt" data-beam="electrons">electron</b> and <b class="bt" data-beam="kv">kV x-ray</b> beams according to TRS-398 Rev.1, with a report, the department journal and trends.',
+        )}</p>
+        <p class="intro hero-sub">${esc(L(
+          'Ещё — проверки рентгенотерапевтического аппарата, «Камера и пучок» и бюджет неопределённости. TG-51 — справочное сравнение: его можно выбрать в шапке на страницах, где он меняет расчёт (⁶⁰Co, МВ фотоны, электроны, «Камера и пучок», «Неопределённость»).',
+          'Also: x-ray unit checks, Chamber and beam, and the uncertainty budget. TG-51 is a reference comparison: it can be selected in the header on the pages where it changes the calculation (⁶⁰Co, MV photons, electrons, Chamber and beam, Uncertainty).',
+        ))}</p>
+        <a class="hero-refs" href="#refs" data-goto="refs">${esc(L('Литература и проверка на независимых данных', 'References and validation on independent data'))} <span aria-hidden="true">→</span></a>
+      </div>
+      <div class="hero-sphere" id="start-sphere"></div>
+    </section>
+    <h2 class="start-subhead">${esc(L('С чего начать', 'Where to start'))}</h2>
     <div class="start-cards">
       <section class="start-card">
         <h3>${esc(L('Работа отделения — журнал', 'Department routine: the journal'))}</h3>
@@ -122,6 +138,7 @@ export function renderStart() {
       'Все расчёты — в браузере, данные никуда не отправляются. Измерения сохраняются в файлы JSON, журнал отделения — тоже файл: его удобно держать на общем диске.',
       'All calculations run in the browser; no data are sent anywhere. Measurements are saved to JSON files; the department journal is a file too, best kept on a shared drive.',
     ))} <span class="start-ver">${esc(L('Калькулятор', 'Calculator'))}, ${esc(versionText())} · <a href="#refs" data-goto="refs">${esc(L('литература и проверка на независимых данных', 'references and validation on independent data'))}</a></span></p>`;
+  mountSphere($('#start-sphere'));
 }
 
 export function initStart() {

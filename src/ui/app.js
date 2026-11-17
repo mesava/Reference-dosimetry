@@ -21,6 +21,7 @@ import { setListSource, setupHoverPop } from './widgets.js';
 import { staffNames } from '../core/journal.js';
 import { initStart, renderStart } from './start-ui.js';
 import { initPwa } from './pwa.js';
+import { initLook, setBeamLook } from './look.js';
 import { initSecLinks, revealSection } from './sec-links.js';
 import { initTabEquipment } from './tab-equipment-ui.js';
 import { initTabJournal } from './tab-journal-ui.js';
@@ -190,6 +191,8 @@ function showModule(raw) {
   // полоса сеанса — на рабочем листе, открытом как лист «Сеанс»
   for (const t of SESSION_TABS) setSessionSheet(t, name === t && r.sheet === 'session');
   renderSheets();
+  // цвет вида пучка (⁶⁰Co, МВ фотоны, электроны, kV) — у его вкладки и листов «Сеанс», «В пластинах»
+  setBeamLook(r.owner);
   setActiveModule(name);
   // переключатель протокола — только там, где он влияет на расчёт (proto: false — «Начало», «Литература», заглушки,
   // «Оборудование» — «не заполнено» по TRS-398 Rev.1; «Журнал и тренды»: записи хранят свой протокол); выбранный протокол при этом не меняется
@@ -438,6 +441,7 @@ function initLang() {
 function init() {
   initLang();
   initTheme();
+  initLook();
   initProtocol();
   initTerms();
   setupHoverPop();
