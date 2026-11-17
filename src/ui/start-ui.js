@@ -68,7 +68,7 @@ export function renderStart() {
     </section>
     <h2 class="start-subhead">${esc(L('С чего начать', 'Where to start'))}</h2>
     <div class="start-cards">
-      <section class="start-card">
+      <section class="start-card" data-card="journal">
         <h3>${esc(L('Работа отделения — журнал', 'Department routine: the journal'))}</h3>
         <p class="start-when">${L(
           '<b>Когда:</b> журнал отделения: аппараты и пучки, камеры и электрометры, тренды калибровок и проверок выхода, контрольные карты, сроки поверки. Измерения записываются в журнал из «Дозиметрии».',
@@ -80,7 +80,7 @@ export function renderStart() {
         </ol>
         <p class="start-state" role="status">${esc(journalLine())}</p>
       </section>
-      <section class="start-card">
+      <section class="start-card" data-card="dosimetry">
         <h3>${esc(L('Дозиметрия', 'Dosimetry'))}</h3>
         <p class="start-when">${L(
           '<b>Когда:</b> калибровка в воде в референсных условиях TRS-398 Rev.1 — одной энергии или всех энергий аппарата подряд, с подробным протоколом: все поправки со ссылками на протокол, PDF со строками для подписей, файл с данными.',
@@ -105,7 +105,7 @@ export function renderStart() {
           ${go('electrons/plates', esc(L('Электроны: в пластинах', 'Electrons: in plates')))}
         </div>
       </section>
-      <section class="start-card">
+      <section class="start-card" data-card="prep">
         <h3>${esc(L('Камера и пучок — до измерений', 'Chamber and beam: before measurements'))}</h3>
         <p class="start-when">${L(
           '<b>Когда:</b> новая камера или электрометр, камера без своего свидетельства о калибровке, качество пучка электронов по кривой ионизации.',
@@ -118,7 +118,7 @@ export function renderStart() {
         </ul>
         <p class="start-note">${esc(L('Результат переносится кнопкой во вкладку «Дозиметрия».', 'The result is transferred to the Dosimetry tab with a button.'))}</p>
       </section>
-      <section class="start-card">
+      <section class="start-card" data-card="unc">
         <h3>${esc(L('Неопределённость', 'Uncertainty'))}</h3>
         <p class="start-when">${L(
           '<b>Когда:</b> после результата — для отчёта или протокола: типовой бюджет из протокола, своё значение вместо типового, U (k = 2) в процентах и в единицах дозы.',
