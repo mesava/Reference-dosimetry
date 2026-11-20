@@ -31,7 +31,7 @@ import { initSession, renderSessionPage, sessionStatus, setSessionSheet, session
 import { initPlates, renderPlatesPage, platesStatus, platesLastKind } from './plates-ui.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
-// последний открытый подраздел вкладки в шапке («Дозиметрия», «Камера и пучок»)
+// последний открытый подраздел вкладки в шапке («Дозиметрия», «Инструменты»)
 const subKey = (group) => `reference-dosimetry.sub.${group}`;
 // tab — вкладка в шапке, к которой относится модуль. Адреса модулей (#photons, #tools…) прежние: так открываются
 // старые ссылки и закладки. Подразделы перечислены в порядке работы.
@@ -52,16 +52,16 @@ const MODULES = {
   // лист «В пластинах» вкладок пучков: проверка выхода относительно калибровки в воде — не референсные условия;
   // адрес #co60/plates, #photons/plates, #electrons/plates
   plates: { title: (kind) => `${{ cobalt: '⁶⁰Co', electron: L('Электроны', 'Electrons') }[kind] ?? L('МВ фотоны', 'MV photons')} — ${L('проверка выхода в пластинах', 'output check in plates')}`, file: '-', importData: () => {}, status: (t) => platesStatus(t), tab: 'dosimetry', proto: false },
-  jaffe: { title: () => L('Камера и пучок — график Яффе', 'Chamber and beam — Jaffé plot'), file: 'jaffe', importData: importJaffe, status: jaffeStatus, tab: 'prep' },
-  tools: { title: () => L('Камера и пучок — перекрёстная калибровка', 'Chamber and beam — cross-calibration'), file: 'crosscal', importData: importCrossCal, status: crossCalStatus, tab: 'prep' },
-  edepth: { title: () => L('Камера и пучок — кривая дозы электронов', 'Chamber and beam — electron depth dose'), file: 'edepth', importData: importEdepth, status: edepthStatus, tab: 'prep' },
-  uncertainty: { title: () => L('Неопределённость поглощённой дозы', 'Absorbed dose uncertainty'), file: 'uncertainty', importData: importUncTool, status: uncToolStatus, tab: 'uncertainty' },
+  jaffe: { title: () => L('Инструменты — график Яффе', 'Tools — Jaffé plot'), file: 'jaffe', importData: importJaffe, status: jaffeStatus, tab: 'prep' },
+  tools: { title: () => L('Инструменты — перекрёстная калибровка', 'Tools — cross-calibration'), file: 'crosscal', importData: importCrossCal, status: crossCalStatus, tab: 'prep' },
+  edepth: { title: () => L('Инструменты — кривая дозы электронов', 'Tools — electron depth dose'), file: 'edepth', importData: importEdepth, status: edepthStatus, tab: 'prep' },
+  uncertainty: { title: () => L('Инструменты — неопределённость поглощённой дозы', 'Tools — absorbed dose uncertainty'), file: 'uncertainty', importData: importUncTool, status: uncToolStatus, tab: 'prep' },
   // «Литература»: открывается из подвала и с «Начала»; вкладки в шапке у неё нет, местом работы не запоминается
   refs: { title: () => L('Литература', 'References'), file: '-', importData: () => {}, status: () => {}, tab: 'refs', transient: true, proto: false },
 };
 const tabOf = (name) => MODULES[name]?.tab ?? name;
 /** Подраздел по умолчанию для вкладки в шапке (если с ней ещё не работали). */
-const GROUP_DEFAULT = { start: 'start', equipment: 'equipment', dosimetry: 'photons', prep: 'jaffe', uncertainty: 'uncertainty', history: 'history' };
+const GROUP_DEFAULT = { start: 'start', equipment: 'equipment', dosimetry: 'photons', prep: 'jaffe', history: 'history' };
 /** Какой подраздел открыть по щелчку на вкладке в шапке: тот, с которым работали последним (с листом вкладки пучков). */
 function moduleForGroup(group) {
   const last = store.get(subKey(group));

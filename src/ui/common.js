@@ -357,8 +357,8 @@ export function localizeDemo(ruSample, enOverlay) {
 export const precisionNote = (withBudget = true) =>
   withBudget
     ? L(
-        'Значения приводятся с четырьмя знаками после запятой, чтобы не накапливать ошибки округления: это точность вычислений, а не измерения. Неопределённость результата здесь не оценивается: бюджет неопределённости составляется на вкладке «Неопределённость».',
-        'Values are given with four decimals to avoid round-off errors: this is computational precision, not measurement accuracy. The uncertainty of the result is not evaluated here: the uncertainty budget is set up on the Uncertainty tab.',
+        'Значения приводятся с четырьмя знаками после запятой, чтобы не накапливать ошибки округления: это точность вычислений, а не измерения. Неопределённость результата здесь не оценивается: бюджет неопределённости составляется на вкладке «Инструменты» → «Неопределённость».',
+        'Values are given with four decimals to avoid round-off errors: this is computational precision, not measurement accuracy. The uncertainty of the result is not evaluated here: the uncertainty budget is set up under Tools → Uncertainty.',
       )
     : L(
         'Значения приводятся с четырьмя знаками после запятой, чтобы не накапливать ошибки округления: это точность вычислений, а не измерения. Неопределённость результата здесь не оценивается.',

@@ -162,7 +162,7 @@ test('вкладка «МВ фотоны»: пучок журнала, запи�
   assert.ok(await page.locator('[data-del^="chamber:"]').isDisabled());
   assert.ok(await page.locator('[data-del^="electrometer:"]').isDisabled());
   // вкладки в шапке — по порядку работы; «Оборудование» и «Журнал и тренды» — отдельные вкладки
-  assert.deepEqual((await page.locator('.modules a').allInnerTexts()).map((t) => t.trim()), ['Начало', 'Оборудование', 'Дозиметрия', 'Камера и пучок', 'Неопределённость', 'Журнал и тренды']);
+  assert.deepEqual((await page.locator('.modules a').allInnerTexts()).map((t) => t.trim()), ['Начало', 'Оборудование', 'Дозиметрия', 'Инструменты', 'Журнал и тренды']);
   assert.equal(await page.locator('#tab-equipment').getAttribute('aria-current'), 'page');
   assert.ok(await page.locator('.protocol-switch').isHidden(), 'в «Оборудовании» переключателя протокола нет');
   // #session — с 0.27.0 подраздел «Сеанс» вкладки «Дозиметрия» (до 0.23.0 так назывался подраздел журнала), с 0.63.0 —

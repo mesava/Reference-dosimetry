@@ -671,7 +671,7 @@ export function computeKv(form) {
       // меньше 0,01 % — пересчитанные строки на значение для пучка практически не влияют (СПО пучка между другими качествами)
       const tiny = d * 100 < 0.005;
       const by = tiny ? L('меньше чем на 0,01 %', 'by less than 0.01 %') : L(`на ${ru(d * 100, 2)} %`, `by ${ru(d * 100, 2)} %`);
-      const uTxt = tiny ? L('пренебрежимо мала', 'negligible') : L(`${ru(cert.din.uPct, 2)} % (внесите в бюджет на вкладке «Неопределённость»)`, `${ru(cert.din.uPct, 2)} % (enter it in the budget on the Uncertainty tab)`);
+      const uTxt = tiny ? L('пренебрежимо мала', 'negligible') : L(`${ru(cert.din.uPct, 2)} % (внесите в бюджет на вкладке «Инструменты» → «Неопределённость»)`, `${ru(cert.din.uPct, 2)} % (enter it in the budget under Tools → Uncertainty)`);
       add('warn', 'common', L(
         `СПО строк ${otherNos} сертификата пересчитан из мм ${otherMat} в мм ${mat} по DIN 6809-4, табл. 5 — это оценка, не TRS-398 Rev.1: соотношение СПО в Al и Cu зависит от спектра. При отклонении пересчитанных СПО на ±${ru(DIN_HVL_DEV * 100, 0)} % ${valName} для пучка меняется ${by}; как стандартная неопределённость — ${uTxt}.${ext}`,
         `The HVL of certificate rows ${otherNos} is converted from mm ${otherMat} to mm ${mat} with DIN 6809-4, Table 5. This is an estimate, not TRS-398 Rev.1: the relation between HVLs in Al and Cu depends on the spectrum. A ±${ru(DIN_HVL_DEV * 100, 0)} % deviation of the converted HVLs changes ${valName} for the beam ${by}; as a standard uncertainty, ${uTxt}.${ext}`,

@@ -359,7 +359,7 @@ export const STATIC_EN = {
   "Усреднение по объёму": "Volume averaging",
   "Пересчёт и номинальный выход": "Transfer and nominal output",
   "Пересчёт и сравнение": "Transfer and comparison",
-  // вкладка «Камера и пучок»: перекрёстная калибровка
+  // вкладка «Инструменты»: перекрёстная калибровка
   "Инструменты": "Tools",
   "Пучок перекрёстной калибровки": "Cross-calibration beam",
   "Пучок электронов наибольшей энергии: TRS-398 рекомендует R<sub>50</sub> &gt; 7 г/см² (E₀ &gt; 16 МэВ), TG-51 — выше 10 МэВ. РИП 100 см, поле 10 × 10 см на поверхности воды. Метод замещения: камеры поочерёдно ставят на опорную глубину и облучают одним и тем же числом МЕ.": "The highest-energy electron beam: TRS-398 recommends R<sub>50</sub> &gt; 7 g/cm² (E₀ &gt; 16 MeV), TG-51 above 10 MeV. SSD 100 cm, 10 × 10 cm field at the water surface. Substitution method: the chambers are placed in turn at the reference depth and irradiated with the same number of MU.",
@@ -432,9 +432,9 @@ export const STATIC_EN = {
   "Опорная камера: показания внешнего монитора": "Reference chamber: external monitor readings",
   "Рабочая камера: показания внешнего монитора": "Field chamber: external monitor readings",
   "перекрёстная калибровка в пучке МВ фотонов (TRS-398)": "cross-calibration in an MV photon beam (TRS-398)",
-  "из сертификата или после <a href=\"#tools\" data-goto=\"tools\">перекрёстной калибровки в ⁶⁰Co</a> (вкладка «Камера и пучок»)": "from the certificate or after <a href=\"#tools\" data-goto=\"tools\">cross-calibration in ⁶⁰Co</a> (Chamber and beam tab)",
+  "из сертификата или после <a href=\"#tools\" data-goto=\"tools\">перекрёстной калибровки в ⁶⁰Co</a> (вкладка «Инструменты»)": "from the certificate or after <a href=\"#tools\" data-goto=\"tools\">cross-calibration in ⁶⁰Co</a> (Tools tab)",
   "N<sub>D,w,Qcross</sub> рабочей камеры (TRS-398, ур. 27)": "N<sub>D,w,Qcross</sub> of the field chamber (TRS-398, Eq. 27)",
-  "рассчитывается <a href=\"#tools\" data-goto=\"tools\">перекрёстной калибровкой</a> (вкладка «Камера и пучок») и переносится кнопкой": "calculated by <a href=\"#tools\" data-goto=\"tools\">cross-calibration</a> (Chamber and beam tab) and transferred with a button",
+  "рассчитывается <a href=\"#tools\" data-goto=\"tools\">перекрёстной калибровкой</a> (вкладка «Инструменты») и переносится кнопкой": "calculated by <a href=\"#tools\" data-goto=\"tools\">cross-calibration</a> (Tools tab) and transferred with a button",
   "TPR<sub>20,10</sub> пучка перекрёстной калибровки": "TPR<sub>20,10</sub> of the cross-calibration beam",
   "k<sub>Q,Qcross</sub> = k<sub>Q</sub>/k<sub>Qcross</sub> (ур. 30, табл. 16)": "k<sub>Q,Qcross</sub> = k<sub>Q</sub>/k<sub>Qcross</sub> (Eq. 30, Table 16)",
   "k<sub>Q</sub> в этом пучке": "k<sub>Q</sub> in this beam",
@@ -447,7 +447,7 @@ export const STATIC_EN = {
   "как в свидетельстве, обычно 2": "as in the certificate, usually 2",
   "(i) всё оценено, оборудование эталонного класса": "(i) all components evaluated, reference-class equipment",
   "(ii) типичные допущения, оборудование не проверялось": "(ii) “typical” assumptions, equipment not evaluated",
-  // «Камера и пучок» и «Неопределённость»
+  // «Инструменты», в том числе «Неопределённость»
   "Перекрёстная калибровка": "Cross-calibration",
   "Пучок и камера": "Beam and chamber",
   "Взять данные с вкладки": "Take the data from the tab",
@@ -468,7 +468,7 @@ export const STATIC_EN = {
   "Неопределённость поглощённой дозы": "Absorbed dose uncertainty",
   "Сводка": "Summary",
   "Результат: неопределённость": "Result: uncertainty",
-  // «Камера и пучок», «Неопределённость»: как проводить и как считается
+  // «Инструменты» (включая «Неопределённость»): как проводить и как считается
   "Как проводить и как считается": "How to measure and how it is calculated",
   "Что откуда берётся": "Where the inputs come from",
   "<b>Опорная камера:</b> N<sub>D,w</sub> в ⁶⁰Co, поправочный множитель k<sub>лаб</sub> и стандартные условия T₀, P₀ — из свидетельства о калибровке (поверке) опорной камеры; k<sub>elec</sub> — из свидетельства электрометра (1, если камеру калибровали вместе с электрометром).": "<b>Reference chamber:</b> N<sub>D,w</sub> in ⁶⁰Co, the correction multiplier k<sub>lab</sub> and the reference conditions T₀, P₀ come from the calibration certificate of the reference chamber; k<sub>elec</sub> comes from the electrometer certificate (1 if the chamber was calibrated together with the electrometer).",
@@ -624,12 +624,12 @@ export const STATIC_EN = {
   "Общая рекомбинация пропорциональна дозе за импульс, то есть показанию: k<sub>s</sub>(z) = 1 + C<sub>init</sub> + (k<sub>s</sub>(10) − 1 − C<sub>init</sub>)·M(z)/M(10). Отношение показаний умножается на k<sub>s</sub>(20)/k<sub>s</sub>(10).": "General recombination is proportional to the dose per pulse, that is, to the reading: k<sub>s</sub>(z) = 1 + C<sub>init</sub> + (k<sub>s</sub>(10) − 1 − C<sub>init</sub>)·M(z)/M(10). The ratio of the readings is multiplied by k<sub>s</sub>(20)/k<sub>s</sub>(10).",
   "Общая рекомбинация пропорциональна дозе за импульс, то есть показанию: P<sub>ion</sub>(z) = 1 + C<sub>init</sub> + (P<sub>ion</sub>(10) − 1 − C<sub>init</sub>)·M(z)/M(10). %dd(10) умножается на P<sub>ion</sub>(10)/P<sub>ion</sub>(d<sub>max</sub>).": "General recombination is proportional to the dose per pulse, that is, to the reading: P<sub>ion</sub>(z) = 1 + C<sub>init</sub> + (P<sub>ion</sub>(10) − 1 − C<sub>init</sub>)·M(z)/M(10). %dd(10) is multiplied by P<sub>ion</sub>(10)/P<sub>ion</sub>(d<sub>max</sub>).",
   "R50 известен (по кривой дозы)": "R50 known (from a depth-dose curve)",
-  "I<sub>50</sub>, R<sub>50</sub> и PDD(z<sub>ref</sub>) по кривой ионизации находит <a href=\"#edepth\" data-goto=\"edepth\">«Кривая дозы электронов»</a> (вкладка «Камера и пучок») и переносит сюда кнопкой.": "I<sub>50</sub>, R<sub>50</sub> and PDD(z<sub>ref</sub>) are found from the ionization curve by the <a href=\"#edepth\" data-goto=\"edepth\">Electron depth dose</a> tool (Chamber and beam tab), which transfers them here with a button.",
+  "I<sub>50</sub>, R<sub>50</sub> и PDD(z<sub>ref</sub>) по кривой ионизации находит <a href=\"#edepth\" data-goto=\"edepth\">«Кривая дозы электронов»</a> (вкладка «Инструменты») и переносит сюда кнопкой.": "I<sub>50</sub>, R<sub>50</sub> and PDD(z<sub>ref</sub>) are found from the ionization curve by the <a href=\"#edepth\" data-goto=\"edepth\">Electron depth dose</a> tool (Tools tab), which transfers them here with a button.",
   "<button type=\"button\" class=\"term\" data-term=\"crosscal\">Перекрёстная калибровка</button> — калибровка рабочей камеры сравнением с опорной камерой, у которой есть свидетельство о калибровке в ⁶⁰Co (TRS-398 Rev.1, разд. 4.5, 5.5, 6.6, 7.6; Report 385, разд. 5.3.2).": "<button type=\"button\" class=\"term\" data-term=\"crosscal\">Cross-calibration</button>: calibration of a field chamber by comparison with a reference chamber that has a ⁶⁰Co calibration certificate (TRS-398 Rev.1, Secs. 4.5, 5.5, 6.6, 7.6; Report 385, Sec. 5.3.2).",
   "<b>Что делать:</b> обе камеры поочерёдно облучают на опорной глубине в одних условиях (раздел 1); введите данные опорной камеры из её свидетельства (раздел 2), рабочую камеру (раздел 3), температуру и давление (раздел 4) и показания обеих камер (разделы 5 и 6).": "<b>What to do:</b> irradiate both chambers in turn at the reference depth under the same conditions (section 1); enter the reference chamber data from its certificate (section 2), the field chamber (section 3), temperature and pressure (section 4) and the readings of both chambers (sections 5 and 6).",
   "<b>Результат:</b> калибровочный коэффициент рабочей камеры — N<sub>D,w</sub> в ⁶⁰Co или N<sub>D,w,Qcross</sub> в пучке перекрёстной калибровки (по TG-51 для электронов — k<sub>Qecal</sub>N<sub>D,w</sub>). Кнопка «Перенести во вкладку…» справа записывает его в раздел «Камера и электрометр» вкладки дозиметрии, и рабочая камера дальше используется там как обычно.": "<b>Result:</b> the calibration coefficient of the field chamber: N<sub>D,w</sub> in ⁶⁰Co or N<sub>D,w,Qcross</sub> in the cross-calibration beam (for electrons per TG-51, k<sub>Qecal</sub>N<sub>D,w</sub>). The “Transfer to the … tab” button on the right writes it to the Chamber and electrometer section of the dosimetry tab, where the field chamber is then used as usual.",
   "Тип пучка": "Beam type",
-  "I<sub>50</sub> и R<sub>50</sub> по кривой ионизации находит «Кривая дозы электронов» (вкладка «Камера и пучок»).": "I<sub>50</sub> and R<sub>50</sub> are found from the ionization curve by the Electron depth dose tool (Chamber and beam tab).",
+  "I<sub>50</sub> и R<sub>50</sub> по кривой ионизации находит «Кривая дозы электронов» (вкладка «Инструменты»).": "I<sub>50</sub> and R<sub>50</sub> are found from the ionization curve by the Electron depth dose tool (Tools tab).",
   "Камера, которую калибруют. Найденный коэффициент действителен для этой камеры с её электрометром (с k<sub>elec</sub>, указанным здесь) и относится к стандартным условиям T₀, P₀ опорной камеры — кнопка переноса вводит их на вкладке дозиметрии вместе с ним.": "The chamber being calibrated. The coefficient found is valid for this chamber with its electrometer (with the k<sub>elec</sub> entered here) and refers to the standard conditions T₀, P₀ of the reference chamber; the transfer button enters them on the dosimetry tab together with it.",
   "TRS-398: k<sub>Q</sub> рабочей камеры здесь не нужен — в ур. (41) он не входит. В любом пучке электронов вкладка «Электроны» сама найдёт k<sub>Q,Qcross</sub> по табл. 21 (ур. 44) по R<sub>50</sub> этого пучка.": "TRS-398: the k<sub>Q</sub> of the field chamber is not needed here, as it does not enter Eq. (41). In any electron beam, the Electrons tab finds k<sub>Q,Qcross</sub> itself from Table 21 (Eq. 44) using the R<sub>50</sub> of that beam.",
   "TRS-398: k<sub>Q</sub> рабочей камеры здесь не нужен — в ур. (27) он не входит. В любом фотонном пучке вкладка «МВ фотоны» сама найдёт k<sub>Q,Qcross</sub> = k<sub>Q</sub>/k<sub>Qcross</sub> по табл. 16 (ур. 30) по TPR<sub>20,10</sub> этого пучка.": "TRS-398: the k<sub>Q</sub> of the field chamber is not needed here, as it does not enter Eq. (27). In any photon beam, the MV photons tab finds k<sub>Q,Qcross</sub> = k<sub>Q</sub>/k<sub>Qcross</sub> itself from Table 16 (Eq. 30) using the TPR<sub>20,10</sub> of that beam.",
@@ -758,8 +758,7 @@ export const STATIC_EN = {
   "k<sub>pol</sub>, k<sub>s</sub> и τ (⁶⁰Co) по калибровкам": "k<sub>pol</sub>, k<sub>s</sub> and τ (⁶⁰Co) by calibration",
   "Начало": "Start",
   "Дозиметрия": "Dosimetry",
-  "Камера и пучок": "Chamber and beam",
-  "Насыщение камеры и рекомбинацию при разных напряжениях подробно проверяет <a href=\"#jaffe\" data-goto=\"jaffe\">график Яффе</a> (вкладка «Камера и пучок»).": "The chamber saturation and recombination at different voltages are checked in detail by the <a href=\"#jaffe\" data-goto=\"jaffe\">Jaffé plot</a> (Chamber and beam tab).",
+  "Насыщение камеры и рекомбинацию при разных напряжениях подробно проверяет <a href=\"#jaffe\" data-goto=\"jaffe\">график Яффе</a> (вкладка «Инструменты»).": "The chamber saturation and recombination at different voltages are checked in detail by the <a href=\"#jaffe\" data-goto=\"jaffe\">Jaffé plot</a> (Tools tab).",
   "Брахитерапия <span class=\"wip-tag\">в разработке</span>": "Brachytherapy <span class=\"wip-tag\">in development</span>",
   "kV-рентген": "kV x-rays",
   "Рабочий лист референсной дозиметрии рентгеновского излучения по TRS-398 Rev.1: низкие энергии (10–100 кВ, СПО в мм Al) — доза в воде на поверхности, средние (80–300 кВ, СПО в мм Cu) — на глубине 2 г/см². Камера калибруется в рентгеновских пучках: N<sub>D,w</sub> или N<sub>K</sub> по качествам, значение для пучка интерполируется по СПО. Числа можно вводить с запятой или точкой; обозначения с пунктирным подчёркиванием открывают справку.": "Reference dosimetry worksheet for x-rays according to TRS-398 Rev.1: low energies (10–100 kV, HVL in mm Al), absorbed dose to water at the surface; medium energies (80–300 kV, HVL in mm Cu), at a depth of 2 g/cm². The chamber is calibrated in x-ray beams: N<sub>D,w</sub> or N<sub>K</sub> per quality, and the value for the beam is interpolated by HVL. Numbers can be entered with a comma or a decimal point; symbols with a dotted underline open a help note.",

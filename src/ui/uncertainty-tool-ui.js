@@ -1,4 +1,4 @@
-// Вкладка «Неопределённость»: бюджет неопределённости поглощённой дозы (ядро — core/uncertainty-tool.js,
+// «Инструменты» → «Неопределённость»: бюджет неопределённости поглощённой дозы (ядро — core/uncertainty-tool.js,
 // образцы — core/uncertainty.js). Данные можно взять с вкладки дозиметрии; сами вкладки дозиметрии бюджет не показывают.
 import { computeUncertaintyTool, UT_DEFAULTS, UT_UNITS, ROUTES, normalizeUncTool, unitText, defaultUnit } from '../core/uncertainty-tool.js';
 import { SAMPLE_UNC, SAMPLE_UNC_EN } from '../core/sample-uncertainty.js';

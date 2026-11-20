@@ -59,8 +59,8 @@ export function renderStart() {
           'Absorbed dose to water for <b class="bt" data-beam="co60">⁶⁰Co</b>, <b class="bt" data-beam="photons">MV photon</b>, <b class="bt" data-beam="electrons">electron</b> and <b class="bt" data-beam="kv">kV x-ray</b> beams according to TRS-398 Rev.1, with a report, the department journal and trends.',
         )}</p>
         <p class="intro hero-sub">${esc(L(
-          'Ещё — проверки рентгенотерапевтического аппарата, «Камера и пучок» и бюджет неопределённости. TG-51 — справочное сравнение: его можно выбрать в шапке на страницах, где он меняет расчёт (⁶⁰Co, МВ фотоны, электроны, «Камера и пучок», «Неопределённость»).',
-          'Also: x-ray unit checks, Chamber and beam, and the uncertainty budget. TG-51 is a reference comparison: it can be selected in the header on the pages where it changes the calculation (⁶⁰Co, MV photons, electrons, Chamber and beam, Uncertainty).',
+          'Ещё — проверки рентгенотерапевтического аппарата и «Инструменты»: график Яффе, перекрёстная калибровка, кривая дозы электронов, бюджет неопределённости. TG-51 — справочное сравнение: его можно выбрать в шапке на страницах, где он меняет расчёт (⁶⁰Co, МВ фотоны, электроны, «Инструменты»).',
+          'Also: x-ray unit checks and Tools: the Jaffé plot, cross-calibration, electron depth dose and the uncertainty budget. TG-51 is a reference comparison: it can be selected in the header on the pages where it changes the calculation (⁶⁰Co, MV photons, electrons, Tools).',
         ))}</p>
         <a class="hero-refs" href="#refs" data-goto="refs">${esc(L('Литература и проверка на независимых данных', 'References and validation on independent data'))} <span aria-hidden="true">→</span></a>
       </div>
@@ -106,7 +106,7 @@ export function renderStart() {
         </div>
       </section>
       <section class="start-card" data-card="prep">
-        <h3>${esc(L('Камера и пучок — до измерений', 'Chamber and beam: before measurements'))}</h3>
+        <h3>${esc(L('Инструменты — до измерений', 'Tools: before measurements'))}</h3>
         <p class="start-when">${L(
           '<b>Когда:</b> новая камера или электрометр, камера без своего свидетельства о калибровке, качество пучка электронов по кривой ионизации.',
           '<b>When:</b> a new chamber or electrometer, a chamber without its own calibration certificate, the electron beam quality from an ionization curve.',
@@ -119,7 +119,7 @@ export function renderStart() {
         <p class="start-note">${esc(L('Результат переносится кнопкой во вкладку «Дозиметрия».', 'The result is transferred to the Dosimetry tab with a button.'))}</p>
       </section>
       <section class="start-card" data-card="unc">
-        <h3>${esc(L('Неопределённость', 'Uncertainty'))}</h3>
+        <h3>${esc(L('Инструменты — неопределённость', 'Tools: uncertainty'))}</h3>
         <p class="start-when">${L(
           '<b>Когда:</b> после результата — для отчёта или протокола: типовой бюджет из протокола, своё значение вместо типового, U (k = 2) в процентах и в единицах дозы.',
           '<b>When:</b> after the result, for a report: the typical budget from the protocol, your own values instead of typical ones, U (k = 2) in percent and in dose units.',

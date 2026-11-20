@@ -1,4 +1,4 @@
-// Вкладка «Камера и пучок» → «Кривая дозы электронов»: пересчёт кривой ионизации в кривую глубинной дозы
+// Вкладка «Инструменты» → «Кривая дозы электронов»: пересчёт кривой ионизации в кривую глубинной дозы
 // (ядро — core/edepth.js). Результат (R50,ion или R50, PDD(z_ref), z_max) переносится во вкладку «Электроны».
 import { linkSections } from './sec-links.js';
 import { computeEdepth, ED_DEFAULTS, ED_CHAMBERS, normalizeEdepth, curveCsv, valueAt, swAirBurns } from '../core/edepth.js';

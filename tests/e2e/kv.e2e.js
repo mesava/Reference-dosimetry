@@ -258,7 +258,7 @@ test('kV-рентген → «Неопределённость»: перенос
   await page.click('#kv-btn-sample');
   await pause();
   // точность в протоколе вкладки отсылает к бюджету на вкладке «Неопределённость»
-  assert.match(await page.locator('#kv-sign').textContent(), /бюджет неопределённости составляется на вкладке «Неопределённость»/);
+  assert.match(await page.locator('#kv-sign').textContent(), /бюджет неопределённости составляется на вкладке «Инструменты» → «Неопределённость»/);
 
   await page.evaluate(() => (location.hash = '#uncertainty'));
   await page.waitForSelector('#unc-result .dose-big');
