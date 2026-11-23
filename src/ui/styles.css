@@ -1222,6 +1222,8 @@ table.jkv-cert-t td:nth-child(4) { width: 9.5em; }
 .chip.ok, .chip.due.ok { color: var(--ok); }
 .chip.out, .chip.due.soon, .jcard .chip.warn { color: var(--warn); }
 .chip.error, .chip.due.overdue { color: var(--err); }
+.jretired { margin: 4px 0 10px; padding: 8px 12px; border-left: 3px solid var(--field-border); }
+.jretired p { margin: 0 0 6px; color: var(--muted); }
 .chip.empty, .chip.none, .chip.due.none { color: var(--muted); }
 .link-btn.danger { color: var(--err); }
 .link-btn.danger:disabled { color: var(--muted); }
@@ -1475,6 +1477,8 @@ table.kv-sum-dates td.kv-sum-check { font-style: italic; }
 .kv-pages a[data-state="warn"]::before { background: var(--warn); border-color: var(--warn); }
 .kv-pages a[data-state="error"]::before { background: var(--err); border-color: var(--err); }
 .kv-pages a[data-state="none"]::before { display: none; }
+.kv-pages a[data-state="retired"] { color: var(--muted); font-weight: 400; }
+.kv-pages a[data-state="retired"]::before { border-style: dashed; }
 .kv-pages a.wip { color: var(--muted); font-weight: 400; }
 /* листы вкладок пучков («Одна энергия», «Сеанс», «В пластинах»; с 0.63.0) — как листы kV */
 .beam-sheets { margin-bottom: 14px; }

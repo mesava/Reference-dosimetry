@@ -215,6 +215,7 @@ export function kvMachineChecks(machine, j = null) {
     const ch = j?.chambers.find((c) => c.id === m.chamberId);
     if (!m.chamberId) add('warn', L('камера не выбрана: её выбирают в таблице «Камеры режимов» ниже', 'no chamber selected: it is selected in the Chambers of the modes table below'));
     else if (j && !ch) add('error', L('камеры нет в «Оборудовании»', 'the chamber is not in Equipment'));
+    else if (ch && String(ch.retired ?? '').trim()) add('warn', L('камера списана: выберите другую в таблице «Камеры режимов» ниже', 'the chamber is retired: select another one in the Chambers of the modes table below'));
     else if (ch && !kvChamberFitsRange(ch, m.range)) add('error', L('плоскопараллельная камера не для средних энергий: по TRS-398 Rev.1 (разд. 9.2.1, табл. 31) — только цилиндрическая 0,1–1,0 см³ на глубине 2 г/см²; плоскопараллельную калибруют на поверхности фантома для низких энергий', 'a plane-parallel chamber is not for medium energies: TRS-398 Rev.1 (Sec. 9.2.1, Table 31) requires a cylindrical chamber of 0.1–1.0 cm³ at a depth of 2 g/cm²; a plane-parallel chamber is calibrated at the phantom surface for low energies'));
     else if (ch && !(ch.kv && (!isBlank(ch.kv.kv_n) || arr(ch.kv.kv_cq_val).some((v) => !isBlank(v))))) {
       add('info', L('у камеры нет kV-сертификата: введите его в карточке камеры (раздел 4)', 'the chamber has no kV certificate: enter it in the chamber card (section 4)'));

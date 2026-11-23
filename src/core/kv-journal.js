@@ -12,7 +12,7 @@
 // по-прежнему заводит или дополняет аппарат целиком.
 import { KV_CHAMBER_KEYS, newKvMode, newKvChamber, emptyKvRow, computeKvVisit } from './kv-session.js';
 import { normalizeKvMachine, newKvApplicator, newKvMachineMode, kvRefCandidates, journalModelOfKv, kvModelOfJournal } from './kv-machine.js';
-import { uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, orgText, chamberText, electrometerText, chamberUse, localToday } from './journal.js';
+import { uid, CHAMBER_DEFAULTS, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, orgText, chamberText, electrometerText, chamberUse, localToday, isRetired } from './journal.js';
 import { findEChamber } from './electron-chambers.js';
 import { parseNumber, isBlank, dec } from './units.js';
 import { hvlText } from './kv-hvl.js';
@@ -65,9 +65,11 @@ export function kvModeElectrometer(j, x, date = '') {
   const ch = j.chambers.find((c) => c.id === x?.chamberId);
   // электрометр при калибровке — kV-сертификата (с 0.53.0 — свой, kvCal), действовавшего на дату измерения date
   const calEl = ch ? certOn(ch, 'kv', date).meta.calEl : '';
-  const cal = calEl ? j.electrometers.find((e) => e.id === calEl) : null;
+  // списанный электрометр (с 0.68.0) не подставляется в измерения с даты списания (и без даты — в новые)
+  const inUse = (e) => e && !(isRetired(e) && (!date || String(date) >= e.retired));
+  const cal = calEl ? j.electrometers.find((e) => e.id === calEl && inUse(e)) : null;
   if (cal) return { el: cal, src: 'cal' };
-  const last = x?.electrometerId ? j.electrometers.find((e) => e.id === x.electrometerId) : null;
+  const last = x?.electrometerId ? j.electrometers.find((e) => e.id === x.electrometerId && inUse(e)) : null;
   return last ? { el: last, src: 'last' } : { el: null, src: '' };
 }
 

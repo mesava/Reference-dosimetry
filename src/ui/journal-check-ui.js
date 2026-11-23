@@ -2,7 +2,7 @@
 // core/journal-check.js; черновик, запись в журнал и порядок обновления — tab-journal-ui.js.
 import { L, refText } from '../core/i18n.js';
 import { isBlank, parseNumber } from '../core/units.js';
-import { beamKind, beamKeys, chamberText, electrometerText, chamberServes, chamberFormFromElectrons, chamberFormFromCobalt } from '../core/journal.js';
+import { beamKind, beamKeys, chamberText, electrometerText, chamberServes, activeOnly, chamberFormFromElectrons, chamberFormFromCobalt } from '../core/journal.js';
 import { computeDosimeterCheck, checkHistory, checkMessages, checkVerdicts, verdictMessage, checkStarted, SHIFT_Z, WATCH_Z } from '../core/journal-check.js';
 import { esc, fmt, fmtSigned, richText } from './common.js';
 import { renderCells, readCells, setupCells } from './widgets.js';
@@ -40,7 +40,7 @@ export function checksHtml(j, beams, draftBeams, checks, { tg }) {
         : `<option value="">${esc(L('— нет другой камеры —', '— no other chamber —'))}</option>`;
       const workEl = d?.base ? null : j.electrometers.find((e) => e.id === (d?.electrometerId || b?.electrometerId));
       const sameText = L(`как у рабочей${workEl ? `: ${electrometerText(workEl)}` : ''}`, `as the working one${workEl ? `: ${electrometerText(workEl)}` : ''}`);
-      const elOpts = opts(j.electrometers.map((e) => ({ id: e.id, text: electrometerText(e) })), c.electrometerId, `<option value=""${c.electrometerId ? '' : ' selected'}>${esc(sameText)}</option>`);
+      const elOpts = opts(activeOnly(j.electrometers, c.electrometerId).map((e) => ({ id: e.id, text: electrometerText(e) })), c.electrometerId, `<option value=""${c.electrometerId ? '' : ' selected'}>${esc(sameText)}</option>`);
       const [kp, kx] = tg ? ['P<sub>pol</sub>', 'P<sub>ion</sub>'] : ['k<sub>pol</sub>', 'k<sub>s</sub>'];
       const inp = (key, label, sub = '') =>
         `<div class="field"><label for="jsc-${id}-${key}">${label}</label><input type="text" id="jsc-${id}-${key}" data-ck="${key}" class="num" inputmode="decimal" value="${esc(c[key] ?? '')}">${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;

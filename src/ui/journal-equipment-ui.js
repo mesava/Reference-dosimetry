@@ -13,6 +13,7 @@ import {
   uid, CHAMBER_DEFAULTS, newChamberRecord, ELECTROMETER_DEFAULTS, MACHINE_DEFAULTS, BEAM_DEFAULTS, chamberText, electrometerText, saveBeamSettings, equipmentDue, equipmentNoDue,
   chamberMissing, electrometerMissing, chamberUses, photonCapable, electronCapable, electronChamberForm, beamKind, cobaltCapable, cobaltChamberForm, myChambersToJournal, orgText, withChamberLength,
   CAL_GEO_KEYS, machineCalGeo, calGeoKey, calGeoText, syncCalGeo, chamberUse, chamberUseSet, kvChamberInModes, dueStatus, chamberDueDates, certText, STAFF_DEFAULTS,
+  isRetired, activeOnly,
 } from '../core/journal.js';
 import { certMeta, certHistory, certFilled, certIgnored, isIsoDate, archiveCert, restoreCert, removeCert } from '../core/chamber-certs.js';
 import {
@@ -73,6 +74,28 @@ const field = (label, control, { forId = '', sub = '', cls = '', live = '' } = {
   `<div class="field ${cls}"${live ? ` data-live="${val(live)}"` : ''}><label${forId ? ` for="${val(forId)}"` : ''}>${label}</label>${control}${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;
 
 /** Отметка «не заполнено: …» в заголовке карточки. */
+/** Списанные камера или электрометр (с 0.68.0): отметка вместо сроков и «не заполнено». */
+const retiredChip = (kind, x) => `<span class="chip due none">${esc(kind === 'chamber' ? L(`списана ${fmtDate(x.retired)}`, `retired ${fmtDate(x.retired)}`) : L(`списан ${fmtDate(x.retired)}`, `retired ${fmtDate(x.retired)}`))}</span>`;
+/**
+ * Списание (с 0.68.0): камера (электрометр) сломана и больше не используется, но записи журнала на неё ссылаются.
+ * Списанная остаётся в журнале — протоколы, тренды и карты прежние, — но в новых измерениях не предлагается и о сроках
+ * не напоминает. Над кнопками: пояснение и дата списания; «Вернуть в работу» снимает отметку.
+ */
+function retireBlock(kind, x) {
+  if (!isRetired(x)) return '';
+  const k = kind === 'chamber';
+  return `<div class="jretired"><p>${esc(k
+    ? L('Камера списана: в новых измерениях (списки вкладок, проверка второй камерой, режимы kV) она не предлагается, о сроке свидетельства не напоминает. Записи журнала, протоколы, тренды и карты с ней сохраняются.', 'The chamber is retired: it is not offered for new measurements (tab lists, second-chamber check, kV modes) and gives no certificate due reminders. Journal records, reports, trends and charts with it are kept.')
+    : L('Электрометр списан: в новых измерениях он не предлагается, о сроке калибровки не напоминает. Записи журнала, протоколы, тренды и карты с ним сохраняются.', 'The electrometer is retired: it is not offered for new measurements and gives no calibration due reminders. Journal records, reports, trends and charts with it are kept.'))}</p>
+    <div class="grid">${field(L('Дата списания', 'Retirement date'), input(kind, x.id, 'retired', x.retired, { type: 'date' }), { forId: fieldId(kind, x.id, 'retired') })}</div></div>`;
+}
+/** Кнопка «Списать» (в работе) или «Вернуть в работу» (списан). */
+function retireButton(kind, x) {
+  const k = kind === 'chamber';
+  return isRetired(x)
+    ? `<button type="button" class="link-btn" data-unretire="${esc(kind)}:${esc(x.id)}">${esc(L('Вернуть в работу', 'Return to service'))}</button>`
+    : `<button type="button" class="link-btn" data-retire="${esc(kind)}:${esc(x.id)}" title="${esc(k ? L('Камера сломана или больше не используется: останется в журнале для прежних записей, но не будет предлагаться в новых измерениях', 'The chamber is broken or no longer used: it stays in the journal for earlier records but is not offered for new measurements') : L('Электрометр сломан или больше не используется: останется в журнале для прежних записей, но не будет предлагаться в новых измерениях', 'The electrometer is broken or no longer used: it stays in the journal for earlier records but is not offered for new measurements'))}">${esc(k ? L('Списать камеру', 'Retire chamber') : L('Списать электрометр', 'Retire electrometer'))}</button>`;
+}
 const missChip = (miss) => (miss.length ? `<span class="chip warn">${richText(L(`не заполнено: ${miss.join(', ')}`, `missing: ${miss.join(', ')}`))}</span>` : '');
 
 // ------------------------------------------------------------ камеры
@@ -253,7 +276,7 @@ function certMetaFields(j, c, kind) {
       ${field(L('№ свидетельства', 'Certificate No.'), input(k, c.id, `${p}calCert`, m.calCert), { forId: fid('calCert') })}
       ${field(L('Дата калибровки', 'Calibration date'), input(k, c.id, `${p}calDate`, m.calDate, { type: 'date' }), { forId: fid('calDate'), sub: L('по ней измерениям прошлых дат подставляется сертификат из истории', 'by it, measurements of earlier dates get the certificate from the history') })}
       ${field(L('Действует до', 'Valid until'), input(k, c.id, `${p}dueDate`, m.dueDate, { type: 'date' }), { forId: fid('dueDate'), sub: L('за 30 дней до срока появится напоминание', 'a reminder appears 30 days before') })}
-      ${field(L('Электрометр при калибровке', 'Electrometer at calibration'), select(k, c.id, `${p}calEl`, m.calEl, [['', L('— не указан —', '— not given —')], ...j.electrometers.map((e) => [e.id, electrometerText(e) || L('электрометр без названия', 'unnamed electrometer')])]), { forId: fid('calEl'), cls: 'span-2', sub: elSub })}
+      ${field(L('Электрометр при калибровке', 'Electrometer at calibration'), select(k, c.id, `${p}calEl`, m.calEl, [['', L('— не указан —', '— not given —')], ...activeOnly(j.electrometers, m.calEl).map((e) => [e.id, (electrometerText(e) || L('электрометр без названия', 'unnamed electrometer')) + (isRetired(e) ? L(' (списан)', ' (retired)') : '')])]), { forId: fid('calEl'), cls: 'span-2', sub: elSub })}
       ${field(L('Напряжение при калибровке, В', 'Calibration voltage, V'), input(k, c.id, `${p}calV`, m.calV, { num: true, placeholder: '400' }), { forId: fid('calV') })}
       ${field(L('Полярность при калибровке', 'Calibration polarity'), select(k, c.id, `${p}calPol`, m.calPol, [['', L('— не указана —', '— not given —')], ['+', L('положительная (+)', 'positive (+)')], ['-', L('отрицательная (−)', 'negative (−)')]]), { forId: fid('calPol') })}`;
 }
@@ -359,7 +382,8 @@ function chamberCard(c, j = getJournal()) {
   const maker = chamberMakerOf(c);
   const pane = certPaneOf(j, c.id);
   return `<div class="jcard" data-card="chamber:${esc(c.id)}">
-    <div class="jcard-head"><b>${esc(chamberText(c) || L('Новая камера', 'New chamber'))}</b><span class="chips">${missChip(chamberMissing(c, uses, 'trs'))}${chamberDueChips(c, j, mv, use.kv)}</span></div>
+    <div class="jcard-head"><b>${esc(chamberText(c) || L('Новая камера', 'New chamber'))}</b><span class="chips">${isRetired(c) ? retiredChip('chamber', c) : `${missChip(chamberMissing(c, uses, 'trs'))}${chamberDueChips(c, j, mv, use.kv)}`}</span></div>
+    ${retireBlock('chamber', c)}
     <div class="grid">
       ${field(L('Производитель', 'Manufacturer'), `<select ${bind(k, c.id, 'maker')}>${makerOptions(chamberMakers(), maker, L('Другая или своя камера', 'Other or custom chamber'))}</select>`, { forId: fieldId(k, c.id, 'maker') })}
       ${maker ? field(L('Модель', 'Model'), `<select ${bind(k, c.id, 'form.ch_model')}>${chamberModelOptions(maker, f.ch_model)}</select>`, { forId: fieldId(k, c.id, 'form.ch_model'), sub: [custom ? esc([f.cc_maker, f.cc_model].filter(Boolean).join(' ')) : '', esc(forText), esc(chamberDims(f))].filter(Boolean).join(' · ') }) : ''}
@@ -408,7 +432,7 @@ function chamberCard(c, j = getJournal()) {
     <div class="grid">
       ${notesField(k, c.id, c.notes)}
     </div>
-    <div class="row-tools"><button type="button" class="link-btn danger" data-del="chamber:${esc(c.id)}"${usedInRecords(j, 'chamberId', c.id) ? ` disabled title="${esc(RECORDS_TITLE())}"` : ''}>${esc(L('Удалить камеру', 'Delete chamber'))}</button></div>
+    <div class="row-tools">${retireButton('chamber', c)}<button type="button" class="link-btn danger" data-del="chamber:${esc(c.id)}"${usedInRecords(j, 'chamberId', c.id) ? ` disabled title="${esc(RECORDS_TITLE())}"` : ''}>${esc(L('Удалить камеру', 'Delete chamber'))}</button></div>
   </div>`;
 }
 
@@ -425,7 +449,8 @@ function electrometerCard(e) {
   const maker = electrometerMakerOf(e);
   const parsed = parseElectrometer(f.el_model);
   return `<div class="jcard" data-card="electrometer:${esc(e.id)}">
-    <div class="jcard-head"><b>${esc(electrometerText(e) || L('Новый электрометр', 'New electrometer'))}</b><span class="chips">${missChip(electrometerMissing(e))}${dueChip(e.dueDate)}</span></div>
+    <div class="jcard-head"><b>${esc(electrometerText(e) || L('Новый электрометр', 'New electrometer'))}</b><span class="chips">${isRetired(e) ? retiredChip('electrometer', e) : `${missChip(electrometerMissing(e))}${dueChip(e.dueDate)}`}</span></div>
+    ${retireBlock('electrometer', e)}
     <div class="grid">
       ${field(L('Производитель', 'Manufacturer'), `<select ${bind(k, e.id, 'maker')}>${makerOptions(ELECTROMETERS.map((g) => g.maker), maker, L('Другой', 'Other'))}</select>`, { forId: fieldId(k, e.id, 'maker') })}
       ${maker === EL_OTHER
@@ -439,7 +464,7 @@ function electrometerCard(e) {
       ${field(L('Действует до', 'Valid until'), input(k, e.id, 'dueDate', e.dueDate, { type: 'date' }), { forId: fieldId(k, e.id, 'dueDate') })}
       ${notesField(k, e.id, e.notes)}
     </div>
-    <div class="row-tools"><button type="button" class="link-btn danger" data-del="electrometer:${esc(e.id)}"${usedInRecords(getJournal(), 'electrometerId', e.id) ? ` disabled title="${esc(RECORDS_TITLE())}"` : ''}>${esc(L('Удалить электрометр', 'Delete electrometer'))}</button></div>
+    <div class="row-tools">${retireButton('electrometer', e)}<button type="button" class="link-btn danger" data-del="electrometer:${esc(e.id)}"${usedInRecords(getJournal(), 'electrometerId', e.id) ? ` disabled title="${esc(RECORDS_TITLE())}"` : ''}>${esc(L('Удалить электрометр', 'Delete electrometer'))}</button></div>
   </div>`;
 }
 
@@ -769,7 +794,9 @@ const cur = (() => {
 })();
 /** Записи раздела: аппараты, электрометры, камеры или режимы аппарата kV. */
 // режимы аппарата kV (с 0.52.1) — вид «kvmode.<id аппарата>»: у каждого аппарата свой открытый режим
-const sheetList = (j, kind) => (kind === 'machine' ? j.machines : kind === 'chamber' ? j.chambers : kind === 'electrometer' ? j.electrometers : kind.startsWith('kvmode.') ? j.machines.find((m) => `kvmode.${m.id}` === kind)?.modes ?? [] : []);
+/** Списанные камеры и электрометры (с 0.68.0) — в конце ряда ярлыков. */
+const retiredLast = (list) => [...list.filter((x) => !isRetired(x)), ...list.filter(isRetired)];
+const sheetList = (j, kind) => (kind === 'machine' ? j.machines : kind === 'chamber' ? retiredLast(j.chambers) : kind === 'electrometer' ? retiredLast(j.electrometers) : kind.startsWith('kvmode.') ? j.machines.find((m) => `kvmode.${m.id}` === kind)?.modes ?? [] : []);
 /** Открытая запись раздела: выбранная, иначе первая. */
 function openSheet(j, kind) {
   const list = sheetList(j, kind);
@@ -814,6 +841,11 @@ function sheetTab(j, kind, x) {
     return { name, small: machineKindText(x), st, title: `${machineKindText(x)}; ${n} ${w}` };
   }
   const chamber = kind === 'chamber';
+  if (isRetired(x)) {
+    const nm = chamber ? chamberText(x) || L('Камера', 'Chamber') : electrometerText(x) || L('Электрометр', 'Electrometer');
+    const r = chamber ? L('списана', 'retired') : L('списан', 'retired');
+    return { name: nm, small: r, st: 'retired', title: `${r} ${fmtDate(x.retired)}` };
+  }
   const miss = chamber ? chamberMissing(x, chamberUses(j, x.id), 'trs') : electrometerMissing(x);
   // у камеры сроков два (свидетельство для МВ и ⁶⁰Co и kV-сертификат, с 0.53.0): отметка — по худшему
   const dues = chamber ? chamberDueDates(x, j).map((d) => dueState(d.dueDate)) : [dueState(x.dueDate)];
@@ -893,12 +925,12 @@ function kvModeChambersHtml(j, machine) {
   const row = (m, x, i) => {
     const t = kvMachineModeTitle(x);
     const cur = x.chamberId;
-    const fits = j.chambers.filter((ch) => !isBlank(ch.form?.ch_model) && kvChamberFitsRange(ch, x.range));
+    const fits = j.chambers.filter((ch) => !isBlank(ch.form?.ch_model) && !isRetired(ch) && kvChamberFitsRange(ch, x.range));
     const mine = fits.filter((ch) => chamberUse(ch, j).kv);
     const other = fits.filter((ch) => !chamberUse(ch, j).kv);
     const ch = j.chambers.find((y) => y.id === cur);
     const extra = cur && !fits.includes(ch)
-      ? opt(cur, ch ? L(`${chName(ch)} — не для средних энергий`, `${chName(ch)}: not for medium energies`) : L('— камеры нет в «Оборудовании» —', '— the chamber is not in Equipment —'), cur)
+      ? opt(cur, ch && isRetired(ch) ? L(`${chName(ch)} — списана`, `${chName(ch)}: retired`) : ch ? L(`${chName(ch)} — не для средних энергий`, `${chName(ch)}: not for medium energies`) : L('— камеры нет в «Оборудовании» —', '— the chamber is not in Equipment —'), cur)
       : '';
     const sel = `<select ${bind('kvmode', x.id, 'chamberId')} aria-label="${val(L(`Камера: ${m.name || 'аппарат'}, режим ${i + 1}`, `Chamber: ${m.name || 'unit'}, mode ${i + 1}`))}">${opt('', L('— не выбрана —', '— not selected —'), cur)}${mine.map((c) => opt(c.id, chName(c), cur)).join('')}${other.length ? `<optgroup label="${val(L('другие камеры — будут отмечены для kV-рентгена', 'other chambers: will be ticked for kV x-rays'))}">${other.map((c) => opt(c.id, chName(c), cur)).join('')}</optgroup>` : ''}${extra}</select>`;
     const e = kvModeElectrometer(j, x);
@@ -1063,6 +1095,11 @@ function certAction(act, kind, chId, h) {
   if (done) setStatus(`${done} ${L('Сохраните журнал в файл.', 'Save the journal to the file.')}`);
 }
 
+/** «(из них списано 1)» для сводки. */
+const offText = (list) => {
+  const n = list.filter(isRetired).length;
+  return n ? L(` (из них списано ${n})`, ` (${n} retired)`) : '';
+};
 function renderReadout() {
   const j = getJournal();
   const beams = j.machines.reduce((s, m) => s + m.beams.length, 0);
@@ -1072,7 +1109,7 @@ function renderReadout() {
   const kvModes = j.machines.reduce((s, m) => s + (m.kind === 'kv' ? m.modes.length : 0), 0);
   const kvText = j.machines.some((m) => m.kind === 'kv') ? L(`; режимов рентгенотерапевтических аппаратов: ${kvModes}`, `; x-ray therapy modes: ${kvModes}`) : '';
   $('#eq-result').innerHTML = `<div class="dose-row"><div class="dose-big">${j.machines.length}<small>${esc(wMachines)} · ${beams} ${esc(wBeams)}</small></div>
-    <div class="secondary">${esc(L(`камер: ${j.chambers.length}; электрометров: ${j.electrometers.length}; записей в журнале: ${j.sessions.length + (j.kvRecords?.length ?? 0)}`, `chambers: ${j.chambers.length}; electrometers: ${j.electrometers.length}; records in the journal: ${j.sessions.length + (j.kvRecords?.length ?? 0)}`) + kvText)}</div></div>`;
+    <div class="secondary">${esc(L(`камер: ${j.chambers.length}${offText(j.chambers)}; электрометров: ${j.electrometers.length}${offText(j.electrometers)}; записей в журнале: ${j.sessions.length + (j.kvRecords?.length ?? 0)}`, `chambers: ${j.chambers.length}${offText(j.chambers)}; electrometers: ${j.electrometers.length}${offText(j.electrometers)}; records in the journal: ${j.sessions.length + (j.kvRecords?.length ?? 0)}`) + kvText)}</div></div>`;
   const msgs = [];
   for (const d of due) {
     msgs.push(`<li class="${d.status === 'overdue' ? 'warn' : 'info'}"><span class="lvl">${esc(d.status === 'overdue' ? L('Срок калибровки прошёл', 'Calibration overdue') : L('Срок калибровки подходит', 'Calibration due soon'))}</span><span>${esc(`${d.text}: ${d.status === 'overdue' ? L(`до ${fmtDate(d.dueDate)}`, `until ${fmtDate(d.dueDate)}`) : L(`до ${fmtDate(d.dueDate)}, осталось ${d.days} дн.`, `until ${fmtDate(d.dueDate)}, ${d.days} days left`)}`)}</span></li>`);
@@ -1080,12 +1117,12 @@ function renderReadout() {
   const noDue = equipmentNoDue(j);
   if (noDue.length) msgs.push(`<li class="info"><span class="lvl">${esc(L('Срок калибровки не задан', 'No calibration due date'))}</span><span>${esc(L(`${noDue.map((x) => x.text || (x.kind === 'chamber' ? 'камера' : 'электрометр')).join('; ')}: укажите «Действует до» в «Оборудовании», иначе напоминания о сроке калибровки не будет.`, `${noDue.map((x) => x.text || x.kind).join('; ')}: enter "Valid until" in Equipment, otherwise there will be no calibration due reminder.`))}</span></li>`);
   const missItem = (who, miss) => `<li class="info"><span class="lvl">${esc(L('Не заполнено', 'Missing'))}</span><span>${esc(`${who}: `)}${richText(miss.join(', '))}</span></li>`;
-  for (const c of j.chambers) {
+  for (const c of activeOnly(j.chambers)) {
     // «не заполнено» — по TRS-398 Rev.1 (основной протокол); переключателя протокола в «Оборудовании» нет
     const miss = chamberMissing(c, chamberUses(j, c.id), 'trs');
     if (miss.length) msgs.push(missItem(chamberText(c) || L('камера', 'chamber'), miss));
   }
-  for (const e of j.electrometers) {
+  for (const e of activeOnly(j.electrometers)) {
     const miss = electrometerMissing(e);
     if (miss.length) msgs.push(missItem(electrometerText(e) || L('электрометр', 'electrometer'), miss));
   }
@@ -1242,6 +1279,8 @@ function onInput(e) {
       if (ch && chamberUseSet(ch) && !ch.use.kv) ch.use = { ...ch.use, kv: true };
       return j;
     }
+    // дата списания не очищается: в работу возвращает кнопка «Вернуть в работу»
+    if (path === 'retired' && !value) return j;
     const parts = path.split('.');
     let o = obj;
     for (const p of parts.slice(0, -1)) o = o[p] ??= {};
@@ -1385,12 +1424,29 @@ function onClick(e) {
   }
   const t = e.target.closest('button');
   if (!t) return;
+  if (t.dataset.retire || t.dataset.unretire) {
+    const on = !!t.dataset.retire;
+    const [kind, id] = (t.dataset.retire || t.dataset.unretire).split(':');
+    // ярлык уходит в конец ряда (возвращается на место) — лист остаётся открытым
+    setSheet(kind, id);
+    updateJournal((j) => {
+      const x = (kind === 'chamber' ? j.chambers : j.electrometers).find((y) => y.id === id);
+      if (x) x.retired = on ? today() : '';
+      return j;
+    }, 'equipment');
+    const k = kind === 'chamber';
+    setStatus(on
+      ? L(`${k ? 'Камера списана' : 'Электрометр списан'}: записи журнала с ${k ? 'ней' : 'ним'} сохранены, в новых измерениях ${k ? 'она' : 'он'} не предлагается.`, `The ${kind} is retired: journal records with it are kept; it is not offered for new measurements.`)
+      : L(`${k ? 'Камера возвращена' : 'Электрометр возвращён'} в работу.`, `The ${kind} is back in service.`));
+    document.querySelector(`[data-${on ? 'unretire' : 'retire'}="${CSS.escape(`${kind}:${id}`)}"]`)?.focus({ preventScroll: true });
+    return;
+  }
   if (t.dataset.addBeam) {
     const id = uid('b');
     updateJournal((j) => {
       const m = j.machines.find((x) => x.id === t.dataset.addBeam);
       // геометрия калибровки — аппарата (syncCalGeo)
-      m?.beams.push({ ...BEAM_DEFAULTS, id, name: '', chamberId: j.chambers.find((c) => photonCapable(c.form))?.id ?? '', electrometerId: j.electrometers[0]?.id ?? '', form: { rd_V1: FORM_DEFAULTS.rd_V1, rd_V2: FORM_DEFAULTS.rd_V2, rd_polarity: '+', rd_mu: '100', dd_nominal: '1,000', dd_tol: '2', qtrs_method: 'ratio', kqtrs_mode: 'formula' } });
+      m?.beams.push({ ...BEAM_DEFAULTS, id, name: '', chamberId: activeOnly(j.chambers).find((c) => photonCapable(c.form))?.id ?? '', electrometerId: activeOnly(j.electrometers)[0]?.id ?? '', form: { rd_V1: FORM_DEFAULTS.rd_V1, rd_V2: FORM_DEFAULTS.rd_V2, rd_polarity: '+', rd_mu: '100', dd_nominal: '1,000', dd_tol: '2', qtrs_method: 'ratio', kqtrs_mode: 'formula' } });
       if (m) syncCalGeo(m);
       return j;
     }, 'equipment');
@@ -1401,7 +1457,7 @@ function onClick(e) {
       const ch = j.chambers.find((c) => electronCapable(c.form));
       const m = j.machines.find((x) => x.id === t.dataset.addEbeam);
       m?.beams.push({
-        ...BEAM_DEFAULTS, id, kind: 'electron', name: '', chamberId: ch?.id ?? '', electrometerId: j.electrometers[0]?.id ?? '',
+        ...BEAM_DEFAULTS, id, kind: 'electron', name: '', chamberId: ch?.id ?? '', electrometerId: activeOnly(j.electrometers)[0]?.id ?? '',
         form: { e_field: '10', e_r50_method: 'i50', e_mu: '100', e_polarity: '+', e_V1: E_DEFAULTS.e_V1, e_V2: E_DEFAULTS.e_V2, e_beam_mode: 'pulsed', e_nominal: '1,000', e_tol: '2', e_kqtrs_mode: 'table', e_kq51_mode: 'fit' },
       });
       if (m) syncCalGeo(m);
@@ -1413,7 +1469,7 @@ function onClick(e) {
     updateJournal((j) => {
       const ch = j.chambers.find((c) => cobaltCapable(c.form));
       j.machines.find((m) => m.id === t.dataset.addCobeam)?.beams.push({
-        ...BEAM_DEFAULTS, id, kind: 'cobalt', name: '', refSrc: 'last', chamberId: ch?.id ?? '', electrometerId: j.electrometers[0]?.id ?? '',
+        ...BEAM_DEFAULTS, id, kind: 'cobalt', name: '', refSrc: 'last', chamberId: ch?.id ?? '', electrometerId: activeOnly(j.electrometers)[0]?.id ?? '',
         form: { co_geometry: 'SSD', co_distance: '80', co_zref: '5', co_V1: CO_DEFAULTS.co_V1, co_V2: CO_DEFAULTS.co_V2, co_polarity: '+', co_time: '1', co_time_unit: 'min', co_timer_mode: 'measured', co_nx_t: '1', co_nx_n: '5', co_kleak: '1,000', co_rec_trs: 'eq13', co_dd_on: true, co_zmax: '0,5', co_dd_sad: 'tmr', co_ref_at: 'zmax', co_tol: '2', co_act_unit: 'Ci' },
       });
       return j;

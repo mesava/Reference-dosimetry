@@ -7,7 +7,7 @@ import { NDW_UNITS, unitLabel, isBlank } from '../core/units.js';
 import {
   chamberPreferred,
   tabEquipment, applyTabEquipment, chamberTabFields, electrometerTabFields, chamberText, electrometerText,
-  chamberServes, dueStatus, chamberOnDate, tabDate, certText,
+  chamberServes, dueStatus, chamberOnDate, tabDate, certText, isRetired, activeOnly,
 } from '../core/journal.js';
 import { $, esc, today, richText, currentProtocol } from './common.js';
 import { getJournal, updateJournal, onJournal } from './journal-store.js';
@@ -144,7 +144,8 @@ function makeLink(cfg) {
     const capable = j.chambers.filter((c) => chamberServes(c, cfg.kind, j));
     const chambers = [...capable.filter((c) => chamberPreferred(c.form, cfg.kind)), ...capable.filter((c) => !chamberPreferred(c.form, cfg.kind))];
     syncGroup(chambers);
-    if (!chambers.length && !j.electrometers.length) {
+    const electrometers = activeOnly(j.electrometers);
+    if (!chambers.length && !electrometers.length) {
       el.hidden = true;
       el.innerHTML = '';
       lastRow = lastSt = '';
@@ -170,6 +171,11 @@ function makeLink(cfg) {
       // дата измерения раньше действующего свидетельства камеры: сверка — со свидетельством из истории (с 0.53.0)
       const onCert = what === 'chamber' && t.chamberOn?.certSrc ? certText(t.chamberOn) : '';
       const recText = (what === 'chamber' ? chamberText(rec) : electrometerText(rec)) + (onCert ? L(` (свидетельство на дату измерения: ${onCert})`, ` (certificate on the measurement date: ${onCert})`) : '');
+      // списанная камера (электрометр) во вкладке (с 0.68.0): предупреждение вместо срока
+      if (isRetired(rec)) {
+        const ch = what === 'chamber';
+        return `<p class="jlink-st warn">${richText(L(`${name} ${recText} списан${ch ? 'а' : ''} ${fmtDate(rec.retired)} («Оборудование»): для новых измерений выберите ${ch ? 'другую камеру' : 'другой электрометр'}.`, `${name} ${recText} was retired on ${fmtDate(rec.retired)} (Equipment): select another ${what} for new measurements.`))}</p>`;
+      }
       const due = dueText(rec);
       const st = dueStatus(rec.dueDate, today()).status;
       if (diffs.length) {
@@ -177,7 +183,7 @@ function makeLink(cfg) {
       }
       return `<p class="jlink-st ${st === 'overdue' || st === 'soon' ? 'warn' : 'ok'}">${richText(L(`${name} ${recText} — как в журнале${due ? `; ${due}` : ''}.`, `${name} ${recText}: as in the journal${due ? `; ${due}` : ''}.`))}</p>`;
     };
-    const row = `<span class="jlink-h">${esc(L('Журнал отделения', 'Department journal'))}</span>${pick('chamber', chambers, (c) => [chamberText(c), ndwText(c, cfg.kind, tg51), dueText(c)].filter(Boolean).join(' · '))}${pick('electrometer', j.electrometers, (e) => [electrometerText(e), dueText(e)].filter(Boolean).join(' · '))}`;
+    const row = `<span class="jlink-h">${esc(L('Журнал отделения', 'Department journal'))}</span>${pick('chamber', chambers, (c) => [chamberText(c), ndwText(c, cfg.kind, tg51), dueText(c)].filter(Boolean).join(' · '))}${pick('electrometer', electrometers, (e) => [electrometerText(e), dueText(e)].filter(Boolean).join(' · '))}`;
     const stHtml = `${line('chamber')}${line('electrometer')}`;
     el.hidden = false;
     if (!el.querySelector('.jlink-row')) {

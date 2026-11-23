@@ -156,7 +156,7 @@ export const chamberUseSet = (c) => !!c?.use && typeof c.use === 'object';
  */
 export function chamberServes(c, kind, j = null) {
   const can = { photon: photonCapable, electron: electronCapable, cobalt: cobaltCapable }[kind] ?? photonCapable;
-  if (!can(c?.form)) return false;
+  if (!can(c?.form) || isRetired(c)) return false;
   const u = chamberUse(c, j);
   return kind === 'electron' ? u.electron : u.photon;
 }
@@ -231,13 +231,21 @@ const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj && k in ob
 /** Запись камеры: maker — производитель, выбранный в карточке (пока модель не выбрана); length — своя длина полости, мм;
  * calEl, calV, calPol, calLab, calCert — сведения о калибровке: электрометр, с которым её калибровали, напряжение и
  * полярность, лаборатория, № свидетельства (пусто — проверок по ним нет, см. calibrationChecks). */
-export const CHAMBER_DEFAULTS = { id: '', kind: 'photon', form: {}, calDate: '', dueDate: '', notes: '', length: '', calEl: '', calV: '', calPol: '', calLab: '', calCert: '' };
+/**
+ * retired (с 0.68.0) — дата списания камеры или электрометра (сломан, больше не используется): запись остаётся в журнале
+ * для прежних измерений, трендов и карт, но в новых измерениях не предлагается и о сроках не напоминает (isRetired).
+ */
+export const CHAMBER_DEFAULTS = { id: '', kind: 'photon', form: {}, calDate: '', dueDate: '', notes: '', retired: '', length: '', calEl: '', calV: '', calPol: '', calLab: '', calCert: '' };
 /**
  * Новая запись камеры (с 0.53.0): как CHAMBER_DEFAULTS, со своими (не общими) сведениями kV-сертификата и историей —
  * по ним запись 0.53.0 отличается от записи до 0.53.0 (migrateChamberCerts).
  */
 export const newChamberRecord = (fields = {}) => ({ ...CHAMBER_DEFAULTS, kvCal: certMetaOf({}), certHistory: [], ...fields });
-export const ELECTROMETER_DEFAULTS = { id: '', form: {}, calDate: '', dueDate: '', notes: '' };
+export const ELECTROMETER_DEFAULTS = { id: '', form: {}, calDate: '', dueDate: '', notes: '', retired: '' };
+/** Камера или электрометр списаны (с 0.68.0). */
+export const isRetired = (x) => !!String(x?.retired ?? '').trim();
+/** Камеры и электрометры в работе — для выбора в новых измерениях; keepId — уже выбранная запись остаётся в списке. */
+export const activeOnly = (list, keepId = '') => (list || []).filter((x) => !isRetired(x) || (keepId && x.id === keepId));
 /** kind: 'linac' — ускоритель (пучки фотонов и электронов), 'cobalt' — аппарат ⁶⁰Co, 'kv' — рентгенотерапевтический
  * (аппликаторы и режимы вместо пучков, core/kv-machine.js). */
 export const MACHINE_DEFAULTS = { id: '', name: '', serial: '', kind: 'linac', notes: '', beams: [] };
@@ -276,8 +284,8 @@ export function normalizeJournal(obj) {
     .map((x) => (typeof x === 'string' ? { name: x } : x))
     .filter((x) => x && typeof x === 'object')
     .map((x) => withId({ ...STAFF_DEFAULTS, ...x, name: String(x.name ?? '') }, 'st'));
-  j.chambers = arr(obj.chambers).map((c) => withId({ ...CHAMBER_DEFAULTS, ...c, form: { ...(c?.form || {}) } }, 'ch'));
-  j.electrometers = arr(obj.electrometers).map((e) => withId({ ...ELECTROMETER_DEFAULTS, ...e, form: { ...(e?.form || {}) } }, 'el'));
+  j.chambers = arr(obj.chambers).map((c) => withId({ ...CHAMBER_DEFAULTS, ...c, retired: String(c?.retired ?? ''), form: { ...(c?.form || {}) } }, 'ch'));
+  j.electrometers = arr(obj.electrometers).map((e) => withId({ ...ELECTROMETER_DEFAULTS, ...e, retired: String(e?.retired ?? ''), form: { ...(e?.form || {}) } }, 'el'));
   j.machines = arr(obj.machines).map((m) => {
     const machine = withId({ ...MACHINE_DEFAULTS, ...m }, 'm');
     if (machine.kind === 'kv') return normalizeKvMachine(machine);
@@ -644,16 +652,16 @@ export function chamberDueDates(c, j = null) {
   if (u.kv) out.push({ cert: 'kv', dueDate: c.kvCal?.dueDate ?? '', text: both ? L(`${name} (kV-сертификат)`, `${name} (kV certificate)`) : name });
   return out;
 }
-/** Камеры и электрометры, у которых срок калибровки прошёл или подходит. */
+/** Камеры и электрометры в работе (не списанные), у которых срок калибровки прошёл или подходит. */
 export function equipmentDue(j, today) {
   const out = [];
-  for (const c of j.chambers) {
+  for (const c of activeOnly(j.chambers)) {
     for (const x of chamberDueDates(c, j)) {
       const s = dueStatus(x.dueDate, today);
       if (s.status === 'overdue' || s.status === 'soon') out.push({ kind: 'chamber', id: c.id, text: x.text, cert: x.cert, ...s, dueDate: x.dueDate });
     }
   }
-  for (const e of j.electrometers) {
+  for (const e of activeOnly(j.electrometers)) {
     const s = dueStatus(e.dueDate, today);
     if (s.status === 'overdue' || s.status === 'soon') out.push({ kind: 'electrometer', id: e.id, text: electrometerText(e), ...s, dueDate: e.dueDate });
   }
@@ -662,8 +670,8 @@ export function equipmentDue(j, today) {
 /** Камеры и электрометры без срока калибровки («Действует до»): о них напоминание о сроке не появится. */
 export function equipmentNoDue(j) {
   return [
-    ...j.chambers.flatMap((c) => chamberDueDates(c, j).filter((x) => dueStatus(x.dueDate, '2000-01-01').status === 'none').map((x) => ({ kind: 'chamber', id: c.id, text: x.text, cert: x.cert }))),
-    ...j.electrometers.filter((e) => dueStatus(e.dueDate, '2000-01-01').status === 'none').map((e) => ({ kind: 'electrometer', id: e.id, text: electrometerText(e) })),
+    ...activeOnly(j.chambers).flatMap((c) => chamberDueDates(c, j).filter((x) => dueStatus(x.dueDate, '2000-01-01').status === 'none').map((x) => ({ kind: 'chamber', id: c.id, text: x.text, cert: x.cert }))),
+    ...activeOnly(j.electrometers).filter((e) => dueStatus(e.dueDate, '2000-01-01').status === 'none').map((e) => ({ kind: 'electrometer', id: e.id, text: electrometerText(e) })),
   ];
 }
 
@@ -1110,7 +1118,7 @@ export function sessionEquipDefaults(j, machineId, kind, beamId = '') {
   // камеры, отмеченные для этого вида пучков («Применение», с 0.50.0)
   const can = (c) => chamberServes(c, kind, j);
   const okCh = (id) => !!id && j.chambers.some((c) => c.id === id && can(c));
-  const okEl = (id) => !!id && j.electrometers.some((e) => e.id === id);
+  const okEl = (id) => !!id && j.electrometers.some((e) => e.id === id && !isRetired(e));
   const sessions = (j.sessions || []).filter((s) => s.machineId === machineId).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   /** Последние камера и электрометр в записях, где пучок подходит test. */
   const lastUsed = (test) => {
@@ -1132,7 +1140,7 @@ export function sessionEquipDefaults(j, machineId, kind, beamId = '') {
   const beam = beamId ? m?.beams.find((b) => b.id === beamId) : null;
   const legacy = (key) => [beam, ...(m?.beams || [])].find((b) => b && beamKind(b) === kind && (key === 'chamberId' ? okCh(b.chamberId) : okEl(b.electrometerId)))?.[key] ?? '';
   const chamberId = own.ch || legacy('chamberId') || (j.chambers.find((c) => can(c) && chamberPreferred(c.form, kind))?.id ?? '') || ofKind.ch || (j.chambers.find((c) => can(c))?.id ?? '');
-  const electrometerId = own.el || ofKind.el || legacy('electrometerId') || (j.electrometers[0]?.id ?? '');
+  const electrometerId = own.el || ofKind.el || legacy('electrometerId') || (activeOnly(j.electrometers)[0]?.id ?? '');
   return { chamberId, electrometerId };
 }
 
