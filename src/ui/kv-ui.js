@@ -28,7 +28,7 @@ import { kvJournalFrom } from '../core/kv-session.js';
 import { getJournal, onJournal, updateJournal } from './journal-store.js';
 import { makeJournalView } from './journal-view.js';
 import {
-  $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
+  $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, savedFileName,
   renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf, renderCompliance, complianceLine, ctrlErrorText,
   fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote, notifyUpdate, richText,
   inlineResultHtml, setInlineResult, dateText } from './common.js';
@@ -3135,8 +3135,8 @@ export function initKv() {
 
   const payload = () => JSON.stringify(payloadObj(), null, 2);
   $('#kv-btn-save').addEventListener('click', () => {
-    const name = ['kV', current.data.kv_machine, current.data.kv_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-');
-    downloadText(payload(), `dosimetry_${name}.json`);
+    const name = savedFileName(L('расчёт-kV', 'calc-kV'), [current.data.kv_machine, current.data.kv_date]);
+    downloadText(payload(), name);
     setStatus(L('Файл сохранён.', 'File saved.'));
   });
   $('#kv-btn-load').addEventListener('click', () => $('#kv-file-input').click());

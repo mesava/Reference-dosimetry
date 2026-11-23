@@ -11,7 +11,7 @@ import { jaffeRecInfo, jaffeSourceText } from './jaffe-ui.js';
 import { makeJournalView } from './journal-view.js';
 import { linkSections } from './sec-links.js';
 import {
-  $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, getActiveModule,
+  $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, savedFileName, getActiveModule,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
   notifyUpdate, flashFields, richText, inlineResultHtml, setInlineResult } from './common.js';
@@ -926,8 +926,8 @@ export function initPhotons() {
   const payload = () => JSON.stringify({ ...FILE_TAG, ...fileStamp(snapshot(current.result)), savedAt: new Date().toISOString(), form: current.data }, null, 2);
 
   $('#btn-save').addEventListener('click', () => {
-    const name = [current.data.meta_machine, current.data.meta_beam, current.data.meta_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-') || 'photons';
-    downloadText(payload(), `dosimetry_${name}.json`);
+    const name = savedFileName(L('расчёт-фотоны', 'calc-photons'), [current.data.meta_machine, current.data.meta_beam, current.data.meta_date]);
+    downloadText(payload(), name);
     setStatus(L('Файл сохранён.', 'File saved.'));
   });
 

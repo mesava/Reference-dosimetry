@@ -9,7 +9,7 @@ import { localizeDecimals } from './i18n.js';
 import { PRESSURE_UNITS, NDW_UNITS, unitLabel } from '../core/units.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import {
-  $, $$, localizeDemo, fmt, esc, today, makeStatus, copyText, downloadText, currentProtocol, renderOutputs, renderFlags, applyShowRules,
+  $, $$, localizeDemo, fmt, esc, today, makeStatus, copyText, downloadText, savedFileName, currentProtocol, renderOutputs, renderFlags, applyShowRules,
   armButton, renderSignBlock, printToPdf, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
   notifyUpdate, richText } from './common.js';
 
@@ -565,8 +565,8 @@ export function initCrossCal() {
 
   const payload = () => JSON.stringify({ ...FILE_TAG, ...fileStamp(snapshot(current.result)), savedAt: new Date().toISOString(), form: current.data }, null, 2);
   $('#cc-btn-save').addEventListener('click', () => {
-    const name = [current.data.cc_machine, current.data.cc_beam, current.data.cc_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-') || 'crosscal';
-    downloadText(payload(), `crosscal_${name}.json`);
+    const name = savedFileName(L('расчёт-перекрёстная-калибровка', 'calc-cross-calibration'), [current.data.cc_machine, current.data.cc_beam, current.data.cc_date]);
+    downloadText(payload(), name);
     setStatus(L('Файл сохранён.', 'File saved.'));
   });
   $('#cc-btn-load').addEventListener('click', () => $('#cc-file-input').click());

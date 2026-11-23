@@ -7,7 +7,7 @@ import { localizeDecimals } from './i18n.js';
 import { makeCombo, renderStaff, readStaff } from './widgets.js';
 import { scatterChart, legendSwatch } from './chart.js';
 import {
-  $, $$, localizeDemo, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, currentProtocol, renderFlags, applyShowRules,
+  $, $$, localizeDemo, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, savedFileName, currentProtocol, renderFlags, applyShowRules,
   armButton, renderSignBlock, printToPdf, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, notifyUpdate, richText, dateText } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.jaffe.v1';
@@ -692,8 +692,8 @@ export function initJaffe() {
 
   const payload = () => JSON.stringify({ ...FILE_TAG, ...fileStamp(snapshot(current.result)), savedAt: new Date().toISOString(), form: current.data }, null, 2);
   $('#jf-btn-save').addEventListener('click', () => {
-    const name = [jaffeChamber(current.data)?.label, current.data.jf_ch_serial, current.data.jf_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-') || 'jaffe';
-    downloadText(payload(), `jaffe_${name}.json`);
+    const name = savedFileName(L('расчёт-Яффе', 'calc-Jaffe'), [jaffeChamber(current.data)?.label, current.data.jf_ch_serial, current.data.jf_date]);
+    downloadText(payload(), name);
     setStatus(L('Файл сохранён.', 'File saved.'));
   });
   $('#jf-btn-load').addEventListener('click', () => $('#jf-file-input').click());

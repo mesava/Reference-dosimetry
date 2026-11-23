@@ -9,7 +9,7 @@ import { getMyChambers, saveMyChamber, deleteMyChamber } from './store.js';
 import { makeJournalView } from './journal-view.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff, renderPairs, readPairs, setupPairs } from './widgets.js';
 import {
-  $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
+  $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, savedFileName,
   currentProtocol, applyProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
   notifyUpdate, flashFields, richText, inlineResultHtml, setInlineResult } from './common.js';
@@ -737,8 +737,8 @@ export function initCobalt() {
 
   const payload = () => JSON.stringify({ ...FILE_TAG, ...fileStamp(snapshot(current.result)), savedAt: new Date().toISOString(), form: current.data }, null, 2);
   $('#co-btn-save').addEventListener('click', () => {
-    const name = ['Co60', current.data.co_machine, current.data.co_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-');
-    downloadText(payload(), `dosimetry_${name}.json`);
+    const name = savedFileName(L('расчёт-Co-60', 'calc-Co-60'), [current.data.co_machine, current.data.co_date]);
+    downloadText(payload(), name);
     setStatus(L('Файл сохранён.', 'File saved.'));
   });
   $('#co-btn-load').addEventListener('click', () => $('#co-file-input').click());

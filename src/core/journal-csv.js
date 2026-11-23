@@ -217,9 +217,12 @@ export function checksCsv(j) {
   return BOM + lines.join('\r\n') + '\r\n';
 }
 
-/** Имя файла: «журнал_ЛОР_2026-10-16.csv» (part — «проверки_дозиметра» и т. п.). */
-export function csvFileName(j, date = new Date(), part = '') {
+/**
+ * Имя файла выгрузки (с 0.67.0 — сначала что это, потом учреждение и дата): «таблица-записей_ЛОР_2026-10-16.csv».
+ * type — начало имени: «таблица-проверок-дозиметра», «таблица-kV_Терад-200» и т. п.; по умолчанию — таблица записей журнала.
+ */
+export function csvFileName(j, date = new Date(), type = '') {
   const inst = String(j.institution || '').trim().replace(/[^\p{L}\p{N}_.-]+/gu, '-');
   const p = (n) => String(n).padStart(2, '0');
-  return `${L('журнал', 'journal')}${inst ? `_${inst}` : ''}${part ? `_${part}` : ''}_${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}.csv`;
+  return `${type || L('таблица-записей', 'records-table')}${inst ? `_${inst}` : ''}_${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}.csv`;
 }

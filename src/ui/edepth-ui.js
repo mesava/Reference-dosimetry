@@ -11,7 +11,7 @@ import { scatterChart, legendSwatch } from './chart.js';
 import { jaffeRecInfo, jaffeSourceText } from './jaffe-ui.js';
 import { electronsKsInfo } from './electrons-ui.js';
 import {
-  $, $$, localizeDemo, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, currentProtocol, renderFlags, applyShowRules,
+  $, $$, localizeDemo, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, savedFileName, currentProtocol, renderFlags, applyShowRules,
   armButton, renderSignBlock, printToPdf, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, notifyUpdate, richText } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.edepth.v1';
@@ -481,8 +481,8 @@ export function initEdepth() {
       setStatus(L('Кривой дозы пока нет: см. замечания.', 'There is no dose curve yet: see Messages.'));
       return;
     }
-    const name = [current.data.ed_machine, current.data.ed_beam, current.data.ed_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-') || 'curve';
-    downloadText(curveCsv(r, { dec: getLang() === 'en' ? '.' : ',' }), `pdd_${name}.csv`, 'text/csv');
+    const name = savedFileName(L('кривая-дозы', 'depth-dose'), [current.data.ed_machine, current.data.ed_beam, current.data.ed_date], 'csv');
+    downloadText(curveCsv(r, { dec: getLang() === 'en' ? '.' : ',' }), name, 'text/csv');
     setStatus(L('Кривая дозы сохранена: глубина точки измерения, см, и PDD, %; разделитель — точка с запятой.', 'Dose curve saved: depth of the point of measurement, cm, and PDD, %; the separator is a semicolon.'));
   });
   $('#ed-btn-transfer').addEventListener('click', () => {
@@ -507,8 +507,8 @@ export function initEdepth() {
 
   const payload = () => JSON.stringify({ ...FILE_TAG, ...fileStamp(snapshot(current.result)), savedAt: new Date().toISOString(), form: current.data }, null, 2);
   $('#ed-btn-save').addEventListener('click', () => {
-    const name = [current.data.ed_machine, current.data.ed_beam, current.data.ed_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-') || 'edepth';
-    downloadText(payload(), `edepth_${name}.json`);
+    const name = savedFileName(L('расчёт-кривая-дозы', 'calc-depth-dose'), [current.data.ed_machine, current.data.ed_beam, current.data.ed_date]);
+    downloadText(payload(), name);
     setStatus(L('Файл сохранён.', 'File saved.'));
   });
   $('#ed-btn-load').addEventListener('click', () => $('#ed-file-input').click());

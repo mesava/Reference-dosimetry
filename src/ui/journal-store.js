@@ -6,7 +6,7 @@
 // (другой компьютер, другая вкладка): поверх чужой версии журнал не пишется. В остальных браузерах журнал
 // сохраняется скачиванием файла с тем же именем.
 import { newJournal, normalizeJournal, JOURNAL_TAG, journalFormat } from '../core/journal.js';
-import { backupName, backupsToDelete, backupDue, syncDecision, BACKUP_MIN_MINUTES, BACKUP_KEEP } from '../core/journal-backup.js';
+import { backupName, backupsToDelete, backupDue, journalHasData, syncDecision, BACKUP_MIN_MINUTES, BACKUP_KEEP } from '../core/journal-backup.js';
 import { mergeJournals, conflictSummary } from '../core/journal-merge.js';
 import { APP_VERSION, APP_DATE } from '../core/version.js';
 import { L } from '../core/i18n.js';
@@ -157,7 +157,7 @@ export function updateJournal(fn, source = '') {
 }
 
 const fileText = () => JSON.stringify({ ...state.journal, ...JOURNAL_TAG, version: journalFormat(state.journal), appVersion: APP_VERSION, appDate: APP_DATE, updated: new Date().toISOString() }, null, 1);
-const pickerTypes = [{ description: L('Журнал калибровок (JSON)', 'Calibration journal (JSON)'), accept: { 'application/json': ['.json'] } }];
+const pickerTypes = [{ description: L('Журнал: оборудование, записи, тренды (JSON)', 'Journal: equipment, records, trends (JSON)'), accept: { 'application/json': ['.json'] } }];
 const defaultName = () => {
   const inst = String(state.journal.institution || '').trim().replace(/[^\p{L}\p{N}_.-]+/gu, '-');
   return `${L('журнал', 'journal')}${inst ? `_${inst}` : ''}.json`;
@@ -570,7 +570,7 @@ export function forgetBackupDir() {
 
 async function makeBackup(text, manual) {
   const dir = state.backupDir;
-  if (!dir) return;
+  if (!dir || !journalHasData(state.journal)) return;
   if (!backupDue(state.lastBackupAt, new Date(), manual ? BACKUP_MIN_MINUTES.manual : BACKUP_MIN_MINUTES.auto)) return;
   try {
     const name = backupName(state.fileName || defaultName());

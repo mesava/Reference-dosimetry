@@ -547,7 +547,7 @@ export function initHistory() {
   });
   $('#hs-check-csv').addEventListener('click', () => {
     const j = getJournal();
-    downloadText(checksCsv(j), csvFileName(j, new Date(), L('проверки_дозиметра', 'dosimeter_checks')), 'text/csv;charset=utf-8');
+    downloadText(checksCsv(j), csvFileName(j, new Date(), L('таблица-проверок-дозиметра', 'dosimeter-checks-table')), 'text/csv;charset=utf-8');
     setStatus(L('Проверки дозиметра выгружены в CSV.', 'The dosimeter checks have been exported to CSV.'));
   });
   $('#hs-csv').addEventListener('click', () => {
@@ -674,7 +674,7 @@ export function initHistory() {
       setStatus(L('Записей этого аппарата нет — выгружать нечего.', 'This unit has no records: nothing to export.'));
       return;
     }
-    downloadText(kvRecordsCsv(j, m, kvChartSignals(j, m)), csvFileName(j, new Date(), `kV_${kvMachineText(m) || m.id}`.replace(/[^\p{L}\p{N}_.-]+/gu, '-')), 'text/csv;charset=utf-8');
+    downloadText(kvRecordsCsv(j, m, kvChartSignals(j, m)), csvFileName(j, new Date(), `${L('таблица-kV', 'kV-table')}_${String(kvMachineText(m) || m.id).replace(/[^\p{L}\p{N}_.-]+/gu, '-')}`), 'text/csv;charset=utf-8');
     setStatus(L('Записи аппарата выгружены в CSV: по строке на аппликатор режима в записи; файл открывается в Excel двойным щелчком.', 'The records of the unit have been exported to CSV, one line per applicator of a mode in a record; the file opens in Excel with a double click.'));
   });
   $('#hs-kv-records').addEventListener('click', (e) => {

@@ -1,6 +1,8 @@
 // Файл журнала на диске: копии в выбранной папке и защита от записи поверх чужой версии.
 // Чистые функции без DOM (интерфейс — ui/journal-store.js), проверяются в node.
 
+import { L } from './i18n.js';
+
 /** Сколько последних копий хранить в папке копий. */
 export const BACKUP_KEEP = 50;
 /** Не чаще одной копии за столько минут при автосохранении и при сохранении вручную. */
@@ -10,21 +12,42 @@ const base = (fileName) => String(fileName || 'journal.json').replace(/\.json$/i
 const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const p2 = (n) => String(n).padStart(2, '0');
 
-/** Имя копии: «журнал_2026-10-16_234905.json» — имя файла журнала без .json, дата и время по местным часам. */
+/** Начало имени копии (с 0.67.0): копии не путаются с самим журналом и в папке идут отдельно от него. */
+export const COPY_WORD = { ru: 'копия-журнала', en: 'journal-copy' };
+
+/** «журнал_ЛОР» → «копия-журнала_ЛОР»; имя, выбранное пользователем, — «копия-журнала_Терад». */
+function copyBase(b, word) {
+  const m = b.match(/^(?:журнал|journal)(?=_|$)/iu);
+  return m ? word + b.slice(m[0].length) : `${word}_${b}`;
+}
+
+/** Имя копии: «копия-журнала_ЛОР_2026-10-16_234905.json» — имя файла журнала без .json, дата и время по местным часам. */
 export function backupName(fileName, date = new Date()) {
   const d = `${date.getFullYear()}-${p2(date.getMonth() + 1)}-${p2(date.getDate())}`;
   const t = `${p2(date.getHours())}${p2(date.getMinutes())}${p2(date.getSeconds())}`;
-  return `${base(fileName)}_${d}_${t}.json`;
+  return `${copyBase(base(fileName), L(COPY_WORD.ru, COPY_WORD.en))}_${d}_${t}.json`;
 }
 
-/** Копии этого журнала среди имён файлов папки — от новых к старым. Чужие файлы и копии других журналов не трогаются. */
+/**
+ * Копии этого журнала среди имён файлов папки — от новых к старым. Чужие файлы и копии других журналов не трогаются.
+ * Узнаются копии на обоих языках и копии до 0.67.0 («журнал_ЛОР_2026-10-16_234905.json»).
+ */
 export function backupsOf(names, fileName) {
-  const re = new RegExp(`^${escRe(base(fileName))}_(\\d{4}-\\d{2}-\\d{2}_\\d{6})\\.json$`);
+  const b = base(fileName);
+  const heads = [b, copyBase(b, COPY_WORD.ru), copyBase(b, COPY_WORD.en)].map(escRe).join('|');
+  const re = new RegExp(`^(?:${heads})_(\\d{4}-\\d{2}-\\d{2}_\\d{6})\\.json$`, 'u');
   return names
     .map((n) => [n, String(n).match(re)?.[1]])
     .filter(([, key]) => key)
-    .sort((a, b) => (a[1] < b[1] ? 1 : a[1] > b[1] ? -1 : 0))
+    .sort((a, b2) => (a[1] < b2[1] ? 1 : a[1] > b2[1] ? -1 : 0))
     .map(([n]) => n);
+}
+
+/** Есть ли в журнале что сохранять в копию: у пустого журнала (нет учреждения, оборудования и записей) копий не делается. */
+export function journalHasData(j) {
+  if (!j) return false;
+  if (String(j.institution || '').trim() || String(j.department || '').trim()) return true;
+  return ['staff', 'chambers', 'electrometers', 'machines', 'sessions', 'plateChecks', 'kvRecords'].some((k) => Array.isArray(j[k]) && j[k].length > 0);
 }
 
 /** Какие копии удалить, чтобы осталось keep последних. */

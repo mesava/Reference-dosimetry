@@ -40,7 +40,7 @@ test('файл журнала: сохранение, автосохранени�
   await page.waitForTimeout(500);
   let backups = Object.keys((await fsState(page)).files).filter((k) => k.startsWith('backups/'));
   assert.equal(backups.length, 1);
-  assert.ok(backups[0].startsWith('backups/журнал_Тест_'));
+  assert.ok(backups[0].startsWith('backups/копия-журнала_Тест_'), backups[0]);
 
   // 3. автосохранение — без новой копии (копии не чаще раза в час)
   await page.fill('#eq_institution', 'Тест 2');

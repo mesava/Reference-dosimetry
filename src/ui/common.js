@@ -105,6 +105,15 @@ export function downloadText(text, filename, type = 'application/json') {
   }, 0);
 }
 
+/**
+ * Имя сохраняемого файла (с 0.67.0): сначала что это, потом аппарат, пучок и дата —
+ * «расчёт-фотоны_Halcyon_6X_2026-11-20.json». Пустые части пропускаются, недопустимые в имени знаки — дефис.
+ */
+export function savedFileName(type, parts, ext = 'json') {
+  const name = parts.filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-');
+  return `${type}${name ? `_${name}` : ''}.${ext}`;
+}
+
 /** Ненадолго подсвечивает поля, заполненные из другой вкладки (видимые). */
 export function flashFields(ids) {
   for (const k of ids) {

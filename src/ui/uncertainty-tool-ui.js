@@ -11,7 +11,7 @@ import { setupEst } from './unc-est-ui.js';
 import { parseOverrides } from '../core/uncertainty.js';
 import { parseKi } from '../core/unc-ki.js';
 import {
-  $, $$, localizeDemo, fmt, esc, today, makeStatus, copyText, downloadText, currentProtocol, renderOutputs, renderFlags, applyShowRules,
+  $, $$, localizeDemo, fmt, esc, today, makeStatus, copyText, downloadText, savedFileName, currentProtocol, renderOutputs, renderFlags, applyShowRules,
   armButton, renderSignBlock, printToPdf, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, notifyUpdate, flashFields, richText, plainSymbols } from './common.js';
 
 const DRAFT_KEY = 'reference-dosimetry.uncertainty.v1';
@@ -479,8 +479,8 @@ export function initUncTool() {
 
   const payload = () => JSON.stringify({ ...FILE_TAG, ...fileStamp(snapshot(current.result)), savedAt: new Date().toISOString(), form: current.data }, null, 2);
   $('#unc-btn-save').addEventListener('click', () => {
-    const name = [current.data.unc_machine, current.data.unc_beam, current.data.unc_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-') || 'budget';
-    downloadText(payload(), `uncertainty_${name}.json`);
+    const name = savedFileName(L('расчёт-неопределённость', 'calc-uncertainty'), [current.data.unc_machine, current.data.unc_beam, current.data.unc_date]);
+    downloadText(payload(), name);
     setStatus(L('Файл сохранён.', 'File saved.'));
   });
   $('#unc-btn-load').addEventListener('click', () => $('#unc-file-input').click());

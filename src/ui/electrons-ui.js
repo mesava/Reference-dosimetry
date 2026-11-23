@@ -7,7 +7,7 @@ import { localizeDecimals } from './i18n.js';
 import { PRESSURE_UNITS, NDW_UNITS, parseNumber, unitLabel } from '../core/units.js';
 import { makeCombo, renderCells, readCells, setupCells, renderStaff, readStaff } from './widgets.js';
 import {
-  $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText,
+  $, $$, localizeDemo, doseGroupTitle, rawReadingLabel, correctedReadingLabel, fmt, fmtSigned, esc, today, makeStatus, copyText, downloadText, savedFileName,
   currentProtocol, renderOutputs, renderFlags, applyShowRules, armButton, renderSignBlock, printToPdf,
   renderCompliance, complianceLine, ctrlErrorText, fileStamp, checkFileFormat, compareWithFile, renderFileNote, versionText, renderNotesFlag, precisionNote,
   notifyUpdate, flashFields, richText, applyProtocol, inlineResultHtml, setInlineResult } from './common.js';
@@ -778,8 +778,8 @@ export function initElectrons() {
 
   const payload = () => JSON.stringify({ ...FILE_TAG, ...fileStamp(snapshot(current.result)), savedAt: new Date().toISOString(), form: current.data }, null, 2);
   $('#e-btn-save').addEventListener('click', () => {
-    const name = [current.data.e_machine, current.data.e_beam, current.data.e_date].filter(Boolean).join('_').replace(/[^\p{L}\p{N}_.-]+/gu, '-') || 'electrons';
-    downloadText(payload(), `dosimetry_${name}.json`);
+    const name = savedFileName(L('расчёт-электроны', 'calc-electrons'), [current.data.e_machine, current.data.e_beam, current.data.e_date]);
+    downloadText(payload(), name);
     setStatus(L('Файл сохранён.', 'File saved.'));
   });
   $('#e-btn-load').addEventListener('click', () => $('#e-file-input').click());

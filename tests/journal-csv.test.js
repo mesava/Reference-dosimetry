@@ -70,11 +70,12 @@ test('CSV для английского Excel: «,» и точка; имя фа�
     const r1 = rows[1].split(',');
     assert.match(r1[7], /^1\.00\d{3}$/);
     assert.equal(r1[3], 'calibration');
-    assert.equal(csvFileName({ institution: 'ENT dept' }, new Date(2026, 9, 16)), 'journal_ENT-dept_2026-10-16.csv');
+    assert.equal(csvFileName({ institution: 'ENT dept' }, new Date(2026, 9, 16)), 'records-table_ENT-dept_2026-10-16.csv');
   } finally {
     setLang('ru');
   }
-  assert.equal(csvFileName({ institution: '' }, new Date(2026, 9, 16)), 'журнал_2026-10-16.csv');
+  assert.equal(csvFileName({ institution: '' }, new Date(2026, 9, 16)), 'таблица-записей_2026-10-16.csv');
+  assert.equal(csvFileName({ institution: 'ЛОР' }, new Date(2026, 9, 16), 'таблица-kV_Терад-200'), 'таблица-kV_Терад-200_ЛОР_2026-10-16.csv');
 });
 
 test('Итог пучка хранит N_D,w и k_elec — для нового отсчёта карты при их смене', () => {
