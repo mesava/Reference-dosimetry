@@ -29,6 +29,7 @@ import { initEquipment, equipmentStatus, setEquipmentBridge, saveBeamFromTab, re
 import { initHistory, historyStatus, setHistoryBridge } from './journal-history-ui.js';
 import { initSession, renderSessionPage, sessionStatus, setSessionSheet, sessionInfo, sessionLastKind } from './session-ui.js';
 import { initPlates, renderPlatesPage, platesStatus, platesLastKind } from './plates-ui.js';
+import { initBrachy, renderBrachy, brachyStatus } from './brachy-ui.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
 // последний открытый подраздел вкладки в шапке («Дозиметрия», «Инструменты»)
@@ -44,8 +45,8 @@ const MODULES = {
   electrons: { title: () => L('Электроны — референсная дозиметрия', 'Electrons — reference dosimetry'), file: 'electrons', importData: importElectrons, status: electronsStatus, tab: 'dosimetry' },
   // kV-рентген — только TRS-398 Rev.1: переключатель протокола в шапке скрыт
   kv: { title: () => L('kV-рентген — референсная дозиметрия', 'kV x-rays — reference dosimetry'), file: 'kv', importData: importKv, status: kvStatus, tab: 'dosimetry', proto: false },
-  // в разработке: страница с планом, без расчёта; transient — не запоминается местом работы (последним подразделом)
-  brachy: { title: () => L('Брахитерапия — в разработке', 'Brachytherapy — in development'), file: '-', importData: () => {}, status: () => {}, tab: 'dosimetry', transient: true, proto: false },
+  // брахитерапия (в разработке): листы «Колодезная камера» и «Фантом PTW 9193», адрес #brachy/well, #brachy/phantom
+  brachy: { title: () => L('Брахитерапия — сила источника', 'Brachytherapy — source strength'), file: '-', importData: () => {}, status: (t) => brachyStatus(t), tab: 'dosimetry', proto: false },
   // лист «Сеанс» вкладок «МВ фотоны» и «Электроны»: энергии аппарата подряд, каждая — на рабочем листе вкладки
   // (протокол — на рабочем листе); адрес #photons/session, #electrons/session
   session: { title: (kind) => `${kind === 'electron' ? L('Электроны', 'Electrons') : L('МВ фотоны', 'MV photons')} — ${L('сеанс: все энергии', 'session: all energies')}`, file: '-', importData: () => {}, status: (t) => sessionStatus(t), tab: 'dosimetry', proto: false },
@@ -98,8 +99,8 @@ function resolveRoute(raw) {
     return { module: head, owner: head, sheet: 'single', kind, route: head };
   }
   if (!MODULES[head] || head === 'session' || head === 'plates') return null;
-  // #kv/timer — подраздел и его лист
-  return { module: head, owner: head, sheet: '', kind: '', route: head === 'kv' ? r : head };
+  // #kv/timer, #brachy/phantom — подраздел и его лист
+  return { module: head, owner: head, sheet: '', kind: '', route: head === 'kv' || head === 'brachy' ? r : head };
 }
 
 let route = null;
@@ -209,6 +210,7 @@ function showModule(raw) {
   if (name === 'plates') renderPlatesPage(r.kind);
   // kV-рентген: лист из адреса #kv/<лист> или тот, с которым работали
   if (name === 'kv') kvShown();
+  if (name === 'brachy') renderBrachy(r.route.split('/')[1]);
   // «Мои камеры» меняются на вкладках дозиметрии: кнопку переноса в журнал обновить при открытии «Оборудования»
   if (name === 'equipment') {
     renderMyChambersTool();
@@ -487,6 +489,7 @@ function init() {
     go: (name) => goTo(name),
   });
   initPlates();
+  initBrachy();
   setUncSources({ co60: cobaltUncSource, photons: photonsUncSource, electrons: electronsUncSource, kv: kvUncSource });
   initTransfer();
   initPaste();

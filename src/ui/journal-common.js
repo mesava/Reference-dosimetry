@@ -8,9 +8,9 @@ import {
 } from './journal-store.js';
 
 /** Ячейки серии показаний (нКл) со средним: разметка; заполняются widgets.renderCells. */
-export function cellsHtml(key, label, values) {
+export function cellsHtml(key, label, values, unit = L('нКл', 'nC')) {
   return `<div class="cells" data-series="${esc(key)}" data-label="${esc(label)}">
-    <span class="label">${esc(label)}, ${esc(L('нКл', 'nC'))}</span>
+    <span class="label">${esc(label)}${unit ? `, ${esc(unit)}` : ''}</span>
     <div class="cells-row">
       <div class="cells-list"></div>
       <div class="cells-tools">

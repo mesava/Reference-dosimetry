@@ -21,6 +21,7 @@ import {
   PHANTOM_KZP_REF_CHAMBER,
   DGMP_CHAMBERS,
   PTW_TO_DGMP,
+  APPROX_TO_DGMP,
   PHANTOM_IR,
   PHANTOM_CO60,
   PHANTOM_DOSE_RATE_FACTOR,
@@ -63,11 +64,12 @@ export function kDec(tMeas, tRef, halfDays) {
 }
 
 /**
- * Наибольшая относительная ошибка распада (доля), если известна только дата без времени: при принятом полудне
- * истинное время отличается не больше чем на ±12 ч, ошибка ≈ ln2·0,5 сут/t½ (¹⁹²Ir — около 0,47 %).
+ * Наибольшая относительная ошибка распада (доля), если известна только дата без времени: принимается 00:00 (так считает
+ * таблица распада сертификата BEBIG; так же — в рабочей таблице отделения), истинное время позже не больше чем на сутки,
+ * ошибка ≈ ln2·1 сут/t½ (¹⁹²Ir — около 0,94 %, ⁶⁰Co — 0,04 %).
  */
 export function dateOnlyDecayError(halfDays) {
-  return (Math.LN2 * 0.5) / halfDays;
+  return Math.LN2 / halfDays;
 }
 
 // ——— Дата и время ———
@@ -92,7 +94,7 @@ function parseZone(s) {
  * Дата и время сертификата или измерения → мс UTC (TRS-492, разд. 3.2 и табл. 4: время сводить к UTC).
  * Принимает «2026-10-20 08:00», «2026-10-20T08:00:00+03:00», «20.10.26 8:00 GMT+3», «20.10.2026 08:00 МСК»,
  * «2021-10-27» (только дата). Без часового пояса берётся defaultOffsetMin (смещение от UTC в минутах, например
- * 180 для Москвы); если и он не задан — UTC. Без времени принимается полдень и выставляется dateOnly.
+ * 180 для Москвы); если и он не задан — UTC. Без времени принимается 00:00 и выставляется dateOnly.
  * @returns {{ ms:number, dateOnly:boolean, zoneGiven:boolean, offsetMin:number, error?:string }}
  */
 export function parseDateTime(raw, { defaultOffsetMin } = {}) {
@@ -109,12 +111,11 @@ export function parseDateTime(raw, { defaultOffsetMin } = {}) {
     if (m[3].length === 2) y += 2000;
   }
   const dateOnly = m[4] === undefined;
-  const hh = dateOnly ? 12 : Number(m[4]);
+  const hh = dateOnly ? 0 : Number(m[4]);
   const mi = dateOnly ? 0 : Number(m[5]);
   const ss = m[6] ? Number(m[6]) : 0;
   const zone = parseZone(m[7] ?? '');
   if (zone.error) return bad(L(`не удалось прочитать часовой пояс «${m[7].trim()}»`, `could not read the time zone "${m[7].trim()}"`));
-  if (dateOnly && zone.given) return bad(L('часовой пояс указан без времени', 'a time zone is given without a time'));
   const local = Date.UTC(y, mo - 1, d, hh, mi, 0) + ss * 1000;
   const check = new Date(local);
   if (check.getUTCFullYear() !== y || check.getUTCMonth() !== mo - 1 || check.getUTCDate() !== d || hh > 23 || mi > 59 || ss >= 60) {
@@ -439,12 +440,15 @@ export function computeWell(p) {
 
 /**
  * Геометрический фактор фантома для камеры: k_zp,i = 1,187 · k_V,i/k_V,M23332 (DGMP 13, ур. (13), сноска 4, табл. 2.1,
- * r = 8 см). chamber — модель PTW (например, «30013», «TM30013», «M23332»).
- * @returns {{ kzp:number, kV:number, dgmp:string, error?:string }}
+ * r = 8 см). chamber — модель PTW (например, «30013», «TM30013», «M23332») или камера из APPROX_TO_DGMP (approx = true:
+ * k_V взят у камеры DGMP с близкой полостью).
+ * @returns {{ kzp:number, kV:number, dgmp:string, approx:boolean, error?:string }}
  */
 export function phantomKzp(chamber) {
   const s = String(chamber ?? '').toUpperCase().replace(/\s+/g, '');
   let dgmp = Object.hasOwn(DGMP_CHAMBERS, s) ? s : null;
+  const near = APPROX_TO_DGMP.find((x) => x.re.test(s));
+  if (!dgmp && near) dgmp = near.dgmp;
   if (!dgmp) {
     const num = s.match(/(\d{4,6})/)?.[1];
     if (num && Object.hasOwn(PTW_TO_DGMP, num)) dgmp = PTW_TO_DGMP[num];
@@ -454,6 +458,7 @@ export function phantomKzp(chamber) {
       kzp: NaN,
       kV: NaN,
       dgmp: '',
+      approx: false,
       error: L(
         `для камеры «${chamber}» нет k_V в DGMP 13, табл. 2.1 — введите k_zp вручную или определите свой коэффициент сличением с колодезной камерой`,
         `DGMP 13, Table 2.1 has no k_V for the chamber "${chamber}"; enter k_zp manually or determine your own factor by comparison with the well-type chamber`,
@@ -461,7 +466,7 @@ export function phantomKzp(chamber) {
     };
   }
   const kV = DGMP_CHAMBERS[dgmp].kV8;
-  return { kzp: (PHANTOM_KZP_IR * kV) / DGMP_CHAMBERS[PHANTOM_KZP_REF_CHAMBER].kV8, kV, dgmp };
+  return { kzp: (PHANTOM_KZP_IR * kV) / DGMP_CHAMBERS[PHANTOM_KZP_REF_CHAMBER].kV8, kV, dgmp, approx: Boolean(near) && !Object.hasOwn(DGMP_CHAMBERS, s) };
 }
 
 /**

@@ -63,18 +63,18 @@ test('TRS-492, ур. (8)–(9): k_dec = 2^((t_meas − t_ref)/t½)', () => {
   assert.equal(kDec(t0, t0, 73.827), 1);
   near(kDec(t0 + 73.827 * DAY, t0, 73.827), 2, 1e-12, 'через один период');
   near(kDec(t0, t0 + 73.827 * DAY, 73.827), 0.5, 1e-12, 'на будущее время');
-  // дата без времени: ±12 ч дают для ¹⁹²Ir до 0,47 %
-  near(dateOnlyDecayError(73.827) * 100, 0.469, 0.001);
+  // дата без времени: принято 00:00, сутки дают для ¹⁹²Ir до 0,94 %
+  near(dateOnlyDecayError(73.827) * 100, 0.939, 0.001);
 });
 
 test('Сертификат ⁶⁰Co (Co0.A86): таблица распада производителя воспроизводится до 0,01 ГБк', () => {
   // кажущаяся активность 82,66 ГБк на дату сертификата; таблица — на 00:00 первого числа месяца
-  const t0 = parseDateTime('2021-10-27 00:00').ms;
+  const t0 = parseDateTime('2021-10-27').ms;
   const points = [
-    ['01.11.2021 00:00', 82.51],
-    ['01.06.2024 00:00', 58.76],
-    ['01.11.2026 00:00', 42.76],
-    ['01.01.2027 00:00', 41.83],
+    ['01.11.2021', 82.51],
+    ['01.06.2024', 58.76],
+    ['01.11.2026', 42.76],
+    ['01.01.2027', 41.83],
   ];
   for (const half of [1925.21, 1925.3]) {
     for (const [d, a] of points) {
@@ -123,7 +123,8 @@ test('Дата и время: форматы, часовой пояс, дата 
   assert.equal(noZone.zoneGiven, false);
   const d = parseDateTime('2021-10-27');
   assert.ok(d.dateOnly);
-  assert.equal(d.ms, Date.UTC(2021, 9, 27, 12));
+  assert.equal(d.ms, Date.UTC(2021, 9, 27, 0));
+  assert.equal(parseDateTime('2021-10-27 UTC+1').ms, Date.UTC(2021, 9, 26, 23));
   assert.ok(parseDateTime('31.02.26').error);
   assert.ok(parseDateTime('20.10.26 25:00').error);
   assert.ok(parseDateTime('20.10.26 8:00 Марс').error);
@@ -259,6 +260,7 @@ test('DGMP 13, ур. (13), сноска 4, табл. 2.1: k_zp по камере
   near(f.kzp, 1.1911, 5e-5);
   near(phantomFactor({ calib: 'Nw', kzp: f.kzp }), 6.869e-3, 6e-7);
   assert.ok(phantomKzp('PTW 31013').error);
+  assert.deepEqual([phantomKzp('IBA FC65-G').dgmp, phantomKzp('IBA FC65-G').approx, phantomKzp('30013').approx], ['M30001', true, false]);
 });
 
 test('⁶⁰Co в фантоме: Azhari 2012 (k_zp = 1,276) → k_tot = 7,370·10⁻³; литература Ubrich 2014 ниже', () => {
