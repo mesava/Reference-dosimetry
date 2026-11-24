@@ -82,6 +82,14 @@ test('брахитерапия: колодезная камера и фанто�
   await pause();
   assert.match(await page.locator('#br-result .plates-dose').innerText(), /10,63\d мГр\/ч на 1 м[\s\S]*от сертификата/);
 
+  // поглощённая доза в воде: в точке измерения, Ḋ_w,1 по Ubrich (табл. 7) и на 8 см в воде по TG-43, как в таблице отделения
+  assert.match(await page.locator('#br-dose').innerText(), /23,42\d мГр\/мин/);
+  await page.selectOption('#br_p_src', 'co0a86');
+  await pause();
+  const dose = await page.locator('#br-dose').innerText();
+  assert.match(dose, /1791,4[\s\S]*24,99\d/);
+  assert.match(dose, /По сертификату[\s\S]*1844,0/);
+
   // свой k_tot: ОМВК с листа колодезной камеры → k_tot → основной вариант совпадает с сертификатом
   await page.click('[data-br="wellk"]');
   await pause();
@@ -94,5 +102,6 @@ test('брахитерапия: колодезная камера и фанто�
   await page.reload();
   await page.waitForSelector('#brachy-root .plates-card');
   assert.equal(await page.inputValue('#br_p_N'), '48,36');
+  assert.equal(await page.inputValue('#br_p_src'), 'co0a86');
   assert.deepEqual(errors, []);
 });

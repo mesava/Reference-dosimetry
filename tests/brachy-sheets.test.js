@@ -143,6 +143,37 @@ test('Фантом, ⁶⁰Co: варианты как в рабочей табл
   assert.equal(o.compare.level, 'ok');
 });
 
+test('Фантом, ⁶⁰Co: поглощённая доза в воде — в точке, Ḋ_w,1 (Ubrich табл. 7, Λ·S_K по HEBD) и 8 см по TG-43, как в рабочей таблице', () => {
+  const r = computeBrachyPhantom({ ...CO, p_src: 'co0a86', p_main: 'ubrich-mc-31010' });
+  const d = r.dose;
+  // в точке измерения по положениям: 23,430; 23,745; 23,371; 23,137 мГр/мин (среднее 23,421)
+  near(d.point, 23.421, 0.002);
+  [23.43, 23.745, 23.371, 23.137].forEach((x, i) => near(d.holes[i].value, x, 0.002));
+  // Ubrich 2014, табл. 7, PTW 31010: (k_tot)Ḋw,1 = 76,49 → Ḋ_w,1 = 1791,5 мГр/мин; на 8 см в воде 24,991 мГр/мин
+  const rows = Object.fromEntries(d.rows.map((x) => [x.id, x]));
+  rel(rows['ubrich-31010'].dw1, 1791.5, 2e-4);
+  rel(rows['ubrich-31010'].d8, 24.991, 2e-4);
+  // G_L(8)/G_L(1) при L = 0,35 см: 0,0156225/0,98998 (TG-43U1, ур. 4); g_L(8) = 0,884 (HEBD, табл. LII)
+  near(d.gRatio, 0.0156225 / 0.98998, 1e-6);
+  // Λ = 1,092 сГр·ч⁻¹·Ед⁻¹ (HEBD, табл. LIII): по сертификату 1,092·10132 U = 11064 сГр/ч = 1844,0 мГр/мин
+  rel(d.expected, (1.092 * 10132) / 6, 3e-4);
+  // основной вариант — Ubrich MC 31010: Λ·S_K = 1,092·9822/6
+  rel(rows.main.dw1, (1.092 * 9822.7) / 6, 3e-4);
+  near(rows.main.dev, rows['ubrich-31010'].dev + 0, 0.7); // оба ниже сертификата на 2,8–3,1 %
+  assert.ok(rows['ubrich-31010'].dev < -2.7 && rows['ubrich-31010'].dev > -3);
+  // без модели источника — только доза в точке и подсказка
+  const n = computeBrachyPhantom(CO).dose;
+  near(n.point, 23.421, 0.002);
+  assert.equal(n.rows.length, 0);
+  assert.ok(n.messages.some((m) => m.field === 'p_src'));
+  // своя модель: Λ и g_L вручную, L = 0 — точечный источник
+  const o = computeBrachyPhantom({ ...CO, p_src: 'other', p_lambda: '1,1', p_L: '', p_gL8: '0,9', p_main: 'dgmp' }).dose;
+  near(o.gRatio, 1 / 64, 1e-12);
+  near(o.rows[0].d8, (o.rows[0].dw1 / 64) * 0.9, 1e-9);
+  // калибровка не в N_w — дозы нет
+  assert.equal(computeBrachyPhantom({ ...CO, p_calib: 'Na', p_N_unit: 'mGy/nC', p_src: 'co0a86' }).dose.point, undefined);
+});
+
 test('Фантом, ¹⁹²Ir: k_zp по камере (PTW 30013 → M30001), множитель 6,869·10⁻³, мощность дозы 0,2435·K̇', () => {
   const ir = {
     ...IR_CERT,

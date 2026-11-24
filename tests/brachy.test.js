@@ -11,6 +11,8 @@ import {
   PHANTOM_CO60_LITERATURE,
   PTW_MANUAL_FACTORS,
   PHANTOM_KZP_IR,
+  DOSE_SOURCES,
+  UBRICH_KTOT_DW1,
 } from '../src/core/brachy-data.js';
 import {
   kDec,
@@ -37,6 +39,8 @@ import {
   phantomOwnFactor,
   phantomDoseRate,
   applicatorKaSteel,
+  geometryLine,
+  tg43Transverse,
 } from '../src/core/brachy.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''} ${a} ≠ ${b} (±${tol})`);
@@ -291,4 +295,28 @@ test('Фантом: показание (4 положения, транзит, k_
   const co = phantomStrength({ N: 5.4e-2, rate: rd.rate, kTot: 7.1e-3, nuclide: 'Co-60' });
   near(co.mGyh, 7.1e-3 * 5.4e-2 * rd.rate * 1e3, 1e-12);
   near(phantomOwnFactor({ wellMGyh: co.mGyh, N: 5.4e-2, rate: rd.rate, nuclide: 'Co-60' }).kzp, 7.1e-3 / phantomFactor({ calib: 'Nw', kzp: 1, nuclide: 'Co-60' }), 1e-12);
+});
+
+test('TG-43: G_L линейного источника (ур. 4), пересчёт Ḋ_w,1 на 8 см; данные HEBD и Ubrich 2014, табл. 7', () => {
+  // L = 0,35 см: G_L(1) = 0,98998, G_L(8) = 0,0156225 см⁻² (так же в рабочей таблице отделения)
+  near(geometryLine(1, 0.35), 0.98998, 5e-6);
+  near(geometryLine(8, 0.35), 0.0156225, 5e-8);
+  // точечный источник и предел малой длины
+  near(geometryLine(8, 0), 1 / 64, 1e-15);
+  rel(geometryLine(8, 1e-6), 1 / 64, 1e-9);
+  // Ḋ(8) = Ḋ_w,1 · G_L(8)/G_L(1) · g_L(8): ⁶⁰Co Co0.A86, g_L(8) = 0,884
+  const t = tg43Transverse({ dw1: 1791.5, r: 8, L: 0.35, gL: 0.884 });
+  rel(t.value, 24.99, 3e-4);
+  // HEBD: Λ (табл. IV, LIII) и g_L(8) (табл. V, LII)
+  const by = Object.fromEntries(DOSE_SOURCES.map((x) => [x.id, x]));
+  assert.equal(by['mhdr-v2'].lambda, 1.109);
+  assert.equal(by['vs2000'].L, 0.5);
+  assert.equal(by['vs2000'].gL8, 0.982);
+  assert.equal(by.co0a86.lambda, 1.092);
+  assert.equal(by.gk60m21.lambda, 1.089);
+  // Ubrich 2014, табл. 7: Co0.A86 и μSelectron V2
+  assert.deepEqual(UBRICH_KTOT_DW1.co0a86, { '30015': 77.18, '30016': 77.02, '31010': 76.49 });
+  assert.equal(UBRICH_KTOT_DW1['mhdr-v2']['30016'], 74.55);
+  // Λ по Ubrich (табл. 3) для Co0.A86 ≈ (k_tot)Ḋw,1/(k_tot)K̇a,100 при одной камере: 76,49/6,99e-3 → 1,094 сГр·ч⁻¹·Ед⁻¹
+  near(76.49 / 6.99e-3 / 1e4, 1.094, 0.001);
 });

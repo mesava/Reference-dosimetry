@@ -10,6 +10,8 @@ const REF = {
   ubrich12: 'Ubrich 2012, магистерская диссертация (TU Kaiserslautern)',
   ubrich14: 'Ubrich et al. 2014, Z. Med. Phys. 24 138–52',
   azhari: 'Azhari et al. 2012, J. Med. Phys. 37 183–92',
+  hebd: 'Perez-Calatayud et al. 2012, AAPM Report 229 (HEBD, AAPM/ESTRO)',
+  tg43: 'Rivard et al. 2004, Med. Phys. 31 633–74 (TG-43U1)',
 };
 export { REF as BRACHY_REF };
 
@@ -179,3 +181,40 @@ export const PHANTOM_CO60_LITERATURE = [
  * с сертификатом источника (без аппликатора) показание умножают на k_A.
  */
 export const APPLICATOR_KA_STEEL = { 'Ir-192': 1.0165, 'Co-60': 1.0267 };
+
+/**
+ * Источники HDR для поглощённой дозы в воде по TG-43 (консенсусные данные HEBD, Perez-Calatayud 2012):
+ * Λ — постоянная мощности дозы, сГр·ч⁻¹·Ед⁻¹ (¹⁹²Ir — табл. IV, ⁶⁰Co — табл. LIII); L — активная длина, см;
+ * gL8 — радиальная функция g_L(8 см) (¹⁹²Ir — табл. V, для mHDR-v1 — значение для неограниченной среды
+ * в скобках; ⁶⁰Co — табл. LII). id совпадают с KSM_SOURCES, где это та же модель. VariSource Classic в HEBD нет —
+ * только для (k_tot)Ḋw,1 Ubrich 2014.
+ */
+export const DOSE_SOURCES = [
+  { id: 'mhdr-v1', nuclide: 'Ir-192', name: 'Nucletron microSelectron mHDR-v1 (classic)', lambda: 1.116, L: 0.35, gL8: 0.97 },
+  { id: 'mhdr-v2', nuclide: 'Ir-192', name: 'Nucletron microSelectron mHDR-v2', lambda: 1.109, L: 0.35, gL8: 0.972 },
+  { id: 'vs2000', nuclide: 'Ir-192', name: 'Varian VariSource VS2000', lambda: 1.1, L: 0.5, gL8: 0.982 },
+  { id: 'buchler', nuclide: 'Ir-192', name: 'E&Z BEBIG Buchler', lambda: 1.117, L: 0.13, gL8: 0.971 },
+  { id: 'gammamed-12i', nuclide: 'Ir-192', name: 'Varian GammaMed HDR 12i', lambda: 1.118, L: 0.35, gL8: 0.968 },
+  { id: 'gammamed-hdr', nuclide: 'Ir-192', name: 'Varian GammaMed HDR Plus', lambda: 1.117, L: 0.35, gL8: 0.968 },
+  { id: 'gi192m11', nuclide: 'Ir-192', name: 'E&Z BEBIG GI192M11', lambda: 1.11, L: 0.35, gL8: 0.968 },
+  { id: 'ir2a85-2', nuclide: 'Ir-192', name: 'E&Z BEBIG Ir2.A85-2', lambda: 1.109, L: 0.35, gL8: 0.968 },
+  { id: 'm19', nuclide: 'Ir-192', name: 'SPEC M-19', lambda: 1.114, L: 0.35, gL8: 0.969 },
+  { id: 'flexisource', nuclide: 'Ir-192', name: 'Flexisource (Isodose Control / Elekta)', lambda: 1.113, L: 0.35, gL8: 0.968 },
+  { id: 'varisource-classic', nuclide: 'Ir-192', name: 'Varian VariSource Classic', lambda: null, L: null, gL8: null },
+  { id: 'gk60m21', nuclide: 'Co-60', name: 'E&Z BEBIG GK60M21', lambda: 1.089, L: 0.35, gL8: 0.884 },
+  { id: 'co0a86', nuclide: 'Co-60', name: 'E&Z BEBIG Co0.A86', lambda: 1.092, L: 0.35, gL8: 0.884 },
+].map((x) => ({ ...x, ref: x.lambda ? `${REF.hebd}, ${x.nuclide === 'Co-60' ? 'табл. LII, LIII' : 'табл. IV, V'}` : null }));
+
+/**
+ * Общий множитель для референсной мощности поглощённой дозы в воде на 1 см (k_tot)Ḋw,1: Ḋ_w,1 = (k_tot)Ḋw,1 · N_Dw · M
+ * (Ubrich 2014, ур. 6, табл. 7; Монте-Карло, расширенная статистическая неопределённость 0,3 %). Ḋ_w,1 — в тех же
+ * единицах времени, что M. Зависит от геометрии источника — только для перечисленных моделей и камер PTW.
+ */
+export const UBRICH_KTOT_DW1 = {
+  'mhdr-v2': { '30015': 74.2, '30016': 74.55, '31010': 74.07 },
+  'mhdr-v1': { '30015': 74.22, '30016': 74.6, '31010': 74.16 },
+  'gammamed-12i': { '30015': 74.32, '30016': 74.54, '31010': 74.13 },
+  'varisource-classic': { '30015': 69.25, '30016': 69.59, '31010': 69.15 },
+  co0a86: { '30015': 77.18, '30016': 77.02, '31010': 76.49 },
+};
+export const UBRICH_KTOT_DW1_REF = `${REF.ubrich14}, ур. (6), табл. 7`;

@@ -4,7 +4,7 @@
 import { L } from './i18n.js';
 import { parseNumber, isBlank, pressureToKPa, PRESSURE_UNITS, ru } from './units.js';
 import { temperaturePressure } from './common.js';
-import { HALF_LIVES, KSM_SOURCES, PHANTOM_CO60, PHANTOM_CO60_LITERATURE, APPLICATOR_KA_STEEL } from './brachy-data.js';
+import { HALF_LIVES, KSM_SOURCES, PHANTOM_CO60, PHANTOM_CO60_LITERATURE, APPLICATOR_KA_STEEL, DOSE_SOURCES, UBRICH_KTOT_DW1, UBRICH_KTOT_DW1_REF } from './brachy-data.js';
 import {
   halfLifeDays,
   kDec,
@@ -25,6 +25,7 @@ import {
   phantomKzp,
   phantomFactor,
   PHANTOM_N_UNITS,
+  tg43Transverse,
 } from './brachy.js';
 
 const REF = {
@@ -33,6 +34,8 @@ const REF = {
   ptw9193: 'руководство PTW 9193 (D402.131.00/05, 2017)',
   azhari: 'Azhari et al. 2012, J. Med. Phys. 37 183–92',
   ubrich14: 'Ubrich et al. 2014, Z. Med. Phys. 24 138–52',
+  hebd: 'Perez-Calatayud et al. 2012, AAPM Report 229 (HEBD, AAPM/ESTRO)',
+  tg43: 'Rivard et al. 2004, Med. Phys. 31 633–74 (TG-43U1)',
 };
 
 const blank3 = () => ['', '', ''];
@@ -113,6 +116,11 @@ export const BRACHY_DEFAULTS = {
   p_main: '', // основной вариант
   p_ktot: '', // свой k_tot (по сличению с колодезной камерой)
   p_wellK: '', // ОМВК по колодезной камере на время измерения в фантоме, мГр/ч — для своего k_tot
+  // поглощённая доза в воде: модель источника (DOSE_SOURCES) или 'other' — свои Λ, L, g_L(8 см)
+  p_src: '',
+  p_lambda: '',
+  p_L: '',
+  p_gL8: '',
 };
 
 /** Нормализация черновика: недостающие поля — по умолчанию, массивы — нужной формы. */
@@ -354,6 +362,69 @@ export function phantomVariants({ nuclide, calib, kzpChamber, kzpOwn, kQ = 1, ka
   return list;
 }
 
+/** Расстояние до точки измерения в фантоме PTW 9193, см (руководство PTW, DGMP 13). */
+const PHANTOM_R = 8;
+
+/**
+ * Поглощённая доза в воде по измерению в фантоме (только калибровка N_w):
+ * — в точке измерения Ḋ_w = N_D,w · Ṁ (руководство PTW 9193, ур. 15; среда — ПММА фантома);
+ * — референсная Ḋ_w,1 на 1 см в воде: (k_tot)Ḋw,1 · N_D,w · Ṁ (Ubrich 2014, ур. 6, табл. 7) и Λ · S_K (TG-43U1, ур. 1;
+ *   Λ — HEBD) по основному варианту и по сертификату;
+ * — Ḋ_w на 8 см в воде на поперечной оси: Ḋ_w,1 · G_L(8)/G_L(1) · g_L(8) (TG-43U1, ур. 1, 4).
+ * Мощности — мГр/мин.
+ */
+function phantomDose({ f, N, rate, kQ, holes, kHole, main, expectedU }) {
+  const messages = [];
+  const add = makeAdd(messages);
+  const dose = { messages, rows: [] };
+  if (f.p_calib !== 'Nw') {
+    add('info', L('Поглощённая доза в воде считается при калибровке камеры в поглощённой дозе в воде (N_w).', 'The absorbed dose to water is calculated for a chamber calibrated in absorbed dose to water (N_w).'), null, 'p_calib');
+    return dose;
+  }
+  const toMin = (perHour) => perHour / 60;
+  dose.point = toMin(N * rate * kQ * 1e3);
+  dose.holes = holes.map((h) => ({ i: h.i, value: toMin(N * h.corr * kHole * kQ * 1e3) }));
+
+  // модель источника: Λ, L, g_L(8)
+  let src = DOSE_SOURCES.find((x) => x.id === f.p_src && x.nuclide === f.nuclide) ?? null;
+  let lambda = src?.lambda ?? NaN;
+  let len = src?.L ?? NaN;
+  let gL8 = src?.gL8 ?? NaN;
+  let ref = src?.ref ?? null;
+  if (f.p_src === 'other') {
+    lambda = parseNumber(f.p_lambda);
+    len = isBlank(f.p_L) ? 0 : parseNumber(f.p_L);
+    gL8 = parseNumber(f.p_gL8);
+    ref = null;
+    src = { id: 'other', name: L('своя модель', 'own model') };
+    if (!(lambda > 0)) add('info', L('Введите Λ источника (сГр·ч⁻¹·Ед⁻¹) из консенсусных данных TG-43 для вашей модели или из паспорта.', 'Enter the source Λ (cGy·h⁻¹·U⁻¹) from the TG-43 consensus data for your model or from the source documentation.'), REF.tg43, 'p_lambda');
+    if (!(len >= 0)) add('error', L('Не удалось прочитать активную длину L.', 'Could not read the active length L.'), null, 'p_L');
+  }
+  dose.source = src ? { id: src.id, name: src.name, lambda, L: len, gL8, ref } : null;
+  if (!src) {
+    add('info', L('Выберите модель источника — тогда появятся Ḋ_w,1 на 1 см и Ḋ_w на 8 см в воде (TG-43).', 'Choose the source model to get Ḋ_w,1 at 1 cm and Ḋ_w at 8 cm in water (TG-43).'), null, 'p_src');
+    return dose;
+  }
+
+  if (lambda > 0 && main && Number.isFinite(main.U)) dose.rows.push({ id: 'main', label: L(`Λ · S_K, S_K — основной вариант (${main.label})`, `Λ · S_K, S_K from the main variant (${main.label})`), dw1: (lambda * main.U) / 6, ref: `${REF.tg43}, ур. (1)` });
+  const ub = UBRICH_KTOT_DW1[src.id];
+  if (ub) {
+    for (const [ch, k] of Object.entries(ub)) dose.rows.push({ id: `ubrich-${ch}`, label: L(`Ubrich 2014, (k_tot)Ḋw,1 для PTW ${ch}`, `Ubrich 2014, (k_tot)Ḋw,1 for PTW ${ch}`), factor: k, dw1: toMin(k * N * rate * 1e3), ref: UBRICH_KTOT_DW1_REF, note: L('для камеры из статьи', 'for the chamber in the paper') });
+  } else if (src.id !== 'other') {
+    add('info', L('Для этой модели источника в Ubrich 2014 (табл. 7) нет (k_tot)Ḋw,1: Ḋ_w,1 — только через Λ · S_K.', 'Ubrich 2014 (Table 7) gives no (k_tot)Ḋw,1 for this source model: Ḋ_w,1 only via Λ · S_K.'), UBRICH_KTOT_DW1_REF, 'p_src');
+  }
+  if (!(lambda > 0) && src.id !== 'other') add('info', L('Для этой модели в HEBD нет Λ и g_L: Ḋ_w на 8 см в воде не пересчитывается (можно выбрать «Другая» и ввести свои).', 'HEBD gives no Λ and g_L for this model: Ḋ_w at 8 cm in water is not calculated (choose “Other” and enter your own).'), REF.hebd, 'p_src');
+  if (lambda > 0 && Number.isFinite(expectedU)) dose.expected = (lambda * expectedU) / 6;
+  const to8 = len >= 0 && gL8 > 0;
+  if (to8) dose.gRatio = tg43Transverse({ dw1: 1, r: PHANTOM_R, L: len, gL: 1 }).gRatio;
+  for (const row of dose.rows) {
+    if (to8) row.d8 = tg43Transverse({ dw1: row.dw1, r: PHANTOM_R, L: len, gL: gL8 }).value;
+    if (Number.isFinite(dose.expected)) row.dev = ((row.dw1 - dose.expected) / dose.expected) * 100;
+  }
+  if (to8 && Number.isFinite(dose.expected)) dose.expected8 = dose.expected * dose.gRatio * gL8;
+  return dose;
+}
+
 /**
  * Лист «Фантом PTW 9193»: DGMP 13 / руководство PTW; 4 положения камеры, у каждого свои T и P (пусто — как у предыдущего).
  * @returns {object} { ok, rate, Dw, variants, main, compare, ktotFromWell, messages }
@@ -471,6 +542,8 @@ export function computeBrachyPhantom(input, { offsetMin = 0 } = {}) {
     out.expected = expected;
     for (const v of out.variants) v.dev = ((v.U - expected) / expected) * 100;
   }
+  const kHole = kPol * kS * kElec * (60 / tau);
+  out.dose = phantomDose({ f, N, rate, kQ, holes, kHole, main, expectedU: out.expected });
   if (!main) {
     add('info', L('Для ⁶⁰Co в DGMP 13 данных нет: выберите основной вариант в таблице или определите свой k_tot сличением с колодезной камерой на том же источнике.', 'DGMP 13 has no data for ⁶⁰Co: choose the main variant in the table or determine your own k_tot by comparison with the well-type chamber on the same source.'), `${REF.ubrich14}; ${REF.azhari}`, 'p_main');
     return out;
@@ -484,4 +557,4 @@ export function computeBrachyPhantom(input, { offsetMin = 0 } = {}) {
   return out;
 }
 
-export { STRENGTH_UNITS, ACTIVITY_UNITS, GAMMA_UNITS, WELL_N_UNITS, PHANTOM_N_UNITS, CURRENT_UNITS, KSM_SOURCES };
+export { STRENGTH_UNITS, ACTIVITY_UNITS, GAMMA_UNITS, WELL_N_UNITS, PHANTOM_N_UNITS, CURRENT_UNITS, KSM_SOURCES, DOSE_SOURCES };

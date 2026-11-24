@@ -553,4 +553,22 @@ export function applicatorKaSteel(nuclide) {
   return Object.hasOwn(APPLICATOR_KA_STEEL, nuclide) ? APPLICATOR_KA_STEEL[nuclide] : NaN;
 }
 
+/**
+ * Геометрический фактор линейного источника на поперечной оси (θ = 90°): G_L(r) = β/(L·r), β = 2·arctg(L/(2r)),
+ * TG-43U1, ур. (4); при L = 0 — точечный источник, 1/r². r и L — в см, результат — см⁻².
+ */
+export function geometryLine(r, L) {
+  if (!(r > 0) || !(L >= 0)) return NaN;
+  return L === 0 ? 1 / (r * r) : (2 * Math.atan(L / (2 * r))) / (L * r);
+}
+
+/**
+ * Мощность поглощённой дозы в воде на поперечной оси по TG-43 (F(r, 90°) = 1): Ḋ(r) = Ḋ_w,1 · G_L(r)/G_L(1) · g_L(r),
+ * TG-43U1, ур. (1). Ḋ_w,1 = Λ · S_K (ур. 1 при r = 1 см): Λ — сГр·ч⁻¹·Ед⁻¹, S_K — Ед → сГр/ч.
+ */
+export function tg43Transverse({ dw1, r, L, gL }) {
+  const g = geometryLine(r, L) / geometryLine(1, L);
+  return { value: dw1 * g * gL, gRatio: g };
+}
+
 export { REF as BRACHY_CORE_REF };

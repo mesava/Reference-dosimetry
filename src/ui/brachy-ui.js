@@ -7,7 +7,7 @@ import { HALF_LIVES, KSM_SOURCES, PTW_TO_DGMP, APPLICATOR_KA_STEEL } from '../co
 import { kDec } from '../core/brachy.js';
 import {
   BRACHY_DEFAULTS, normalizeBrachy, computeBrachyWell, computeBrachyPhantom, fieldTime,
-  STRENGTH_UNITS, ACTIVITY_UNITS, GAMMA_UNITS, WELL_N_UNITS, PHANTOM_N_UNITS, CURRENT_UNITS,
+  STRENGTH_UNITS, ACTIVITY_UNITS, GAMMA_UNITS, WELL_N_UNITS, PHANTOM_N_UNITS, CURRENT_UNITS, DOSE_SOURCES,
 } from '../core/brachy-sheets.js';
 import { $, esc, fmt, fmtSigned, richText, armButton } from './common.js';
 import { renderCells, readCells, setupCells } from './widgets.js';
@@ -192,8 +192,20 @@ function phantomMeasureHtml() {
     <p class="sub-hint">${sub(L('k_pol = (|M+| + |M−|)/(2|M+|); k_s = 3/(4 − M1/M2) при V2 = V1/2 (TRS-492, ур. 32–33).', 'k_pol = (|M+| + |M−|)/(2|M+|); k_s = 3/(4 − M1/M2) for V2 = V1/2 (TRS-492, Eq. 32–33).'))}</p></section>`;
 }
 
+function doseHtml() {
+  const srcs = DOSE_SOURCES.filter((x) => x.nuclide === form.nuclide);
+  const options = [opt('', L('не выбрана', 'not chosen'), form.p_src), ...srcs.map((x) => opt(x.id, x.name, form.p_src)), opt('other', L('другая — ввести Λ, L, g_L(8 см)', 'other: enter Λ, L, g_L(8 cm)'), form.p_src)].join('');
+  const manual = form.p_src === 'other'
+    ? `${num('p_lambda', L('Λ, сГр·ч⁻¹·Ед⁻¹', 'Λ, cGy·h⁻¹·U⁻¹'))}${num('p_L', L('Активная длина L, см (пусто — точечный)', 'Active length L, cm (blank: point source)'))}${num('p_gL8', L('g_L(8 см)', 'g_L(8 cm)'))}`
+    : '';
+  return `<section class="start-card plates-card"><h2><span class="step-no">5</span> ${esc(L('Поглощённая доза в воде', 'Absorbed dose to water'))}</h2>
+    <div class="grid">${select('p_src', L('Модель источника (Λ и g_L по HEBD)', 'Source model (Λ and g_L per HEBD)'), options, { span: ' span-2' })}${manual}</div>
+    <div id="br-dose" aria-live="polite"></div>
+    <p class="sub-hint">${sub(L('В точке измерения Ḋ_w = N_D,w · Ṁ — в ПММА фантома (руководство PTW 9193, ур. 15). Ḋ_w,1 — референсная мощность дозы в воде на 1 см: (k_tot)Ḋw,1 · N_D,w · Ṁ (Ubrich 2014, ур. 6, табл. 7) или Λ · S_K (TG-43U1, ур. 1). На 8 см в воде, на поперечной оси: Ḋ_w,1 · G_L(8)/G_L(1) · g_L(8) (TG-43U1, ур. 1, 4) — это не то же, что доза в точке измерения в фантоме.', 'At the measurement point Ḋ_w = N_D,w · Ṁ, in the PMMA phantom (PTW 9193 manual, Eq. 15). Ḋ_w,1 is the reference dose rate to water at 1 cm: (k_tot)Ḋw,1 · N_D,w · Ṁ (Ubrich 2014, Eq. 6, Table 7) or Λ · S_K (TG-43U1, Eq. 1). At 8 cm in water on the transverse axis: Ḋ_w,1 · G_L(8)/G_L(1) · g_L(8) (TG-43U1, Eq. 1, 4); this is not the same as the dose at the measurement point in the phantom.'))}</p></section>`;
+}
+
 function ownKtotHtml() {
-  return `<section class="start-card plates-card"><h2><span class="step-no">5</span> ${sub(L('Свой k_tot по колодезной камере', 'Own k_tot from the well-type chamber'))}</h2>
+  return `<section class="start-card plates-card"><h2><span class="step-no">6</span> ${sub(L('Свой k_tot по колодезной камере', 'Own k_tot from the well-type chamber'))}</h2>
     <div class="grid">
       ${num('p_wellK', L('ОМВК по колодезной камере на время измерения в фантоме, мГр/ч', 'RAKR from the well-type chamber at the phantom measurement time, mGy/h'), { span: ' span-2' })}
       ${num('p_ktot', L('Свой k_tot', 'Own k_tot'))}
@@ -215,7 +227,7 @@ function render() {
     ${introHtml()}
     ${sourceHtml()}
     ${sheet === 'well' ? `${wellChamberHtml()}${wellMeasureHtml()}` : `${phantomChamberHtml()}${phantomMeasureHtml()}`}
-    ${resultCardHtml(4)}${sheet === 'phantom' ? ownKtotHtml() : ''}
+    ${resultCardHtml(4)}${sheet === 'phantom' ? `${doseHtml()}${ownKtotHtml()}` : ''}
     <div class="actions"><button type="button" data-br="clear">${esc(L('Очистить измерение', 'Clear the measurement'))}</button></div>`;
   for (const el of root.querySelectorAll('.cells[data-series]')) {
     const key = el.dataset.series;
@@ -296,7 +308,7 @@ function phantomResult() {
   const more = [];
   if (r.main) more.push(`S_K = ${uText(r.U)}`);
   if (Number.isFinite(r.A)) more.push(L(`кажущаяся активность ${fmt(r.A, 2)} ГБк (справочно)`, `apparent activity ${fmt(r.A, 2)} GBq (for reference)`));
-  if (Number.isFinite(r.Dw)) more.push(L(`мощность дозы в воде в точке измерения Ḋ_w = N_D,w · Ṁ = ${fmt(r.Dw, 3)} мГр/мин (${fmt(r.Dw / 10, 4)} сГр/мин)`, `water dose rate at the measurement point Ḋ_w = N_D,w · Ṁ = ${fmt(r.Dw, 3)} mGy/min (${fmt(r.Dw / 10, 4)} cGy/min)`));
+  if (Number.isFinite(r.Dw)) more.push(L(`мощность дозы в воде в точке измерения ${fmt(r.Dw, 3)} мГр/мин — раздел 5`, `dose rate to water at the measurement point ${fmt(r.Dw, 3)} mGy/min: section 5`));
   const holes = (r.holes ?? []).map((h) => `${h.i + 1}: ${fmt(h.raw, 4)} → ${fmt(h.corr, 4)}`).join('; ');
   const rows = [
     [L('Положения: среднее → с k_TP и без транзита, нКл', 'Positions: mean → with k_TP, transit removed, nC'), holes],
@@ -313,6 +325,29 @@ function phantomResult() {
         .join('')}</tbody></table></div>`
     : '';
   return `${head}${more.length ? `<p class="sub-hint">${more.map(sub).join('; ')}.</p>` : ''}${table}${factorRows(rows)}${msgHtml(r.messages)}`;
+}
+
+function doseResult(r) {
+  const d = r.dose;
+  if (!d) return '';
+  if (!Number.isFinite(d.point)) return msgHtml(d.messages);
+  const holes = (d.holes ?? []).map((h) => `${h.i + 1}: ${fmt(h.value, 3)}`).join('; ');
+  const head = `<div class="plates-dose"><span>${esc(L('Ḋ_w в точке измерения (8 см в фантоме)', 'Ḋ_w at the measurement point (8 cm in the phantom)'))}</span><b>${esc(fmt(d.point, 3))} ${esc(L('мГр/мин', 'mGy/min'))}</b></div>
+    <p class="sub-hint">${sub(L(`${fmt(d.point / 10, 4)} сГр/мин, ${fmt((d.point * 60) / 1e3, 4)} Гр/ч; по положениям, мГр/мин: ${holes}.`, `${fmt(d.point / 10, 4)} cGy/min, ${fmt((d.point * 60) / 1e3, 4)} Gy/h; by position, mGy/min: ${holes}.`))}</p>`;
+  const cmp = Number.isFinite(d.expected);
+  const cell = (x, n = 3) => `<td class="v">${Number.isFinite(x) ? esc(fmt(x, n)) : '—'}</td>`;
+  const rows = d.rows
+    .map((x) => `<tr${x.id === 'main' ? ' class="current"' : ''}><td>${sub(x.label)}${x.factor ? `<br><small>${sub('(k_tot)Ḋw,1')} = ${esc(fmt(x.factor, 2))}${x.note ? `, ${sub(x.note)}` : ''}</small>` : ''}${x.ref ? `<br><small class="ref">${esc(refText(x.ref))}</small>` : ''}</td>${cell(x.dw1, 1)}${cell(x.d8)}${cmp ? `<td class="v">${esc(fmtSigned(x.dev, 2))} %</td>` : ''}</tr>`)
+    .join('');
+  const certRow = cmp ? `<tr><td>${sub(L('По сертификату: Λ · S_K на дату измерения', 'Certificate: Λ · S_K at the measurement date'))}</td>${cell(d.expected, 1)}${cell(d.expected8)}<td class="v">—</td></tr>` : '';
+  const table = d.rows.length
+    ? `<div class="table-wrap"><table class="factors br-variants"><thead><tr><th>${esc(L('Способ', 'Method'))}</th><th class="v">${sub(L('Ḋ_w,1 (1 см), мГр/мин', 'Ḋ_w,1 (1 cm), mGy/min'))}</th><th class="v">${sub(L('Ḋ_w (8 см, вода), мГр/мин', 'Ḋ_w (8 cm, water), mGy/min'))}</th>${cmp ? `<th class="v">${esc(L('От сертификата', 'From the certificate'))}</th>` : ''}</tr></thead><tbody>${rows}${certRow}</tbody></table></div>`
+    : '';
+  const s = d.source;
+  const info = s && Number.isFinite(d.gRatio)
+    ? `<p class="sub-hint">${sub(L(`${s.name}: Λ = ${fmt(s.lambda, 3)} сГр·ч⁻¹·Ед⁻¹, L = ${fmt(s.L, 2)} см, G_L(8)/G_L(1) = ${fmt(d.gRatio, 6)}, g_L(8) = ${fmt(s.gL8, 3)}`, `${s.name}: Λ = ${fmt(s.lambda, 3)} cGy·h⁻¹·U⁻¹, L = ${fmt(s.L, 2)} cm, G_L(8)/G_L(1) = ${fmt(d.gRatio, 6)}, g_L(8) = ${fmt(s.gL8, 3)}`))}${s.ref ? ` <span class="ref">(${esc(refText(s.ref))})</span>` : ''}.</p>`
+    : '';
+  return `${head}${table}${info}${msgHtml(d.messages)}`;
 }
 
 /** ОМВК листа «Колодезная камера», пересчитанная на время измерения в фантоме (тот же нуклид). */
@@ -341,6 +376,8 @@ function live() {
     if (use) use.disabled = !Number.isFinite(r.ktotFromWell);
     const take = document.querySelector('#brachy-root [data-br="wellk"]');
     if (take) take.disabled = !Number.isFinite(wellKFromSheet());
+    const dose = $('#br-dose');
+    if (dose) dose.innerHTML = doseResult(r);
   }
   box.innerHTML = sheet === 'well' ? wellResult() : phantomResult();
 }
