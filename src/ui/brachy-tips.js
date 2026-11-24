@@ -225,6 +225,14 @@ const TIPS = {
     pop('Отклонение от исходного', ['(M − M<sub>исх</sub>)/M<sub>исх</sub>, где M — среднее показание с k<sub>TP</sub> и поправкой на распад к дате исходного значения. Допуск ±0,5 %; для второй камеры — ±0,1 % от текущего среднего отношения. Больше — выяснить причину, возможно, повторно калибровать камеру.'], `${T492}, разд. 8.5, 8.5.1.`),
     pop('Deviation from the baseline', ['(M − M<sub>base</sub>)/M<sub>base</sub>, where M is the mean reading with k<sub>TP</sub> and the decay correction to the baseline date. Tolerance ±0.5%; for a redundant chamber ±0.1% of the running mean ratio. Beyond that, investigate; recalibration is an option.'], 'IAEA TRS-492 (2023), Sec. 8.5, 8.5.1.'),
   ),
+  u_scen: () => L(
+    pop('Типовые значения бюджета', ['Примеры TRS-492, табл. 10 (HDR ¹⁹²Ir): <b>сценарий 1</b> — эталонный дозиметр, условия контролируются (положение источника, плотность воздуха), та же модель источника, что при калибровке, — U ≈ 1,7 %; <b>сценарий 2</b> — условия не контролируются, часть поправок не вводится, модели источника нет в табл. 8 (+2 %) — U ≈ 5,7 %. TRS-492: оценку надо делать по своей процедуре и оборудованию — свои значения вводятся в «Своё».'], `${T492}, разд. 9, табл. 10.`),
+    pop('Example budget values', ['Examples of TRS-492 Table 10 (HDR ¹⁹²Ir): <b>scenario 1</b>, a reference-class dosimeter, controlled conditions (source position, air density), the same source model as at calibration: U ≈ 1.7%; <b>scenario 2</b>, uncontrolled conditions, some corrections not applied, the source model not in Table 8 (+2%): U ≈ 5.7%. TRS-492: the estimate must follow your own procedure and equipment; enter your values under “Own”.'], 'IAEA TRS-492 (2023), Sec. 9, Table 10.'),
+  ),
+  u_c: () => L(
+    pop('Неопределённость ОМВК', ['u<sub>c</sub> — суммарная стандартная неопределённость: корень из суммы квадратов строк бюджета (составляющие считаются некоррелированными). U = k · u<sub>c</sub> при k = 2 (около 95 %). Для поглощённой дозы в воде по TG-43 добавляется неопределённость Λ: по TRS-492 при u(Λ) = 0,5 % и сценарии 1 U ≈ 1,9 %.'], `${T492}, разд. 9, табл. 10; прил. VI.`),
+    pop('RAKR uncertainty', ['u<sub>c</sub> is the combined standard uncertainty: root sum of squares of the budget rows (components assumed uncorrelated). U = k · u<sub>c</sub> with k = 2 (about 95%). For the absorbed dose to water per TG-43, the Λ uncertainty is added: per TRS-492, with u(Λ) = 0.5% and scenario 1, U ≈ 1.9%.'], 'IAEA TRS-492 (2023), Sec. 9, Table 10; App. VI.'),
+  ),
   repeat: () => L(
     pop('Повторяемость', ['Относительное стандартное отклонение показаний серии от их среднего. Исходные данные повторяемости набирают большим числом измерений при вводе в работу; отклонение за установленные пределы — исследовать. Здесь предупреждение — при разбросе больше 0,5 %.'], `${T492}, разд. 8.4.`),
     pop('Repeatability', ['Relative standard deviation of the series readings from their mean. Baseline repeatability data are collected with many measurements at commissioning; a value outside the set limits is investigated. Here a warning appears for a spread above 0.5%.'], 'IAEA TRS-492 (2023), Sec. 8.4.'),
@@ -235,7 +243,7 @@ Object.assign(TIPS, {
   w_T0: TIPS.kTP, p_T0: TIPS.kTP, w_kelec: TIPS.kElec, p_kelec: TIPS.kElec, w_leak: TIPS.kLeak,
   w_pol_plus: TIPS.kPol, w_ks_m1: TIPS.kS, w_ksm_mode: TIPS.kSm, w_ksm: TIPS.kSm, p_ka_value: TIPS.p_ka, kA: TIPS.p_ka,
   kzp: TIPS.p_kzp, p_wellK: TIPS.p_ktot, w_P0: TIPS.kTP, p_P0: TIPS.kTP,
-  x_P0: TIPS.x_T0, x_ref_kelec: TIPS.kElec, x_ref_leak: TIPS.kLeak, x_fld_leak: TIPS.kLeak, st_half: TIPS.st_check_nuclide, st_T0: TIPS.kTP, st_P0: TIPS.kTP,
+  x_P0: TIPS.x_T0, x_ref_kelec: TIPS.kElec, x_ref_leak: TIPS.kLeak, x_fld_leak: TIPS.kLeak, st_half: TIPS.st_check_nuclide, p_NU: TIPS.u_c, w_NU: TIPS.u_c, st_T0: TIPS.kTP, st_P0: TIPS.kTP,
 });
 
 /** Атрибуты подсказки для элемента (пусто, если подсказки нет); focus — сделать элемент фокусируемым с клавиатуры. */

@@ -236,3 +236,36 @@ test('брахитерапия: сличение рабочей камеры п�
   assert.match(st, /в пределах ±0,1 %/);
   assert.deepEqual(errors, []);
 });
+
+test('брахитерапия: бюджет неопределённости на листах колодезной камеры и фантома', async () => {
+  const { page, errors } = await openPage(browser);
+  const pause = (ms = 250) => page.waitForTimeout(ms);
+  await page.goto(`${server.url}/index.html#brachy/well`);
+  await page.waitForSelector('#br_w_N');
+  await page.fill('#br_w_N', '4,836e5');
+  await page.selectOption('#br_w_ksm_mode', 'same');
+  await pause();
+  const inp = page.locator('.cells[data-series="w_I"] input');
+  for (const [i, v] of ['10,00', '10,02', '10,01'].entries()) await inp.nth(i).fill(v);
+  await pause();
+  // сценарий 1 TRS-492, табл. 10: u_c = 0,80 %, U = 1,6 %
+  assert.match(await page.locator('#br-unc-sum').innerText(), /±1,6 %[\s\S]*= 0,80 %/);
+  // U(N) из сертификата камеры и своё значение строки — поле не теряет фокус
+  await page.fill('#br_w_NU', '1,5');
+  await page.locator('input[data-uk="setup"]').fill('0,5');
+  await pause();
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset?.uk), 'setup');
+  assert.match(await page.locator('tr[data-ur="cal"] .u-val').innerText(), /0,75/);
+  assert.match(await page.locator('#br-unc-sum').innerText(), /±1,9 %[\s\S]*= 0,96 %/);
+  await page.selectOption('#br_u_scen', '2');
+  await pause();
+  assert.match(await page.locator('tr[data-ur="tp"] .u-val').innerText(), /0,50/);
+  await page.reload();
+  await page.waitForSelector('#br-unc-sum');
+  assert.equal(await page.inputValue('input[data-uk="setup"]'), '0,5');
+  // фантом: строки по Ubrich 2014
+  await page.goto(`${server.url}/index.html#brachy/phantom`);
+  await page.waitForSelector('#br-unc-sum');
+  assert.equal(await page.locator('tr[data-ur]').count() >= 4, true);
+  assert.deepEqual(errors, []);
+});

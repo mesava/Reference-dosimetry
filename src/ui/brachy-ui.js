@@ -15,6 +15,8 @@ import { scatterChart, legendSwatch } from './chart.js';
 import { renderCells, readCells, setupCells } from './widgets.js';
 import { cellsHtml } from './journal-common.js';
 import { tipAttr } from './brachy-tips.js';
+import { wellBudget, phantomBudget } from '../core/brachy-unc.js';
+import { parseOverrides } from '../core/uncertainty.js';
 
 const KEY = 'reference-dosimetry.brachy';
 const SHEETS = ['well', 'sweet', 'phantom', 'cross', 'stab', 'decay'];
@@ -184,6 +186,7 @@ function phantomChamberHtml() {
       ${text('p_serial', L('Заводской номер', 'Serial number'))}
       ${select('p_calib', L('Калибровка в ⁶⁰Co', 'Calibration in ⁶⁰Co'), calibs.map(([k, t]) => opt(k, t, form.p_calib)).join(''), { span: ' span-2' })}
       ${numUnit('p_N', L('Калибровочный коэффициент', 'Calibration coefficient'), PHANTOM_N_UNITS, 'p_N_unit', { span: ' span-2' })}
+      ${num('p_NU', L('U(N), k = 2, %', 'U(N), k = 2, %'))}
       ${num('p_T0', L('T0 из сертификата, °C', 'T0 from the certificate, °C'))}
       ${numUnit('p_P0', L('P0 из сертификата', 'P0 from the certificate'), PRESSURE_UNITS, 'p_P0_unit')}
       ${num('p_kQ', L('k_Q (¹⁹²Ir к ⁶⁰Co)', 'k_Q (¹⁹²Ir to ⁶⁰Co)'), { hint: L('Для современных компактных камер — 1 (руководство PTW, табл. 1)', 'For modern compact chambers: 1 (PTW manual, Table 1)') })}
@@ -508,6 +511,58 @@ function stabResult() {
   return `${head}<div class="actions"><button type="button" data-br="st-base">${esc(L('Записать это значение как исходное', 'Record this value as the baseline'))}</button></div>${factorRows(rows)}${msgHtml(r.messages)}`;
 }
 
+// ------------------------------------------------------------ бюджет неопределённости (колодезная камера, фантом)
+/** Бюджет листа: колодезная камера — TRS-492, табл. 10; фантом — Ubrich 2014. Возвращает { b, value } (value — мГр/ч). */
+function budgetFor() {
+  const w = computeBrachyWell(form, { offsetMin: offsetMin() });
+  const wb = wellBudget({ scenario: form.u_scen, NU: parseNumber(form.w_NU), ksmMode: form.w_ksm_mode, readings: w.readings, over: form.u_over_w });
+  if (sheet === 'well') return { b: wb, value: w.ok ? w.mGyh : NaN, which: 'w' };
+  const r = computeBrachyPhantom(form, { offsetMin: offsetMin() });
+  const b = phantomBudget({ scenario: form.u_scen, NU: parseNumber(form.p_NU), mainId: r.main?.id, nuclide: form.nuclide, holes: r.holes, kA: r.main?.kA, wellUc: wb.uc, over: form.u_over_p });
+  return { b, value: r.main ? r.mGyh : NaN, which: 'p' };
+}
+
+const uNum = (v) => (Number.isFinite(v) ? fmt(v, 2) : '—');
+
+function uncHtml(n) {
+  const { b, which } = budgetFor();
+  const over = parseOverrides(form[`u_over_${which}`]);
+  const rows = b.rows
+    .map((r) => `<tr data-ur="${esc(r.key)}"><td>${sub(r.label)}<br><small class="u-how">${sub(r.how)}</small>${r.ref ? ` <small class="ref">(${esc(refText(r.ref))})</small>` : ''}</td><td class="v u-def">${esc(uNum(r.def))}</td><td class="v"><input type="text" class="num u-own" inputmode="decimal" data-uk="${esc(r.key)}" aria-label="${esc(L(`Своё значение: ${r.label}`, `Own value: ${r.label}`))}" value="${esc(over[r.key] ?? '')}"></td><td class="v u-val">${esc(uNum(r.value))}</td></tr>`)
+    .join('');
+  const scen = [['1', L('сценарий 1: контролируемые условия', 'scenario 1: controlled conditions')], ['2', L('сценарий 2: условия не контролируются', 'scenario 2: conditions not controlled')]];
+  return `<section class="start-card plates-card"><h2><span class="step-no">${n}</span> ${esc(L('Неопределённость', 'Uncertainty'))}</h2>
+    <div class="grid">${select('u_scen', L('Типовые значения', 'Example values'), scen.map(([k, t]) => opt(k, t, form.u_scen)).join(''), { span: ' span-2' })}</div>
+    <div class="table-wrap"><table class="factors br-variants br-unc"><thead><tr><th>${esc(L('Составляющая', 'Component'))}</th><th class="v">${esc(L('Типовое, %', 'Example, %'))}</th><th class="v">${esc(L('Своё, %', 'Own, %'))}</th><th class="v">${esc(L('Принято, %', 'Used, %'))}</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div id="br-unc-sum" aria-live="polite"></div>
+    <p class="sub-hint">${sub(which === 'w'
+      ? L('Относительные стандартные неопределённости (k = 1), складываются в квадратуре; U = 2·u_c. Значения TRS-492, табл. 10 — пример для HDR ¹⁹²Ir: оцените свои по своей процедуре и оборудованию (лучше — по результатам контроля приборов) и введите в «Своё».', 'Relative standard uncertainties (k = 1), added in quadrature; U = 2·u_c. TRS-492 Table 10 values are an example for HDR ¹⁹²Ir: estimate your own from your procedure and equipment (preferably from instrument QC) and enter them under “Own”.')
+      : L('Относительные стандартные неопределённости (k = 1), складываются в квадратуре; U = 2·u_c. Ubrich 2014 даёт расширенные неопределённости множителя: Монте-Карло 0,9 %, калибровка PTB 2,7 %, DGMP 13 — 5,8 %; N_D,w (PTW) 1,1 %, показание 0,9 %. Свои значения — в «Своё».', 'Relative standard uncertainties (k = 1), added in quadrature; U = 2·u_c. Ubrich 2014 gives expanded factor uncertainties: Monte Carlo 0.9%, PTB calibration 2.7%, DGMP 13 5.8%; N_D,w (PTW) 1.1%, reading 0.9%. Enter your own under “Own”.'))}</p>
+    <div class="actions"><button type="button" data-br="u-clear">${esc(L('Очистить свои значения', 'Clear own values'))}</button></div></section>`;
+}
+
+/** Обновляет числа бюджета без перерисовки полей «Своё». */
+function uncLive() {
+  const sum = $('#br-unc-sum');
+  if (!sum) return;
+  const { b, value } = budgetFor();
+  const keys = new Set(b.rows.map((r) => r.key));
+  const shown = [...document.querySelectorAll('#brachy-root tr[data-ur]')].map((tr) => tr.dataset.ur);
+  if (shown.length !== keys.size || shown.some((k) => !keys.has(k))) {
+    render();
+    return;
+  }
+  for (const r of b.rows) {
+    const tr = document.querySelector(`#brachy-root tr[data-ur="${r.key}"]`);
+    tr.querySelector('.u-def').textContent = uNum(r.def);
+    tr.querySelector('.u-val').textContent = uNum(r.value);
+    tr.querySelector('.u-how').innerHTML = sub(r.how);
+  }
+  const abs = Number.isFinite(value) ? L(` → ±${fmt((value * b.U) / 100, 3)} мГр/ч на 1 м (ОМВК ${fmt(value, 3)} мГр/ч)`, ` → ±${fmt((value * b.U) / 100, 3)} mGy/h at 1 m (RAKR ${fmt(value, 3)} mGy/h)`) : '';
+  sum.innerHTML = `<div class="plates-dose"><span${tipAttr('u_c', { focus: true })}>${sub(L('Расширенная неопределённость ОМВК, k = 2', 'Expanded uncertainty of the RAKR, k = 2'))}</span><b>±${esc(fmt(b.U, 1))} %</b></div>
+    <p class="sub-hint">${sub(L(`u_c = ${fmt(b.uc, 2)} %; U = ${fmt(b.k, 0)} · u_c = ${fmt(b.U, 2)} %${abs}.`, `u_c = ${fmt(b.uc, 2)}%; U = ${fmt(b.k, 0)} · u_c = ${fmt(b.U, 2)}%${abs}.`))}</p>${msgHtml(b.messages)}`;
+}
+
 function resultCardHtml(n) {
   return `<section class="start-card plates-card"><h2><span class="step-no">${n}</span> ${esc(L('Результат', 'Result'))}</h2><div id="br-result" aria-live="polite"></div></section>`;
 }
@@ -517,15 +572,15 @@ function sheetBody() {
   if (sheet === 'decay') return `${sourceHtml()}${decayParamsHtml()}${resultCardHtml(3)}`;
   if (sheet === 'cross') return `${crossSetupHtml()}${crossChamberHtml(2, 'x_ref_', L('Эталонная камера', 'Reference chamber'))}${crossChamberHtml(3, 'x_fld_', L('Рабочая камера', 'Field chamber'))}${resultCardHtml(4)}`;
   if (sheet === 'stab') return `${stabSetupHtml()}${stabMeasureHtml()}${resultCardHtml(3)}`;
-  if (sheet === 'well') return `${sourceHtml()}${wellChamberHtml()}${wellMeasureHtml()}${resultCardHtml(4)}`;
-  return `${sourceHtml()}${phantomChamberHtml()}${phantomMeasureHtml()}${resultCardHtml(4)}${doseHtml()}${ownKtotHtml()}`;
+  if (sheet === 'well') return `${sourceHtml()}${wellChamberHtml()}${wellMeasureHtml()}${resultCardHtml(4)}${uncHtml(5)}`;
+  return `${sourceHtml()}${phantomChamberHtml()}${phantomMeasureHtml()}${resultCardHtml(4)}${doseHtml()}${ownKtotHtml()}${uncHtml(7)}`;
 }
 
 function render() {
   const root = $('#brachy-root');
   if (!root) return;
   root.innerHTML = `${navHtml()}
-    <div class="plates-banner"><b>${esc(L('Раздел в разработке', 'Section in development'))}</b>: ${esc(L('расчёт работает; бюджет неопределённости, запись в журнал и протокол появятся на следующих этапах. Черновик формы хранится в этом браузере.', 'the calculation works; the uncertainty budget, journal records and the report come in the next stages. The form draft is kept in this browser.'))}</div>
+    <div class="plates-banner"><b>${esc(L('Раздел в разработке', 'Section in development'))}</b>: ${esc(L('расчёт работает; запись в журнал и протокол появятся на следующих этапах. Черновик формы хранится в этом браузере.', 'the calculation works; journal records and the report come in the next stages. The form draft is kept in this browser.'))}</div>
     ${introHtml()}
     ${sheetBody()}
     ${sheet === 'decay' ? '' : `<div class="actions"><button type="button" data-br="clear">${esc(L('Очистить измерение', 'Clear the measurement'))}</button></div>`}`;
@@ -686,6 +741,7 @@ function live() {
   const results = { well: wellResult, sweet: sweetResult, decay: decayResult, cross: crossResult, stab: stabResult, phantom: phantomResult };
   box.innerHTML = results[sheet]();
   if (sheet === 'sweet') sweetChart();
+  uncLive();
 }
 
 // ------------------------------------------------------------ ввод
@@ -696,6 +752,12 @@ function readForm() {
   for (const el of root.querySelectorAll('[data-hole]')) form.p_holes[+el.dataset.hole][el.dataset.hf] = el.value;
   for (const el of root.querySelectorAll('[data-sx]')) form.s_x[+el.dataset.sx] = el.value;
   for (const el of root.querySelectorAll('[data-sm]')) form.s_M[+el.dataset.sm] = el.value;
+  const own = root.querySelectorAll('input[data-uk]');
+  if (own.length) {
+    const o = {};
+    for (const el of own) if (el.value.trim()) o[el.dataset.uk] = el.value.trim();
+    form[`u_over_${sheet === 'well' ? 'w' : 'p'}`] = Object.keys(o).length ? JSON.stringify(o) : '';
+  }
   for (const el of root.querySelectorAll('.cells[data-series]')) {
     const key = el.dataset.series;
     const m = key.match(/^p_hole(\d)$/);
@@ -790,6 +852,8 @@ function onClick(e) {
     const v = r.method === 'redundant' ? r.value : r.r1.corr;
     Object.assign(form, { st_base: String(+v.toPrecision(6)).replace('.', L(',', '.')), st_base_date: form.st_date, st_base_time: form.st_time, st_base_zone: form.st_zone });
     status(L(`Исходное значение — ${form.st_base}.`, `Baseline: ${form.st_base}.`));
+  } else if (b.dataset.br === 'u-clear') {
+    form[`u_over_${sheet === 'well' ? 'w' : 'p'}`] = '';
   } else if (b.dataset.br === 'd-csv') {
     decayCsv();
     return;
