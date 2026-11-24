@@ -10,7 +10,7 @@ import {
   BRACHY_DEFAULTS, normalizeBrachy, computeBrachyWell, computeBrachyPhantom, computeBrachySweet, computeBrachyDecay, computeBrachyCross, computeBrachyStability, computeBrachyTg43, fieldTime,
   STRENGTH_UNITS, ACTIVITY_UNITS, GAMMA_UNITS, WELL_N_UNITS, PHANTOM_N_UNITS, CURRENT_UNITS, DOSE_SOURCES,
 } from '../core/brachy-sheets.js';
-import { $, esc, fmt, fmtSigned, richText, armButton, downloadText, savedFileName, printToPdf, versionText } from './common.js';
+import { $, esc, fmt, fmtSigned, richText, armButton, downloadText, savedFileName, printToPdf, versionText, pinSignaturesForPrint } from './common.js';
 import { scatterChart, legendSwatch } from './chart.js';
 import { renderCells, readCells, setupCells } from './widgets.js';
 import { cellsHtml } from './journal-common.js';
@@ -406,8 +406,8 @@ function brachyProtocolHtml() {
   if (concl.length) parts.push(`<h4 class="kv-prot-h">${esc(L('Заключение', 'Conclusion'))}</h4><p>${concl.map(sub).join('<br>')}</p>`);
   const notes = pStr(form.rec_notes);
   if (notes) parts.push(`<h4 class="kv-prot-h">${esc(L('Примечания', 'Notes'))}</h4><p class="kv-prot-notes">${esc(notes)}</p>`);
-  parts.push(protSign());
-  parts.push(`<p class="kv-prot-ver">${esc(L(`Расчёт: калькулятор «Клиническая дозиметрия», ${versionText()}, https://mesava.github.io/Reference-dosimetry/`, `Calculation: Clinical Dosimetry calculator, ${versionText()}, https://mesava.github.io/Reference-dosimetry/`))}</p>`);
+  // подписи и версия — одним блоком: при переносе на новый лист он ставится внизу листа (pinSignaturesForPrint)
+  parts.push(`<div class="prot-end">${protSign()}<p class="kv-prot-ver">${esc(L(`Расчёт: калькулятор «Клиническая дозиметрия», ${versionText()}, https://mesava.github.io/Reference-dosimetry/`, `Calculation: Clinical Dosimetry calculator, ${versionText()}, https://mesava.github.io/Reference-dosimetry/`))}</p></div>`);
   return parts.join('');
 }
 function protHtml(n) {
@@ -432,7 +432,10 @@ function printProtocol(pdf) {
   if (det) det.open = true;
   protLive();
   document.body.classList.add('print-br-protocol');
+  const box = $('#br-prot');
+  const unpin = pinSignaturesForPrint(box, box?.querySelector('.prot-end'));
   const off = () => {
+    unpin();
     document.body.classList.remove('print-br-protocol');
     window.removeEventListener('afterprint', off);
   };
@@ -1207,7 +1210,6 @@ function render() {
   trendCharts();
   root.querySelector('.br-prot-det')?.addEventListener('toggle', (e) => {
     protOpen = e.target.open;
-    if (protOpen) protLive();
   });
   const sample = root.querySelector('[data-br="sample"]');
   if (sample) {

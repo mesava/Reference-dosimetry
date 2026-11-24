@@ -9,7 +9,7 @@ import { kvOutputRows, kvDoseMatrix, kvClimate, kvSheetChecks, kvModeName, kvCha
 import { kvRecMode, kvRecModeText } from '../core/kv-records.js';
 import { hvlDecimals } from '../core/kv-hvl.js';
 import { PRESSURE_UNITS, unitLabel } from '../core/units.js';
-import { $, esc, fmt, fmtSigned, versionText, dateText, printToPdf } from './common.js';
+import { $, esc, fmt, fmtSigned, versionText, dateText, printToPdf, pinSignaturesForPrint } from './common.js';
 
 let api = null;
 
@@ -267,8 +267,8 @@ export function kvProtocolHtml(visit, vr, rows = withBase(visit, kvOutputRows(vi
   if (concl.length) parts.push(`<h4 class="kv-prot-h">${esc(L('Заключение', 'Conclusion'))}</h4><p>${concl.map(esc).join('<br>')}</p>`);
   const notes = str(c.kv_notes);
   if (notes) parts.push(`<h4 class="kv-prot-h">${esc(L('Примечания', 'Notes'))}</h4><p class="kv-prot-notes">${esc(notes)}</p>`);
-  parts.push(signHtml(visit));
-  parts.push(`<p class="kv-prot-ver">${esc(L(`Расчёт: калькулятор «Клиническая дозиметрия», ${versionText()}, https://mesava.github.io/Reference-dosimetry/`, `Calculation: Clinical Dosimetry calculator, ${versionText()}, https://mesava.github.io/Reference-dosimetry/`))}</p>`);
+  // подписи и версия — одним блоком: при переносе на новый лист он ставится внизу листа (pinSignaturesForPrint)
+  parts.push(`<div class="prot-end">${signHtml(visit)}<p class="kv-prot-ver">${esc(L(`Расчёт: калькулятор «Клиническая дозиметрия», ${versionText()}, https://mesava.github.io/Reference-dosimetry/`, `Calculation: Clinical Dosimetry calculator, ${versionText()}, https://mesava.github.io/Reference-dosimetry/`))}</p></div>`);
   return parts.join('');
 }
 
@@ -306,7 +306,10 @@ export function outputReportLines(visit, vr) {
 /** Печать только протокола измерений (и в PDF — то же окно печати). */
 function printProtocol(pdf) {
   document.body.classList.add('print-kv-protocol');
+  const box = $('#kv-prot');
+  const unpin = pinSignaturesForPrint(box, box?.querySelector('.prot-end'), { lead: box?.closest('section.kv-prot-sec')?.querySelector('h2') ?? box });
   const off = () => {
+    unpin();
     document.body.classList.remove('print-kv-protocol');
     window.removeEventListener('afterprint', off);
   };

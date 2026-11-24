@@ -401,6 +401,93 @@ export function renderSignBlock(el, staff, extra = true) {
 }
 
 /**
+ * Подписи протокола внизу листа (с 0.77.1): если блок подписей end («Измерения провёл», «Протокол проверил», версия)
+ * оказывается не на первом листе — протокол длиннее листа или подписи не поместились и переносятся, — он ставится
+ * внизу своего листа.
+ * Раскладка по листам A4 оценивается до печати: правила @media print на время замера (синхронно, без отрисовки)
+ * включаются для экрана, ширина протокола — ширина области печати widthMm, высота листа — pageMm (поля 12 мм сверху
+ * и снизу, 14 мм по бокам); таблицы и строки таблиц не разрываются (break-inside: avoid), как в печати. lead — первый
+ * печатаемый элемент листа (отсчёт высоты первой страницы). Вызывать после того, как у body поставлен класс печати.
+ * Возвращает функцию, снимающую разметку после печати.
+ */
+export function pinSignaturesForPrint(box, end, { lead = box, widthMm = 182, pageMm = 273, safetyMm = 12 } = {}) {
+  if (!box || !end || !box.contains(end)) return () => {};
+  const mm = 96 / 25.4;
+  const pageH = pageMm * mm;
+  const old = { width: box.style.width, maxWidth: box.style.maxWidth };
+  const clear = () => {
+    end.style.breakBefore = '';
+    end.style.paddingTop = '';
+  };
+  clear();
+  const printRules = [];
+  for (const sh of document.styleSheets) {
+    let rules = [];
+    try {
+      rules = [...sh.cssRules];
+    } catch {
+      continue;
+    }
+    for (const r of rules) if (r instanceof CSSMediaRule && r.media.mediaText.trim() === 'print') printRules.push(r);
+  }
+  for (const r of printRules) r.media.mediaText = 'all';
+  box.style.width = `${widthMm}mm`;
+  box.style.maxWidth = 'none';
+  const BLOCK = /^(DIV|TABLE|P|H[1-6]|UL|OL|SECTION|DETAILS)$/;
+  const units = [];
+  const walk = (el) => {
+    for (const c of el.children) {
+      if (c === end) return true;
+      if (c.contains(end)) return walk(c);
+      if (getComputedStyle(c).display === 'none') continue;
+      const h = c.getBoundingClientRect().height;
+      if (c.tagName === 'TABLE' && h > pageH) units.push(...c.querySelectorAll('tr'));
+      else if (c.tagName === 'DIV' && [...c.children].some((x) => BLOCK.test(x.tagName))) walk(c);
+      else units.push(c);
+    }
+    return false;
+  };
+  walk(box);
+  let pos = Math.max(0, box.getBoundingClientRect().top - lead.getBoundingClientRect().top);
+  let prev = box.getBoundingClientRect().top;
+  let page = 0;
+  let keep = null; // заголовок с break-after: avoid уходит на новый лист вместе со следующим блоком
+  for (const u of units) {
+    const r = u.getBoundingClientRect();
+    if (!r.height) continue;
+    const gap = Math.max(0, r.top - prev);
+    if (pos > 0 && pos + gap + r.height > pageH) {
+      if (u.tagName === 'P' && getComputedStyle(u).breakInside !== 'avoid' && pageH - pos - gap > 40) {
+        // абзац делится по строкам: остаток — на новом листе
+        const rest = pos + gap + r.height - pageH;
+        page += 1 + Math.floor(rest / pageH);
+        pos = rest % pageH;
+      } else {
+        page += 1 + Math.floor(r.height / pageH);
+        pos = (keep ? r.bottom - keep.top : r.height) % pageH;
+      }
+    } else pos += gap + r.height;
+    keep = getComputedStyle(u).breakAfter === 'avoid' ? (keep ?? r) : null;
+    prev = Math.max(prev, r.bottom);
+  }
+  const r = end.getBoundingClientRect();
+  const gap = Math.max(0, r.top - prev);
+  box.style.width = old.width;
+  box.style.maxWidth = old.maxWidth;
+  for (const x of printRules) x.media.mediaText = 'print';
+  if (r.height >= pageH - safetyMm * mm) return clear;
+  if (pos > 0 && pos + gap + r.height > pageH) {
+    // не помещается: на новый лист, внизу
+    end.style.breakBefore = 'page';
+    end.style.paddingTop = `${Math.max(0, pageH - r.height - safetyMm * mm).toFixed(0)}px`;
+  } else if (page > 0) {
+    // помещается на последнем (не первом) листе: опустить к низу листа
+    end.style.paddingTop = `${Math.max(0, pageH - pos - gap - r.height - safetyMm * mm).toFixed(0)}px`;
+  }
+  return clear;
+}
+
+/**
  * Сохранение в PDF через окно печати браузера. Имя документа на время печати становится
  * именем файла по умолчанию.
  */

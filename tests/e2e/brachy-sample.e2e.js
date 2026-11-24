@@ -45,5 +45,23 @@ test('брахитерапия: пример заполняет все лист�
       assert.match(await page.locator('#br-prot').innerText(), /Заключение[\s\S]*Примечания\s+Демонстрационные данные/, `${sh}: протокол`);
     }
   }
+  // подписи внизу листа (0.77.1): протокол фантома — на двух листах, блок подписей опускается к низу второго
+  await page.click('a[data-goto="brachy/phantom"]');
+  await pause(400);
+  await page.evaluate(() => { window.print = () => {}; });
+  await page.click('[data-br="prot-print"]');
+  await pause();
+  const pad = await page.locator('#br-prot .prot-end').evaluate((e) => parseFloat(e.style.paddingTop) || 0);
+  assert.ok(pad > 300, `отступ над подписями ${pad}`);
+  assert.ok(await page.evaluate(() => document.body.classList.contains('print-br-protocol')));
+  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+  assert.equal(await page.locator('#br-prot .prot-end').evaluate((e) => e.style.paddingTop), '');
+  // короткий протокол (стабильность) — на одном листе, подписи сразу за текстом
+  await page.click('a[data-goto="brachy/stab"]');
+  await pause(400);
+  await page.click('[data-br="prot-print"]');
+  await pause();
+  assert.equal(await page.locator('#br-prot .prot-end').evaluate((e) => e.style.paddingTop), '');
+  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
   assert.deepEqual(errors, []);
 });

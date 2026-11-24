@@ -1772,6 +1772,8 @@ table.kv-prot-sign tr.sig-cap td { padding: 1px 0 0; font-size: 10.5px; color: v
   .kv-prot td.bad { color: #000; }
   .kv-prot-note, .kv-prot-ver { color: #333; }
   .kv-prot table, .kv-prot tr { break-inside: avoid; }
+  /* подписи и версия протокола не разрываются; при переносе на новый лист — внизу листа (pinSignaturesForPrint) */
+  .prot-end { break-inside: avoid; }
 }
 /* протокол измерения брахитерапии (0.77.0): на экране — в раскрывающемся блоке листа; печатается без остального листа */
 .br-prot-det > summary { cursor: pointer; color: var(--accent); font-weight: 500; }
@@ -1784,7 +1786,7 @@ table.kv-prot-sign tr.sig-cap td { padding: 1px 0 0; font-size: 10.5px; color: v
 @media print {
   body:not(.print-br-protocol) #brachy-root .br-prot-sec { display: none !important; }
   body.print-br-protocol #brachy-root > :not(.br-prot-sec), body.print-br-protocol #module-brachy .subtools, body.print-br-protocol #brachy-status { display: none !important; }
-  body.print-br-protocol #module-brachy main.start { display: block; padding: 12mm 14mm; max-width: none; }
+  body.print-br-protocol #module-brachy main.start { display: block; padding: 12mm 14mm; max-width: none; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
   body.print-br-protocol .br-prot-sec { display: block !important; border: 0; padding: 0; background: none; }
   body.print-br-protocol .br-prot-sec > h2, body.print-br-protocol .br-prot-sec > .sub-hint, body.print-br-protocol .br-prot-det > summary { display: none; }
   body.print-br-protocol .br-prot .chip { border: 0; padding: 0; background: none; color: #000; }
