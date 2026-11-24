@@ -131,3 +131,16 @@ export function formFromRecord(form, rec) {
 
 /** Есть ли что записывать: пустой ли лист (без даты) — для подсказки кнопки. */
 export const brachyHasDate = (sheet, form) => !isBlank(form?.[BRACHY_DATE_KEY[sheet]]);
+
+/**
+ * Текущее среднее отношения показаний двух камер по записям журнала (метод второй камеры, TRS-492, разд. 8.5.1:
+ * отношение — в пределах ±0,1 % от текущего среднего). Берутся записи «стабильность» этой камеры методом 'redundant'
+ * с датой раньше before (yyyy-mm-dd; пусто — все). Возвращает { mean, n, from, to } (n = 0 — записей нет).
+ */
+export function redundantRunningMean(j, { chamberId, before = '' } = {}) {
+  const xs = brachyRecordsOf(j, { sheet: 'stab', chamberId })
+    .filter((r) => r.chamberId === chamberId && r.summary?.method === 'redundant' && Number.isFinite(r.summary?.value) && (!before || r.date < before))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  if (!xs.length) return { mean: NaN, n: 0, from: '', to: '' };
+  return { mean: xs.reduce((a, r) => a + r.summary.value, 0) / xs.length, n: xs.length, from: xs[0].date, to: xs[xs.length - 1].date };
+}

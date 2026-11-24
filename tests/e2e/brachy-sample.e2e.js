@@ -25,6 +25,9 @@ test('брахитерапия: пример заполняет все лист�
   assert.match(await page.locator('#brachy-status').innerText(), /Загружен демонстрационный пример/);
   assert.match(await page.locator('#brachy-root .demo-flag').innerText(), /демонстрационный пример/);
   assert.match(await page.locator('#br-result').innerText(), /35,3\d* мГр\/ч на 1 м[\s\S]*\+0,3\d* % от сертификата/);
+  // три введения (TRS-492, разд. 8.2.2) и согласие с сертификатом при k = 2 (разд. 8.6.2.1)
+  assert.match(await page.locator('#br-result').innerText(), /3 введения: 71,340*; 71,360*; 71,340*/);
+  assert.match(await page.locator('#br-unc-sum').innerText(), /Согласие с сертификатом \(k = 2\)\s+\+0,3\d % \/ ±\d,\d\d %\s*согласуются/);
   const expect = {
     sweet: /Максимум отклика\s+1229,9 мм/,
     phantom: /мГр\/ч на 1 м[\s\S]*от сертификата/,

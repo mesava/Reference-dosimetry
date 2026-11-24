@@ -1,7 +1,7 @@
 // Брахитерапия: бюджет неопределённости ОМВК — TRS-492, табл. 10 (колодезная камера) и Ubrich 2014 (фантом PTW 9193).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { wellBudget, phantomBudget, WELL_UNC_ROWS } from '../src/core/brachy-unc.js';
+import { wellBudget, phantomBudget, WELL_UNC_ROWS, certAgreement } from '../src/core/brachy-unc.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''} ${a} ≠ ${b} (±${tol})`);
 const val = (b, key) => b.rows.find((r) => r.key === key)?.value;
@@ -53,4 +53,21 @@ test('Фантом PTW 9193: множитель по Ubrich 2014 (МК 0,9 %, PT
   // разброс положений: тип А больше типового 0,45 %
   const h = phantomBudget({ mainId: 'ubrich-mc-30016', nuclide: 'Co-60', holes: [{ corr: 1 }, { corr: 1.02 }, { corr: 0.98 }, { corr: 1 }] });
   near(val(h, 'reading'), (Math.sqrt(0.0008 / 3) * 100) / 2, 1e-9);
+});
+
+test('Согласие с сертификатом при k = 2 (TRS-492, разд. 8.6.2.1): пересчёт U сертификата, предел, типичные 5 % при k = 3', () => {
+  // U сертификата 3 % при k = 2, U измерения 4 %: предел √(9 + 16) = 5 %
+  const a = certAgreement({ dev: 4.9, Umeas: 4, Ucert: 3, kCert: 2 });
+  assert.ok(a.ok && a.pass && !a.typical);
+  assert.ok(Math.abs(a.limit - 5) < 1e-12);
+  assert.ok(!certAgreement({ dev: -5.1, Umeas: 4, Ucert: 3, kCert: 2 }).pass);
+  // U = 4,5 % при k = 3 → 3 % при k = 2
+  assert.ok(Math.abs(certAgreement({ dev: 0, Umeas: 4, Ucert: 4.5, kCert: 3 }).Ucert2 - 3) < 1e-12);
+  // пусто — типичные 5 % при k = 3, т. е. 3,33 % при k = 2
+  const t = certAgreement({ dev: 1, Umeas: 2.5 });
+  assert.ok(t.typical);
+  assert.ok(Math.abs(t.Ucert2 - 10 / 3) < 1e-12);
+  assert.ok(Math.abs(t.limit - Math.sqrt((10 / 3) ** 2 + 2.5 ** 2)) < 1e-12);
+  // нет отклонения — проверки нет
+  assert.ok(!certAgreement({ dev: NaN, Umeas: 2 }).ok);
 });

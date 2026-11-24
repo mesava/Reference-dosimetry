@@ -45,6 +45,7 @@ import {
   geometryLine,
   tg43Transverse,
   sweetSpot,
+  wellRepeatability,
   responseAt,
   strengthAt,
   timeForStrength,
@@ -338,7 +339,9 @@ test('Максимум отклика колодезной камеры (TRS-492
   for (let x = 40; x <= 72; x += 2) pts.push({ x, m: f(x) });
   const r = sweetSpot([...pts].reverse());
   assert.ok(r.ok);
-  assert.equal(r.method, 'parabola');
+  assert.equal(r.method, 'trs'); // парабола по всем точкам в ±20 мм, TRS-492, ур. 25–26
+  assert.equal(r.fit.n, 17);
+  near(r.top.xPeak, 56.3, 1e-9); // парабола по вершине — то же
   near(r.xPeak, 56.3, 1e-9);
   near(r.mPeak, 100, 1e-9);
   assert.deepEqual(r.warnings, []);
@@ -347,10 +350,10 @@ test('Максимум отклика колодезной камеры (TRS-492
   near(r.plateau[99.5].from, 56.3 - Math.sqrt(10), 0.2);
   near(r.plateau[99.5].to, 56.3 + Math.sqrt(10), 0.2);
   near(r.plateau[99].to - r.plateau[99].from, 2 * Math.sqrt(20), 0.4);
-  // отклик в точке: по параболе у вершины, по ломаной дальше; вне кривой — NaN
+  // отклик в точке: по параболе в пределах её точек; вне кривой — NaN
   near(responseAt(r, 56.3), 1, 1e-12);
   near(responseAt(r, 58.3), f(58.3) / 100, 1e-12);
-  near(responseAt(r, 41), (f(40) + f(42)) / 200, 1e-12);
+  near(responseAt(r, 41), f(41) / 100, 1e-12);
   assert.ok(Number.isNaN(responseAt(r, 80)));
   // знак тока не важен
   const neg = sweetSpot(pts.map((p) => ({ x: p.x, m: -p.m })));
@@ -368,12 +371,73 @@ test('Максимум отклика колодезной камеры (TRS-492
   assert.ok(sweetSpot([...pts.slice(0, 3), pts[0]]).error);
   // плоская вершина — парабола по более широкому участку; монотонная кривая — наибольшее показание
   const flat = sweetSpot([{ x: 0, m: 90 }, { x: 2, m: 100 }, { x: 4, m: 100 }, { x: 6, m: 100 }, { x: 8, m: 90 }]);
-  assert.equal(flat.method, 'parabola');
+  assert.equal(flat.method, 'trs');
   near(flat.xPeak, 4, 1e-9);
   const lin = sweetSpot([{ x: 0, m: 98 }, { x: 2, m: 99 }, { x: 4, m: 100 }]);
   assert.equal(lin.method, 'max');
   assert.equal(lin.xPeak, 4);
   assert.ok(lin.warnings.includes('edge'));
+  assert.ok(lin.warnings.includes('trs-fail'));
+});
+
+test('Максимум отклика по TRS-492, ур. 25–26: окно ±20 мм; SI IVB 1000 — первый локальный максимум от входа', () => {
+  // несимметричная кривая: слева круче, справа положе; точки дальше 20 мм от максимума в параболу не входят
+  const g = (x) => (x < 50 ? 100 - 0.08 * (x - 50) ** 2 : 100 - 0.02 * (x - 50) ** 2);
+  const pts = [];
+  for (let x = 20; x <= 80; x += 2.5) pts.push({ x, m: g(x) });
+  const r = sweetSpot(pts);
+  assert.equal(r.method, 'trs');
+  assert.ok(r.fit.from >= 30 - 1e-9 && r.fit.to <= 70 + 1e-9);
+  assert.equal(r.fit.n, 17);
+  // вручную: МНК по тем же 17 точкам
+  const win = pts.filter((p) => Math.abs(p.x - 50) <= 20);
+  const n = win.length;
+  const sx = (k) => win.reduce((a, p) => a + (p.x - 50) ** k, 0);
+  const sy = (k) => win.reduce((a, p) => a + p.m * (p.x - 50) ** k, 0);
+  const A = [[n, sx(1), sx(2)], [sx(1), sx(2), sx(3)], [sx(2), sx(3), sx(4)]];
+  const B = [sy(0), sy(1), sy(2)];
+  const det3 = (M) => M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
+  const D = det3(A);
+  const c = [0, 1, 2].map((j) => det3(A.map((row, i) => row.map((v, k) => (k === j ? B[i] : v)))) / D);
+  near(r.xPeak, 50 - c[1] / (2 * c[2]), 1e-9);
+  assert.ok(r.xPeak > 50); // пологий правый склон сдвигает вершину вправо
+  assert.ok(Math.abs(r.top.xPeak - 50) < Math.abs(r.xPeak - 50)); // парабола по вершине ближе к истинной
+  // SI IVB 1000: два максимума, первый от входа (меньшие положения) — у 30 мм, глобальный — у 60 мм
+  const ivb = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70].map((x) => ({ x, m: x === 30 ? 95 : x === 25 || x === 35 ? 93 : x === 60 ? 100 : x === 55 || x === 65 ? 98 : 90 }));
+  const lo = sweetSpot(ivb, { method: 'ivb', entry: 'low' });
+  assert.ok(lo.local);
+  near(lo.xPeak, 30, 1e-9);
+  near(lo.mPeak, 95, 1e-9);
+  const hi = sweetSpot(ivb, { method: 'ivb', entry: 'high' });
+  near(hi.xPeak, 60, 1e-9);
+  // монотонная кривая — локального максимума нет
+  assert.ok(sweetSpot([{ x: 0, m: 1 }, { x: 1, m: 2 }, { x: 2, m: 3 }], { method: 'ivb' }).warnings.includes('no-local'));
+});
+
+test('Повторяемость колодезной камеры (TRS-492, разд. 8.2.2): введения, показания, тренд, СКО среднего, расхождение серий', () => {
+  const ok = wellRepeatability([[71.3, 71.4, 71.3, 71.4, 71.3], [71.4, 71.3, 71.4, 71.3, 71.4], [71.3, 71.4, 71.3, 71.3, 71.4]]);
+  assert.ok(ok.checks.every((c) => c.pass));
+  near(ok.mean, (71.34 + 71.36 + 71.34) / 3, 1e-12);
+  assert.equal(ok.n, 15);
+  near(ok.spread, (0.02 / ok.mean) * 100, 1e-9);
+  // СКО результата — по средним серий
+  const m = [71.34, 71.36, 71.34];
+  const mm = m.reduce((a, b) => a + b) / 3;
+  near(ok.sdMean, (Math.sqrt(m.reduce((a, x) => a + (x - mm) ** 2, 0) / 2) / mm / Math.sqrt(3)) * 100, 1e-9);
+  const failed = (r) => r.checks.filter((c) => !c.pass).map((c) => c.id);
+  // одно введение, четыре показания
+  assert.deepEqual(failed(wellRepeatability([[71.3, 71.4, 71.3, 71.4]])), ['insertions', 'readings']);
+  // монотонный рост на 0,4 % — тренд; рост на 0,08 % — нет
+  const up = wellRepeatability([[100, 100.1, 100.2, 100.3, 100.4]]);
+  assert.ok(failed(up).includes('trend'));
+  assert.equal(up.sets[0].dir, 1);
+  assert.ok(!failed(wellRepeatability([[100, 100.02, 100.04, 100.06, 100.08]])).includes('trend'));
+  // СКО среднего 0,1 % и больше
+  assert.ok(failed(wellRepeatability([[100, 100.5, 99.5, 100.4, 99.6]])).includes('sdMean'));
+  // средние серий расходятся на 0,3 % — больше 0,2 %
+  assert.ok(failed(wellRepeatability([[100, 100.01, 100, 100.01, 100], [100.3, 100.31, 100.3, 100.31, 100.3], [100.1, 100.11, 100.1, 100.11, 100.1]])).includes('sets'));
+  // пусто
+  assert.ok(Number.isNaN(wellRepeatability([[], []]).mean));
 });
 
 test('Распад по датам (TRS-492, ур. 8–9): сила на дату, дата порога, шаг таблицы по суткам, неделям и месяцам', () => {

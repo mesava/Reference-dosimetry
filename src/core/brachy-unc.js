@@ -66,7 +66,7 @@ function finish(rows, messages) {
 
 /**
  * Бюджет по колодезной камере.
- * @param {{scenario?:'1'|'2', NU?:number, ksmMode?:string, readings?:{n:number, relSd:number}, over?:string|object}} o
+ * @param {{scenario?:'1'|'2', NU?:number, ksmMode?:string, readings?:{n:number, relSd:number, insertions?:number, sdMean?:number}, over?:string|object}} o
  *   NU — U(N) из сертификата камеры, % (k = 2); ksmMode — как на листе (same | table | none | manual).
  */
 export function wellBudget(o = {}) {
@@ -82,7 +82,11 @@ export function wellBudget(o = {}) {
     } else if (spec.key === 'cal') {
       how = L('Типовое по табл. 10 (этапы 1–3); точнее — U из сертификата камеры (лист, раздел 2).', 'Example per Table 10 (steps 1–3); better: U from the chamber certificate (sheet, section 2).');
     }
-    if (spec.key === 'current' && o.readings?.n >= 2 && Number.isFinite(o.readings.relSd)) {
+    if (spec.key === 'current' && o.readings?.insertions >= 2 && Number.isFinite(o.readings.sdMean)) {
+      const a = o.readings.sdMean;
+      how = L(`Ваши измерения: стандартное отклонение среднего по ${o.readings.insertions} введениям ${ru(a, 3)} % (тип А); в расчёт идёт большее из него и типового.`, `Your measurements: standard deviation of the mean over ${o.readings.insertions} insertions ${a.toFixed(3)}% (type A); the larger of it and the example is used.`);
+      if (a > def) def = a;
+    } else if (spec.key === 'current' && o.readings?.n >= 2 && Number.isFinite(o.readings.relSd)) {
       const a = o.readings.relSd / Math.sqrt(o.readings.n);
       how = L(`Ваша серия: стандартное отклонение среднего ${ru(a, 3)} % (n = ${o.readings.n}, тип А); в расчёт идёт большее из него и типового.`, `Your series: standard deviation of the mean ${a.toFixed(3)}% (n = ${o.readings.n}, type A); the larger of it and the example is used.`);
       if (a > def) def = a;
@@ -154,3 +158,22 @@ export function phantomBudget(o = {}) {
 }
 
 export { quad };
+
+/** Типичная неопределённость силы источника HDR в сертификате производителя: 5 % при k = 3 (TRS-492, разд. 8.6.2.1). */
+export const CERT_U_TYPICAL = { U: 5, k: 3 };
+
+/**
+ * Согласие сертификата и измерения: значения должны совпадать в пределах их расширенных неопределённостей при k = 2
+ * (TRS-492, разд. 8.6.2.1). U сертификата пересчитывается к k = 2: U₂ = U·2/k; пусто — типичные 5 % при k = 3 (3,3 %).
+ * Предел — √(U₂,серт² + U_изм²): неопределённости сертификата и измерения независимы.
+ * @param {{dev:number, Umeas:number, Ucert?:number, kCert?:number}} o — dev — отклонение измерения от сертификата, %
+ */
+export function certAgreement({ dev, Umeas, Ucert, kCert = 2 }) {
+  const typical = !(Ucert > 0);
+  const U = typical ? CERT_U_TYPICAL.U : Ucert;
+  const k = typical ? CERT_U_TYPICAL.k : kCert > 0 ? kCert : 2;
+  const Ucert2 = (U * COVERAGE_K) / k;
+  const limit = Math.sqrt(Ucert2 ** 2 + (Number.isFinite(Umeas) ? Umeas ** 2 : 0));
+  const ok = Number.isFinite(dev) && Number.isFinite(limit);
+  return { ok, typical, Ucert2, limit, pass: ok && Math.abs(dev) <= limit + 1e-9, ref: `${T492}, разд. 8.6.2.1` };
+}

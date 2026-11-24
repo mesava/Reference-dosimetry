@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeJournal, JOURNAL_TAG, journalFormat } from '../src/core/journal.js';
 import { normalizeBrachy, computeBrachyWell, computeBrachyStability, computeBrachyCross } from '../src/core/brachy-sheets.js';
-import { recordBrachy, brachyRecordsOf, removeBrachyRecord, formFromRecord, brachyFormSnapshot, brachySummary, BRACHY_RECORD_SHEETS } from '../src/core/brachy-records.js';
+import { recordBrachy, brachyRecordsOf, removeBrachyRecord, formFromRecord, brachyFormSnapshot, brachySummary, BRACHY_RECORD_SHEETS, redundantRunningMean } from '../src/core/brachy-records.js';
 
 const journal = () => normalizeJournal({
   ...JOURNAL_TAG,
@@ -91,4 +91,26 @@ test('стабильность и сличение: запись по камер
   // итог максимума отклика
   assert.deepEqual(brachySummary('sweet', { nuclide: 'Ir-192' }, { xPeak: 56.3, plateau: { 99: { from: 51, to: 61 } }, atCert: { shift: 1.3 } }), { nuclide: 'Ir-192', xPeak: 56.3, plateau: { from: 51, to: 61 }, shift: 1.3 });
   assert.deepEqual(Object.keys(brachyFormSnapshot('sweet', normalizeBrachy({}))).filter((k) => k.startsWith('w_')), ['w_pos']);
+});
+
+test('метод второй камеры (TRS-492, разд. 8.5.1): текущее среднее отношения по записям журнала до даты проверки', () => {
+  let j = journal();
+  const stab = (date, I2) => normalizeBrachy({ st_method: 'redundant', st_I: ['100', '100', '100'], st_I2: [I2, I2, I2], st_T: '20', st_P: '101,325', st_P_unit: 'kPa', st_base: '1', st_date: date, j_well: 'w1' });
+  for (const [d, I2] of [['2026-01-10', '50'], ['2026-04-10', '50,05'], ['2026-07-10', '49,95']]) {
+    const f = stab(d, I2);
+    const res = recordBrachy(j, { sheet: 'stab', form: f, r: computeBrachyStability(f), today: '2026-11-24' });
+    assert.equal(res.error, undefined);
+    j = res.journal;
+  }
+  const all = redundantRunningMean(j, { chamberId: 'w1' });
+  assert.equal(all.n, 3);
+  const exp = (2 + 100 / 50.05 + 100 / 49.95) / 3;
+  assert.ok(Math.abs(all.mean - exp) < 1e-12);
+  assert.deepEqual([all.from, all.to], ['2026-01-10', '2026-07-10']);
+  // только записи раньше даты проверки
+  const before = redundantRunningMean(j, { chamberId: 'w1', before: '2026-07-10' });
+  assert.equal(before.n, 2);
+  assert.ok(Math.abs(before.mean - (2 + 100 / 50.05) / 2) < 1e-12);
+  // другая камера — записей нет
+  assert.equal(redundantRunningMean(j, { chamberId: 'w2' }).n, 0);
 });

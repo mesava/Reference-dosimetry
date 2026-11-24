@@ -84,6 +84,13 @@ export const LEAKAGE_IGNORE = 0.001;
 /** Долговременная стабильность колодезной камеры: в пределах ±0,5 % от исходного значения, TRS-492, разд. 8.5. */
 export const STABILITY_TOL = 0.5;
 
+/**
+ * Повторяемость измерения колодезной камерой, TRS-492, разд. 8.2.2: не меньше трёх введений источника в точку максимума,
+ * на каждое — не меньше пяти показаний без монотонного роста или спада (в пределах 0,1 %), относительное стандартное
+ * отклонение среднего меньше 0,1 %, средние двух серий — в пределах 0,2 %.
+ */
+export const WELL_REPEAT = { insertions: 3, readings: 5, trend: 0.1, sdMean: 0.1, sets: 0.2 };
+
 // ——— Метод цилиндрического фантома (фантом Кригера, PTW 9193): DIN 6809-2, DGMP-Bericht 13, руководство PTW ———
 
 /** Расстояние источник — центр камеры в фантоме, см, и поправка на расстояние k_r = (8/100)²: DGMP 13, ур. (12). */
@@ -173,6 +180,20 @@ export const PHANTOM_CO60_LITERATURE = [
   { chamber: '30015', kTot: 7.145e-3, method: 'ptb', ref: `${REF.ubrich14}, табл. 5` },
   { chamber: '30016', kTot: 7.179e-3, method: 'ptb', ref: `${REF.ubrich14}, табл. 5` },
   { chamber: 'M23332', kTot: 7.37e-3, method: 'azhari', ref: `${REF.azhari}, табл. 2` },
+];
+
+/**
+ * ¹⁹²Ir в фантоме: общий множитель k_tot (K̇ = k_tot · N_Dw · M) по Ubrich 2014, табл. 5 — источник μSelectron V2
+ * (для μSelectron V1, GammaMed 12i и VariSource Classic расчёт Монте-Карло отличается не больше чем на 0,3 %:
+ * множитель зависит в основном от нуклида). По табл. 6 K̇ с множителем DGMP 13 в среднем на 1,8 % выше сертификата,
+ * с Монте-Карло и PTB — в пределах ±1 %. Только для камер из статьи.
+ */
+export const PHANTOM_IR_LITERATURE = [
+  { chamber: '30015', kTot: 6.689e-3, method: 'mc', ref: `${REF.ubrich14}, табл. 5` },
+  { chamber: '30016', kTot: 6.721e-3, method: 'mc', ref: `${REF.ubrich14}, табл. 5` },
+  { chamber: '31010', kTot: 6.677e-3, method: 'mc', ref: `${REF.ubrich14}, табл. 5` },
+  { chamber: '30015', kTot: 6.772e-3, method: 'ptb', ref: `${REF.ubrich14}, табл. 5` },
+  { chamber: '30016', kTot: 6.799e-3, method: 'ptb', ref: `${REF.ubrich14}, табл. 5` },
 ];
 
 /**

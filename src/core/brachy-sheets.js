@@ -4,7 +4,7 @@
 import { L } from './i18n.js';
 import { parseNumber, isBlank, pressureToKPa, PRESSURE_UNITS, ru } from './units.js';
 import { temperaturePressure } from './common.js';
-import { HALF_LIVES, KSM_SOURCES, STABILITY_TOL, GL_R_IR, GL_R_CO, GL_TABLE, GL_REF, PHANTOM_CO60, PHANTOM_CO60_LITERATURE, APPLICATOR_KA_STEEL, DOSE_SOURCES, UBRICH_KTOT_DW1, UBRICH_KTOT_DW1_REF } from './brachy-data.js';
+import { HALF_LIVES, KSM_SOURCES, STABILITY_TOL, WELL_REPEAT, GL_R_IR, GL_R_CO, GL_TABLE, GL_REF, PHANTOM_CO60, PHANTOM_CO60_LITERATURE, PHANTOM_IR_LITERATURE, APPLICATOR_KA_STEEL, DOSE_SOURCES, UBRICH_KTOT_DW1, UBRICH_KTOT_DW1_REF } from './brachy-data.js';
 import {
   halfLifeDays,
   kDec,
@@ -32,6 +32,7 @@ import {
   timeForStrength,
   decayDates,
   crossCalibrate,
+  wellRepeatability,
   geometryLineAt,
   geometryLine,
   interpTable,
@@ -63,7 +64,8 @@ export const BRACHY_DEFAULTS = {
   cert_date: '',
   cert_time: '',
   cert_zone: '', // '' — часовой пояс компьютера; 'UTC', '+3', '-5:30' …
-  cert_U: '', // расширенная неопределённость сертификата, % (справочно)
+  cert_U: '', // расширенная неопределённость сертификата, % — для проверки согласия (TRS-492, разд. 8.6.2.1)
+  cert_k: '2', // коэффициент охвата этой неопределённости: '2' или '3'
   // выбор из «Оборудования» (с 0.75.0): id афтерлоадера и источника ('' — по дате измерения), камер и строк сертификата
   j_machine: '',
   j_source: '',
@@ -101,7 +103,9 @@ export const BRACHY_DEFAULTS = {
   w_P: '',
   w_P_unit: 'hPa',
   w_unit: 'nA',
-  w_I: ['', '', '', '', ''],
+  w_I: ['', '', '', '', ''], // введение источника 1 (TRS-492, разд. 8.2.2)
+  w_I2: ['', '', '', '', ''], // введение 2
+  w_I3: ['', '', '', '', ''], // введение 3
   w_leak: '',
   w_pol_plus: '',
   w_pol_minus: '',
@@ -154,6 +158,8 @@ export const BRACHY_DEFAULTS = {
   s_ref: '', // система отсчёта положения (например, «по пульту аппарата, от конца канала»)
   s_date: '',
   s_cert_pos: '', // положение опорной точки в сертификате камеры, мм
+  s_method: 'trs', // 'trs' — парабола по ±20 мм (TRS-492, ур. 25–26), 'ivb' — первый локальный максимум от входа (SI IVB 1000)
+  s_entry: 'low', // для 'ivb': вход в камеру со стороны меньших ('low') или больших ('high') положений
   w_pos: '', // положение источника при измерении на листе «Колодезная камера», мм
 
   // распад: таблица силы источника по датам
@@ -363,20 +369,34 @@ export function computeBrachyWell(input, { offsetMin = 0 } = {}) {
     return out;
   }
   if (!Object.hasOwn(WELL_N_UNITS, f.w_N_unit)) add('error', L('Неизвестная единица калибровочного коэффициента.', 'Unknown calibration coefficient unit.'), null, 'w_N_unit');
-  const xs = nums(f.w_I);
-  if (!xs.length) {
-    add('info', L('Введите показания электрометра в точке максимального отклика.', 'Enter the electrometer readings at the sweet spot.'), null, 'w_I');
+  const sets = [f.w_I, f.w_I2, f.w_I3].map(nums);
+  if (!sets.some((x) => x.length)) {
+    add('info', L('Введите показания электрометра в точке максимального отклика — по серии на каждое введение источника.', 'Enter the electrometer readings at the sweet spot, one series per source insertion.'), null, 'w_I');
     return out;
   }
-  if (xs.length < 3) add('warn', L('Меньше трёх показаний: повторяемость не оценить.', 'Fewer than three readings: the repeatability cannot be assessed.'), null, 'w_I');
   if (!Object.hasOwn(CURRENT_UNITS, f.w_unit)) {
     add('error', L('Неизвестная единица тока.', 'Unknown current unit.'), null, 'w_unit');
     return out;
   }
-  const m = mean(xs);
+  const rep = wellRepeatability(sets);
+  const m = rep.mean;
   const amps = readingToAmps({ value: m, unit: f.w_unit }).amps;
-  out.readings = { n: xs.length, mean: m, relSd: Math.abs(sd(xs) / m) * 100 };
-  if (out.readings.relSd > 0.5) add('warn', L(`Разброс показаний ${ru(out.readings.relSd, 2)} % — больше 0,5 %: проверьте прогрев и положение источника.`, `Reading spread ${out.readings.relSd.toFixed(2)}% exceeds 0.5%: check the warm-up and the source position.`), `${REF.trs492}, разд. 8.4`, 'w_I');
+  out.readings = { n: rep.n, mean: m, relSd: rep.relSd, sdMean: rep.sdMean, sets: rep.sets, spread: rep.spread, checks: rep.checks, insertions: rep.sets.length };
+  const keys = ['w_I', 'w_I2', 'w_I3'];
+  const idx = sets.map((x, i) => (x.length ? i : -1)).filter((i) => i >= 0);
+  const fieldOf = (k) => keys[idx[k]] ?? 'w_I';
+  const ref822 = `${REF.trs492}, разд. 8.2.2`;
+  const R = WELL_REPEAT;
+  for (const c of rep.checks) {
+    if (c.pass) continue;
+    const no = idx[c.set ?? 0] + 1;
+    if (c.id === 'insertions') add('warn', L(`Введений источника ${c.value}: TRS-492 советует не меньше ${R.insertions} — каждое введение заново ставит источник в точку максимума.`, `${c.value} source insertion(s): TRS-492 advises at least ${R.insertions}; each insertion repositions the source at the sweet spot.`), ref822, 'w_I');
+    else if (c.id === 'readings') add('warn', L(`Введение ${no}: показаний ${c.value}, нужно не меньше ${R.readings}.`, `Insertion ${no}: ${c.value} readings, at least ${R.readings} are needed.`), ref822, fieldOf(c.set));
+    else if (c.id === 'trend') add('warn', L(`Введение ${no}: показания монотонно ${rep.sets[c.set].dir > 0 ? 'растут' : 'падают'} (на ${ru(c.value, 2)} % — больше ${ru(R.trend, 1)} %): камера ещё не стабилизировалась — дождитесь стабилизации и повторите.`, `Insertion ${no}: the readings drift monotonically (by ${c.value.toFixed(2)}%, more than ${R.trend}%): the chamber has not stabilised; wait and repeat.`), ref822, fieldOf(c.set));
+    else if (c.id === 'sdMean') add('warn', L(`Введение ${no}: относительное стандартное отклонение среднего ${ru(c.value, 3)} % — больше ${ru(R.sdMean, 1)} %.`, `Insertion ${no}: the relative standard deviation of the mean is ${c.value.toFixed(3)}%, more than ${R.sdMean}%.`), ref822, fieldOf(c.set));
+    else if (c.id === 'sets') add('warn', L(`Средние по введениям расходятся на ${ru(c.value, 2)} % — больше ${ru(R.sets, 1)} %: проверьте положение источника и прогрев; такие расхождения нужно выяснить.`, `The insertion means differ by ${c.value.toFixed(2)}%, more than ${R.sets}%: check the source position and the warm-up; such differences should be investigated.`), ref822, 'w_I2');
+  }
+  if (rep.checks.length && rep.checks.every((c) => c.pass)) add('info', L(`Повторяемость в норме: ${rep.sets.length} введения, разброс средних ${ru(rep.spread, 2)} %.`, `Repeatability is fine: ${rep.sets.length} insertions, spread of the means ${rep.spread.toFixed(2)}%.`), ref822, 'w_I');
 
   const leak = parseNumber(f.w_leak);
   const kl = kLeak(amps, Number.isFinite(leak) ? readingToAmps({ value: leak, unit: f.w_unit }).amps : NaN);
@@ -467,14 +487,17 @@ export function phantomVariants({ nuclide, calib, kzpChamber, kzpOwn, kQ = 1, ka
     if (kaSteel) list.push({ id: 'dgmp-ka', label: L('то же со стальным аппликатором (k_A, Azhari)', 'same with a steel applicator (k_A, Azhari)'), factor: c, kA: kaSteel, kzp, note: kzpNote, ref: `${REF.azhari}, табл. 2` });
     if (ka > 0 && ka !== 1 && ka !== kaSteel) list.push({ id: 'dgmp-own-ka', label: L('то же со своим k_A', 'same with own k_A'), factor: c, kA: ka, kzp, note: kzpNote, ref: null });
   }
-  if (!ir && calib === 'Nw') {
-    for (const x of PHANTOM_CO60_LITERATURE.filter((y) => y.method !== 'azhari')) {
-      list.push({ id: `ubrich-${x.method}-${x.chamber}`, label: x.method === 'mc' ? L(`Ubrich 2014, Монте-Карло, PTW ${x.chamber}`, `Ubrich 2014, Monte Carlo, PTW ${x.chamber}`) : L(`Ubrich 2014, калибровка PTB, PTW ${x.chamber}`, `Ubrich 2014, PTB calibration, PTW ${x.chamber}`), factor: x.kTot, kA: 1, ref: x.ref, note: L('для камеры из статьи', 'for the chamber in the paper') });
+  if (calib === 'Nw') {
+    for (const x of ir ? PHANTOM_IR_LITERATURE : PHANTOM_CO60_LITERATURE.filter((y) => y.method !== 'azhari')) {
+      list.push({ id: `ubrich-${x.method}-${x.chamber}`, label: x.method === 'mc' ? L(`Ubrich 2014, Монте-Карло, PTW ${x.chamber}`, `Ubrich 2014, Monte Carlo, PTW ${x.chamber}`) : L(`Ubrich 2014, калибровка PTB, PTW ${x.chamber}`, `Ubrich 2014, PTB calibration, PTW ${x.chamber}`), factor: x.kTot, kA: 1, ref: x.ref, note: ir ? L('для камеры из статьи; источник μSelectron V2', 'for the chamber in the paper; μSelectron V2 source') : L('для камеры из статьи', 'for the chamber in the paper') });
     }
   }
   if (Number.isFinite(ktotOwn) && ktotOwn > 0) list.push({ id: 'own', label: L('свой k_tot (сличение с колодезной камерой)', 'own k_tot (comparison with the well-type chamber)'), factor: ktotOwn, kA: 1, ref: null, note: '' });
   return list;
 }
+
+/** Порог предупреждения о разбросе между четырьмя положениями камеры, %: практический, не из руководства PTW. */
+const PHANTOM_SPREAD_WARN = 3;
 
 /** Расстояние до точки измерения в фантоме PTW 9193, см (руководство PTW, DGMP 13). */
 const PHANTOM_R = 8;
@@ -606,7 +629,9 @@ export function computeBrachyPhantom(input, { offsetMin = 0 } = {}) {
   const meanCorr = mean(holes.map((h) => h.corr));
   const spread = holes.length > 1 ? ((Math.max(...holes.map((h) => h.corr)) - Math.min(...holes.map((h) => h.corr))) / meanCorr) * 100 : 0;
   out.spread = spread;
-  if (spread > 3) add('warn', L(`Разброс между положениями ${ru(spread, 1)} %: проверьте положение аппликатора в центре фантома.`, `The spread between positions is ${spread.toFixed(1)}%: check that the applicator is in the centre of the phantom.`), REF.ptw9193, 'p_hole0');
+  // 3 % — практический порог калькулятора: руководство PTW числа не даёт, только требует среднее по четырём положениям,
+  // чтобы выявить анизотропию поля или нецентральное положение источника
+  if (spread > PHANTOM_SPREAD_WARN) add('warn', L(`Разброс между положениями ${ru(spread, 1)} % — больше ${PHANTOM_SPREAD_WARN} % (практический порог калькулятора; в руководстве PTW числа нет): проверьте, что аппликатор в центре фантома и источник выведен до конца.`, `The spread between positions is ${spread.toFixed(1)}%, more than ${PHANTOM_SPREAD_WARN}% (a practical threshold of this calculator; the PTW manual gives no number): check that the applicator is in the centre of the phantom and the source is fully extended.`), `${REF.ptw9193}, разд. 6.1`, 'p_hole0');
 
   // k_pol, k_s
   const mp = mean(nums(f.p_pol_plus));
@@ -698,7 +723,7 @@ export function computeBrachySweet(input) {
     add('info', L('Введите показания хотя бы в трёх положениях источника; шаг — не больше 2,5 мм, не меньше 10 мм в обе стороны от ожидаемого максимума.', 'Enter readings at no fewer than three source positions; step at most 2.5 mm, at least 10 mm on both sides of the expected maximum.'), `${REF.trs492}, разд. 8.2.1`, 's_x_0');
     return out;
   }
-  const r = sweetSpot(pts);
+  const r = sweetSpot(pts, { method: f.s_method === 'ivb' ? 'ivb' : 'trs', entry: f.s_entry === 'high' ? 'high' : 'low' });
   if (r.error) {
     add('error', L(`Кривая отклика: ${r.error}.`, `Response curve: ${r.error}.`), null, 's_x_0');
     return out;
@@ -707,7 +732,17 @@ export function computeBrachySweet(input) {
   if (r.warnings.includes('step')) add('warn', L(`Наибольший шаг между положениями ${ru(r.maxStep, 1)} мм — больше 2,5 мм: максимум найден грубее.`, `The largest step between positions is ${r.maxStep.toFixed(1)} mm, above 2.5 mm: the maximum is less precise.`), `${REF.trs492}, разд. 8.2.1`, 's_step');
   if (r.warnings.includes('edge')) add('warn', L('Наибольшее показание — в крайнем положении: максимум, вероятно, за пределами кривой. Продолжите измерения дальше.', 'The largest reading is at an end position: the maximum is probably outside the curve. Extend the measurements.'), `${REF.trs492}, разд. 8.2.1`, 's_x_0');
   else if (r.warnings.includes('margin')) add('warn', L(`Кривая заходит за максимум меньше чем на 10 мм (вниз ${ru(r.margin.below, 1)} мм, вверх ${ru(r.margin.above, 1)} мм): плато может быть оценено не полностью.`, `The curve extends less than 10 mm beyond the maximum (down ${r.margin.below.toFixed(1)} mm, up ${r.margin.above.toFixed(1)} mm): the plateau may be incomplete.`), `${REF.trs492}, разд. 8.2.1`, 's_x_0');
-  if (r.method !== 'parabola') add('info', L('Парабола по вершине не получилась (кривая не выпуклая у максимума) — взято наибольшее показание.', 'A parabola could not be fitted at the top (the curve is not convex at the maximum); the largest reading is used.'), null, 's_x_0');
+  const ref821 = `${REF.trs492}, разд. 8.2.1`;
+  if (r.method === 'trs') {
+    add('info', L(`Максимум — вершина параболы I(x) = ax² + bx + c по ${r.fit.n} точкам в ±20 мм (TRS-492, ур. 25–26).`, `The maximum is the vertex of the parabola I(x) = ax² + bx + c over ${r.fit.n} points within ±20 mm (TRS-492, Eq. 25–26).`), ref821, 's_x_0');
+    if (r.top && Math.abs(r.top.xPeak - r.xPeak) > 0.5) add('warn', L(`Парабола только по вершине кривой даёт ${ru(r.top.xPeak, 1)} мм — на ${ru(Math.abs(r.top.xPeak - r.xPeak), 1)} мм от параболы TRS: кривая несимметрична, проверьте точки и выбор метода.`, `A parabola over the top of the curve only gives ${r.top.xPeak.toFixed(1)} mm, ${Math.abs(r.top.xPeak - r.xPeak).toFixed(1)} mm from the TRS parabola: the curve is asymmetric; check the points and the method.`), ref821, 's_x_0');
+  } else if (r.warnings.includes('trs-fail')) {
+    add('warn', L(r.method === 'parabola' ? 'Парабола по ±20 мм (TRS-492, ур. 25–26) не выпуклая или её вершина вне точек — взята парабола по вершине кривой.' : 'Парабола по ±20 мм (TRS-492, ур. 25–26) и по вершине не получилась — взято наибольшее показание.', r.method === 'parabola' ? 'The parabola over ±20 mm (TRS-492, Eq. 25–26) is not convex or its vertex is outside the points; the parabola over the top of the curve is used.' : 'Neither the ±20 mm parabola (TRS-492, Eq. 25–26) nor the top parabola could be fitted; the largest reading is used.'), ref821, 's_x_0');
+  }
+  if (f.s_method === 'ivb') {
+    if (r.warnings.includes('no-local')) add('warn', L('Локального максимума на кривой нет: продлите измерения от входа в камеру. Взято наибольшее показание.', 'There is no local maximum on the curve: extend the measurements from the chamber entrance. The largest reading is used.'), ref821, 's_entry');
+    else add('info', L('SI IVB 1000: максимум — первый локальный от входа в камеру (TRS-492, разд. 8.2.1), уточнён параболой по трём точкам.', 'SI IVB 1000: the maximum is the first local one from the chamber entrance (TRS-492, Sec. 8.2.1), refined by a parabola through three points.'), ref821, 's_entry');
+  } else if (/IVB/i.test(f.w_model)) add('warn', L('Камера SI IVB 1000: её кривую параболой не описать — выберите метод «первый локальный максимум от входа».', 'SI IVB 1000 chamber: its curve cannot be described by a parabola; choose the method “first local maximum from the entrance”.'), ref821, 's_method');
   // отклик в положении измерения и в положении сертификата
   const resp = (x) => (Number.isFinite(x) ? responseAt(r, x) : NaN);
   const wPos = parseNumber(f.w_pos);
@@ -1050,6 +1085,7 @@ export function computeBrachyTg43(input, { offsetMin = 0, now = Date.now(), well
   const n = Math.max(f.t_r.length, f.t_g.length, f.t_F.length);
   let needF = false;
   let needG = false;
+  const extra = new Set();
   for (let i = 0; i < n; i++) {
     const r = parseNumber(f.t_r[i]);
     if (!Number.isFinite(r)) continue;
@@ -1059,16 +1095,26 @@ export function computeBrachyTg43(input, { offsetMin = 0, now = Date.now(), well
     }
     const ownG = parseNumber(f.t_g[i]);
     const ownF = parseNumber(f.t_F[i]);
-    const gTab = table ? interpTable(rs, table, r) : NaN;
+    let gTab = table ? interpTable(rs, table, r) : NaN;
+    // вне таблицы — по HEBD, табл. III: ближе r_min — ближайшее значение, дальше r_max — линейно по двум последним точкам
+    let gExtra = '';
+    if (table && !Number.isFinite(gTab)) {
+      const k = rs.length - 1;
+      if (r < rs[0]) [gTab, gExtra] = [table[0], 'near'];
+      else [gTab, gExtra] = [table[k] + ((table[k] - table[k - 1]) / (rs[k] - rs[k - 1])) * (r - rs[k]), 'far'];
+    }
     const g = Number.isFinite(ownG) ? ownG : gTab;
+    if (!Number.isFinite(ownG) && gExtra) extra.add(gExtra);
     const F = Number.isFinite(ownF) ? ownF : Math.abs(th - 90) < 1e-9 ? 1 : NaN;
     const G = geometryLineAt(r, th, src.L) / g1;
     if (!Number.isFinite(g)) needG = true;
     if (!Number.isFinite(F)) needF = true;
     const value = out.dw1 * G * g * F;
-    out.rows.push({ i, r, G, g, gOwn: Number.isFinite(ownG), F, FOwn: Number.isFinite(ownF), value });
+    out.rows.push({ i, r, G, g, gOwn: Number.isFinite(ownG), gExtra: Number.isFinite(ownG) ? '' : gExtra, F, FOwn: Number.isFinite(ownF), value });
   }
-  if (needG) add('warn', L(table ? `g_L(r) в HEBD — от ${ru(rs[0], 2)} до ${ru(rs[rs.length - 1], 0)} см: вне этого — введите свою.` : 'Для своей модели введите g_L(r) в каждой строке.', table ? `HEBD g_L(r) covers ${rs[0]}–${rs[rs.length - 1]} cm: outside that, enter your own.` : 'For your own model, enter g_L(r) in each row.'), GL_REF[f.nuclide] ?? null, 't_r_0');
+  if (extra.size) add('info', L(`g_L(r) вне таблицы HEBD (${ru(rs[0], 2)}–${ru(rs[rs.length - 1], 0)} см) экстраполирована по HEBD, табл. III: ${[extra.has('near') ? `ближе ${ru(rs[0], 2)} см — значение на ${ru(rs[0], 2)} см` : '', extra.has('far') ? `дальше ${ru(rs[rs.length - 1], 0)} см — линейно по двум последним точкам` : ''].filter(Boolean).join('; ')}.`, `g_L(r) outside the HEBD table (${rs[0]}–${rs[rs.length - 1]} cm) is extrapolated per HEBD Table III: ${[extra.has('near') ? `closer than ${rs[0]} cm, the value at ${rs[0]} cm` : '', extra.has('far') ? `beyond ${rs[rs.length - 1]} cm, linearly from the last two points` : ''].filter(Boolean).join('; ')}.`), `${REF.hebd}, табл. III`, 't_r_0');
+  if (extra.has('near')) add('warn', L(`Точка ближе ${ru(rs[0], 2)} см к центру источника — у самой капсулы: формализм TG-43 там неточен.`, `A point closer than ${rs[0]} cm to the source centre is next to the capsule: the TG-43 formalism is inaccurate there.`), `${REF.hebd}, разд. III`, 't_r_0');
+  if (needG) add('warn', L('Для своей модели введите g_L(r) в каждой строке.', 'For your own model, enter g_L(r) in each row.'), GL_REF[f.nuclide] ?? null, 't_r_0');
   if (needF) add('warn', L(`Вне поперечной оси (θ = ${ru(th, 0)}°) нужна функция анизотропии F(r,θ) — возьмите из таблиц HEBD для своей модели.`, `Off the transverse axis (θ = ${th}°) the anisotropy function F(r,θ) is needed: take it from the HEBD tables for your model.`), REF.hebd, 't_th');
   if (f.t_basis !== 'manual' && !Number.isFinite(cert.half) && Number.isFinite(base.t)) add('error', L('Не задан период полураспада.', 'The half-life is not set.'), null, 'half');
   add('info', L('Справочно: формализм TG-43 не учитывает неоднородности и ограниченность среды. Для проверки системы планирования — таблицы «вдоль-поперёк» HEBD для своей модели.', 'For reference: the TG-43 formalism ignores heterogeneities and finite scatter conditions. For a TPS check, use the HEBD along-away tables for your model.'), `${REF.tg43}; ${REF.hebd}`, null);

@@ -58,10 +58,25 @@ test('Колодезная камера, ¹⁹²Ir: как в рабочей т�
   assert.equal(r.compare.level, 'ok');
   // кажущаяся активность через Γ паспорта (только справочно)
   rel(r.A, r.U / 108.648, 1e-12);
+  // одно введение — предупреждение TRS-492, разд. 8.2.2 (нужно не меньше трёх)
+  assert.ok(r.messages.some((m) => m.level === 'warn' && m.ref?.includes('8.2.2') && /Введений/.test(m.text)));
+  assert.equal(r.readings.insertions, 1);
   // через N_AA сертификата камеры (Бк/А)
   const a = computeBrachyWell({ ...IR_CERT, w_N: '9,897e5', w_NAA: '8,996e18', w_I: ['52'], w_T: '20', w_P: '101,325', w_P_unit: 'kPa' });
   near(a.A, 52e-9 * 8.996e18 / 1e9, 1e-9);
-  assert.ok(a.messages.some((m) => m.level === 'warn' && m.field === 'w_I'), 'меньше трёх показаний');
+  assert.ok(a.messages.some((m) => m.level === 'warn' && m.field === 'w_I'), 'мало показаний');
+  // три введения: результат — среднее средних введений; расхождение серий 0,4 % — предупреждение
+  const three = { ...IR_CERT, w_N: '9,897e5', w_T: '20', w_P: '101,325', w_P_unit: 'kPa' };
+  const s3 = computeBrachyWell({ ...three, w_I: ['52', '52', '52', '52', '52'], w_I2: ['52,01', '52', '52,01', '52', '52,01'], w_I3: ['52', '52,01', '52', '52', '52'] });
+  near(s3.readings.mean, (52 + 52.006 + 52.002) / 3, 1e-9);
+  assert.equal(s3.readings.insertions, 3);
+  assert.ok(!s3.messages.some((m) => m.level === 'warn' && m.ref?.includes('8.2.2')));
+  assert.ok(s3.messages.some((m) => m.level === 'info' && /Повторяемость в норме/.test(m.text)));
+  const bad = computeBrachyWell({ ...three, w_I: ['52', '52', '52', '52', '52'], w_I2: ['52,2', '52,2', '52,2', '52,2', '52,2'], w_I3: ['52', '52', '52', '52', '52'] });
+  assert.ok(bad.messages.some((m) => m.field === 'w_I2' && m.level === 'warn'));
+  // пропущенное второе введение: номера серий — как в полях (введение 3)
+  const gap = computeBrachyWell({ ...three, w_I: ['52', '52', '52', '52', '52'], w_I3: ['52', '52,1', '52,2', '52,3', '52,4'] });
+  assert.ok(gap.messages.some((m) => m.field === 'w_I3' && /Введение 3/.test(m.text)));
 });
 
 test('Колодезная камера: k_pol, k_s (ур. 33; линейно для TW33004), k_sm, утечка, дата без времени', () => {
@@ -214,6 +229,16 @@ test('Фантом, ¹⁹²Ir: k_zp по камере (PTW 30013 → M30001), м
   // меньше 4 положений — предупреждение; несоответствие единицы и типа калибровки — ошибка
   assert.ok(computeBrachyPhantom({ ...ir, p_holes: [ir.p_holes[0]] }).messages.some((m) => m.level === 'warn' && m.field === 'p_hole0'));
   assert.equal(errors(computeBrachyPhantom({ ...ir, p_calib: 'Ns' })).length, 1);
+  // Ubrich 2014, табл. 5: строки Монте-Карло и PTB для ¹⁹²Ir (μSelectron V2), справочно
+  const v = Object.fromEntries(r.variants.map((x) => [x.id, x]));
+  near(v['ubrich-mc-30015'].factor, 6.689e-3, 0);
+  near(v['ubrich-mc-30016'].factor, 6.721e-3, 0);
+  near(v['ubrich-mc-31010'].factor, 6.677e-3, 0);
+  near(v['ubrich-ptb-30015'].factor, 6.772e-3, 0);
+  near(v['ubrich-ptb-30016'].factor, 6.799e-3, 0);
+  // разброс положений больше 3 % — предупреждение со ссылкой на разд. 6.1 руководства
+  const sp = computeBrachyPhantom({ ...ir, p_holes: [ir.p_holes[0], { T: '', P: '', M: ['1,05'] }, ir.p_holes[2], ir.p_holes[3]] });
+  assert.ok(sp.messages.some((m) => m.level === 'warn' && /практический порог/.test(m.text)));
 });
 
 test('Лист «Максимум отклика»: точки из полей, отклик в положении измерения и сдвиг от сертификата камеры', () => {
@@ -236,6 +261,14 @@ test('Лист «Максимум отклика»: точки из полей, 
   // в максимуме — без предупреждения
   const ok = computeBrachySweet({ s_x, s_M, w_pos: '56,3', s_cert_pos: '56' });
   assert.ok(!ok.messages.some((m) => m.level === 'warn'));
+  // TRS-492, ур. 25–26: парабола по ±20 мм — сообщение со ссылкой
+  assert.equal(r.method, 'trs');
+  assert.ok(r.messages.some((m) => m.ref?.includes('8.2.1') && /ур. 25–26/.test(m.text)));
+  // SI IVB 1000 с методом «парабола» — предупреждение; с методом «первый локальный» — сообщение о методе
+  assert.ok(computeBrachySweet({ s_x, s_M, w_model: 'SI IVB 1000' }).messages.some((m) => m.field === 's_method' && m.level === 'warn'));
+  const ivb = computeBrachySweet({ s_x, s_M, s_method: 'ivb', s_entry: 'low' });
+  assert.ok(ivb.local);
+  near(ivb.xPeak, 56.3, 0.3);
   // пустой лист — подсказка, без ошибок
   const empty = computeBrachySweet({});
   assert.equal(empty.ok, false);
@@ -356,8 +389,15 @@ test('Лист «Доза TG-43»: Λ · S_K на 1 см и на 8 см совп
   near((r.rows[0].value * 10) / 60, 1844.0, 0.05); // мГр/мин, как «По сертификату» на листе фантома
   near((r.rows[1].value * 10) / 60, 25.72, 0.01);
   near(r.rows[2].g, (0.984 + 0.968) / 2, 1e-12);
-  assert.ok(Number.isNaN(r.rows[3].value)); // 12 см — вне таблицы HEBD
-  assert.ok(r.messages.some((m) => m.level === 'warn'));
+  // 12 см — вне таблицы HEBD: линейно по 8 и 10 см (HEBD, табл. III): 0,849 + (0,849 − 0,884)/2·2 = 0,814
+  near(r.rows[3].g, 0.814, 1e-12);
+  assert.equal(r.rows[3].gExtra, 'far');
+  assert.ok(r.messages.some((m) => m.ref?.includes('табл. III')));
+  // ближе 0,25 см — значение на 0,25 см и предупреждение о капсуле
+  const near0 = computeBrachyTg43({ ...co, t_r: ['0,2'] });
+  near(near0.rows[0].g, 1.072, 1e-12);
+  assert.equal(near0.rows[0].gExtra, 'near');
+  assert.ok(near0.messages.some((m) => m.level === 'warn' && m.field === 't_r_0'));
   // через период полураспада — вдвое меньше
   const later = computeBrachyTg43({ ...co, t_date: '', t_time: '' }, { now: Date.UTC(2026, 10, 2, 7) + 1925.21 * 86400000 });
   near(later.SK, r.SK / 2, 1e-6);

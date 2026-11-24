@@ -13,9 +13,9 @@ import {
 import { $, esc, fmt, fmtSigned, richText, armButton, downloadText, savedFileName, printToPdf, versionText, pinSignaturesForPrint } from './common.js';
 import { scatterChart, legendSwatch } from './chart.js';
 import { renderCells, readCells, setupCells } from './widgets.js';
-import { cellsHtml } from './journal-common.js';
+import { cellsHtml, fmtDate } from './journal-common.js';
 import { tipAttr } from './brachy-tips.js';
-import { wellBudget, phantomBudget } from '../core/brachy-unc.js';
+import { wellBudget, phantomBudget, certAgreement } from '../core/brachy-unc.js';
 import { parseOverrides } from '../core/uncertainty.js';
 import { brachyMachines, sourceOn, sourceText, sourceModelName, sourceToForm, certRowsFor, wellChamberToForm, phantomChamberToForm, isWellModel, wellChamberLabel } from '../core/brachy-journal.js';
 import { chamberText, chamberUse, cobaltCapable, activeOnly, dayNumber, orgText } from '../core/journal.js';
@@ -23,7 +23,7 @@ import { getJournal, onJournal, updateJournal } from './journal-store.js';
 import { drawChart, legendHtml, segmentLine, trendLine, signalsHtml, pointRules } from './journal-spc-ui.js';
 import { controlChart } from '../core/spc.js';
 import { sampleBrachy, isBrachySample } from '../core/sample-brachy.js';
-import { BRACHY_RECORD_SHEETS, BRACHY_DATE_KEY, brachySheetText, recordBrachy, brachyRecordsOf, formFromRecord, removeBrachyRecord } from '../core/brachy-records.js';
+import { BRACHY_RECORD_SHEETS, BRACHY_DATE_KEY, brachySheetText, recordBrachy, brachyRecordsOf, formFromRecord, removeBrachyRecord, redundantRunningMean } from '../core/brachy-records.js';
 
 const KEY = 'reference-dosimetry.brachy';
 const SHEETS = ['well', 'sweet', 'phantom', 'cross', 'stab', 'decay', 'tg43', 'log'];
@@ -350,8 +350,14 @@ function protConclusion(r) {
   if (sheet === 'well' || sheet === 'phantom') {
     if (!Number.isFinite(r.U)) return [];
     const out = [L(`ОМВК на время измерения ${fmt(r.mGyh, 3)} мГр/ч на 1 м (S_K = ${fmt(r.U, 0)} U).`, `RAKR at the measurement time ${fmt(r.mGyh, 3)} mGy/h at 1 m (S_K = ${fmt(r.U, 0)} U).`)];
-    if (r.compare) out.push(r.compare.text + (r.compare.ref ? ` (${refText(r.compare.ref)})` : ''));
-    else out.push(L('Сравнение с сертификатом источника не выполнено: нет данных сертификата или даты.', 'No comparison with the source certificate: the certificate data or the date are missing.'));
+    if (r.compare) {
+      out.push(r.compare.text + (r.compare.ref ? ` (${refText(r.compare.ref)})` : ''));
+      const { b } = budgetFor();
+      const a = certAgreement({ dev: r.compare.dev, Umeas: b.U, Ucert: parseNumber(form.cert_U), kCert: parseNumber(form.cert_k) });
+      if (a.ok) out.push(a.pass
+        ? L(`Сертификат и измерение согласуются в пределах расширенных неопределённостей (±${fmt(a.limit, 1)} %, k = 2; IAEA TRS-492, разд. 8.6.2.1).`, `The certificate and the measurement agree within their expanded uncertainties (±${fmt(a.limit, 1)}%, k = 2; IAEA TRS-492, Sec. 8.6.2.1).`)
+        : L(`Сертификат и измерение не согласуются в пределах расширенных неопределённостей (±${fmt(a.limit, 1)} %, k = 2): выяснить причину (IAEA TRS-492, разд. 8.6.2.1).`, `The certificate and the measurement do not agree within their expanded uncertainties (±${fmt(a.limit, 1)}%, k = 2): investigate (IAEA TRS-492, Sec. 8.6.2.1).`));
+    } else out.push(L('Сравнение с сертификатом источника не выполнено: нет данных сертификата или даты.', 'No comparison with the source certificate: the certificate data or the date are missing.'));
     return out;
   }
   if (sheet === 'stab') {
@@ -680,7 +686,8 @@ function sourceHtml() {
       ${text('src_name', L('Модель и номер источника', 'Source model and number'), { span: ' span-2' })}
       ${numUnit('cert_value', L('Значение в сертификате', 'Certificate value'), unitAll, 'cert_unit', { span: ' span-2' })}
       ${numUnit('cert_gamma', L('Γ_δ из сертификата', 'Γ_δ from the certificate'), GAMMA_UNITS, 'cert_gamma_unit', { span: ' span-2' })}
-      ${num('cert_U', L('Неопределённость сертификата, %', 'Certificate uncertainty, %'))}
+      ${num('cert_U', L('Неопределённость сертификата U, %', 'Certificate uncertainty U, %'), { ph: L('пусто — 5 % при k = 3', 'blank: 5% at k = 3') })}
+      ${select('cert_k', L('k для U сертификата', 'k of the certificate U'), [['2', 'k = 2 (P ≈ 95 %)'], ['3', 'k = 3 (P ≈ 99,7 %)']].map(([k, t]) => opt(k, t, form.cert_k)).join(''), { full: false })}
       ${when('cert_', L('Дата сертификата', 'Certificate date'), L('Пусто — 00:00 (как в таблице распада производителя)', "Blank: 00:00 (as in the manufacturer's decay table)"))}
     </div>
     <p class="sub-hint" id="br-cert-live"></p></section>`;
@@ -716,7 +723,8 @@ function wellMeasureHtml() {
       ${select('w_unit', L('Единица тока', 'Current unit'), unitOpts(CURRENT_UNITS, form.w_unit))}
       ${num('w_pos', L('Положение источника, мм', 'Source position, mm'), { hint: L('Лист «Максимум отклика» проверяет, что это максимум', 'The Sweet spot sheet checks that this is the maximum') })}
     </div>
-    <div class="series">${cellsHtml('w_I', L('Ток', 'Current'), form.w_I, unitLabel(CURRENT_UNITS[form.w_unit]))}</div>
+    <p class="sub-hint">${sub(L('Не меньше трёх введений источника в точку максимума, на каждое — не меньше пяти показаний после стабилизации; результат — среднее по введениям (TRS-492, разд. 8.2.2).', 'At least three source insertions at the sweet spot, at least five readings each after stabilisation; the result is the mean over the insertions (TRS-492, Sec. 8.2.2).'))}</p>
+    ${['w_I', 'w_I2', 'w_I3'].map((k, i) => `<div class="series">${cellsHtml(k, L(`Введение ${i + 1}: ток`, `Insertion ${i + 1}: current`), form[k], unitLabel(CURRENT_UNITS[form.w_unit]))}</div>`).join('')}
     <div class="grid">
       ${num('w_leak', L('Ток утечки (без источника)', 'Leakage current (no source)'))}
       ${num('w_pol_plus', L('k_pol: показание при рабочей полярности', 'k_pol: reading at the routine polarity'))}
@@ -812,6 +820,8 @@ function sweetSetupHtml() {
       ${text('s_ref', L('Система отсчёта положения', 'Position reference'), { ph: L('по пульту аппарата, ампулопровод №…', 'as on the afterloader console, transfer tube no. …'), span: ' span-2' })}
       ${num('s_cert_pos', L('Опорная точка по сертификату камеры, мм', 'Reference point in the chamber certificate, mm'))}
       ${num('s_step', L('Шаг положений, мм', 'Position step, mm'))}
+      ${select('s_method', L('Как искать максимум', 'How to find the maximum'), [['trs', L('парабола по ±20 мм (PTW 33004, 33005, SI HDR 1000 Plus)', 'parabola over ±20 mm (PTW 33004, 33005, SI HDR 1000 Plus)')], ['ivb', L('первый локальный максимум от входа (SI IVB 1000)', 'first local maximum from the entrance (SI IVB 1000)')]].map(([k, t]) => opt(k, t, form.s_method)).join(''), { span: ' span-2' })}
+      ${form.s_method === 'ivb' ? select('s_entry', L('Вход в камеру — со стороны', 'Chamber entrance is on the side of'), [['low', L('меньших положений', 'smaller positions')], ['high', L('больших положений', 'larger positions')]].map(([k, t]) => opt(k, t, form.s_entry)).join('')) : ''}
       ${select('s_unit', L('Единица тока', 'Current unit'), unitOpts(CURRENT_UNITS, form.s_unit))}
     </div></section>`;
 }
@@ -840,7 +850,8 @@ function sweetResult() {
   const pl = (k) => (Number.isFinite(r.plateau[k].from) && Number.isFinite(r.plateau[k].to) ? L(`${fmt(r.plateau[k].from, 1)}–${fmt(r.plateau[k].to, 1)} мм (ширина ${fmt(r.plateau[k].to - r.plateau[k].from, 1)} мм)`, `${fmt(r.plateau[k].from, 1)}–${fmt(r.plateau[k].to, 1)} mm (width ${fmt(r.plateau[k].to - r.plateau[k].from, 1)} mm)`) : L('за пределами кривой', 'beyond the curve'));
   const u = unitLabel(CURRENT_UNITS[form.s_unit]) ?? '';
   const rows = [
-    [L('Максимум', 'Maximum'), `${fmt(r.mPeak, 4)} ${u}; ${r.method === 'parabola' ? L(`вершина параболы по ${r.fit.n} точкам`, `parabola vertex over ${r.fit.n} points`) : L('наибольшее показание', 'largest reading')}`, 'xPeak'],
+    [L('Максимум', 'Maximum'), `${fmt(r.mPeak, 4)} ${u}; ${r.method === 'trs' ? L(`вершина параболы по ${r.fit.n} точкам в ±20 мм (TRS-492, ур. 25–26)`, `parabola vertex over ${r.fit.n} points within ±20 mm (TRS-492, Eq. 25–26)`) : r.local ? L('первый локальный максимум от входа', 'first local maximum from the entrance') : r.method === 'parabola' ? L(`вершина параболы по ${r.fit.n} точкам у вершины`, `parabola vertex over ${r.fit.n} points at the top`) : L('наибольшее показание', 'largest reading')}`, 'xPeak'],
+    r.method === 'trs' && r.top ? [L('Для сравнения: парабола у вершины', 'For comparison: parabola at the top'), `${fmt(r.top.xPeak, 1)} ${L('мм', 'mm')} (${L(`по точкам ≥ 99 %, n = ${r.top.n}`, `points ≥ 99%, n = ${r.top.n}`)})`, 'xPeak'] : null,
     [L('Плато ≥ 99,5 %', 'Plateau ≥ 99.5%'), pl(99.5), 'plateau'],
     [L('Плато ≥ 99 %', 'Plateau ≥ 99%'), pl(99), 'plateau'],
     [L('Наибольший шаг', 'Largest step'), `${fmt(r.maxStep, 2)} ${L('мм', 'mm')}`, 's_step'],
@@ -853,7 +864,7 @@ function sweetResult() {
   return `<div class="plates-dose"><span${tipAttr('xPeak', { focus: true })}>${esc(L('Максимум отклика', 'Response maximum'))}</span><b>${esc(fmt(r.xPeak, 1))} ${esc(L('мм', 'mm'))}</b></div>
     <div class="actions"><button type="button" data-br="s-use">${esc(L(`Мерить в ${fmt(r.xPeak, 1)} мм на листе «Колодезная камера»`, `Measure at ${fmt(r.xPeak, 1)} mm on the Well-type chamber sheet`))}</button></div>
     <div class="br-chart" id="br-sweet-chart"></div>
-    <p class="chart-legend">${legendSwatch({ cls: 's1' })} ${esc(L('измерения', 'measurements'))} ${legendSwatch({ cls: 's2', line: true })} ${esc(L('парабола у вершины', 'parabola at the top'))}</p>
+    <p class="chart-legend">${legendSwatch({ cls: 's1' })} ${esc(L('измерения', 'measurements'))} ${legendSwatch({ cls: 's2', line: true })} ${esc(r.method === 'trs' ? L('парабола по ±20 мм', 'parabola over ±20 mm') : L('парабола у вершины', 'parabola at the top'))}</p>
     ${factorRows(rows)}${table}${msgHtml(r.messages)}`;
 }
 
@@ -872,8 +883,14 @@ function sweetChart(box = $('#br-sweet-chart')) {
     series.push({ cls: 's2', line: true, points: pts });
   }
   const vlines = [{ x: r.xPeak, label: L(`максимум ${fmt(r.xPeak, 1)}`, `maximum ${fmt(r.xPeak, 1)}`) }];
-  if (Number.isFinite(r.atMeas.rel)) vlines.push({ x: r.atMeas.x, label: L('измерение', 'measurement'), row: 1 });
-  if (Number.isFinite(r.atCert.rel)) vlines.push({ x: r.atCert.x, label: L('сертификат', 'certificate'), row: 1 });
+  // подписи «измерение» и «сертификат» в одной строке: близкие положения — одной подписью, чтобы не наползали
+  const span = r.points.length > 1 ? r.points[r.points.length - 1].x - r.points[0].x : 0;
+  const both = Number.isFinite(r.atMeas.rel) && Number.isFinite(r.atCert.rel) && Math.abs(r.atMeas.x - r.atCert.x) < 0.12 * span;
+  if (both) vlines.push({ x: r.atMeas.x, label: L('измерение, сертификат', 'measurement, certificate'), row: 1 });
+  else {
+    if (Number.isFinite(r.atMeas.rel)) vlines.push({ x: r.atMeas.x, label: L('измерение', 'measurement'), row: 1 });
+    if (Number.isFinite(r.atCert.rel)) vlines.push({ x: r.atCert.x, label: L('сертификат', 'certificate'), row: 1 });
+  }
   scatterChart(box, {
     label: L('Относительный отклик колодезной камеры по положению источника', 'Relative well-type chamber response by source position'),
     xLabel: L('Положение источника, мм', 'Source position, mm'),
@@ -1066,7 +1083,16 @@ function stabResult() {
     [red ? L('Отношение M1/M2', 'Ratio M1/M2') : L('Приведённое показание M', 'Corrected reading M'), valText],
     Number.isFinite(r.base) ? [L('Исходное значение', 'Baseline'), red ? fmt(r.base, 5) : `${fmt(r.base, 4)} ${u}`, 'st_base'] : null,
   ];
-  return `${head}<div class="actions"><button type="button" data-br="st-base">${esc(L('Записать это значение как исходное', 'Record this value as the baseline'))}</button></div>${factorRows(rows)}${msgHtml(r.messages)}`;
+  const one = (n) => n % 10 === 1 && n % 100 !== 11;
+  const few = (n) => n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
+  const recs = (n) => (one(n) ? L('записи', 'record') : L('записей', 'records')); // «среднее 1 записи», «среднее 3 записей»
+  const recsNom = (n) => (one(n) ? L('запись', 'record') : few(n) ? L('записи', 'records') : L('записей', 'records'));
+  const rm = red && form.j_well ? redundantRunningMean(getJournal(), { chamberId: form.j_well, before: form.st_date }) : null;
+  const rmBtn = rm?.n ? `<button type="button" data-br="st-runmean">${esc(L(`Исходное — текущее среднее ${rm.n} ${recs(rm.n)} журнала (${fmt(rm.mean, 5)})`, `Baseline: running mean of ${rm.n} journal record${rm.n === 1 ? '' : 's'} (${fmt(rm.mean, 5)})`))}</button>` : '';
+  const rmHint = red ? `<p class="sub-hint">${sub(rm?.n
+    ? L(`TRS-492 сравнивает отношение с текущим средним прошлых сличений: в журнале ${rm.n} ${recsNom(rm.n)} этой камеры (${fmtDate(rm.from)} — ${fmtDate(rm.to)}).`, `TRS-492 compares the ratio with the running mean of past comparisons: the journal holds ${rm.n} record${rm.n === 1 ? '' : 's'} for this chamber (${fmtDate(rm.from)} to ${fmtDate(rm.to)}).`)
+    : L('TRS-492 сравнивает отношение с текущим средним прошлых сличений (разд. 8.5.1). Выберите камеру из «Оборудования» и записывайте сличения в журнал — среднее появится здесь кнопкой.', 'TRS-492 compares the ratio with the running mean of past comparisons (Sec. 8.5.1). Choose the chamber from Equipment and record the comparisons in the journal: the mean will appear here as a button.'))}</p>` : '';
+  return `${head}<div class="actions"><button type="button" data-br="st-base">${esc(L('Записать это значение как исходное', 'Record this value as the baseline'))}</button>${rmBtn}</div>${rmHint}${factorRows(rows)}${msgHtml(r.messages)}`;
 }
 
 // ------------------------------------------------------------ бюджет неопределённости (колодезная камера, фантом)
@@ -1074,10 +1100,10 @@ function stabResult() {
 function budgetFor() {
   const w = computeBrachyWell(form, { offsetMin: offsetMin() });
   const wb = wellBudget({ scenario: form.u_scen, NU: parseNumber(form.w_NU), ksmMode: form.w_ksm_mode, readings: w.readings, over: form.u_over_w });
-  if (sheet === 'well') return { b: wb, value: w.ok ? w.mGyh : NaN, which: 'w' };
+  if (sheet === 'well') return { b: wb, value: w.ok ? w.mGyh : NaN, which: 'w', dev: w.compare?.dev };
   const r = computeBrachyPhantom(form, { offsetMin: offsetMin() });
   const b = phantomBudget({ scenario: form.u_scen, NU: parseNumber(form.p_NU), mainId: r.main?.id, nuclide: form.nuclide, holes: r.holes, kA: r.main?.kA, wellUc: wb.uc, over: form.u_over_p });
-  return { b, value: r.main ? r.mGyh : NaN, which: 'p' };
+  return { b, value: r.main ? r.mGyh : NaN, which: 'p', dev: r.compare?.dev };
 }
 
 const uNum = (v) => (Number.isFinite(v) ? fmt(v, 2) : '—');
@@ -1103,7 +1129,7 @@ function uncHtml(n) {
 function uncLive() {
   const sum = $('#br-unc-sum');
   if (!sum) return;
-  const { b, value } = budgetFor();
+  const { b, value, dev } = budgetFor();
   const keys = new Set(b.rows.map((r) => r.key));
   const shown = [...document.querySelectorAll('#brachy-root tr[data-ur]')].map((tr) => tr.dataset.ur);
   if (shown.length !== keys.size || shown.some((k) => !keys.has(k))) {
@@ -1118,7 +1144,18 @@ function uncLive() {
   }
   const abs = Number.isFinite(value) ? L(` → ±${fmt((value * b.U) / 100, 3)} мГр/ч на 1 м (ОМВК ${fmt(value, 3)} мГр/ч)`, ` → ±${fmt((value * b.U) / 100, 3)} mGy/h at 1 m (RAKR ${fmt(value, 3)} mGy/h)`) : '';
   sum.innerHTML = `<div class="plates-dose"><span${tipAttr('u_c', { focus: true })}>${sub(L('Расширенная неопределённость ОМВК, k = 2', 'Expanded uncertainty of the RAKR, k = 2'))}</span><b>±${esc(fmt(b.U, 1))} %</b></div>
-    <p class="sub-hint">${sub(L(`u_c = ${fmt(b.uc, 2)} %; U = ${fmt(b.k, 0)} · u_c = ${fmt(b.U, 2)} %${abs}.`, `u_c = ${fmt(b.uc, 2)}%; U = ${fmt(b.k, 0)} · u_c = ${fmt(b.U, 2)}%${abs}.`))}</p>${msgHtml(b.messages)}`;
+    <p class="sub-hint">${sub(L(`u_c = ${fmt(b.uc, 2)} %; U = ${fmt(b.k, 0)} · u_c = ${fmt(b.U, 2)} %${abs}.`, `u_c = ${fmt(b.uc, 2)}%; U = ${fmt(b.k, 0)} · u_c = ${fmt(b.U, 2)}%${abs}.`))}</p>${agreeHtml(dev, b.U)}${msgHtml(b.messages)}`;
+}
+
+/** Согласие с сертификатом в пределах расширенных неопределённостей (k = 2), TRS-492, разд. 8.6.2.1. */
+function agreeHtml(dev, Umeas) {
+  if (!Number.isFinite(dev)) return '';
+  const a = certAgreement({ dev, Umeas, Ucert: parseNumber(form.cert_U), kCert: parseNumber(form.cert_k) });
+  if (!a.ok) return '';
+  const uc = a.typical ? L(`U сертификата не указана — взята типичная 5 % при k = 3, т. е. ${fmt(a.Ucert2, 1)} % при k = 2`, `certificate U not given: the typical 5% at k = 3 is used, i.e. ${fmt(a.Ucert2, 1)}% at k = 2`) : L(`U сертификата ${fmt(a.Ucert2, 2)} % при k = 2`, `certificate U ${fmt(a.Ucert2, 2)}% at k = 2`);
+  const chip = `<span class="chip ${a.pass ? 'ok' : 'out'}">${esc(a.pass ? L('согласуются', 'agree') : L('не согласуются', 'do not agree'))}</span>`;
+  return `<div class="plates-dose"><span${tipAttr('agree', { focus: true })}>${esc(L('Согласие с сертификатом (k = 2)', 'Agreement with the certificate (k = 2)'))}</span><b>${esc(fmtSigned(dev, 2))} % / ±${esc(fmt(a.limit, 2))} %</b>${chip}</div>
+    <p class="sub-hint">${sub(L(`Предел √(U_серт² + U_изм²): ${uc}, U измерения ${fmt(Umeas, 2)} %. ${a.pass ? '' : 'Значения сертификата и измерения должны совпадать в пределах своих расширенных неопределённостей — выясните причину расхождения.'} (TRS-492, разд. 8.6.2.1)`, `Limit √(U_cert² + U_meas²): ${uc}, measurement U ${fmt(Umeas, 2)}%. ${a.pass ? '' : 'The certificate and measured values must agree within their expanded uncertainties; investigate the difference.'} (TRS-492, Sec. 8.6.2.1)`))}</p>`;
 }
 
 // ------------------------------------------------------------ лист «Доза TG-43»
@@ -1161,13 +1198,13 @@ function tg43Result() {
   const s = r.source;
   const cell = (x, n) => `<td class="v">${Number.isFinite(x) ? esc(fmt(x, n)) : '—'}</td>`;
   const rows = r.rows
-    .map((x) => `<tr><td class="v">${esc(fmt(x.r, 2))}</td>${cell(x.G, 5)}<td class="v">${Number.isFinite(x.g) ? esc(fmt(x.g, 3)) + (x.gOwn ? '*' : '') : '—'}</td><td class="v">${Number.isFinite(x.F) ? esc(fmt(x.F, 3)) + (x.FOwn ? '*' : '') : '—'}</td>${cell(x.value / 100, 4)}${cell((x.value * 10) / 60, 3)}</tr>`)
+    .map((x) => `<tr><td class="v">${esc(fmt(x.r, 2))}</td>${cell(x.G, 5)}<td class="v">${Number.isFinite(x.g) ? esc(fmt(x.g, 3)) + (x.gOwn ? '*' : x.gExtra ? '†' : '') : '—'}</td><td class="v">${Number.isFinite(x.F) ? esc(fmt(x.F, 3)) + (x.FOwn ? '*' : '') : '—'}</td>${cell(x.value / 100, 4)}${cell((x.value * 10) / 60, 3)}</tr>`)
     .join('');
   const table = `<div class="table-wrap"><table class="factors br-variants"><thead><tr><th class="v">${esc(L('r, см', 'r, cm'))}</th><th class="v"${tipAttr('t_G', { focus: true })}>${sub('G_L/G_L(1)')}</th><th class="v"${tipAttr('t_g', { focus: true })}>${sub('g_L(r)')}</th><th class="v"${tipAttr('t_F', { focus: true })}>${sub('F(r,θ)')}</th><th class="v">${esc(L('Ḋ, Гр/ч', 'Ḋ, Gy/h'))}</th><th class="v">${esc(L('Ḋ, мГр/мин', 'Ḋ, mGy/min'))}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   const atText = r.tNow ? L(`сейчас (${dateText(r.t, form.t_zone)})`, `now (${dateText(r.t, form.t_zone)})`) : dateText(r.t, form.t_zone);
   return `<div class="plates-dose"><span${tipAttr('Dw1', { focus: true })}>${sub(L('Ḋ_w,1 = Λ · S_K (1 см, 90°)', 'Ḋ_w,1 = Λ · S_K (1 cm, 90°)'))}</span><b>${esc(fmt(r.dw1 / 100, 4))} ${esc(L('Гр/ч', 'Gy/h'))}</b></div>
     <p class="sub-hint">${sub(L(`${s.name}: Λ = ${fmt(s.lambda, 3)} сГр·ч⁻¹·Ед⁻¹, L = ${fmt(s.L, 2)} см; S_K = ${fmt(r.SK, 0)} Ед (${r.base.label}) на ${atText}; θ = ${fmt(r.theta, 0)}°.`, `${s.name}: Λ = ${fmt(s.lambda, 3)} cGy·h⁻¹·U⁻¹, L = ${fmt(s.L, 2)} cm; S_K = ${fmt(r.SK, 0)} U (${r.base.label}) at ${atText}; θ = ${fmt(r.theta, 0)}°.`))}${s.ref ? ` <span class="ref">(${esc(refText(s.ref))})</span>` : ''}</p>
-    ${table}${r.rows.some((x) => x.gOwn || x.FOwn) ? `<p class="sub-hint">${esc(L('* — своё значение.', '* own value.'))}</p>` : ''}${msgHtml(r.messages)}`;
+    ${table}${r.rows.some((x) => x.gOwn || x.FOwn) ? `<p class="sub-hint">${esc(L('* — своё значение.', '* own value.'))}</p>` : ''}${r.rows.some((x) => x.gExtra) ? `<p class="sub-hint">${esc(L('† — экстраполяция по HEBD, табл. III.', '† extrapolated per HEBD Table III.'))}</p>` : ''}${msgHtml(r.messages)}`;
 }
 
 function resultCardHtml(n) {
@@ -1223,7 +1260,7 @@ function render() {
   const clear = root.querySelector('[data-br="clear"]');
   if (clear) {
     armButton(clear, clear.textContent, () => L('Очистить показания этого листа?', 'Clear the readings of this sheet?'), () => {
-      if (sheet === 'well') Object.assign(form, { w_I: [...BRACHY_DEFAULTS.w_I], w_leak: '', w_T: '', w_P: '', w_pol_plus: '', w_pol_minus: '', w_ks_m1: '', w_ks_m2: '', w_date: '', w_time: '' });
+      if (sheet === 'well') Object.assign(form, { w_I: [...BRACHY_DEFAULTS.w_I], w_I2: [...BRACHY_DEFAULTS.w_I2], w_I3: [...BRACHY_DEFAULTS.w_I3], w_leak: '', w_T: '', w_P: '', w_pol_plus: '', w_pol_minus: '', w_ks_m1: '', w_ks_m2: '', w_date: '', w_time: '' });
       else if (sheet === 'sweet') Object.assign(form, { s_x: [...BRACHY_DEFAULTS.s_x], s_M: [...BRACHY_DEFAULTS.s_M], s_date: '' });
       else if (sheet === 'cross') Object.assign(form, { x_ref_I: [...BRACHY_DEFAULTS.x_ref_I], x_fld_I: [...BRACHY_DEFAULTS.x_fld_I], x_ref_leak: '', x_fld_leak: '', x_ref_T: '', x_ref_P: '', x_fld_T: '', x_fld_P: '', x_ref_date: '', x_ref_time: '', x_fld_date: '', x_fld_time: '' });
       else if (sheet === 'stab') Object.assign(form, { st_I: [...BRACHY_DEFAULTS.st_I], st_I2: [...BRACHY_DEFAULTS.st_I2], st_T: '', st_P: '', st_date: '', st_time: '' });
@@ -1269,7 +1306,7 @@ function wellResult() {
   if (!r.ok) return msgHtml(r.messages);
   const f = r.factors;
   const rows = [
-    [L('Среднее показание', 'Mean reading'), `${fmt(r.readings.mean, 4)} ${unitLabel(CURRENT_UNITS[form.w_unit])} (n = ${r.readings.n}, ${L('разброс', 'spread')} ${fmt(r.readings.relSd, 2)} %)`],
+    [L('Среднее показание', 'Mean reading'), `${fmt(r.readings.mean, 4)} ${unitLabel(CURRENT_UNITS[form.w_unit])} (${r.readings.insertions > 1 ? L(`${r.readings.insertions} введения: ${r.readings.sets.map((x) => fmt(x.mean, 4)).join('; ')}; разброс средних ${fmt(r.readings.spread, 2)} %`, `${r.readings.insertions} insertions: ${r.readings.sets.map((x) => fmt(x.mean, 4)).join('; ')}; spread of the means ${fmt(r.readings.spread, 2)}%`) : `n = ${r.readings.n}, ${L('разброс', 'spread')} ${fmt(r.readings.relSd, 2)} %`})`],
     ['k_TP', fmt(f.kTP, 4), 'kTP'],
     f.kLeak !== 1 ? ['k_leak', fmt(f.kLeak, 4), 'kLeak'] : null,
     ['k_elec', fmt(f.kElec, 4), 'kElec'],
@@ -1532,6 +1569,14 @@ function onClick(e) {
       ...(form.x_fld_serial ? { w_serial: form.x_fld_serial } : {}),
     });
     status(L(`Калибровочный коэффициент рабочей камеры перенесён на лист «Колодезная камера»: ${form.w_N}.`, `The field chamber calibration coefficient has been moved to the Well-type chamber sheet: ${form.w_N}.`));
+  } else if (b.dataset.br === 'st-runmean') {
+    readForm();
+    const rm = redundantRunningMean(getJournal(), { chamberId: form.j_well, before: form.st_date });
+    if (!rm.n) return;
+    Object.assign(form, { st_base: String(+rm.mean.toPrecision(6)).replace('.', L(',', '.')), st_base_date: rm.to, st_base_time: '', st_base_zone: '' });
+    persist();
+    render();
+    status(L(`Исходное — текущее среднее записей журнала (${rm.n}): ${form.st_base}.`, `Baseline: running mean of ${rm.n} records, ${form.st_base}.`));
   } else if (b.dataset.br === 'st-base') {
     const r = computeBrachyStability(form, { offsetMin: offsetMin() });
     if (!r.ok || !Number.isFinite(r.value)) return;

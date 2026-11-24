@@ -16,6 +16,7 @@ import {
   CERT_TOLERANCE,
   LEAKAGE_IGNORE,
   STABILITY_TOL,
+  WELL_REPEAT,
   PHANTOM_KR,
   PHANTOM_KZP_IR,
   PHANTOM_KZP_REF_CHAMBER,
@@ -305,6 +306,48 @@ export function kLeak(amps, leakAmps) {
   const ratio = leakAmps / amps;
   if (Math.abs(ratio) < LEAKAGE_IGNORE) return { value: 1, ratio, ignored: true };
   return { value: 1 - ratio, ratio, ignored: false };
+}
+
+/**
+ * Повторяемость показаний колодезной камеры по TRS-492, разд. 8.2.2. sets — серии показаний, по одной на введение
+ * источника в точку максимума (числа в любой единице). Результат — среднее средних серий (у каждого введения одинаковый
+ * вес); проверки: серий не меньше 3, показаний в серии не меньше 5, нет монотонного роста или спада больше 0,1 %,
+ * относительное стандартное отклонение среднего серии меньше 0,1 %, средние серий расходятся не больше чем на 0,2 %.
+ * sdMean — стандартное отклонение результата, % (тип А): по средним серий, если их две и больше, иначе по показаниям.
+ * @param {number[][]} sets
+ */
+export function wellRepeatability(sets) {
+  const R = WELL_REPEAT;
+  const avg = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const sdev = (xs) => (xs.length > 1 ? Math.sqrt(xs.reduce((a, x) => a + (x - avg(xs)) ** 2, 0) / (xs.length - 1)) : NaN);
+  const list = (sets ?? []).map((xs) => (xs ?? []).filter(Number.isFinite)).filter((xs) => xs.length);
+  const out = { sets: [], mean: NaN, n: 0, relSd: NaN, sdMean: NaN, spread: NaN, checks: [] };
+  if (!list.length) return out;
+  out.sets = list.map((xs, i) => {
+    const m = avg(xs);
+    const relSd = Math.abs(sdev(xs) / m) * 100;
+    const sdMean = relSd / Math.sqrt(xs.length);
+    const d = xs.slice(1).map((x, j) => x - xs[j]);
+    const mono = xs.length >= 3 && d.some((x) => x !== 0) && (d.every((x) => x >= 0) || d.every((x) => x <= 0));
+    const drift = Math.abs((xs[xs.length - 1] - xs[0]) / m) * 100;
+    return { i, n: xs.length, mean: m, relSd, sdMean, trend: mono && drift > R.trend + 1e-9, drift, dir: Math.sign(xs[xs.length - 1] - xs[0]) };
+  });
+  const all = list.flat();
+  const means = out.sets.map((x) => x.mean);
+  out.mean = avg(means);
+  out.n = all.length;
+  out.relSd = Math.abs(sdev(all) / avg(all)) * 100;
+  out.sdMean = means.length > 1 ? (Math.abs(sdev(means) / out.mean) * 100) / Math.sqrt(means.length) : out.sets[0].sdMean;
+  out.spread = means.length > 1 ? ((Math.max(...means) - Math.min(...means)) / Math.abs(out.mean)) * 100 : 0;
+  const ok = (id, pass, x = {}) => out.checks.push({ id, pass, ...x });
+  ok('insertions', list.length >= R.insertions, { value: list.length });
+  for (const x of out.sets) {
+    ok('readings', x.n >= R.readings, { set: x.i, value: x.n });
+    ok('trend', !x.trend, { set: x.i, value: x.drift });
+    if (x.n > 1) ok('sdMean', x.sdMean < R.sdMean + 1e-12, { set: x.i, value: x.sdMean });
+  }
+  if (means.length > 1) ok('sets', out.spread <= R.sets + 1e-9, { value: out.spread });
+  return out;
 }
 
 /**
@@ -599,15 +642,23 @@ export function tg43Transverse({ dw1, r, L, gL }) {
 export const SWEET_MAX_STEP_MM = 2.5;
 export const SWEET_MARGIN_MM = 10;
 
+/** Полуширина окна точек для параболы TRS-492, ур. (25)–(26): ±20 мм от ожидаемого максимума. */
+export const SWEET_TRS_WINDOW_MM = 20;
+
 /**
  * Опорная точка (максимум отклика) колодезной камеры по кривой «положение источника — показание», TRS-492, разд. 8.2.1,
- * рис. 6. Точки сортируются по положению; максимум — вершина параболы МНК по точкам с откликом не ниже 99 % от
- * наибольшего (не меньше трёх ближайших к нему точек), при плоской вершине — по более широкому участку (до 90 %);
- * если выпуклая парабола не получается — наибольшее показание.
+ * рис. 6. Точки сортируются по положению.
+ * method 'trs' (по умолчанию; PTW 33004, 33005, SI HDR 1000 Plus): парабола МНК I(x) = ax² + bx + c по всем точкам в
+ * ±20 мм от наибольшего показания, x_max = −b/(2a) (ур. 25–26). Для сравнения — парабола только по вершине (точки не ниже
+ * 99 % от наибольшего, не меньше трёх; при плоской вершине — шире, до 90 %): out.top. Если парабола TRS не выпуклая или
+ * её вершина вне окна — берётся парабола по вершине, если и она не получается — наибольшее показание.
+ * method 'ivb' (SI IVB 1000): параболой кривую не описать — максимум первый локальный от входа в камеру (entry: 'low' —
+ * вход со стороны меньших положений, 'high' — больших), уточнённый параболой по трём точкам вокруг него.
  * Плато — отрезок, где отклик (линейная интерполяция) не ниже 99,5 % и 99 % от максимума.
  * @param {{x:number, m:number}[]} points — положение, мм; показание (ток или заряд за одно время)
+ * @param {{method?:'trs'|'ivb', entry?:'low'|'high'}} [opts]
  */
-export function sweetSpot(points) {
+export function sweetSpot(points, { method: how = 'trs', entry = 'low' } = {}) {
   const pts = points.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.m)).sort((a, b) => a.x - b.x);
   const out = { ok: false, points: pts, warnings: [] };
   if (pts.length < 3) return { ...out, error: L('нужно не меньше трёх положений источника', 'at least three source positions are needed') };
@@ -620,11 +671,11 @@ export function sweetSpot(points) {
   // точки для параболы: не ниже 99 % от наибольшего; если вершина плоская (парабола не выпуклая) — шире, до 90 %
   const x0 = v[iMax].x;
   const det = (M) => M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
-  const fitParabola = (fit) => {
+  const fitParabola = (fit, xc = x0) => {
     const S = [0, 0, 0, 0, 0];
     const T = [0, 0, 0];
     for (const p of fit) {
-      const dx = p.x - x0;
+      const dx = p.x - xc;
       for (let k = 0; k <= 4; k++) S[k] += dx ** k;
       for (let k = 0; k <= 2; k++) T[k] += p.m * dx ** k;
     }
@@ -639,9 +690,9 @@ export function sweetSpot(points) {
     const from = Math.min(...fit.map((p) => p.x));
     const to = Math.max(...fit.map((p) => p.x));
     if (!(c2 < 0)) return null;
-    const xv = x0 - c1 / (2 * c2);
+    const xv = xc - c1 / (2 * c2);
     if (xv < from || xv > to) return null;
-    return { c0, c1, c2, x0, from, to, n: fit.length, xv, mv: c0 + c1 * (xv - x0) + c2 * (xv - x0) ** 2 };
+    return { c0, c1, c2, x0: xc, from, to, n: fit.length, xv, mv: c0 + c1 * (xv - xc) + c2 * (xv - xc) ** 2 };
   };
   const nearest3 = () => [...v].sort((a, b) => Math.abs(a.x - x0) - Math.abs(b.x - x0)).slice(0, 3);
   let fitted = null;
@@ -657,12 +708,37 @@ export function sweetSpot(points) {
   let xPeak = x0;
   let mPeak = mMax;
   let method = 'max';
-  if (fitted) {
-    xPeak = fitted.xv;
-    mPeak = fitted.mv;
-    method = 'parabola';
-    const { c0, c1, c2, from, to, n } = fitted;
-    out.fit = { c0, c1, c2, x0, from, to, n };
+  let iRef = iMax;
+  if (fitted) out.top = { xPeak: fitted.xv, n: fitted.n };
+  let chosen = fitted;
+  if (how === 'ivb') {
+    // первый локальный максимум от входа в камеру
+    const order = entry === 'high' ? [...v.keys()].reverse() : [...v.keys()];
+    const k = order.findIndex((i, j) => j > 0 && j < order.length - 1 && v[i].m >= v[order[j - 1]].m && v[i].m > v[order[j + 1]].m);
+    if (k > 0) {
+      iRef = order[k];
+      const loc = fitParabola([v[order[k - 1]], v[iRef], v[order[k + 1]]], v[iRef].x);
+      chosen = loc;
+      if (!loc) { xPeak = v[iRef].x; mPeak = v[iRef].m; }
+      out.local = true;
+    } else {
+      chosen = null;
+      out.warnings.push('no-local');
+    }
+  } else {
+    const win = v.filter((p) => Math.abs(p.x - x0) <= SWEET_TRS_WINDOW_MM + 1e-9);
+    const trs = win.length >= 3 ? fitParabola(win) : null;
+    if (trs) {
+      chosen = trs;
+      method = 'trs';
+    } else out.warnings.push('trs-fail');
+  }
+  if (chosen) {
+    xPeak = chosen.xv;
+    mPeak = chosen.mv;
+    if (method !== 'trs') method = 'parabola';
+    const { c0, c1, c2, from, to, n } = chosen;
+    out.fit = { c0, c1, c2, x0: chosen.x0, from, to, n };
   }
   out.xPeak = xPeak;
   out.mPeak = mPeak * sign;
@@ -673,8 +749,8 @@ export function sweetSpot(points) {
     const r = out.rel;
     let lo = NaN;
     let hi = NaN;
-    for (let i = iMax; i > 0; i--) if (r[i - 1].rel < level) { lo = r[i - 1].x + ((level - r[i - 1].rel) / (r[i].rel - r[i - 1].rel)) * (r[i].x - r[i - 1].x); break; }
-    for (let i = iMax; i < r.length - 1; i++) if (r[i + 1].rel < level) { hi = r[i].x + ((r[i].rel - level) / (r[i].rel - r[i + 1].rel)) * (r[i + 1].x - r[i].x); break; }
+    for (let i = iRef; i > 0; i--) if (r[i - 1].rel < level) { lo = r[i - 1].x + ((level - r[i - 1].rel) / (r[i].rel - r[i - 1].rel)) * (r[i].x - r[i - 1].x); break; }
+    for (let i = iRef; i < r.length - 1; i++) if (r[i + 1].rel < level) { hi = r[i].x + ((r[i].rel - level) / (r[i].rel - r[i + 1].rel)) * (r[i + 1].x - r[i].x); break; }
     return { from: lo, to: hi };
   };
   out.plateau = { 99.5: cross(0.995), 99: cross(0.99) };
@@ -684,7 +760,7 @@ export function sweetSpot(points) {
   if (out.maxStep > SWEET_MAX_STEP_MM + 1e-9) out.warnings.push('step');
   out.margin = { below: xPeak - v[0].x, above: v[v.length - 1].x - xPeak };
   if (out.margin.below < SWEET_MARGIN_MM - 1e-9 || out.margin.above < SWEET_MARGIN_MM - 1e-9) out.warnings.push('margin');
-  if (iMax === 0 || iMax === v.length - 1) out.warnings.push('edge');
+  if (how !== 'ivb' && (iMax === 0 || iMax === v.length - 1)) out.warnings.push('edge');
   out.ok = true;
   return out;
 }
