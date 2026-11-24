@@ -3,6 +3,8 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer, launch, openPage } from './helpers.js';
 
+// результат листа и замечания справа (с 0.79.0 замечания — в панели «Замечания»)
+const resText = async (page) => `${await page.locator('#br-result').innerText()}\n${await page.locator('#br-messages').innerText()}`;
 let server;
 let browser;
 before(async () => {
@@ -24,9 +26,9 @@ test('брахитерапия: пример заполняет все лист�
   await pause();
   assert.match(await page.locator('#brachy-status').innerText(), /Загружен демонстрационный пример/);
   assert.match(await page.locator('#brachy-root .demo-flag').innerText(), /демонстрационный пример/);
-  assert.match(await page.locator('#br-result').innerText(), /35,3\d* мГр\/ч на 1 м[\s\S]*\+0,3\d* % от сертификата/);
+  assert.match(await resText(page), /35,3\d* мГр\/ч на 1 м[\s\S]*\+0,3\d* % от сертификата/);
   // три введения (TRS-492, разд. 8.2.2) и согласие с сертификатом при k = 2 (разд. 8.6.2.1)
-  assert.match(await page.locator('#br-result').innerText(), /3 введения: 71,340*; 71,360*; 71,340*/);
+  assert.match(await resText(page), /3 введения: 71,340*; 71,360*; 71,340*/);
   assert.match(await page.locator('#br-unc-sum').innerText(), /Согласие с сертификатом \(k = 2\)\s+\+0,3\d % \/ ±\d,\d\d %\s*согласуются/);
   const expect = {
     sweet: /Максимум отклика\s+1229,9 мм/,
@@ -39,9 +41,9 @@ test('брахитерапия: пример заполняет все лист�
   for (const [sh, re] of Object.entries(expect)) {
     await page.click(`a[data-goto="brachy/${sh}"]`);
     await pause(400);
-    const res = await page.locator('#br-result').innerText();
+    const res = await resText(page);
     assert.match(res, re, sh);
-    assert.equal(await page.locator('#br-result .br-err').count(), 0, `${sh}: без ошибок`);
+    assert.equal(await page.locator('#br-messages li.error').count(), 0, `${sh}: без ошибок`);
     if (await page.locator('.br-prot-det').count()) {
       if (!(await page.locator('.br-prot-det').evaluate((d) => d.open))) await page.click('.br-prot-det > summary');
       await pause();

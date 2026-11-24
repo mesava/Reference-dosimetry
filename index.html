@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0d6670">
-<link rel="stylesheet" href="src/ui/styles.css?v=0.78.0">
+<link rel="stylesheet" href="src/ui/styles.css?v=0.79.0">
 </head>
 <body>
 <header class="topbar">
@@ -2644,7 +2644,8 @@
 </div>
 
 <div class="module" id="module-brachy" role="tabpanel" aria-labelledby="tab-dosimetry" hidden>
-<main class="start brachy">
+<main class="layout">
+  <div class="sheet" id="br-sheet">
     <nav class="subtools" aria-label="Дозиметрия">
       <a href="#co60" data-module="co60">⁶⁰Co</a>
       <a href="#photons" data-module="photons">МВ фотоны</a>
@@ -2652,9 +2653,25 @@
       <a href="#kv" data-module="kv">kV-рентген</a>
       <a href="#brachy" data-module="brachy" class="wip-link" aria-current="page">Брахитерапия <span class="wip-tag">в разработке</span></a>
     </nav>
-    <div id="brachy-root" data-i18n-skip></div>
-    <p class="status-line" id="brachy-status" role="status"></p>
+    <div class="sheet-body" id="brachy-root" data-i18n-skip></div>
+  </div>
+  <aside class="readout" id="br-readout" aria-label="Результат: брахитерапия">
+    <section class="display" aria-live="polite">
+      <h2 id="br-disp-title" data-i18n-skip>Сила источника</h2>
+      <div class="dose-rows" id="br-disp" data-i18n-skip></div>
+    </section>
+    <section class="panel">
+      <h2>Замечания</h2>
+      <ul class="messages" id="br-messages" data-i18n-skip></ul>
+    </section>
+    <section class="panel no-print">
+      <h2>Данные</h2>
+      <div class="actions" id="br-data-actions" data-i18n-skip></div>
+      <p class="status-line" id="brachy-status" role="status"></p>
+    </section>
+  </aside>
 </main>
+<div class="mobile-result"><span id="br-mobile-value" data-i18n-skip>—</span><a href="#br-readout">к результату</a></div>
 </div>
 
 <div class="module" id="module-session" role="tabpanel" aria-labelledby="tab-dosimetry" hidden>
@@ -3925,7 +3942,7 @@
 <div class="module" id="module-history" role="tabpanel" aria-labelledby="tab-history" hidden>
 <main class="layout">
   <form id="hs-sheet" class="sheet" autocomplete="off" novalidate>
-    <p class="intro">Журнал измерений аппарата: отклонение выхода от номинала (у ⁶⁰Co — мощности дозы от ожидаемой) по датам для каждого пучка, k<sub>pol</sub>, k<sub>s</sub> и ошибка таймера по калибровкам, сроки калибровки камер и электрометров. Измерения записываются из вкладок дозиметрии кнопкой «Записать в журнал».</p>
+    <p class="intro">Журнал измерений аппарата: отклонение выхода от номинала (у ⁶⁰Co — мощности дозы от ожидаемой) по датам для каждого пучка, k<sub>pol</sub>, k<sub>s</sub> и ошибка таймера по калибровкам, сроки калибровки камер и электрометров. Измерения записываются из вкладок дозиметрии кнопкой «Записать в журнал»; записи брахитерапии — в списке аппаратов, группа «Брахитерапия».</p>
     <ul class="purpose">
       <li><b>Когда:</b> чтобы увидеть дрейф выхода, сравнить калибровки, найти записанное измерение и выпустить протокол за день.</li>
       <li><b>Что делать:</b> выберите аппарат. В записях журнала (по дням) каждый пучок открывается во вкладке дозиметрии со всеми поправками; кнопка «Протокол» — протокол аппарата за день (текст и PDF).</li>
@@ -3991,6 +4008,18 @@
         <p class="hint">Запись — измерение рентгенотерапевтического аппарата за день по режимам: режимы и листы вкладки «kV-рентген» с итогами по режимам и аппликаторам. «Открыть во вкладке» показывает запись со всеми листами, поправками и замечаниями; «Протокол» — протокол измерений, как на листе «Сводка и протокол».</p></header>
       <div id="hs-kv-records" data-i18n-skip></div>
       <div class="actions"><button type="button" id="hs-kv-csv">Выгрузить записи аппарата в CSV</button></div>
+    </section>
+
+    <section class="step hs-br" aria-labelledby="hs-br-s2" id="hs-br-spc-sec" hidden>
+      <header><span class="step-no">2</span><h2 id="hs-br-s2">Тренды и контрольные карты</h2>
+        <p class="hint">Отклонение силы источника от сертификата (колодезная камера, фантом PTW 9193) и показания колодезной камеры от исходного (стабильность) по датам: центральная линия и границы ±2σ и ±3σ, пунктир — допуск. HDR: расхождение с сертификатом больше 3 % — выяснить причину, больше 5 % — не использовать источник (IAEA TRS-492, разд. 8.6.2); стабильность камеры — ±0,5 %, со второй камерой ±0,1 % (разд. 8.5).</p></header>
+      <div id="hs-br-charts" data-i18n-skip></div>
+    </section>
+
+    <section class="step hs-br" aria-labelledby="hs-br-s3" id="hs-br-rec-sec" hidden>
+      <header><span class="step-no">3</span><h2 id="hs-br-s3">Записи брахитерапии</h2>
+        <p class="hint">Запись — измерение листа вкладки «Брахитерапия» за день: сила источника (по афтерлоадеру), стабильность, сличение камер и максимум отклика (по колодезной камере). «Открыть на листе» переносит запись в поля её листа — там же печать протокола. Новые записи сверху.</p></header>
+      <div id="hs-br-records" data-i18n-skip></div>
     </section>
 
     <section class="step hs-beam" aria-labelledby="hs-s2">
@@ -4151,6 +4180,6 @@
   <div class="dlg-body" id="kv-din-body"></div>
 </dialog>
 
-<script type="module" src="src/ui/app.js?v=0.78.0"></script>
+<script type="module" src="src/ui/app.js?v=0.79.0"></script>
 </body>
 </html>

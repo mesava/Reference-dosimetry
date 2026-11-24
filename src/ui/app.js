@@ -26,10 +26,10 @@ import { initSecLinks, revealSection } from './sec-links.js';
 import { initTabEquipment } from './tab-equipment-ui.js';
 import { initTabJournal } from './tab-journal-ui.js';
 import { initEquipment, equipmentStatus, setEquipmentBridge, saveBeamFromTab, revealBeam, renderMyChambersTool, equipmentShown } from './journal-equipment-ui.js';
-import { initHistory, historyStatus, setHistoryBridge } from './journal-history-ui.js';
+import { initHistory, historyStatus, setHistoryBridge, showBrachyInHistory } from './journal-history-ui.js';
 import { initSession, renderSessionPage, sessionStatus, setSessionSheet, sessionInfo, sessionLastKind } from './session-ui.js';
 import { initPlates, renderPlatesPage, platesStatus, platesLastKind } from './plates-ui.js';
-import { initBrachy, renderBrachy, brachyStatus } from './brachy-ui.js';
+import { initBrachy, renderBrachy, brachyStatus, openBrachyRecord } from './brachy-ui.js';
 
 const TAB_KEY = 'reference-dosimetry.tab';
 // последний открытый подраздел вкладки в шапке («Дозиметрия», «Инструменты»)
@@ -99,6 +99,8 @@ function resolveRoute(raw) {
     return { module: head, owner: head, sheet: 'single', kind, route: head };
   }
   if (!MODULES[head] || head === 'session' || head === 'plates') return null;
+  // #brachy/log (лист «Журнал» до 0.79.0) — записи брахитерапии в «Журнале и трендах»
+  if (head === 'brachy' && sub === 'log') return { module: 'history', owner: 'history', sheet: '', kind: '', route: 'history', brachyLog: true };
   // #kv/timer, #brachy/phantom — подраздел и его лист
   return { module: head, owner: head, sheet: '', kind: '', route: head === 'kv' || head === 'brachy' ? r : head };
 }
@@ -211,6 +213,10 @@ function showModule(raw) {
   // kV-рентген: лист из адреса #kv/<лист> или тот, с которым работали
   if (name === 'kv') kvShown();
   if (name === 'brachy') renderBrachy(r.route.split('/')[1]);
+  if (r.brachyLog) {
+    setHash('history');
+    showBrachyInHistory();
+  }
   // «Мои камеры» меняются на вкладках дозиметрии: кнопку переноса в журнал обновить при открытии «Оборудования»
   if (name === 'equipment') {
     renderMyChambersTool();
@@ -243,6 +249,8 @@ function moduleFromHash() {
   const r = resolveRoute(raw);
   if (!r) return null;
   if (raw === 'session' || raw === 'plates') setHash(r.route);
+  // #brachy/log: «Журнал и тренды» с записями брахитерапии (адрес заменяет showModule)
+  if (r.brachyLog) return raw;
   return r.route;
 }
 
@@ -314,6 +322,13 @@ function initJournalBridges() {
     openKv: (file, title) => {
       switchTo('kv');
       showKvRecord(file, title);
+      toTop();
+    },
+    // запись брахитерапии — на своём листе вкладки «Брахитерапия» (поля листа — из записи)
+    openBrachy: (id) => {
+      const sh = openBrachyRecord(id);
+      if (!sh) return;
+      switchTo(`brachy/${sh}`);
       toTop();
     },
     // оценка стабильности дозиметра по проверкам второй камерой — в бюджет неопределённости

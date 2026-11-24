@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { startServer, launch, openPage } from './helpers.js';
 
+// результат листа и замечания справа (с 0.79.0 замечания — в панели «Замечания»)
+const resText = async (page) => `${await page.locator('#br-result').innerText()}\n${await page.locator('#br-messages').innerText()}`;
 let server;
 let browser;
 before(async () => {
@@ -20,7 +22,7 @@ test('брахитерапия: колодезная камера и фанто�
   const { page, errors } = await openPage(browser);
   const pause = (ms = 250) => page.waitForTimeout(ms);
   await page.goto(`${server.url}/index.html#brachy/well`);
-  await page.waitForSelector('#brachy-root .plates-card');
+  await page.waitForSelector('#brachy-root section.step');
   assert.match(await page.locator('#brachy-root nav a[aria-current="page"]').innerText(), /Колодезная камера/);
 
   // сертификат ⁶⁰Co: активность и Γ_δ, на дату измерения
@@ -45,7 +47,7 @@ test('брахитерапия: колодезная камера и фанто�
   await page.selectOption('#br_w_zone', '+3');
   for (let i = 0; i < 3; i++) await page.fill(`#w_I_${i}`, '8,4363');
   await pause();
-  const well = await page.locator('#br-result').innerText();
+  const well = await resText(page);
   assert.match(well, /10,132 мГр\/ч на 1 м/);
   assert.match(well, /\+0,00 % от сертификата|−0,00 % от сертификата|±0,00 % от сертификата/);
 
@@ -78,7 +80,7 @@ test('брахитерапия: колодезная камера и фанто�
     for (let j = 0; j < 3; j++) await page.fill(`#${k}_${j}`, v[j]);
   }
   await pause();
-  const res = await page.locator('#br-result').innerText();
+  const res = await resText(page);
   // варианты как в таблице отделения: 10,357 (k_zp 1,276), 10,633 (с k_A), 9,822 (Ubrich MC 31010)
   assert.match(res, /10,357[\s\S]*\+2,2\d %/);
   assert.match(res, /10,633[\s\S]*\+4,9\d %/);
@@ -112,7 +114,7 @@ test('брахитерапия: колодезная камера и фанто�
 
   // черновик сохраняется после перезагрузки
   await page.reload();
-  await page.waitForSelector('#brachy-root .plates-card');
+  await page.waitForSelector('#brachy-root section.step');
   assert.equal(await page.inputValue('#br_p_N'), '48,36');
   assert.equal(await page.inputValue('#br_p_src'), 'co0a86');
   assert.deepEqual(errors, []);
@@ -122,7 +124,7 @@ test('брахитерапия: максимум отклика колодезн
   const { page, errors } = await openPage(browser);
   const pause = (ms = 250) => page.waitForTimeout(ms);
   await page.goto(`${server.url}/index.html#brachy/sweet`);
-  await page.waitForSelector('#brachy-root .plates-card');
+  await page.waitForSelector('#brachy-root section.step');
   assert.match(await page.locator('#brachy-root nav a[aria-current="page"]').innerText(), /Максимум отклика/);
 
   // кривая отклика: 40…80 мм шагом 2,5 мм, вершина 56,3 мм; строки добавляются кнопкой «+» (последнее + шаг)
@@ -139,7 +141,7 @@ test('брахитерапия: максимум отклика колодезн
   await page.fill('#br_s_cert_pos', '55');
   await pause();
   assert.match(await page.locator('#br-result .plates-dose').innerText(), /56,3 мм/);
-  const res = await page.locator('#br-result').innerText();
+  const res = await resText(page);
   assert.match(res, /сдвиг \+1,3 мм/);
   assert.ok(await page.locator('#br-sweet-chart svg').count());
   // «Мерить в максимуме» — положение измерения на листе колодезной камеры
@@ -166,7 +168,7 @@ test('брахитерапия: максимум отклика колодезн
   await page.fill('#br_d_target', '20');
   await page.selectOption('#br_d_target_unit', 'GBq');
   await pause();
-  const decay = await page.locator('#br-result').innerText();
+  const decay = await resText(page);
   assert.match(decay, /27\.08\.2025/);
   assert.equal(await page.locator('#br-result table.br-decay tbody tr').count(), 61);
   assert.match(await page.locator('#br-result table.br-decay tbody tr').first().innerText(), /27\.10\.2021[\s\S]*10,13/);
@@ -196,7 +198,7 @@ test('брахитерапия: сличение рабочей камеры п�
   await page.selectOption('#br_x_ref_zone', '+3');
   await page.selectOption('#br_x_fld_zone', '+3');
   await pause();
-  const res = await page.locator('#br-result').innerText();
+  const res = await resText(page);
   assert.match(res, /484013/);
   assert.match(res, /\+0,21 % от прежнего/);
   assert.match(res, /1,00039/);
@@ -215,7 +217,7 @@ test('брахитерапия: сличение рабочей камеры п�
   await page.selectOption('#br_st_P_unit', 'kPa');
   await page.fill('#br_st_P', '101,325');
   await pause();
-  let st = await page.locator('#br-result').innerText();
+  let st = await resText(page);
   assert.match(st, /\+1,32 %[\s\S]*вне ±0,5 %/);
   assert.match(st, /1,02332/);
   // записать как исходное (на дату проверки, без пересчёта по распаду) — отклонение 0
@@ -223,7 +225,7 @@ test('брахитерапия: сличение рабочей камеры п�
   await pause();
   assert.equal(await page.inputValue('#br_st_base'), '100');
   assert.equal(await page.inputValue('#br_st_base_date'), '2026-11-24');
-  st = await page.locator('#br-result').innerText();
+  st = await resText(page);
   assert.match(st, /[+−-]?0,00 %[\s\S]*в пределах ±0,5 %/);
   // вторая камера — отношение показаний, ±0,1 %
   await page.selectOption('#br_st_method', 'redundant');
@@ -231,7 +233,7 @@ test('брахитерапия: сличение рабочей камеры п�
   await cells('st_I2', ['80,00', '80,08', '80,04']);
   await page.fill('#br_st_base', '1,2490');
   await pause();
-  st = await page.locator('#br-result').innerText();
+  st = await resText(page);
   assert.match(st, /Отношение M1\/M2\s+1,24938/i);
   assert.match(st, /в пределах ±0,1 %/);
   assert.deepEqual(errors, []);
@@ -292,7 +294,7 @@ test('брахитерапия: доза в воде по TG-43 в точках 
   await page.fill('#br_t_time', '10:00');
   await page.selectOption('#br_t_zone', '+3');
   await pause();
-  const res = await page.locator('#br-result').innerText();
+  const res = await resText(page);
   assert.match(res, /110,63\d+ Гр\/ч/);
   assert.match(res, /8,00[\s\S]*0,884[\s\S]*25,72\d/);
   // точка добавляется кнопкой «+»
@@ -300,6 +302,38 @@ test('брахитерапия: доза в воде по TG-43 в точках 
   await pause();
   await page.fill('#br_t_r_5', '0,5');
   await pause();
-  assert.match(await page.locator('#br-result').innerText(), /0,50[\s\S]*1,028/);
+  assert.match(await resText(page), /0,50[\s\S]*1,028/);
+  // вне поперечной оси (0.79.0) — F(r,θ) по таблице HEBD (Co0.A86 — табл. LVI): θ = 0°, r = 1 см — 0,923
+  await page.fill('#br_t_th', '0');
+  await page.dispatchEvent('#br_t_th', 'change');
+  await pause();
+  assert.match(await page.locator('#br-result').innerText(), /1,00\s+[\d,]+\s+1,000\s+0,923/);
+  assert.match(await page.locator('#br-messages').innerText(), /F\(r,θ\) — по таблице HEBD \(табл\. LVI/);
+  assert.deepEqual(errors, []);
+});
+
+test('брахитерапия: колодезная камера с калибровкой в Ḋw (TRS-492, разд. 7.4)', async () => {
+  const { page, errors } = await openPage(browser);
+  const pause = (ms = 250) => page.waitForTimeout(ms);
+  await page.goto(`${server.url}/index.html#brachy/well`);
+  await page.waitForSelector('[data-br="sample"]');
+  await page.click('[data-br="sample"]');
+  await page.click('[data-br="sample"]');
+  await pause();
+  await page.selectOption('#br_w_N_unit', 'Gy/(h·A)');
+  await pause();
+  // модель источника — для S_K = Ḋw/Λ; без неё Ḋw есть, сравнения нет
+  await page.waitForSelector('#br_w_src');
+  await page.selectOption('#br_w_src', 'mhdr-v2');
+  await pause();
+  // N_Dw = N_K · Λ: 4,850·10⁵ Гр·м²·ч⁻¹·А⁻¹ · 1,109 сГр·ч⁻¹·Ед⁻¹ · 10⁴ — тот же результат, что в примере (+0,35 %)
+  await page.fill('#br_w_N', '5,37865e9');
+  await page.dispatchEvent('#br_w_N', 'input');
+  await pause();
+  const res = await page.locator('#br-result').innerText();
+  assert.match(res, /Ḋw \(1 см, 90°\) на время измерения\s+391,6\d* Гр\/ч\s+\+0,35 % от сертификата/);
+  assert.match(res, /SK = Ḋw,1\/Λ = 35312 U/);
+  assert.match(res, /k_?Dw,sm,sm0\s+не применяется/i);
+  assert.match(await page.locator('#br-disp').innerText(), /Гр\/ч/);
   assert.deepEqual(errors, []);
 });

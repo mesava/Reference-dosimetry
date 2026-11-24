@@ -1,6 +1,7 @@
 // Вкладка «Журнал и тренды»: записи аппарата, тренд отклонения выхода от номинала по пучкам, контрольная карта
 // пучка и общая часть сеансов (journal-spc-ui.js), k_pol и k_s по калибровкам, сроки калибровки, выгрузка в CSV.
 // С 0.46.0 — и рентгенотерапевтические аппараты: записи журнала kV (аппарат за день), «Открыть во вкладке», протокол.
+// С 0.79.0 — и брахитерапия (brachy-log-ui.js): записи и контрольные карты по афтерлоадеру или камере.
 import { L } from '../core/i18n.js';
 import { trendSeries, machineOf, equipmentDue, equipmentNoDue, dayNumber, beamKind, moveSession } from '../core/journal.js';
 import { $, esc, fmt, fmtSigned, today, makeStatus, armButton, notifyUpdate, richText, downloadText, copyText, printToPdf } from './common.js';
@@ -17,6 +18,8 @@ import { KV_SET_UNITS } from '../core/kv.js';
 import { kvMachineText } from '../core/kv-journal.js';
 import { normalizeKvVisit, computeKvVisit } from '../core/kv-session.js';
 import { kvProtocolHtml } from './kv-summary-ui.js';
+import { BR_ALL, isBrachyPick, hasBrachy, brachyPickOptions, brachyPickValid, brachyPickText, brachyPickRecords, brachyRecordsHtml, brachyCharts, brachyChartsHtml, drawBrachyCharts, brachyMessages, isoDateText, recordOut } from './brachy-log-ui.js';
+import { removeBrachyRecord, brachySheetText } from '../core/brachy-records.js';
 
 const ROOT = () => $('#module-history');
 let setStatus = () => {};
@@ -46,7 +49,7 @@ function seriesOf(j) {
   }
   return all.filter((s) => s.kind === kindFilter);
 }
-let bridge = { openInTab: () => {}, toBudget: () => {}, openKv: () => {} };
+let bridge = { openInTab: () => {}, toBudget: () => {}, openKv: () => {}, openBrachy: () => {} };
 /**
  * openInTab(kind, form, title) — записанный пучок во вкладке дозиметрии (для просмотра); toBudget(u, text) — в бюджет
  * неопределённости; openKv(file, title) — запись журнала kV во вкладке «kV-рентген».
@@ -208,8 +211,9 @@ function machineSelect(j) {
   const opt = (m, text) => `<option value="${esc(m.id)}"${m.id === machineId ? ' selected' : ''}>${esc(text)}</option>`;
   const beams = beamMachines(j).map((m) => opt(m, [m.name || L('без названия', 'unnamed'), m.serial ? `${L('№', 'S/N')} ${m.serial}` : ''].filter(Boolean).join(', ')));
   const kv = kvMachines(j).map((m) => opt(m, kvMachineText(m) || L('без названия', 'unnamed')));
-  if (!beams.length && !kv.length) return `<option value="">${esc(L('— в «Оборудовании» нет аппаратов —', '— no machines in Equipment —'))}</option>`;
-  return beams.join('') + (kv.length ? `<optgroup label="${esc(L('Рентгенотерапевтические аппараты', 'X-ray therapy units'))}">${kv.join('')}</optgroup>` : '');
+  const br = brachyPickOptions(j, machineId);
+  if (!beams.length && !kv.length && !br) return `<option value="">${esc(L('— в «Оборудовании» нет аппаратов —', '— no machines in Equipment —'))}</option>`;
+  return beams.join('') + (kv.length ? `<optgroup label="${esc(L('Рентгенотерапевтические аппараты', 'X-ray therapy units'))}">${kv.join('')}</optgroup>` : '') + br;
 }
 const kvTitle = (j, r) => `${kvMachineText(machineOf(j, r.machineId)) || '—'}, ${fmtDate(r.date)}`;
 /** Мощность дозы строки записи: «Ø 10 см (ст.) 1,0012 Гр/мин (+0,62 %)». */
@@ -425,9 +429,14 @@ function renderKvModeTable(j) {
     <p class="sub-hint">${esc(L('СПО — в расчёте (± U при k = 2, если измерен в этой записи); τ — в секундах при задании по времени; линейность — наибольшее отклонение от пропорциональности и CL; воспроизводимость — R = |1 − K_min/K_max|. Новые записи сверху.', 'HVL: as used (± U at k = 2 if measured in this record); τ in seconds for a time setting; linearity: the largest deviation from proportionality and CL; reproducibility: R = |1 − K_min/K_max|. Newest records first.'))}</p>`;
 }
 
-/** Разделы страницы: у рентгенотерапевтического аппарата — разделы kV (выход, сводная, режим по датам, записи), у остальных — тренды пучков. */
-function showSections(kv) {
-  for (const s of document.querySelectorAll('#hs-sheet section.hs-kv')) s.hidden = !kv;
+/**
+ * Разделы страницы по виду выбора: 'kv' — рентгенотерапевтический аппарат (выход, сводная, режим по датам, записи),
+ * 'br' — брахитерапия (контрольные карты, записи), 'beam' — тренды пучков.
+ */
+function showSections(view) {
+  const kv = view !== 'beam';
+  for (const s of document.querySelectorAll('#hs-sheet section.hs-kv')) s.hidden = view !== 'kv';
+  for (const s of document.querySelectorAll('#hs-sheet section.hs-br')) s.hidden = view !== 'br';
   $('#hs-kind-field').hidden = kv || $('#hs-kind-field').hidden;
   for (const s of document.querySelectorAll('#hs-sheet section.hs-beam')) {
     if (kv) s.hidden = true;
@@ -498,12 +507,52 @@ function renderControl(j, series) {
   if (checkRes) checkKey = checkRes.pair.key;
 }
 
+// ------------------------------------------------------------ брахитерапия (с 0.79.0)
+let brCharts = [];
+function renderBrachyView(j) {
+  showSections('br');
+  brCharts = brachyCharts(j, machineId);
+  $('#hs-br-charts').innerHTML = brachyChartsHtml(brCharts);
+  drawBrachyCharts(brCharts);
+  $('#hs-br-records').innerHTML = brachyRecordsHtml(j, machineId);
+  for (const del of $('#hs-br-records').querySelectorAll('[data-br-del]')) {
+    armButton(del, del.textContent, () => L('Удалить запись?', 'Delete the record?'), () => {
+      updateJournal((jj) => removeBrachyRecord(jj, del.dataset.brDel), 'history');
+      render();
+      setStatus(L('Запись удалена из журнала. Сохраните журнал в файл, если автосохранение не включено.', 'The record has been deleted from the journal. Save the journal file if autosave is off.'));
+    });
+  }
+  const recs = brachyPickRecords(j, machineId);
+  const last = recs.at(-1);
+  const out = recs.filter((r) => r === recs.filter((x) => x.sheet === r.sheet && x.machineId === r.machineId && x.chamberId === r.chamberId).at(-1)).filter(recordOut).length;
+  $('#hs-result').innerHTML = `<div class="dose-row"><div class="proto"><span>${esc(brachyPickText(j, machineId))}</span>${last ? (out ? `<span class="chip warn">${esc(L(`вне допуска: ${out}`, `out of tolerance: ${out}`))}</span>` : `<span class="chip good">${esc(L('последние записи в допуске', 'last records within tolerance'))}</span>`) : ''}</div>
+    <div class="dose-big">${recs.length}<small>${esc(countWord(recs.length, [L('запись', 'record'), L('записи', 'records'), L('записей', 'records')], ['record', 'records']))}</small></div>
+    <div class="secondary">${esc(last ? L(`последняя: ${isoDateText(last.date)}, ${brachySheetText(last.sheet)}`, `last: ${isoDateText(last.date)}, ${brachySheetText(last.sheet)}`) : L('записей пока нет', 'no records yet'))}</div></div>`;
+  const msgs = equipmentDue(j, today()).map((d) => `<li class="${d.status === 'overdue' ? 'warn' : 'info'}"><span class="lvl">${esc(d.status === 'overdue' ? L('Срок калибровки прошёл', 'Calibration overdue') : L('Срок калибровки подходит', 'Calibration due soon'))}</span><span>${esc(`${d.text}: ${fmtDate(d.dueDate)}`)}</span></li>`);
+  for (const x of brachyMessages(j, machineId, brCharts)) msgs.push(`<li class="${x.level}"><span class="lvl">${esc(x.head)}</span><span>${esc(x.text)}</span></li>`);
+  $('#hs-messages').innerHTML = msgs.join('') || `<li class="info"><span class="lvl">${esc(L('Всё в порядке', 'All clear'))}</span><span>${esc(L('Последние записи в допуске, сигналов карт нет; сроки калибровки камер и электрометров не истекают в ближайшие 30 дней.', 'The last records are within tolerance with no chart signals; no chamber or electrometer calibration expires within the next 30 days.'))}</span></li>`;
+  $('#hs-mobile-value').textContent = `${brachyPickText(j, machineId)}: ${recs.length}`;
+}
+/** Показать в «Журнале и трендах» записи брахитерапии (ссылка с листа вкладки «Брахитерапия»). */
+export function showBrachyInHistory() {
+  if (!isBrachyPick(machineId)) machineId = BR_ALL;
+  render();
+}
+
 function render() {
   const j = getJournal();
-  if (![...beamMachines(j), ...kvMachines(j)].some((m) => m.id === machineId)) machineId = beamMachines(j)[0]?.id ?? kvMachines(j)[0]?.id ?? '';
+  if (!(isBrachyPick(machineId) ? brachyPickValid(j, machineId) : [...beamMachines(j), ...kvMachines(j)].some((m) => m.id === machineId))) {
+    machineId = beamMachines(j)[0]?.id ?? kvMachines(j)[0]?.id ?? (hasBrachy(j) ? BR_ALL : '');
+  }
   $('#hs_machine').innerHTML = machineSelect(j);
+  if (isBrachyPick(machineId)) {
+    renderBrachyView(j);
+    renderReport();
+    notifyUpdate(ROOT());
+    return;
+  }
   if (isKv(j)) {
-    showSections(true);
+    showSections('kv');
     renderKvChart(j);
     const ctl = renderKvControl(j);
     renderKvSummary(j);
@@ -514,7 +563,7 @@ function render() {
     notifyUpdate(ROOT());
     return;
   }
-  showSections(false);
+  showSections('beam');
   const series = seriesOf(j);
   renderChart(series);
   renderControl(j, series);
@@ -702,6 +751,10 @@ export function initHistory() {
     const rb = e.target.closest('[data-report]');
     if (rb) showReport(rb.dataset.report);
   });
+  $('#hs-br-records').addEventListener('click', (e) => {
+    const o = e.target.closest('[data-br-open]');
+    if (o) bridge.openBrachy(o.dataset.brOpen);
+  });
   onJournal(({ source }) => {
     if (source.endsWith(':input') && source !== 'equipment:input') return;
     render();
@@ -711,7 +764,7 @@ export function initHistory() {
   let w = 0;
   new ResizeObserver(() => {
     const box = $('#hs-chart');
-    if (!box || box.clientWidth === w || !box.clientWidth || isKv(getJournal())) return;
+    if (!box || box.clientWidth === w || !box.clientWidth || isKv(getJournal()) || isBrachyPick(machineId)) return;
     w = box.clientWidth;
     const series = seriesOf(getJournal());
     renderChart(series);
@@ -725,4 +778,11 @@ export function initHistory() {
     renderKvChart(getJournal());
     renderKvControl(getJournal());
   }).observe($('#hs-kv-chart'));
+  let wb = 0;
+  new ResizeObserver(() => {
+    const box = $('#hs-br-charts');
+    if (!box || box.clientWidth === wb || !box.clientWidth || !isBrachyPick(machineId)) return;
+    wb = box.clientWidth;
+    drawBrachyCharts(brCharts);
+  }).observe($('#hs-br-charts'));
 }

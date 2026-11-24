@@ -31,6 +31,32 @@ test('Время поля: дата, время, пояс; пояс компью
 // паспорт ¹⁹²Ir: 1,79·10⁻⁵ Гр/с на 1 м на 09.10.2026 11:00 (UTC+3)
 const IR_CERT = { nuclide: 'Ir-192', cert_value: '1,79e-5', cert_unit: 'Gy/s', cert_date: '2026-10-09', cert_time: '11:00', cert_zone: '+3', cert_gamma: '30,18', cert_gamma_unit: 'aGy·m2/(s·Bq)' };
 
+test('Колодезная камера с калибровкой в Ḋw (TRS-492, разд. 7.4, ур. 11, 14): Ḋw в 1 см, 90°; S_K = Ḋw/Λ; k_Dw,sm,sm0 не применяется', () => {
+  const base = { ...IR_CERT, w_T0: '20', w_P0: '1013,25', w_P0_unit: 'hPa', w_T: '21', w_P: '1012', w_P_unit: 'hPa', w_I: ['52', '52', '51,5', '52', '52'], w_date: '2026-11-02', w_time: '10:00', w_zone: '+3' };
+  const k = computeBrachyWell({ ...base, w_N: '9,897e5' });
+  // N_Dw = N_K · Λ (mHDR-v2, 1,109 сГр·ч⁻¹·Ед⁻¹): Гр·м²·ч⁻¹·А⁻¹ → Ед/А ×10⁶, Ед → сГр/ч ×Λ, сГр → Гр ×10⁻²
+  const NDw = 9.897e5 * 1.109 * 1e4;
+  const d = computeBrachyWell({ ...base, w_N: String(NDw).replace('.', ','), w_N_unit: 'Gy/(h·A)', w_src: 'mhdr-v2', w_ksm_mode: 'manual', w_ksm: '1,02' });
+  assert.deepEqual(errors(d), []);
+  assert.equal(d.formalism, 'Dw');
+  assert.ok(d.ok);
+  rel(d.Dw, (1.109 * k.U) / 100, 1e-9, 'Ḋw = Λ · S_K');
+  rel(d.U, k.U, 1e-9, 'S_K = Ḋw/Λ');
+  near(d.compare.dev, k.compare.dev, 1e-6);
+  assert.equal(d.factors.kSm, 1, 'k_Dw,sm,sm0 не применяется');
+  assert.ok(d.messages.some((m) => m.ref?.includes('7.4') && /k_Dw,sm,sm0/.test(m.text)));
+  // сГр·ч⁻¹·нА⁻¹ — то же
+  const d2 = computeBrachyWell({ ...base, w_N: String(NDw * 100 * 1e-9).replace('.', ','), w_N_unit: 'cGy/(h·nA)', w_src: 'mhdr-v2' });
+  rel(d2.Dw, d.Dw, 1e-9);
+  // модель источника не выбрана: Ḋw есть, S_K и сравнения нет
+  const d3 = computeBrachyWell({ ...base, w_N: '1e10', w_N_unit: 'Gy/(h·A)' });
+  assert.ok(d3.ok && Number.isFinite(d3.Dw) && !Number.isFinite(d3.U) && !d3.compare);
+  assert.ok(d3.messages.some((m) => /выберите модель источника/.test(m.text)));
+  // модель — как на листе фантома; своя — свой Λ
+  rel(computeBrachyWell({ ...base, w_N: '1e10', w_N_unit: 'Gy/(h·A)', p_src: 'gammamed-12i' }).lambdaSrc.lambda, 1.118, 1e-12);
+  rel(computeBrachyWell({ ...base, w_N: '1e10', w_N_unit: 'Gy/(h·A)', w_src: 'other', w_lambda: '1,1' }).U, computeBrachyWell({ ...base, w_N: '1e10', w_N_unit: 'Gy/(h·A)', w_src: 'mhdr-v2' }).U * (1.109 / 1.1), 1e-9);
+});
+
 test('Колодезная камера, ¹⁹²Ir: как в рабочей таблице (5 показаний, k_TP), сравнение с паспортом на дату измерения', () => {
   const r = computeBrachyWell({
     ...IR_CERT,
@@ -401,11 +427,22 @@ test('Лист «Доза TG-43»: Λ · S_K на 1 см и на 8 см совп
   // через период полураспада — вдвое меньше
   const later = computeBrachyTg43({ ...co, t_date: '', t_time: '' }, { now: Date.UTC(2026, 10, 2, 7) + 1925.21 * 86400000 });
   near(later.SK, r.SK / 2, 1e-6);
-  // вне поперечной оси без F — нет значения; со своей F — есть
+  // вне поперечной оси — F по таблице HEBD (Co0.A86 — табл. LVI): θ = 45° между 40° (0,996) и 50° (0,998) при r = 2 см;
+  // своя F в строке заменяет табличную (0,984 — g_L(2 см))
   const th = computeBrachyTg43({ ...co, t_th: '45', t_r: ['2', '2'], t_F: ['', '0,95'] });
-  assert.ok(Number.isNaN(th.rows[0].value));
+  near(th.rows[0].F, 0.997, 1e-12);
+  assert.ok(th.rows[0].FTab && !th.rows[0].FOwn);
+  near(th.rows[0].value, th.dw1 * th.rows[0].G * 0.984 * 0.997, 1e-9);
   near(th.rows[1].value, th.dw1 * th.rows[1].G * 0.984 * 0.95, 1e-9);
-  assert.ok(th.messages.some((m) => m.field === 't_th'));
+  assert.ok(th.messages.some((m) => m.field === 't_th' && m.ref?.includes('табл. LVI')));
+  // дальше 10 см — F на 10 см (HEBD, табл. III): θ = 0°, 0,952
+  const far = computeBrachyTg43({ ...co, t_th: '0', t_r: ['12'] });
+  near(far.rows[0].F, 0.952, 1e-12);
+  assert.equal(far.rows[0].FExtra, 'far');
+  // своя модель вне оси без F — значения нет, предупреждение
+  const ownOff = computeBrachyTg43({ nuclide: 'Ir-192', t_src: 'other', t_lambda: '1,11', t_basis: 'manual', t_SK: '40000', t_th: '30', t_r: ['2'], t_g: ['1'] });
+  assert.ok(Number.isNaN(ownOff.rows[0].value));
+  assert.ok(ownOff.messages.some((m) => m.level === 'warn' && m.field === 't_th'));
   // своя модель и своя S_K: точечный источник, g из строки
   const own = computeBrachyTg43({ nuclide: 'Ir-192', t_src: 'other', t_lambda: '1,11', t_basis: 'manual', t_SK: '40000', t_r: ['2'], t_g: ['1,005'] });
   near(own.rows[0].value, (40000 * 1.11 * 1.005) / 4, 1e-9);

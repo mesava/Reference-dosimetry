@@ -21,6 +21,8 @@ import {
   ksWell,
   ksmLookup,
   wellStrength,
+  wellDoseRate,
+  isDwUnit,
   WELL_N_UNITS,
   phantomKzp,
   phantomFactor,
@@ -37,6 +39,7 @@ import {
   geometryLine,
   interpTable,
 } from './brachy.js';
+import { hebdF, HEBD_F } from './brachy-hebd-f.js';
 
 const REF = {
   trs492: 'IAEA TRS-492 (2023)',
@@ -76,16 +79,17 @@ export const BRACHY_DEFAULTS = {
   j_ref_row: '',
   j_fld: '',
   j_fld_row: '',
-  // запись в журнал (с 0.76.0): кто выполнил, примечание; отбор на листе «Журнал»
+  // запись в журнал (с 0.76.0): кто выполнил, примечание
   rec_staff: '',
   rec_notes: '',
-  log_f: '',
 
   // колодезная камера
   w_model: '',
   w_serial: '',
   w_N: '',
-  w_N_unit: 'Gy·m2/(h·A)',
+  w_N_unit: 'Gy·m2/(h·A)', // с 0.79.0 и Гр·ч⁻¹·А⁻¹ — калибровка в Ḋw (TRS-492, разд. 7.4)
+  w_src: '', // модель источника для Λ при калибровке в Ḋw (DOSE_SOURCES; 'other' — свой Λ); пусто — как на листах фантома и TG-43
+  w_lambda: '', // свой Λ, сГр·ч⁻¹·Ед⁻¹
   w_NU: '', // U(k=2) калибровочного коэффициента, %
   w_NAA: '', // N_AA, Бк/А — кажущаяся активность по току (если есть в сертификате)
   w_T0: '20',
@@ -354,6 +358,20 @@ function certCompare(cert, tMeas, U, add, type = 'hdr') {
 // ——— Колодезная камера ———
 
 /**
+ * Модель источника для Λ при калибровке колодезной камеры в Ḋw: поле w_src, пусто — как на листах фантома и TG-43;
+ * 'other' — свой Λ (w_lambda). Возвращает { id, name, lambda, ref } или null.
+ */
+export function wellLambdaSource(f) {
+  const id = f.w_src || f.p_src || f.t_src;
+  if (id === 'other') {
+    const lambda = parseNumber(f.w_lambda);
+    return lambda > 0 ? { id: 'other', name: L('своя модель', 'own model'), lambda, ref: null } : null;
+  }
+  const s = DOSE_SOURCES.find((x) => x.id === id && x.nuclide === f.nuclide && x.lambda);
+  return s ? { id: s.id, name: s.name, lambda: s.lambda, ref: s.ref } : null;
+}
+
+/**
  * Лист «Колодезная камера»: TRS-492, гл. 8. offsetMin — смещение пояса компьютера от UTC, мин.
  * @returns {object} { ok, mGyh, U, Uref, A, factors, readings, compare, messages }
  */
@@ -453,8 +471,22 @@ export function computeBrachyWell(input, { offsetMin = 0 } = {}) {
   }
 
   const tMeas = readMeasTime(f, 'w_', add, offsetMin);
-  const r = wellStrength({ N, nUnit: f.w_N_unit, amps, kTP, kLeak: kl.value, kElec, kPol, kS, kSm });
-  out.ok = Number.isFinite(r.mGyh);
+  let r;
+  if (isDwUnit(f.w_N_unit)) {
+    // калибровка в мощности поглощённой дозы в воде: TRS-492, разд. 7.4, ур. (11), (14); k_Dw,sm,sm0 не применяется
+    const ref74 = `${REF.trs492}, разд. 7.4`;
+    if (kSm !== 1) add('info', L(`Камера калибрована в Ḋw: поправку на модель источника k_Dw,sm,sm0 TRS-492 пока не рекомендует (нет данных) — ${ru(kSm, 3)} не применяется.`, `The chamber is calibrated in Ḋw: TRS-492 does not yet recommend a source model correction k_Dw,sm,sm0 (no data); ${kSm.toFixed(3)} is not applied.`), ref74, 'w_ksm_mode');
+    kSm = 1;
+    const src = wellLambdaSource(f);
+    r = wellDoseRate({ N, nUnit: f.w_N_unit, amps, kTP, kLeak: kl.value, kElec, kPol, kS, lambda: src?.lambda ?? NaN });
+    out.formalism = 'Dw';
+    out.Dw = r.Dw;
+    out.lambdaSrc = src;
+    r.mGyh = r.U / 1e3;
+    if (!src) add('info', L('Калибровка в Ḋw: для сравнения с сертификатом источника (S_K) выберите модель источника — S_K = Ḋw,1/Λ (Λ — консенсус HEBD).', 'Calibration in Ḋw: to compare with the source certificate (S_K), choose the source model; S_K = Ḋw,1/Λ (Λ: HEBD consensus).'), REF.hebd, 'w_src');
+    else add('info', L(`Камера калибрована в Ḋw: результат — мощность дозы в воде в точке 1 см, 90° (TRS-492, ур. 11, 14). S_K = Ḋw,1/Λ, Λ = ${ru(src.lambda, 3)} сГр·ч⁻¹·Ед⁻¹ (${src.name}); в сравнение с сертификатом входит и неопределённость Λ.`, `The chamber is calibrated in Ḋw: the result is the dose rate to water at 1 cm, 90° (TRS-492, Eq. 11, 14). S_K = Ḋw,1/Λ, Λ = ${src.lambda.toFixed(3)} cGy·h⁻¹·U⁻¹ (${src.name}); the comparison with the certificate also carries the uncertainty of Λ.`), ref74, 'w_src');
+  } else r = wellStrength({ N, nUnit: f.w_N_unit, amps, kTP, kLeak: kl.value, kElec, kPol, kS, kSm });
+  out.ok = out.formalism === 'Dw' ? Number.isFinite(out.Dw) : Number.isFinite(r.mGyh);
   out.mGyh = r.mGyh;
   out.U = r.U;
   out.tMeas = tMeas;
@@ -1086,6 +1118,7 @@ export function computeBrachyTg43(input, { offsetMin = 0, now = Date.now(), well
   let needF = false;
   let needG = false;
   const extra = new Set();
+  const fExtra = new Set();
   for (let i = 0; i < n; i++) {
     const r = parseNumber(f.t_r[i]);
     if (!Number.isFinite(r)) continue;
@@ -1105,16 +1138,21 @@ export function computeBrachyTg43(input, { offsetMin = 0, now = Date.now(), well
     }
     const g = Number.isFinite(ownG) ? ownG : gTab;
     if (!Number.isFinite(ownG) && gExtra) extra.add(gExtra);
-    const F = Number.isFinite(ownF) ? ownF : Math.abs(th - 90) < 1e-9 ? 1 : NaN;
+    // F(r,θ): своё значение; на поперечной оси — 1; иначе — таблица HEBD модели (билинейно, вне таблицы по r — ближайшее)
+    const fTab = Number.isFinite(ownF) || Math.abs(th - 90) < 1e-9 ? null : hebdF(src.id, r, th);
+    const F = Number.isFinite(ownF) ? ownF : Math.abs(th - 90) < 1e-9 ? 1 : fTab ? fTab.value : NaN;
+    if (fTab?.extra) fExtra.add(fTab.extra);
     const G = geometryLineAt(r, th, src.L) / g1;
     if (!Number.isFinite(g)) needG = true;
     if (!Number.isFinite(F)) needF = true;
     const value = out.dw1 * G * g * F;
-    out.rows.push({ i, r, G, g, gOwn: Number.isFinite(ownG), gExtra: Number.isFinite(ownG) ? '' : gExtra, F, FOwn: Number.isFinite(ownF), value });
+    out.rows.push({ i, r, G, g, gOwn: Number.isFinite(ownG), gExtra: Number.isFinite(ownG) ? '' : gExtra, F, FOwn: Number.isFinite(ownF), FTab: !!fTab, FExtra: fTab?.extra ?? '', value });
   }
   if (extra.size) add('info', L(`g_L(r) вне таблицы HEBD (${ru(rs[0], 2)}–${ru(rs[rs.length - 1], 0)} см) экстраполирована по HEBD, табл. III: ${[extra.has('near') ? `ближе ${ru(rs[0], 2)} см — значение на ${ru(rs[0], 2)} см` : '', extra.has('far') ? `дальше ${ru(rs[rs.length - 1], 0)} см — линейно по двум последним точкам` : ''].filter(Boolean).join('; ')}.`, `g_L(r) outside the HEBD table (${rs[0]}–${rs[rs.length - 1]} cm) is extrapolated per HEBD Table III: ${[extra.has('near') ? `closer than ${rs[0]} cm, the value at ${rs[0]} cm` : '', extra.has('far') ? `beyond ${rs[rs.length - 1]} cm, linearly from the last two points` : ''].filter(Boolean).join('; ')}.`), `${REF.hebd}, табл. III`, 't_r_0');
   if (extra.has('near')) add('warn', L(`Точка ближе ${ru(rs[0], 2)} см к центру источника — у самой капсулы: формализм TG-43 там неточен.`, `A point closer than ${rs[0]} cm to the source centre is next to the capsule: the TG-43 formalism is inaccurate there.`), `${REF.hebd}, разд. III`, 't_r_0');
   if (needG) add('warn', L('Для своей модели введите g_L(r) в каждой строке.', 'For your own model, enter g_L(r) in each row.'), GL_REF[f.nuclide] ?? null, 't_r_0');
+  const ft = HEBD_F[src.id];
+  if (out.rows.some((x) => x.FTab)) add('info', L(`F(r,θ) — по таблице HEBD (табл. ${ft.table}, r ${ru(ft.r[0], 0)}–${ru(ft.r[ft.r.length - 1], 0)} см, θ 0–180°), билинейная интерполяция${fExtra.has('far') ? `; дальше ${ru(ft.r[ft.r.length - 1], 0)} см — значение на ${ru(ft.r[ft.r.length - 1], 0)} см (табл. III)` : ''}.`, `F(r,θ) from the HEBD table (Table ${ft.table}, r ${ft.r[0]}–${ft.r[ft.r.length - 1]} cm, θ 0–180°), bilinear interpolation${fExtra.has('far') ? `; beyond ${ft.r[ft.r.length - 1]} cm, the value at ${ft.r[ft.r.length - 1]} cm (Table III)` : ''}.`), `${REF.hebd}, табл. ${ft.table}, III`, 't_th');
   if (needF) add('warn', L(`Вне поперечной оси (θ = ${ru(th, 0)}°) нужна функция анизотропии F(r,θ) — возьмите из таблиц HEBD для своей модели.`, `Off the transverse axis (θ = ${th}°) the anisotropy function F(r,θ) is needed: take it from the HEBD tables for your model.`), REF.hebd, 't_th');
   if (f.t_basis !== 'manual' && !Number.isFinite(cert.half) && Number.isFinite(base.t)) add('error', L('Не задан период полураспада.', 'The half-life is not set.'), null, 'half');
   add('info', L('Справочно: формализм TG-43 не учитывает неоднородности и ограниченность среды. Для проверки системы планирования — таблицы «вдоль-поперёк» HEBD для своей модели.', 'For reference: the TG-43 formalism ignores heterogeneities and finite scatter conditions. For a TPS check, use the HEBD along-away tables for your model.'), `${REF.tg43}; ${REF.hebd}`, null);
@@ -1122,4 +1160,4 @@ export function computeBrachyTg43(input, { offsetMin = 0, now = Date.now(), well
   return out;
 }
 
-export { STRENGTH_UNITS, ACTIVITY_UNITS, GAMMA_UNITS, WELL_N_UNITS, PHANTOM_N_UNITS, CURRENT_UNITS, KSM_SOURCES, DOSE_SOURCES };
+export { STRENGTH_UNITS, ACTIVITY_UNITS, GAMMA_UNITS, WELL_N_UNITS, PHANTOM_N_UNITS, CURRENT_UNITS, KSM_SOURCES, DOSE_SOURCES, isDwUnit };

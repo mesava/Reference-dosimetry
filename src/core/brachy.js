@@ -234,13 +234,35 @@ export function compareCertificate({ measured, certificate, type = 'hdr', seeds 
 
 // ——— Колодезная камера ———
 
-/** Единицы калибровочного коэффициента колодезной камеры → Гр·м²·ч⁻¹·А⁻¹ (так в сертификате PTW). */
+/**
+ * Единицы калибровочного коэффициента колодезной камеры. Калибровка в ОМВК / S_K (kind 'K') — к Гр·м²·ч⁻¹·А⁻¹ (так в
+ * сертификате PTW); с 0.79.0 и калибровка в мощности поглощённой дозы в воде в опорной точке P(1 см, 90°) (kind 'Dw',
+ * TRS-492, разд. 7.4, ур. 11, 14) — к Гр·ч⁻¹·А⁻¹.
+ */
 export const WELL_N_UNITS = {
-  'Gy·m2/(h·A)': { label: 'Гр·м²·ч⁻¹·А⁻¹', labelEn: 'Gy·m²·h⁻¹·A⁻¹', toSI: 1 },
-  'U/A': { label: 'U/А (сГр·см²·ч⁻¹·А⁻¹)', labelEn: 'U/A (cGy·cm²·h⁻¹·A⁻¹)', toSI: 1e-6 },
-  'U/nA': { label: 'U/нА', labelEn: 'U/nA', toSI: 1e-6 / 1e-9 },
-  'U/pA': { label: 'U/пА', labelEn: 'U/pA', toSI: 1e-6 / 1e-12 },
+  'Gy·m2/(h·A)': { label: 'Гр·м²·ч⁻¹·А⁻¹', labelEn: 'Gy·m²·h⁻¹·A⁻¹', toSI: 1, kind: 'K' },
+  'U/A': { label: 'U/А (сГр·см²·ч⁻¹·А⁻¹)', labelEn: 'U/A (cGy·cm²·h⁻¹·A⁻¹)', toSI: 1e-6, kind: 'K' },
+  'U/nA': { label: 'U/нА', labelEn: 'U/nA', toSI: 1e-6 / 1e-9, kind: 'K' },
+  'U/pA': { label: 'U/пА', labelEn: 'U/pA', toSI: 1e-6 / 1e-12, kind: 'K' },
+  'Gy/(h·A)': { label: 'Гр·ч⁻¹·А⁻¹ (Ḋw)', labelEn: 'Gy·h⁻¹·A⁻¹ (Ḋw)', toSI: 1, kind: 'Dw' },
+  'cGy/(h·nA)': { label: 'сГр·ч⁻¹·нА⁻¹ (Ḋw)', labelEn: 'cGy·h⁻¹·nA⁻¹ (Ḋw)', toSI: 1e-2 / 1e-9, kind: 'Dw' },
 };
+/** Коэффициент в мощности поглощённой дозы в воде (N_Dw, TRS-492, разд. 7.4). */
+export const isDwUnit = (u) => WELL_N_UNITS[u]?.kind === 'Dw';
+
+/**
+ * Мощность поглощённой дозы в воде в опорной точке P(r₀ = 1 см, θ₀ = 90°) по колодезной камере с калибровкой N_Dw:
+ * TRS-492, ур. (11), (14): Ḋ_w,R(t_ref) = N_Dw,sm0 · M_sm(t_meas) · k_dec · k_Dw,sm,sm0. Поправку на модель источника
+ * k_Dw,sm,sm0 TRS-492 пока применять не рекомендует (нет данных, разд. 7.4) — она здесь не применяется.
+ * S_K для сравнения с сертификатом — Ḋ_w,1/Λ (TG-43U1, ур. 1 при r = 1 см, θ = 90°); lambda — сГр·ч⁻¹·Ед⁻¹.
+ * @returns {{ Dw:number, M:number, U:number }} Dw — Гр/ч; U — S_K, Ед (NaN без Λ)
+ */
+export function wellDoseRate({ N, nUnit = 'Gy/(h·A)', amps, kTP = 1, kLeak: kl = 1, kElec = 1, kPol = 1, kS = 1, kDec: kd = 1, lambda = NaN }) {
+  const nSI = isDwUnit(nUnit) ? N * WELL_N_UNITS[nUnit].toSI : NaN;
+  const M = amps * kTP * kl * kElec * kPol * kS;
+  const Dw = nSI * M * kd; // Гр/ч
+  return { Dw, M, U: lambda > 0 ? (Dw * 100) / lambda : NaN };
+}
 
 /** Ток электрометра → А; заряд → Кл (тогда нужно время накопления). */
 export const CURRENT_UNITS = {

@@ -5,6 +5,8 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer, launch, openPage } from './helpers.js';
 
+// результат листа и замечания справа (с 0.79.0 замечания — в панели «Замечания»)
+const resText = async (page) => `${await page.locator('#br-result').innerText()}\n${await page.locator('#br-messages').innerText()}`;
 let server;
 let browser;
 before(async () => {
@@ -155,7 +157,7 @@ test('брахитерапия в «Оборудовании»: афтерлоа
   for (let i = 0; i < 3; i++) await page.fill(`#w_I_${i}`, '80');
   await page.fill('#br_rec_staff', 'Иванов И. И.');
   await pause();
-  assert.match(await page.locator('#br-result').innerText(), /38,8\d* мГр\/ч на 1 м/);
+  assert.match(await resText(page), /38,8\d* мГр\/ч на 1 м/);
   await page.click('[data-br="record"]');
   await pause();
   assert.match(await page.locator('#brachy-status').innerText(), /Записано в журнал: сила источника, колодезная камера, 10\.10\.2026/);
@@ -194,29 +196,35 @@ test('брахитерапия в «Оборудовании»: афтерлоа
   await pause();
   assert.match(await page.locator('#brachy-status').innerText(), /Выберите колодезную камеру|Расчёт не выполнен/);
 
-  // лист «Журнал»: одна запись, источник B-2, тренд отклонения от сертификата
+  // «Журнал и тренды» (с 0.79.0, раньше — лист «Журнал» вкладки): одна запись, источник B-2, тренд отклонения от сертификата
   await page.click('a[data-goto="brachy/log"]');
-  await page.waitForSelector('table.br-log-t');
-  const rows = page.locator('table.br-log-t tbody tr');
+  await page.waitForSelector('#hs-br-records table.br-log-t');
+  assert.match(page.url(), /#history$/);
+  assert.equal(await page.locator('#brachy-root nav a[data-goto="brachy/log"]').count(), 0, 'листа «Журнал» во вкладке нет');
+  assert.equal(await page.inputValue('#hs_machine'), 'br:');
+  const rows = page.locator('#hs-br-records table.br-log-t tbody tr');
   assert.equal(await rows.count(), 1);
   const logRow = await rows.first().innerText();
   assert.match(logRow, /10\.10\.2026[\s\S]*колодезная камера[\s\S]*Flexitron[\s\S]*№ B-2[\s\S]*38,8\d* мГр\/ч[\s\S]*от сертификата[\s\S]*Иванов И\. И\./);
   assert.equal(await page.locator('#br-spc-0 svg').count(), 1);
-  // отбор по камере
-  await page.selectOption('#br_log_f', `c:${wid}`);
+  assert.match(await page.locator('#hs-result').innerText(), /1\s*запись/);
+  // выбор камеры
+  await page.selectOption('#hs_machine', `br:c:${wid}`);
   await pause();
-  assert.equal(await page.locator('table.br-log-t tbody tr').count(), 1);
+  assert.equal(await page.locator('#hs-br-records table.br-log-t tbody tr').count(), 1);
   // открыть запись на листе: поля листа — из записи
-  await page.click('[data-br="open"]');
+  await page.click('[data-br-open]');
   await pause();
+  assert.match(page.url(), /#brachy\/well$/);
   assert.match(await page.locator('#brachy-root nav a[aria-current="page"]').innerText(), /Колодезная камера/);
   assert.equal(await page.inputValue('#w_I_0'), '80');
+  assert.match(await page.locator('#brachy-status').innerText(), /Открыта запись журнала/);
   // удалить запись — двумя нажатиями
   await page.click('a[data-goto="brachy/log"]');
   await page.waitForSelector('[data-br-del]');
   await page.click('[data-br-del]');
   await page.click('[data-br-del]');
   await pause();
-  assert.match(await page.locator('#brachy-root').innerText(), /По этому отбору записей нет|Записей пока нет/);
+  assert.match(await page.locator('#hs-br-records').innerText(), /По этому выбору записей нет|Записей брахитерапии пока нет/);
   assert.deepEqual(errors, []);
 });
