@@ -1,12 +1,13 @@
 // Вкладка «Брахитерапия»: листы «Колодезная камера» (IAEA TRS-492), «Максимум отклика» (TRS-492, разд. 8.2.1),
-// «Фантом PTW 9193» (DIN 6809-2, DGMP-Bericht 13, руководство PTW) и «Распад» (TRS-492, разд. 3.4, 7.3). Сертификат
+// «Фантом PTW 9193» (DIN 6809-2, DGMP-Bericht 13, руководство PTW), «Сличение камер» (TRS-492, разд. 7.7), «Стабильность»
+// (разд. 8.4–8.5) и «Распад» (TRS-492, разд. 3.4, 7.3). Сертификат
 // источника — общий для листов. Расчёт — core/brachy-sheets.js; черновик формы — в этом браузере.
 import { L, refText } from '../core/i18n.js';
 import { PRESSURE_UNITS, unitLabel, parseNumber } from '../core/units.js';
 import { HALF_LIVES, KSM_SOURCES, PTW_TO_DGMP, APPLICATOR_KA_STEEL } from '../core/brachy-data.js';
 import { kDec } from '../core/brachy.js';
 import {
-  BRACHY_DEFAULTS, normalizeBrachy, computeBrachyWell, computeBrachyPhantom, computeBrachySweet, computeBrachyDecay, fieldTime,
+  BRACHY_DEFAULTS, normalizeBrachy, computeBrachyWell, computeBrachyPhantom, computeBrachySweet, computeBrachyDecay, computeBrachyCross, computeBrachyStability, fieldTime,
   STRENGTH_UNITS, ACTIVITY_UNITS, GAMMA_UNITS, WELL_N_UNITS, PHANTOM_N_UNITS, CURRENT_UNITS, DOSE_SOURCES,
 } from '../core/brachy-sheets.js';
 import { $, esc, fmt, fmtSigned, richText, armButton, downloadText, savedFileName } from './common.js';
@@ -16,7 +17,7 @@ import { cellsHtml } from './journal-common.js';
 import { tipAttr } from './brachy-tips.js';
 
 const KEY = 'reference-dosimetry.brachy';
-const SHEETS = ['well', 'sweet', 'phantom', 'decay'];
+const SHEETS = ['well', 'sweet', 'phantom', 'cross', 'stab', 'decay'];
 let sheet = 'well';
 let form = normalizeBrachy({});
 let statusEl = null;
@@ -73,7 +74,7 @@ const when = (pre, label, timeHint) => `<div class="field"><label for="br_${pre}
 
 // ------------------------------------------------------------ разметка
 function navHtml() {
-  const items = [['well', L('Колодезная камера', 'Well-type chamber')], ['sweet', L('Максимум отклика', 'Sweet spot')], ['phantom', L('Фантом PTW 9193', 'PTW 9193 phantom')], ['decay', L('Распад', 'Decay')]];
+  const items = [['well', L('Колодезная камера', 'Well-type chamber')], ['sweet', L('Максимум отклика', 'Sweet spot')], ['phantom', L('Фантом PTW 9193', 'PTW 9193 phantom')], ['cross', L('Сличение камер', 'Cross-calibration')], ['stab', L('Стабильность', 'Stability')], ['decay', L('Распад', 'Decay')]];
   return `<nav class="kv-pages" aria-label="${esc(L('Листы вкладки', 'Tab sheets'))}">${items.map(([k, t]) => `<a href="#brachy/${k}" data-goto="brachy/${k}"${k === sheet ? ' aria-current="page"' : ''}>${esc(t)}</a>`).join('')}</nav>`;
 }
 
@@ -82,6 +83,18 @@ function introHtml() {
     return `<p class="start-when">${sub(L(
       'Опорная точка колодезной камеры — положение источника с наибольшим откликом. Источник проходит ряд положений с шагом не больше 2,5 мм, не меньше 10 мм в обе стороны от ожидаемого максимума; по кривой находится максимум и плато. Положение зависит от системы отсчёта (длина ампулопровода, глубина катетера), поэтому его проверяют при каждом измерении силы источника (IAEA TRS-492, разд. 8.2.1).',
       'The reference point of a well-type chamber is the source position with the largest response. The source steps through positions at most 2.5 mm apart, at least 10 mm on both sides of the expected maximum; the curve gives the maximum and the plateau. The position depends on the reference system (transfer tube length, catheter depth), so it is checked at every source strength measurement (IAEA TRS-492, Sec. 8.2.1).',
+    ))}</p>`;
+  }
+  if (sheet === 'cross') {
+    return `<p class="start-when">${sub(L(
+      'Калибровочный коэффициент рабочей колодезной камеры по эталонной (с сертификатом лаборатории): один и тот же источник того же нуклида поочерёдно в обеих камерах, в положении максимального отклика; эталонная — в своём держателе. N_field = M_ref/M_field · N_ref · k_sm,sm0 (IAEA TRS-492, разд. 7.7, ур. 18–20). Пересчёт между нуклидами (¹⁹²Ir ↔ ⁶⁰Co) не допускается.',
+      'Calibration coefficient of the field well-type chamber from the reference one (with a laboratory certificate): the same source of the same nuclide in both chambers in turn, at the sweet spot; the reference chamber in its own holder. N_field = M_ref/M_field · N_ref · k_sm,sm0 (IAEA TRS-492, Sec. 7.7, Eq. 18–20). Conversion between nuclides (¹⁹²Ir ↔ ⁶⁰Co) is not permitted.',
+    ))}</p>`;
+  }
+  if (sheet === 'stab') {
+    return `<p class="start-when">${sub(L(
+      'Проверка стабильности колодезной камеры: не реже четырёх раз в год, до и после каждой замены источника. Показание с поправками на T, P и распад сравнивается с исходным, допуск ±0,5 %; при второй камере — отношение показаний, ±0,1 % (IAEA TRS-492, разд. 8.4–8.5). Исходное значение задают при вводе в работу и после каждой калибровки.',
+      'Well-type chamber stability check: at least four times a year and before and after each source exchange. The reading corrected for T, P and decay is compared with the baseline, tolerance ±0.5%; with a redundant chamber, the reading ratio, ±0.1% (IAEA TRS-492, Sec. 8.4–8.5). The baseline is set at commissioning and after each recalibration.',
     ))}</p>`;
   }
   if (sheet === 'decay') {
@@ -381,6 +394,120 @@ function decayCsv() {
   status(L('Таблица распада сохранена.', 'The decay table has been saved.'));
 }
 
+// ------------------------------------------------------------ лист «Сличение камер»
+const nucSelect = () => select('nuclide', L('Радионуклид', 'Radionuclide'), Object.entries(HALF_LIVES).map(([k, h]) => opt(k, h.label, form.nuclide)).join(''));
+
+function crossSetupHtml() {
+  return `<section class="start-card plates-card"><h2><span class="step-no">1</span> ${esc(L('Источник и условия', 'Source and conditions'))}</h2>
+    <div class="grid">
+      ${nucSelect()}
+      ${select('x_unit', L('Единица тока', 'Current unit'), unitOpts(CURRENT_UNITS, form.x_unit))}
+      ${select('x_P_unit', L('Единица давления', 'Pressure unit'), unitOpts(PRESSURE_UNITS, form.x_P_unit))}
+      ${num('x_T0', L('T0, °C', 'T0, °C'))}
+      ${numUnit('x_P0', L('P0', 'P0'), PRESSURE_UNITS, 'x_P0_unit')}
+      ${num('x_ksm', L('k_sm,sm0 (пусто — 1)', 'k_sm,sm0 (blank: 1)'))}
+    </div></section>`;
+}
+
+function crossChamberHtml(n, pre, title) {
+  const isRef = pre === 'x_ref_';
+  return `<section class="start-card plates-card"><h2><span class="step-no">${n}</span> ${esc(title)}</h2>
+    <div class="grid">
+      ${text(`${pre}model`, L('Камера', 'Chamber'), { ph: 'PTW TM33004' })}
+      ${text(`${pre}serial`, L('Заводской номер', 'Serial number'))}
+      ${isRef ? `${numUnit('x_ref_N', L('Калибровочный коэффициент N_ref', 'Calibration coefficient N_ref'), WELL_N_UNITS, 'x_ref_N_unit', { span: ' span-2' })}${num('x_ref_kelec', L('k_elec', 'k_elec'))}` : num('x_fld_prev', L('Прежний N (для сравнения)', 'Previous N (for comparison)'))}
+      ${when(pre, L('Дата измерения', 'Measurement date'), L('Время измерения', 'Measurement time'))}
+      ${num(`${pre}T`, L('Температура, °C', 'Temperature, °C'))}
+      ${num(`${pre}P`, L(`Давление, ${unitLabel(PRESSURE_UNITS[form.x_P_unit]) ?? ''}`, `Pressure, ${unitLabel(PRESSURE_UNITS[form.x_P_unit]) ?? ''}`))}
+      ${num(`${pre}leak`, L('Ток утечки', 'Leakage current'))}
+    </div>
+    <div class="series">${cellsHtml(`${pre}I`, L('Ток', 'Current'), form[`${pre}I`], unitLabel(CURRENT_UNITS[form.x_unit]))}</div></section>`;
+}
+
+function crossResult() {
+  const r = computeBrachyCross(form, { offsetMin: offsetMin() });
+  if (!r.ok) return msgHtml(r.messages);
+  const u = unitLabel(CURRENT_UNITS[form.x_unit]) ?? '';
+  const nu = unitLabel(WELL_N_UNITS[r.unit]) ?? '';
+  const chip = r.prev ? `<span class="chip ${Math.abs(r.prev.dev) <= 0.5 ? 'ok' : 'out'}">${esc(fmtSigned(r.prev.dev, 2))} % ${esc(L('от прежнего', 'from the previous'))}</span>` : '';
+  const line = (c) => `${fmt(c.mean, 4)} ${u} (n = ${c.n}${Number.isFinite(c.relSd) ? `, ${L('разброс', 'spread')} ${fmt(c.relSd, 2)} %` : ''}) · k_TP ${fmt(c.kTP, 4)}${c.kLeak !== 1 ? ` · k_leak ${fmt(c.kLeak, 4)}` : ''}${c.kElec && c.kElec !== 1 ? ` · k_elec ${fmt(c.kElec, 4)}` : ''}${c.kDec && c.kDec !== 1 ? ` · k_dec ${fmt(c.kDec, 5)}` : ''} = ${fmt(c.corrT ?? c.corr, 4)}`;
+  const rows = [
+    [L('M_ref, эталонная', 'M_ref, reference'), line(r.ref)],
+    [L('M_field, рабочая', 'M_field, field'), line(r.fld)],
+    Number.isFinite(r.dtHours) && r.dtHours !== 0 ? ['k_dec', L(`${fmt(r.kDec, 5)} (рабочая на ${fmt(r.dtHours * 60, 0)} мин позже)`, `${fmt(r.kDec, 5)} (field ${fmt(r.dtHours * 60, 0)} min later)`), 'x_kdec'] : null,
+    ['M_ref/M_field', fmt(r.ratio, 5)],
+    ['k_sm,sm0', fmt(r.kSm, 4), 'x_ksm'],
+    [L('Формула', 'Formula'), L('N_field = M_ref/M_field · N_ref · k_sm,sm0 (TRS-492, ур. 18–20)', 'N_field = M_ref/M_field · N_ref · k_sm,sm0 (TRS-492, Eq. 18–20)')],
+  ];
+  return `<div class="plates-dose"><span${tipAttr('x_N', { focus: true })}>${sub(L('N рабочей камеры', 'Field chamber N'))}</span><b>${esc(fmt(r.N, Math.max(0, 5 - Math.floor(Math.log10(Math.abs(r.N))))))} ${esc(nu)}</b>${chip}</div>
+    <p class="sub-hint">${sub(L(`При T0 = ${form.x_T0} °C, P0 = ${form.x_P0} ${unitLabel(PRESSURE_UNITS[form.x_P0_unit]) ?? ''}; ${HALF_LIVES[form.nuclide]?.label ?? ''}.`, `At T0 = ${form.x_T0} °C, P0 = ${form.x_P0} ${unitLabel(PRESSURE_UNITS[form.x_P0_unit]) ?? ''}; ${HALF_LIVES[form.nuclide]?.label ?? ''}.`))}</p>
+    <div class="actions"><button type="button" data-br="x-use">${esc(L('Перенести на лист «Колодезная камера»', 'Move to the Well-type chamber sheet'))}</button></div>
+    ${factorRows(rows)}${msgHtml(r.messages)}`;
+}
+
+// ------------------------------------------------------------ лист «Стабильность»
+const ST_METHODS = () => [
+  ['check', L('контрольный источник (8.5.2), ±0,5 %', 'check source (8.5.2), ±0.5%')],
+  ['beam', L('внешний пучок 6 МВ / ⁶⁰Co (8.5.3), ±0,5 %', 'external beam 6 MV / ⁶⁰Co (8.5.3), ±0.5%')],
+  ['hdr', L('источник HDR до замены (8.5.4), ±0,5 %', 'HDR source until exchange (8.5.4), ±0.5%')],
+  ['redundant', L('вторая камера (8.5.1), ±0,1 %', 'redundant chamber (8.5.1), ±0.1%')],
+];
+
+function stabSetupHtml() {
+  const m = form.st_method;
+  const nucs = ['Cs-137', 'Sr-90', 'Co-60'].map((k) => opt(k, HALF_LIVES[k].label, form.st_check_nuclide)).join('');
+  return `<section class="start-card plates-card"><h2><span class="step-no">1</span> ${esc(L('Метод и исходное значение', 'Method and baseline'))}</h2>
+    <div class="grid">
+      ${select('st_method', L('Метод', 'Method'), ST_METHODS().map(([k, t]) => opt(k, t, m)).join(''), { span: ' span-2' })}
+      ${m === 'check' ? `${select('st_check_nuclide', L('Контрольный источник', 'Check source'), nucs)}${num('st_half', L('Свой t½, сут', 'Own t½, days'), { hint: L('Пусто — TRS-492, табл. 3; например, для ²⁴¹Am', 'Blank: TRS-492, Table 3; e.g. for ²⁴¹Am') })}` : ''}
+      ${m === 'hdr' ? nucSelect() : ''}
+      ${select('st_unit', L('Единица тока', 'Current unit'), unitOpts(CURRENT_UNITS, form.st_unit))}
+      ${m === 'redundant' ? '' : `${num('st_T0', L('T0, °C', 'T0, °C'))}${numUnit('st_P0', L('P0', 'P0'), PRESSURE_UNITS, 'st_P0_unit')}`}
+      ${num('st_base', m === 'redundant' ? L('Исходное отношение M1/M2', 'Baseline ratio M1/M2') : L(`Исходное значение, ${unitLabel(CURRENT_UNITS[form.st_unit]) ?? ''}`, `Baseline, ${unitLabel(CURRENT_UNITS[form.st_unit]) ?? ''}`))}
+      ${m === 'redundant' || m === 'beam' ? '' : when('st_base_', L('Дата исходного значения', 'Baseline date'), L('Время исходного измерения', 'Baseline measurement time'))}
+    </div></section>`;
+}
+
+function stabMeasureHtml() {
+  const m = form.st_method;
+  const u = unitLabel(CURRENT_UNITS[form.st_unit]);
+  return `<section class="start-card plates-card"><h2><span class="step-no">2</span> ${esc(L('Проверка', 'Check'))}</h2>
+    <div class="grid">
+      ${when('st_', L('Дата проверки', 'Check date'), L('Время проверки', 'Check time'))}
+      ${num('st_T', L('Температура, °C', 'Temperature, °C'))}
+      ${numUnit('st_P', L('Давление', 'Pressure'), PRESSURE_UNITS, 'st_P_unit')}
+    </div>
+    <div class="series">${cellsHtml('st_I', m === 'redundant' ? L('Камера 1', 'Chamber 1') : L('Показания', 'Readings'), form.st_I, u)}</div>
+    ${m === 'redundant' ? `<div class="series">${cellsHtml('st_I2', L('Камера 2', 'Chamber 2'), form.st_I2, u)}</div>` : ''}
+    <p class="sub-hint">${sub(m === 'redundant'
+      ? L('Один источник поочерёдно в обеих камерах, в одно время: k_TP и распад сокращаются.', 'One source in both chambers in turn, at the same time: k_TP and decay cancel.')
+      : m === 'beam'
+        ? L('Воспроизводимая геометрия: камера на полу при большом РИП, поле накрывает всю камеру, электрометр дальше 3 м от пучка, стол убран; облучение — несколько минут; выход пучка известен по своему протоколу.', 'Reproducible geometry: the chamber on the floor at an extended SSD, the field covers the whole chamber, the electrometer more than 3 m from the beam, the couch retracted; a few minutes of irradiation; beam output known per the local protocol.')
+        : L('Контрольный источник — в своём держателе на оси камеры, у максимума отклика, с тем же поворотом держателя.', 'The check source in its holder on the chamber axis, near the sweet spot, with the same holder rotation.'))}</p></section>`;
+}
+
+function stabResult() {
+  const r = computeBrachyStability(form, { offsetMin: offsetMin() });
+  if (!r.ok) return msgHtml(r.messages);
+  const u = unitLabel(CURRENT_UNITS[form.st_unit]) ?? '';
+  const red = r.method === 'redundant';
+  const valText = red ? fmt(r.value, 5) : `${fmt(r.value, 4)} ${u}`;
+  const chip = Number.isFinite(r.dev) ? `<span class="chip ${r.pass ? 'ok' : 'out'}">${esc(r.pass ? L(`в пределах ±${fmt(r.tol, 1)} %`, `within ±${fmt(r.tol, 1)}%`) : L(`вне ±${fmt(r.tol, 1)} %`, `outside ±${fmt(r.tol, 1)}%`))}</span>` : '';
+  const head = Number.isFinite(r.dev)
+    ? `<div class="plates-dose"><span${tipAttr('st_dev', { focus: true })}>${esc(L('Отклонение от исходного', 'Deviation from the baseline'))}</span><b>${esc(fmtSigned(r.dev, 2))} %</b>${chip}</div>`
+    : `<div class="plates-dose"><span>${esc(red ? L('Отношение M1/M2', 'Ratio M1/M2') : L('Приведённое показание', 'Corrected reading'))}</span><b>${esc(valText)}</b></div>`;
+  const rd = (c) => `${fmt(c.mean, 4)} ${u} (n = ${c.n}${Number.isFinite(c.relSd) ? `, ${L('разброс', 'spread')} ${fmt(c.relSd, 2)} %` : ''})`;
+  const rows = [
+    [red ? L('Камера 1, среднее', 'Chamber 1, mean') : L('Среднее показание', 'Mean reading'), rd(r.r1), 'repeat'],
+    red && r.r2 ? [L('Камера 2, среднее', 'Chamber 2, mean'), rd(r.r2), 'repeat'] : null,
+    red ? null : ['k_TP', fmt(r.r1.kTP, 4), 'kTP'],
+    !red && r.nuclide ? ['k_dec', `${fmt(r.kDec, 5)}${Number.isFinite(r.days) ? L(` (${HALF_LIVES[r.nuclide]?.label ?? ''}, ${fmt(r.days, 1)} сут от исходного)`, ` (${HALF_LIVES[r.nuclide]?.label ?? ''}, ${fmt(r.days, 1)} d from the baseline)`) : ''}`, 'st_check_nuclide'] : null,
+    [red ? L('Отношение M1/M2', 'Ratio M1/M2') : L('Приведённое показание M', 'Corrected reading M'), valText],
+    Number.isFinite(r.base) ? [L('Исходное значение', 'Baseline'), red ? fmt(r.base, 5) : `${fmt(r.base, 4)} ${u}`, 'st_base'] : null,
+  ];
+  return `${head}<div class="actions"><button type="button" data-br="st-base">${esc(L('Записать это значение как исходное', 'Record this value as the baseline'))}</button></div>${factorRows(rows)}${msgHtml(r.messages)}`;
+}
+
 function resultCardHtml(n) {
   return `<section class="start-card plates-card"><h2><span class="step-no">${n}</span> ${esc(L('Результат', 'Result'))}</h2><div id="br-result" aria-live="polite"></div></section>`;
 }
@@ -388,6 +515,8 @@ function resultCardHtml(n) {
 function sheetBody() {
   if (sheet === 'sweet') return `${sweetSetupHtml()}${sweetRowsHtml()}${resultCardHtml(3)}`;
   if (sheet === 'decay') return `${sourceHtml()}${decayParamsHtml()}${resultCardHtml(3)}`;
+  if (sheet === 'cross') return `${crossSetupHtml()}${crossChamberHtml(2, 'x_ref_', L('Эталонная камера', 'Reference chamber'))}${crossChamberHtml(3, 'x_fld_', L('Рабочая камера', 'Field chamber'))}${resultCardHtml(4)}`;
+  if (sheet === 'stab') return `${stabSetupHtml()}${stabMeasureHtml()}${resultCardHtml(3)}`;
   if (sheet === 'well') return `${sourceHtml()}${wellChamberHtml()}${wellMeasureHtml()}${resultCardHtml(4)}`;
   return `${sourceHtml()}${phantomChamberHtml()}${phantomMeasureHtml()}${resultCardHtml(4)}${doseHtml()}${ownKtotHtml()}`;
 }
@@ -396,7 +525,7 @@ function render() {
   const root = $('#brachy-root');
   if (!root) return;
   root.innerHTML = `${navHtml()}
-    <div class="plates-banner"><b>${esc(L('Раздел в разработке', 'Section in development'))}</b>: ${esc(L('расчёт работает; кросс-калибровка, бюджет неопределённости, запись в журнал и протокол появятся на следующих этапах. Черновик формы хранится в этом браузере.', 'the calculation works; cross-calibration, the uncertainty budget, journal records and the report come in the next stages. The form draft is kept in this browser.'))}</div>
+    <div class="plates-banner"><b>${esc(L('Раздел в разработке', 'Section in development'))}</b>: ${esc(L('расчёт работает; бюджет неопределённости, запись в журнал и протокол появятся на следующих этапах. Черновик формы хранится в этом браузере.', 'the calculation works; the uncertainty budget, journal records and the report come in the next stages. The form draft is kept in this browser.'))}</div>
     ${introHtml()}
     ${sheetBody()}
     ${sheet === 'decay' ? '' : `<div class="actions"><button type="button" data-br="clear">${esc(L('Очистить измерение', 'Clear the measurement'))}</button></div>`}`;
@@ -411,6 +540,8 @@ function render() {
     armButton(clear, clear.textContent, () => L('Очистить показания этого листа?', 'Clear the readings of this sheet?'), () => {
       if (sheet === 'well') Object.assign(form, { w_I: [...BRACHY_DEFAULTS.w_I], w_leak: '', w_T: '', w_P: '', w_pol_plus: '', w_pol_minus: '', w_ks_m1: '', w_ks_m2: '', w_date: '', w_time: '' });
       else if (sheet === 'sweet') Object.assign(form, { s_x: [...BRACHY_DEFAULTS.s_x], s_M: [...BRACHY_DEFAULTS.s_M], s_date: '' });
+      else if (sheet === 'cross') Object.assign(form, { x_ref_I: [...BRACHY_DEFAULTS.x_ref_I], x_fld_I: [...BRACHY_DEFAULTS.x_fld_I], x_ref_leak: '', x_fld_leak: '', x_ref_T: '', x_ref_P: '', x_fld_T: '', x_fld_P: '', x_ref_date: '', x_ref_time: '', x_fld_date: '', x_fld_time: '' });
+      else if (sheet === 'stab') Object.assign(form, { st_I: [...BRACHY_DEFAULTS.st_I], st_I2: [...BRACHY_DEFAULTS.st_I2], st_T: '', st_P: '', st_date: '', st_time: '' });
       else Object.assign(form, { p_holes: structuredClone(BRACHY_DEFAULTS.p_holes), p_transit: '', p_pol_plus: ['', '', ''], p_pol_minus: ['', '', ''], p_ks_v2: ['', '', ''], p_date: '', p_time: '', p_wellK: '' });
       persist();
       render();
@@ -552,7 +683,8 @@ function live() {
     const dose = $('#br-dose');
     if (dose) dose.innerHTML = doseResult(r);
   }
-  box.innerHTML = sheet === 'well' ? wellResult() : sheet === 'sweet' ? sweetResult() : sheet === 'decay' ? decayResult() : phantomResult();
+  const results = { well: wellResult, sweet: sweetResult, decay: decayResult, cross: crossResult, stab: stabResult, phantom: phantomResult };
+  box.innerHTML = results[sheet]();
   if (sheet === 'sweet') sweetChart();
 }
 
@@ -588,7 +720,7 @@ function onInput(e) {
 function onChange(e) {
   const t = e.target;
   if (t.name === 'br_main') return;
-  if (t.dataset.full !== undefined || t.id === 'br_w_unit' || t.id === 'br_s_unit') {
+  if (t.dataset.full !== undefined || t.id === 'br_w_unit' || t.id === 'br_s_unit' || t.id === 'br_x_unit' || t.id === 'br_st_unit') {
     readForm();
     persist();
     render();
@@ -637,6 +769,27 @@ function onClick(e) {
     if (!r.ok) return;
     form.w_pos = String(+r.xPeak.toFixed(1)).replace('.', L(',', '.'));
     status(L(`Положение измерения на листе «Колодезная камера» — ${form.w_pos} мм.`, `Measurement position on the Well-type chamber sheet: ${form.w_pos} mm.`));
+  } else if (b.dataset.br === 'x-use') {
+    const r = computeBrachyCross(form, { offsetMin: offsetMin() });
+    if (!r.ok) return;
+    Object.assign(form, {
+      w_N: String(+r.N.toPrecision(6)).replace('.', L(',', '.')),
+      w_N_unit: r.unit,
+      w_T0: form.x_T0,
+      w_P0: form.x_P0,
+      w_P0_unit: form.x_P0_unit,
+      w_kelec: '1',
+      ...(form.x_fld_model ? { w_model: form.x_fld_model } : {}),
+      ...(form.x_fld_serial ? { w_serial: form.x_fld_serial } : {}),
+    });
+    status(L(`Калибровочный коэффициент рабочей камеры перенесён на лист «Колодезная камера»: ${form.w_N}.`, `The field chamber calibration coefficient has been moved to the Well-type chamber sheet: ${form.w_N}.`));
+  } else if (b.dataset.br === 'st-base') {
+    const r = computeBrachyStability(form, { offsetMin: offsetMin() });
+    if (!r.ok || !Number.isFinite(r.value)) return;
+    // исходное на дату проверки: показание с k_TP, без пересчёта по распаду к прежней дате
+    const v = r.method === 'redundant' ? r.value : r.r1.corr;
+    Object.assign(form, { st_base: String(+v.toPrecision(6)).replace('.', L(',', '.')), st_base_date: form.st_date, st_base_time: form.st_time, st_base_zone: form.st_zone });
+    status(L(`Исходное значение — ${form.st_base}.`, `Baseline: ${form.st_base}.`));
   } else if (b.dataset.br === 'd-csv') {
     decayCsv();
     return;
@@ -656,7 +809,7 @@ export function initBrachy() {
   document.addEventListener('langchange', render);
 }
 
-/** Открыть лист (адрес #brachy/well, #brachy/sweet, #brachy/phantom, #brachy/decay; без листа — тот, с которым работали). */
+/** Открыть лист (адрес #brachy/well, #brachy/sweet, #brachy/phantom, #brachy/cross, #brachy/stab, #brachy/decay; без листа — тот, с которым работали). */
 export function renderBrachy(s) {
   if (SHEETS.includes(s)) sheet = s;
   persist();

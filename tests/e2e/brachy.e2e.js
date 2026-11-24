@@ -176,3 +176,63 @@ test('брахитерапия: максимум отклика колодезн
   assert.match(csv.split('\r\n')[1], /^27\.10\.2021/);
   assert.deepEqual(errors, []);
 });
+
+test('брахитерапия: сличение рабочей камеры по эталонной и проверка стабильности', async () => {
+  const { page, errors } = await openPage(browser);
+  const pause = (ms = 250) => page.waitForTimeout(ms);
+  const cells = async (key, vals) => {
+    const inp = page.locator(`.cells[data-series="${key}"] input`);
+    for (let i = 0; i < vals.length; i++) await inp.nth(i).fill(vals[i]);
+  };
+  await page.goto(`${server.url}/index.html#brachy/cross`);
+  await page.waitForSelector('#br_x_ref_N');
+  assert.match(await page.locator('#brachy-root nav a[aria-current="page"]').innerText(), /Сличение камер/);
+  await page.selectOption('#br_nuclide', 'Ir-192');
+  await pause();
+  await page.fill('#br_x_ref_N', '4,6e5');
+  await cells('x_ref_I', ['10,00', '10,01', '10,00']);
+  await cells('x_fld_I', ['9,50', '9,51', '9,50']);
+  for (const [k, v] of [['x_ref_T', '21'], ['x_ref_P', '1000'], ['x_fld_T', '21'], ['x_fld_P', '1000'], ['x_fld_prev', '4,83e5'], ['x_fld_model', 'PTW TM33004'], ['x_ref_date', '2026-11-24'], ['x_ref_time', '10:00'], ['x_fld_date', '2026-11-24'], ['x_fld_time', '11:00']]) await page.fill(`#br_${k}`, v);
+  await page.selectOption('#br_x_ref_zone', '+3');
+  await page.selectOption('#br_x_fld_zone', '+3');
+  await pause();
+  const res = await page.locator('#br-result').innerText();
+  assert.match(res, /484013/);
+  assert.match(res, /\+0,21 % от прежнего/);
+  assert.match(res, /1,00039/);
+  await page.click('[data-br="x-use"]');
+  await pause();
+  await page.goto(`${server.url}/index.html#brachy/well`);
+  await page.waitForSelector('#br_w_N');
+  assert.equal(await page.inputValue('#br_w_N'), '484013');
+  assert.equal(await page.inputValue('#br_w_model'), 'PTW TM33004');
+
+  // стабильность: контрольный ¹³⁷Cs, год от исходного — распад 2,33 %
+  await page.goto(`${server.url}/index.html#brachy/stab`);
+  await page.waitForSelector('#br_st_method');
+  await cells('st_I', ['100,0', '100,1', '99,9']);
+  for (const [k, v] of [['st_T', '20'], ['st_base', '101'], ['st_base_date', '2025-11-24'], ['st_base_time', '10:00'], ['st_date', '2026-11-24'], ['st_time', '10:00']]) await page.fill(`#br_${k}`, v);
+  await page.selectOption('#br_st_P_unit', 'kPa');
+  await page.fill('#br_st_P', '101,325');
+  await pause();
+  let st = await page.locator('#br-result').innerText();
+  assert.match(st, /\+1,32 %[\s\S]*вне ±0,5 %/);
+  assert.match(st, /1,02332/);
+  // записать как исходное (на дату проверки, без пересчёта по распаду) — отклонение 0
+  await page.click('[data-br="st-base"]');
+  await pause();
+  assert.equal(await page.inputValue('#br_st_base'), '100');
+  assert.equal(await page.inputValue('#br_st_base_date'), '2026-11-24');
+  st = await page.locator('#br-result').innerText();
+  assert.match(st, /[+−-]?0,00 %[\s\S]*в пределах ±0,5 %/);
+  // вторая камера — отношение показаний, ±0,1 %
+  await page.selectOption('#br_st_method', 'redundant');
+  await pause();
+  await cells('st_I2', ['80,00', '80,08', '80,04']);
+  await page.fill('#br_st_base', '1,2490');
+  await pause();
+  st = await page.locator('#br-result').innerText();
+  assert.match(st, /Отношение M1\/M2\s+1,24938/i);
+  assert.match(st, /в пределах ±0,1 %/);
+  assert.deepEqual(errors, []);
+});

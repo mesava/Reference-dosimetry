@@ -183,12 +183,59 @@ const TIPS = {
     pop('Отсчёт таблицы распада', ['От сертификата — сила источника по сертификату на его дату. От измерения — результат листа «Колодезная камера» или «Фантом PTW 9193» на время измерения: так получают значения для системы планирования по своему измерению.'], `${T492}, разд. 7.3, 8.6.`),
     pop('Decay table base', ['From the certificate: the certificate source strength at its date. From a measurement: the result of the Well-type chamber or PTW 9193 phantom sheet at the measurement time; this gives values for the treatment planning system from your own measurement.'], 'IAEA TRS-492 (2023), Sec. 7.3, 8.6.'),
   ),
+  // сличение камер
+  x_ref_N: () => L(
+    pop('Калибровочный коэффициент эталонной камеры N<sub>ref</sub>', ['Из сертификата лаборатории (прослеживаемость к национальному эталону) — для того же нуклида и того же держателя источника, с которыми проводится сличение. Эталонная камера при сличении стоит в держателе, в котором её калибровали.'], `${T492}, разд. 7.7, ур. (18)–(20).`),
+    pop('Reference chamber calibration coefficient N<sub>ref</sub>', ['From the laboratory certificate (traceable to a national standard), for the same nuclide and source holder used in the cross-calibration. The reference chamber is used in the holder it was calibrated with.'], 'IAEA TRS-492 (2023), Sec. 7.7, Eq. (18)–(20).'),
+  ),
+  x_ksm: () => L(
+    pop('Поправка на модель источника k<sub>sm,sm0</sub> при сличении', ['Если эталонную камеру калибровали с моделью источника sm0, а сличают с другой моделью sm того же нуклида, N<sub>ref</sub> умножают на k<sub>sm,sm0</sub>. Тот же источник, что при калибровке, — 1 (пустое поле). Данные — TRS-492, табл. 8 (лист «Колодезная камера»).'], `${T492}, разд. 7.7, ур. (18)–(20); разд. 8.3, табл. 8.`),
+    pop('Source model correction k<sub>sm,sm0</sub> in a cross-calibration', ['If the reference chamber was calibrated with source model sm0 and the cross-calibration uses another model sm of the same nuclide, N<sub>ref</sub> is multiplied by k<sub>sm,sm0</sub>. The same model as in the calibration: 1 (blank). Data: TRS-492, Table 8 (Well-type chamber sheet).'], 'IAEA TRS-492 (2023), Sec. 7.7, Eq. (18)–(20); Sec. 8.3, Table 8.'),
+  ),
+  x_T0: () => L(
+    pop('Условия приведения T<sub>0</sub>, P<sub>0</sub>', ['Показания обеих камер приводятся к одним T<sub>0</sub>, P<sub>0</sub> (k<sub>TP</sub>, ур. 28) — к условиям сертификата эталонной камеры. Новый коэффициент рабочей камеры относится к этим же условиям: их переносят в её сертификат вместе с N.'], `${T492}, разд. 7.7, 8.2.3.1, ур. (28).`),
+    pop('Reference conditions T<sub>0</sub>, P<sub>0</sub>', ['Both chamber readings are corrected to the same T<sub>0</sub>, P<sub>0</sub> (k<sub>TP</sub>, Eq. 28), those of the reference chamber certificate. The new field chamber coefficient refers to the same conditions; they go with N into its record.'], 'IAEA TRS-492 (2023), Sec. 7.7, 8.2.3.1, Eq. (28).'),
+  ),
+  x_N: () => L(
+    pop('Калибровочный коэффициент рабочей камеры N<sub>field</sub>', ['N<sub>field</sub> = M<sub>ref</sub>(t<sub>ref</sub>)/M<sub>field</sub>(t<sub>ref</sub>) · N<sub>ref</sub> · k<sub>sm,sm0</sub>. Показания — средние, с поправками на утечку и k<sub>TP</sub>; эталонная — с k<sub>elec</sub>; рабочая — пересчитанная по распаду на время измерения эталонной (k<sub>dec</sub>). Коэффициент годен только для этого нуклида и держателя; пересчёт ¹⁹²Ir ↔ ⁶⁰Co не допускается.'], `${T492}, разд. 7.7, ур. (18)–(20).`),
+    pop('Field chamber calibration coefficient N<sub>field</sub>', ['N<sub>field</sub> = M<sub>ref</sub>(t<sub>ref</sub>)/M<sub>field</sub>(t<sub>ref</sub>) · N<sub>ref</sub> · k<sub>sm,sm0</sub>. Readings are means corrected for leakage and k<sub>TP</sub>; the reference one with k<sub>elec</sub>; the field one decay-corrected to the reference measurement time (k<sub>dec</sub>). Valid only for this nuclide and holder; ¹⁹²Ir ↔ ⁶⁰Co conversion is not permitted.'], 'IAEA TRS-492 (2023), Sec. 7.7, Eq. (18)–(20).'),
+  ),
+  x_kdec: () => L(
+    pop('Распад между измерениями k<sub>dec</sub>', ['Если рабочую камеру мерили позже эталонной, её показание пересчитывается на время измерения эталонной: k<sub>dec</sub> = 2<sup>Δt/T½</sup>. Для ¹⁹²Ir час — около 0,04 %.'], `${T492}, разд. 7.7; ур. (8)–(9).`),
+    pop('Decay between the measurements k<sub>dec</sub>', ['If the field chamber was measured after the reference one, its reading is decay-corrected to the reference measurement time: k<sub>dec</sub> = 2<sup>Δt/T½</sup>. For ¹⁹²Ir one hour is about 0.04%.'], 'IAEA TRS-492 (2023), Sec. 7.7; Eq. (8)–(9).'),
+  ),
+  x_fld_prev: () => L(
+    pop('Прежний коэффициент рабочей камеры', ['Для сравнения: новый N<sub>field</sub> против прежнего. Изменение больше 0,5 % — повод проверить условия сличения и стабильность рабочей камеры. Единица — как у эталонной камеры.'], `${T492}, разд. 7.7, 8.5.`),
+    pop('Previous field chamber coefficient', ['For comparison: the new N<sub>field</sub> against the previous one. A change above 0.5% calls for checking the cross-calibration conditions and the field chamber stability. Unit as for the reference chamber.'], 'IAEA TRS-492 (2023), Sec. 7.7, 8.5.'),
+  ),
+  // стабильность
+  st_method: () => L(
+    pop('Метод проверки стабильности', ['Не реже четырёх раз в год, до и после каждой замены источника. <b>Контрольный источник</b> (рекомендуется; ¹³⁷Cs для ¹⁹²Ir и ⁶⁰Co) — показание с поправками на T, P и распад контрольного источника против исходного, ±0,5 %. <b>Внешний пучок</b> (ускоритель 6 МВ или ⁶⁰Co, камера на полу при большом РИП) — без распада, ±0,5 %. <b>Источник HDR</b> — только если нет второй камеры и контрольного источника: тот же источник до его замены, с распадом; ¹⁹²Ir — несколько месяцев, ⁶⁰Co — несколько лет. <b>Вторая камера</b> — отношение показаний двух независимых систем с одним источником, ±0,1 % от текущего среднего.'], `${T492}, разд. 8.5, 8.5.1–8.5.4.`),
+    pop('Stability check method', ['At least four times a year and before and after each source exchange. <b>Check source</b> (recommended; ¹³⁷Cs for ¹⁹²Ir and ⁶⁰Co): reading corrected for T, P and the check source decay against the baseline, ±0.5%. <b>External beam</b> (6 MV linac or ⁶⁰Co unit, chamber on the floor at an extended SSD): no decay, ±0.5%. <b>HDR source</b>: only without a redundant chamber and check source; the same source until its exchange, decay-corrected; ¹⁹²Ir for a few months, ⁶⁰Co for a few years. <b>Redundant chamber</b>: ratio of two independent systems with one source, ±0.1% of the running mean.'], 'IAEA TRS-492 (2023), Sec. 8.5, 8.5.1–8.5.4.'),
+  ),
+  st_base: () => L(
+    pop('Исходное значение', ['Показание, приведённое к T<sub>0</sub>, P<sub>0</sub>, при вводе камеры в работу и после каждой калибровки; с ним сравнивают проверки. Для второй камеры — текущее среднее отношения показаний. Можно записать текущую проверку как исходное кнопкой под результатом.'], `${T492}, разд. 8.5.`),
+    pop('Baseline', ['The reading corrected to T<sub>0</sub>, P<sub>0</sub> at the chamber commissioning and after each recalibration; checks are compared with it. For a redundant chamber: the running mean of the reading ratio. The current check can be recorded as the baseline with the button below the result.'], 'IAEA TRS-492 (2023), Sec. 8.5.'),
+  ),
+  st_check_nuclide: () => L(
+    pop('Нуклид контрольного источника', ['Для поправки на распад контрольного источника от даты исходного значения. Для ¹⁹²Ir, ¹³⁷Cs и ⁶⁰Co оптимален ¹³⁷Cs (T<sub>½</sub> 30,05 года — за год около 2,3 %); для низкоэнергетических источников — ²⁴¹Am (его T<sub>½</sub> в табл. 3 нет — введите свой). T<sub>½</sub> — по TRS-492, табл. 3.'], `${T492}, разд. 8.5.2, табл. 3.`),
+    pop('Check source nuclide', ['For the decay correction of the check source from the baseline date. For ¹⁹²Ir, ¹³⁷Cs and ⁶⁰Co, ¹³⁷Cs is optimal (T<sub>½</sub> 30.05 y, about 2.3% per year); for low-energy sources ²⁴¹Am (not in Table 3: enter its T<sub>½</sub>). T<sub>½</sub> per TRS-492, Table 3.'], 'IAEA TRS-492 (2023), Sec. 8.5.2, Table 3.'),
+  ),
+  st_dev: () => L(
+    pop('Отклонение от исходного', ['(M − M<sub>исх</sub>)/M<sub>исх</sub>, где M — среднее показание с k<sub>TP</sub> и поправкой на распад к дате исходного значения. Допуск ±0,5 %; для второй камеры — ±0,1 % от текущего среднего отношения. Больше — выяснить причину, возможно, повторно калибровать камеру.'], `${T492}, разд. 8.5, 8.5.1.`),
+    pop('Deviation from the baseline', ['(M − M<sub>base</sub>)/M<sub>base</sub>, where M is the mean reading with k<sub>TP</sub> and the decay correction to the baseline date. Tolerance ±0.5%; for a redundant chamber ±0.1% of the running mean ratio. Beyond that, investigate; recalibration is an option.'], 'IAEA TRS-492 (2023), Sec. 8.5, 8.5.1.'),
+  ),
+  repeat: () => L(
+    pop('Повторяемость', ['Относительное стандартное отклонение показаний серии от их среднего. Исходные данные повторяемости набирают большим числом измерений при вводе в работу; отклонение за установленные пределы — исследовать. Здесь предупреждение — при разбросе больше 0,5 %.'], `${T492}, разд. 8.4.`),
+    pop('Repeatability', ['Relative standard deviation of the series readings from their mean. Baseline repeatability data are collected with many measurements at commissioning; a value outside the set limits is investigated. Here a warning appears for a spread above 0.5%.'], 'IAEA TRS-492 (2023), Sec. 8.4.'),
+  ),
 };
 // одинаковые величины под разными ключами полей
 Object.assign(TIPS, {
   w_T0: TIPS.kTP, p_T0: TIPS.kTP, w_kelec: TIPS.kElec, p_kelec: TIPS.kElec, w_leak: TIPS.kLeak,
   w_pol_plus: TIPS.kPol, w_ks_m1: TIPS.kS, w_ksm_mode: TIPS.kSm, w_ksm: TIPS.kSm, p_ka_value: TIPS.p_ka, kA: TIPS.p_ka,
   kzp: TIPS.p_kzp, p_wellK: TIPS.p_ktot, w_P0: TIPS.kTP, p_P0: TIPS.kTP,
+  x_P0: TIPS.x_T0, x_ref_kelec: TIPS.kElec, x_ref_leak: TIPS.kLeak, x_fld_leak: TIPS.kLeak, st_half: TIPS.st_check_nuclide, st_T0: TIPS.kTP, st_P0: TIPS.kTP,
 });
 
 /** Атрибуты подсказки для элемента (пусто, если подсказки нет); focus — сделать элемент фокусируемым с клавиатуры. */

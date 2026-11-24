@@ -2,7 +2,7 @@
 // в фантоме PTW 9193 и ¹⁹²Ir в колодезной камере), сверенные с её результатами.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeBrachyWell, computeBrachyPhantom, computeBrachySweet, computeBrachyDecay, normalizeBrachy, fieldTime, BRACHY_DEFAULTS } from '../src/core/brachy-sheets.js';
+import { computeBrachyWell, computeBrachyPhantom, computeBrachySweet, computeBrachyDecay, computeBrachyCross, computeBrachyStability, normalizeBrachy, fieldTime, BRACHY_DEFAULTS } from '../src/core/brachy-sheets.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''} ${a} ≠ ${b} (±${tol})`);
 const rel = (a, b, tolRel, msg) => near(a / b, 1, tolRel, msg);
@@ -276,4 +276,74 @@ test('Лист «Распад»: от сертификата ⁶⁰Co по ме�
   near(ir.rows[16].frac, 2 ** (-112 / 73.827), 1e-12);
   // пусто — подсказка, без ошибок
   assert.deepEqual(errors(computeBrachyDecay({})), []);
+});
+
+test('Лист «Сличение камер» (TRS-492, разд. 7.7, ур. 18–20): N_field по эталонной, k_TP каждой, распад между измерениями, k_sm', () => {
+  const base = {
+    nuclide: 'Ir-192', x_unit: 'nA', x_ref_N: '4,6e5', x_ref_I: ['10,00', '10,01', '10,00'], x_ref_T: '21', x_ref_P: '1000',
+    x_fld_I: ['9,50', '9,51', '9,50'], x_fld_T: '21', x_fld_P: '1000',
+  };
+  const r = computeBrachyCross(base);
+  assert.ok(r.ok);
+  assert.deepEqual(errors(r), []);
+  near(r.ref.kTP, ((273.15 + 21) / 293.15) * (101.325 / 100), 1e-12);
+  near(r.ratio, 10.003333 / 9.503333, 1e-6);
+  near(r.N, 4.6e5 * (10.003333 / 9.503333), 0.1);
+  // рабочая камера на час позже — её показание к времени эталонной: k_dec = 2^(1 ч / T½)
+  const t = { x_ref_date: '2026-11-24', x_ref_time: '10:00', x_ref_zone: '+3', x_fld_date: '2026-11-24', x_fld_time: '11:00', x_fld_zone: '+3' };
+  const d = computeBrachyCross({ ...base, ...t, x_fld_prev: '4,83e5' });
+  near(d.kDec, 2 ** (1 / (73.827 * 24)), 1e-12);
+  near(d.N, 484012.65, 0.05);
+  near(d.prev.dev, (484012.65 / 4.83e5 - 1) * 100, 1e-4);
+  assert.ok(!d.messages.some((m) => m.field === 'x_fld_prev'));
+  // другая температура у рабочей, k_sm и k_elec эталонной
+  const k = computeBrachyCross({ ...base, x_fld_T: '23', x_ksm: '1,01', x_ref_kelec: '0,999' });
+  near(k.N, 4.6e5 * ((10.003333 * 0.999) / (9.503333 * (296.15 / 294.15))) * 1.01, 0.1);
+  // прежний коэффициент отличается больше чем на 0,5 % — предупреждение
+  assert.ok(computeBrachyCross({ ...base, x_fld_prev: '4,7e5' }).messages.some((m) => m.field === 'x_fld_prev' && m.level === 'warn'));
+  // время только у одной камеры — предупреждение; нет показаний рабочей — подсказка
+  assert.ok(computeBrachyCross({ ...base, x_ref_date: '2026-11-24', x_ref_time: '10:00' }).messages.some((m) => m.field === 'x_fld_date'));
+  assert.equal(computeBrachyCross({ ...base, x_fld_I: [] }).ok, false);
+  assert.deepEqual(errors(computeBrachyCross({})), []);
+});
+
+test('Лист «Стабильность» (TRS-492, разд. 8.5): контрольный ¹³⁷Cs с распадом, внешний пучок, источник HDR, вторая камера ±0,1 %', () => {
+  const cs = { st_method: 'check', st_unit: 'pA', st_I: ['100,0', '100,1', '99,9'], st_T: '20', st_P: '1013,25', st_P_unit: 'hPa', st_base_date: '2025-11-24', st_base_time: '10:00', st_date: '2026-11-24', st_time: '10:00' };
+  const kd = 2 ** (365 / (30.05 * 365.2422));
+  const r = computeBrachyStability({ ...cs, st_base: '102,3' });
+  assert.ok(r.ok);
+  near(r.r1.kTP, 1, 1e-12);
+  near(r.kDec, kd, 1e-8);
+  near(r.value, 100 * kd, 1e-6);
+  near(r.dev, ((100 * kd) / 102.3 - 1) * 100, 1e-6);
+  assert.equal(r.pass, true);
+  // без исходного — значение для записи, без отклонения
+  const nb = computeBrachyStability(cs);
+  assert.ok(nb.ok);
+  assert.ok(Number.isNaN(nb.dev ?? NaN));
+  assert.ok(nb.messages.some((m) => m.field === 'st_base'));
+  // 101,0 — отклонение больше 0,5 %
+  const out = computeBrachyStability({ ...cs, st_base: '101' });
+  assert.equal(out.pass, false);
+  assert.ok(out.messages.some((m) => m.level === 'warn' && m.field === 'st_base'));
+  // внешний пучок — без распада
+  const beam = computeBrachyStability({ ...cs, st_method: 'beam', st_base: '100,2' });
+  assert.equal(beam.kDec, 1);
+  near(beam.dev, (100 / 100.2 - 1) * 100, 1e-9);
+  // источник HDR ¹⁹²Ir: распад источника; больше 120 сут — предупреждение
+  const hdr = computeBrachyStability({ ...cs, st_method: 'hdr', nuclide: 'Ir-192', st_base: '3000' });
+  near(hdr.kDec, 2 ** (365 / 73.827), 1e-9);
+  assert.ok(hdr.messages.some((m) => m.field === 'st_base_date' && m.level === 'warn'));
+  // ¹⁹²Ir, дата без времени — предупреждение (сутки ≈ 0,94 %)
+  assert.ok(computeBrachyStability({ ...cs, st_method: 'hdr', st_time: '' }).messages.some((m) => m.field === 'st_time'));
+  // свой t½ контрольного источника (например, ²⁴¹Am)
+  near(computeBrachyStability({ ...cs, st_half: String(432.6 * 365.25).replace('.', ',') }).kDec, 2 ** (365 / (432.6 * 365.25)), 1e-12);
+  // вторая камера: отношение, допуск 0,1 %
+  const red = computeBrachyStability({ st_method: 'redundant', st_unit: 'nA', st_I: ['10,00', '10,00'], st_I2: ['8,000', '8,000', '8,000'], st_T: '22', st_P: '990', st_base: '1,2490' });
+  near(red.value, 1.25, 1e-12);
+  near(red.dev, (1.25 / 1.249 - 1) * 100, 1e-9);
+  assert.equal(red.tol, 0.1);
+  assert.equal(red.pass, true);
+  assert.equal(computeBrachyStability({ st_method: 'redundant', st_I: ['10'], st_I2: ['8'], st_base: '1,247' }).pass, false);
+  assert.deepEqual(errors(computeBrachyStability({})), []);
 });

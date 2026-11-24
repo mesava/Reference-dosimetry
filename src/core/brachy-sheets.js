@@ -4,7 +4,7 @@
 import { L } from './i18n.js';
 import { parseNumber, isBlank, pressureToKPa, PRESSURE_UNITS, ru } from './units.js';
 import { temperaturePressure } from './common.js';
-import { HALF_LIVES, KSM_SOURCES, PHANTOM_CO60, PHANTOM_CO60_LITERATURE, APPLICATOR_KA_STEEL, DOSE_SOURCES, UBRICH_KTOT_DW1, UBRICH_KTOT_DW1_REF } from './brachy-data.js';
+import { HALF_LIVES, KSM_SOURCES, STABILITY_TOL, PHANTOM_CO60, PHANTOM_CO60_LITERATURE, APPLICATOR_KA_STEEL, DOSE_SOURCES, UBRICH_KTOT_DW1, UBRICH_KTOT_DW1_REF } from './brachy-data.js';
 import {
   halfLifeDays,
   kDec,
@@ -31,6 +31,7 @@ import {
   strengthAt,
   timeForStrength,
   decayDates,
+  crossCalibrate,
 } from './brachy.js';
 
 const REF = {
@@ -146,6 +147,57 @@ export const BRACHY_DEFAULTS = {
   d_zone: '',
   d_target: '',
   d_target_unit: 'mGy/h',
+
+  // сличение (кросс-калибровка) рабочей колодезной камеры по эталонной, TRS-492, разд. 7.7
+  x_unit: 'nA',
+  x_T0: '20',
+  x_P0: '101,325',
+  x_P0_unit: 'kPa',
+  x_P_unit: 'hPa',
+  x_ksm: '', // k_sm,sm0 для N эталонной камеры (пусто — 1: тот же источник, что при её калибровке)
+  x_ref_model: '',
+  x_ref_serial: '',
+  x_ref_N: '',
+  x_ref_N_unit: 'Gy·m2/(h·A)',
+  x_ref_kelec: '1',
+  x_ref_I: ['', '', '', '', ''],
+  x_ref_leak: '',
+  x_ref_T: '',
+  x_ref_P: '',
+  x_ref_date: '',
+  x_ref_time: '',
+  x_ref_zone: '',
+  x_fld_model: '',
+  x_fld_serial: '',
+  x_fld_I: ['', '', '', '', ''],
+  x_fld_leak: '',
+  x_fld_T: '',
+  x_fld_P: '',
+  x_fld_date: '',
+  x_fld_time: '',
+  x_fld_zone: '',
+  x_fld_prev: '', // прежний калибровочный коэффициент рабочей камеры (в единице эталонного), для сравнения
+
+  // стабильность колодезной камеры, TRS-492, разд. 8.4–8.5
+  st_method: 'check', // 'check' — контрольный источник (8.5.2), 'beam' — внешний пучок (8.5.3), 'hdr' — источник HDR (8.5.4), 'redundant' — вторая камера (8.5.1)
+  st_check_nuclide: 'Cs-137',
+  st_half: '', // свой t½ контрольного источника, сут (пусто — TRS-492, табл. 3)
+  st_unit: 'pA',
+  st_T0: '20',
+  st_P0: '101,325',
+  st_P0_unit: 'kPa',
+  st_P_unit: 'hPa',
+  st_base: '', // исходное значение: показание, приведённое к T0, P0 (для 'redundant' — отношение)
+  st_base_date: '',
+  st_base_time: '',
+  st_base_zone: '',
+  st_I: ['', '', '', '', ''],
+  st_I2: ['', '', '', '', ''], // вторая камера (8.5.1)
+  st_T: '',
+  st_P: '',
+  st_date: '',
+  st_time: '',
+  st_zone: '',
 };
 
 /** Нормализация черновика: недостающие поля — по умолчанию, массивы — нужной формы. */
@@ -704,6 +756,191 @@ export function computeBrachyDecay(input, { offsetMin = 0, well = null, phantom 
     }
   }
   out.ok = out.rows.length > 0;
+  return out;
+}
+
+// ——— Показания колодезной камеры: среднее, утечка, k_TP (общая часть сличения и стабильности) ———
+
+/**
+ * Серия показаний камеры, приведённая к T0, P0: M = M̄ · k_leak · k_TP (TRS-492, разд. 8.2.3.1, 8.2.3.4).
+ * series — массив строк показаний; T0, P0 (кПа) — условия приведения; fieldT, fieldI — поля для замечаний.
+ */
+function chamberReading({ series, unit, leak, T, P, P_unit, T0, P0, fieldT, fieldI, what }, add) {
+  const xs = nums(series);
+  if (!xs.length) return null;
+  const m = mean(xs);
+  const out = { n: xs.length, mean: m, relSd: xs.length > 1 ? Math.abs(sd(xs) / m) * 100 : NaN, kTP: 1, kLeak: 1 };
+  if (xs.length < 3) add('warn', L(`${what}: меньше трёх показаний — повторяемость не оценить.`, `${what}: fewer than three readings; the repeatability cannot be assessed.`), `${REF.trs492}, разд. 8.4`, fieldI);
+  if (out.relSd > 0.5) add('warn', L(`${what}: разброс показаний ${ru(out.relSd, 2)} % — больше 0,5 %: проверьте прогрев и положение источника.`, `${what}: reading spread ${out.relSd.toFixed(2)}% exceeds 0.5%: check the warm-up and the source position.`), `${REF.trs492}, разд. 8.4`, fieldI);
+  const lk = parseNumber(leak);
+  if (Number.isFinite(lk) && lk !== 0) {
+    const kl = kLeak(readingToAmps({ value: m, unit }).amps, readingToAmps({ value: lk, unit }).amps);
+    out.kLeak = kl.value;
+  }
+  const t = parseNumber(T);
+  const p = readPressure(P, P_unit, add, fieldT.replace(/T$/, 'P'), what);
+  if (Number.isFinite(t) && Number.isFinite(p) && Number.isFinite(T0) && Number.isFinite(P0)) out.kTP = temperaturePressure({ T: t, P: p, T0, P0, abs0: 273.15 });
+  else add('warn', L(`${what}: нет температуры или давления — k_TP = 1.`, `${what}: no temperature or pressure; k_TP = 1.`), `${REF.trs492}, разд. 8.2.3.1`, fieldT);
+  out.corr = m * out.kLeak * out.kTP;
+  return out;
+}
+
+// ——— Сличение (кросс-калибровка) колодезных камер ———
+
+/**
+ * Лист «Сличение камер»: калибровочный коэффициент рабочей колодезной камеры по эталонной на том же источнике:
+ * N_field = M_ref(t_ref)/M_field(t_ref) · N_ref · k_sm,sm0 (TRS-492, разд. 7.7, ур. 18–20). Показания приводятся
+ * к одним T0, P0 и, если сняты в разное время, к времени измерения эталонной камерой по распаду.
+ */
+export function computeBrachyCross(input, { offsetMin = 0 } = {}) {
+  const f = normalizeBrachy(input);
+  const messages = [];
+  const add = makeAdd(messages);
+  const out = { ok: false, messages };
+  const h = halfLifeDays(f.nuclide, isBlank(f.half) ? undefined : parseNumber(f.half));
+  out.half = h.days;
+  const Nref = parseNumber(f.x_ref_N);
+  if (!(Nref > 0)) {
+    add(isBlank(f.x_ref_N) ? 'info' : 'error', L('Введите калибровочный коэффициент эталонной камеры из её сертификата — для того же нуклида и того же держателя источника.', 'Enter the reference chamber calibration coefficient from its certificate, for the same nuclide and the same source holder.'), `${REF.trs492}, разд. 7.7`, 'x_ref_N');
+    return out;
+  }
+  if (!Object.hasOwn(WELL_N_UNITS, f.x_ref_N_unit)) add('error', L('Неизвестная единица калибровочного коэффициента.', 'Unknown calibration coefficient unit.'), null, 'x_ref_N_unit');
+  if (!Object.hasOwn(CURRENT_UNITS, f.x_unit)) {
+    add('error', L('Неизвестная единица тока.', 'Unknown current unit.'), null, 'x_unit');
+    return out;
+  }
+  const T0 = parseNumber(f.x_T0);
+  const P0 = readPressure(f.x_P0, f.x_P0_unit, add, 'x_P0', L('условия приведения', 'reference conditions'));
+  const common = { unit: f.x_unit, P_unit: f.x_P_unit, T0, P0 };
+  const ref = chamberReading({ ...common, series: f.x_ref_I, leak: f.x_ref_leak, T: f.x_ref_T, P: f.x_ref_P, fieldT: 'x_ref_T', fieldI: 'x_ref_I', what: L('Эталонная камера', 'Reference chamber') }, add);
+  const fld = chamberReading({ ...common, series: f.x_fld_I, leak: f.x_fld_leak, T: f.x_fld_T, P: f.x_fld_P, fieldT: 'x_fld_T', fieldI: 'x_fld_I', what: L('Рабочая камера', 'Field chamber') }, add);
+  if (!ref || !fld) {
+    add('info', L('Введите показания обеих камер с одним и тем же источником в положении максимального отклика.', 'Enter the readings of both chambers with the same source at the sweet spot.'), `${REF.trs492}, разд. 7.7`, ref ? 'x_fld_I' : 'x_ref_I');
+    return out;
+  }
+  const kElec = isBlank(f.x_ref_kelec) ? 1 : parseNumber(f.x_ref_kelec);
+  if (!(kElec > 0)) add('error', L('k_elec должен быть больше нуля.', 'k_elec must be greater than zero.'), null, 'x_ref_kelec');
+  ref.kElec = kElec;
+  ref.corr *= kElec;
+  const kSm = isBlank(f.x_ksm) ? 1 : parseNumber(f.x_ksm);
+  if (!(kSm > 0)) add('error', L('k_sm,sm0 должен быть больше нуля.', 'k_sm,sm0 must be greater than zero.'), null, 'x_ksm');
+  // приведение к одному времени (TRS-492, разд. 7.7: «both measurements … refer to the same time t_ref»)
+  const tRef = readMeasTime(f, 'x_ref_', add, offsetMin);
+  const tFld = readMeasTime(f, 'x_fld_', add, offsetMin);
+  let kd = 1;
+  if (Number.isFinite(tRef) && Number.isFinite(tFld) && tRef !== tFld) {
+    if (!Number.isFinite(h.days)) add('error', L('Не задан период полураспада.', 'The half-life is not set.'), null, 'half');
+    else kd = kDec(tFld, tRef, h.days);
+  } else if (Number.isFinite(tRef) !== Number.isFinite(tFld)) add('warn', L('Время указано только у одной камеры: показания не приведены к одному времени. Если между измерениями прошло больше нескольких минут, укажите оба.', 'The time is given for one chamber only: the readings are not brought to the same time. If more than a few minutes passed between the measurements, give both.'), `${REF.trs492}, разд. 7.7`, Number.isFinite(tRef) ? 'x_fld_date' : 'x_ref_date');
+  fld.kDec = kd;
+  fld.corrT = fld.corr * kd;
+  out.ref = ref;
+  out.fld = fld;
+  out.kSm = kSm;
+  out.kDec = kd;
+  out.dtHours = Number.isFinite(tRef) && Number.isFinite(tFld) ? (tFld - tRef) / 3600000 : NaN;
+  if (Math.sign(ref.corr) !== Math.sign(fld.corrT)) add('warn', L('Знаки показаний камер разные: проверьте полярность.', 'The chamber readings have different signs: check the polarity.'), null, 'x_fld_I');
+  out.ratio = Math.abs(ref.corr / fld.corrT);
+  out.N = crossCalibrate({ mRef: Math.abs(ref.corr), mField: Math.abs(fld.corrT), nRef: Nref, kSm });
+  out.unit = f.x_ref_N_unit;
+  const prev = parseNumber(f.x_fld_prev);
+  if (prev > 0) {
+    out.prev = { N: prev, dev: (out.N / prev - 1) * 100 };
+    if (Math.abs(out.prev.dev) > STABILITY_TOL) add('warn', L(`Новый коэффициент отличается от прежнего на ${ru(out.prev.dev, 2)} % — больше 0,5 %: проверьте условия сличения и стабильность рабочей камеры.`, `The new coefficient differs from the previous one by ${out.prev.dev.toFixed(2)}%, more than 0.5%: check the cross-calibration conditions and the field chamber stability.`), `${REF.trs492}, разд. 8.5`, 'x_fld_prev');
+  }
+  add('info', L('Тот же нуклид, что при калибровке эталонной камеры, и её держатель источника; пересчёт между нуклидами не допускается.', 'Same nuclide as in the reference chamber calibration, with its source holder; conversion between nuclides is not permitted.'), `${REF.trs492}, разд. 7.7`, null);
+  out.ok = Number.isFinite(out.N) && !messages.some((m) => m.level === 'error');
+  return out;
+}
+
+// ——— Стабильность колодезной камеры ———
+
+/** Методы проверки долговременной стабильности, TRS-492, разд. 8.5.1–8.5.4; tol — допуск, %. */
+export const STABILITY_METHODS = {
+  check: { sec: '8.5.2', tol: STABILITY_TOL },
+  beam: { sec: '8.5.3', tol: STABILITY_TOL },
+  hdr: { sec: '8.5.4', tol: STABILITY_TOL },
+  redundant: { sec: '8.5.1', tol: 0.1 },
+};
+
+/**
+ * Лист «Стабильность»: показание, приведённое к T0, P0 и к дате исходного значения по распаду, против исходного
+ * значения (TRS-492, разд. 8.5: ±0,5 %; для второй камеры — отношение показаний, ±0,1 % от среднего, разд. 8.5.1).
+ * Повторяемость серии — разд. 8.4.
+ */
+export function computeBrachyStability(input, { offsetMin = 0 } = {}) {
+  const f = normalizeBrachy(input);
+  const messages = [];
+  const add = makeAdd(messages);
+  const method = Object.hasOwn(STABILITY_METHODS, f.st_method) ? f.st_method : 'check';
+  const meta = STABILITY_METHODS[method];
+  const out = { ok: false, messages, method, tol: meta.tol, sec: meta.sec };
+  if (!Object.hasOwn(CURRENT_UNITS, f.st_unit)) {
+    add('error', L('Неизвестная единица тока.', 'Unknown current unit.'), null, 'st_unit');
+    return out;
+  }
+  const T0 = parseNumber(f.st_T0);
+  const P0 = readPressure(f.st_P0, f.st_P0_unit, add, 'st_P0', L('условия приведения', 'reference conditions'));
+  const common = { unit: f.st_unit, P_unit: f.st_P_unit, T0, P0, T: f.st_T, P: f.st_P, fieldT: 'st_T' };
+  const r1 = chamberReading({ ...common, series: f.st_I, fieldI: 'st_I', what: method === 'redundant' ? L('Камера 1', 'Chamber 1') : L('Показания', 'Readings') }, add);
+  if (!r1) {
+    add('info', L('Введите показания проверки (ток или заряд за одно и то же время).', 'Enter the check readings (current or charge over the same time).'), `${REF.trs492}, разд. 8.5`, 'st_I');
+    return out;
+  }
+  out.r1 = r1;
+  let value;
+  if (method === 'redundant') {
+    const r2 = chamberReading({ ...common, series: f.st_I2, fieldI: 'st_I2', what: L('Камера 2', 'Chamber 2') }, add);
+    if (!r2) {
+      add('info', L('Введите показания второй камеры с тем же источником.', 'Enter the second chamber readings with the same source.'), `${REF.trs492}, разд. 8.5.1`, 'st_I2');
+      return out;
+    }
+    out.r2 = r2;
+    // одна среда: k_TP одинаковый и сокращается; распад — тоже (одно время)
+    value = r1.corr / r2.corr;
+    out.kDec = 1;
+  } else {
+    // распад от даты исходного значения: для внешнего пучка — нет
+    let kd = 1;
+    const tb = fieldTime(f.st_base_date, f.st_base_time, f.st_base_zone, offsetMin);
+    const tn = fieldTime(f.st_date, f.st_time, f.st_zone, offsetMin);
+    if (tn.error) add('error', L(`Дата проверки: ${tn.error}.`, `Check date: ${tn.error}.`), null, 'st_date');
+    const tNow = tn.ms;
+    if (tb.error) add('error', L(`Дата исходного значения: ${tb.error}.`, `Baseline date: ${tb.error}.`), null, 'st_base_date');
+    const nuclide = method === 'check' ? f.st_check_nuclide : method === 'hdr' ? f.nuclide : null;
+    if (nuclide) {
+      const own = method === 'hdr' ? f.half : f.st_half;
+      const h = halfLifeDays(nuclide, isBlank(own) ? undefined : parseNumber(own));
+      if (h.error) add('error', L(`Период полураспада: ${h.error}.`, `Half-life: ${h.error}.`), null, method === 'hdr' ? 'half' : 'st_half');
+      out.half = h.days;
+      out.nuclide = nuclide;
+      if ((tn.dateOnly || tb.dateOnly) && Number.isFinite(h.days) && dateOnlyDecayError(h.days) > 0.001) add('warn', L(`Дата без времени: для ${HALF_LIVES[nuclide]?.label ?? nuclide} сутки — до ${ru(dateOnlyDecayError(h.days) * 100, 2)} % распада. Укажите время исходного измерения и проверки.`, `A date without the time: for ${HALF_LIVES[nuclide]?.label ?? nuclide} one day is up to ${(dateOnlyDecayError(h.days) * 100).toFixed(2)}% of decay. Give the times of the baseline and of the check.`), `${REF.trs492}, разд. 7.3`, tn.dateOnly ? 'st_time' : 'st_base_time');
+      if (Number.isFinite(tNow) && Number.isFinite(tb.ms) && Number.isFinite(h.days)) {
+        kd = kDec(tNow, tb.ms, h.days);
+        out.days = (tNow - tb.ms) / 86400000;
+        if (method === 'hdr' && nuclide === 'Ir-192' && out.days > 120) add('warn', L(`С исходного измерения прошло ${ru(out.days, 0)} сут: с ¹⁹²Ir метод годится на несколько месяцев — до замены источника.`, `${out.days.toFixed(0)} days since the baseline: with ¹⁹²Ir the method works for a few months, until the source exchange.`), `${REF.trs492}, разд. 8.5.4`, 'st_base_date');
+      } else if (!isBlank(f.st_base)) add('warn', L('Нужны даты исходного значения и проверки: без них распад не учтён.', 'The baseline and check dates are needed; without them the decay is not corrected.'), `${REF.trs492}, разд. 8.5.2`, Number.isFinite(tb.ms) ? 'st_date' : 'st_base_date');
+    }
+    out.kDec = kd;
+    value = r1.corr * kd;
+  }
+  out.value = value;
+  const base = parseNumber(f.st_base);
+  if (!Number.isFinite(base) || base === 0) {
+    add('info', method === 'redundant'
+      ? L('Введите исходное отношение показаний (текущее среднее прошлых сличений) — или запишите это значение как исходное.', 'Enter the baseline reading ratio (running mean of past comparisons), or record this value as the baseline.')
+      : L('Введите исходное значение (при вводе камеры в работу и после каждой калибровки) — или запишите это значение как исходное.', 'Enter the baseline (set at commissioning and after each calibration), or record this value as the baseline.'), `${REF.trs492}, разд. 8.5`, 'st_base');
+    out.ok = true;
+    return out;
+  }
+  out.base = base;
+  out.dev = (value / base - 1) * 100;
+  out.pass = Math.abs(out.dev) <= meta.tol + 1e-9;
+  if (out.pass) add('info', L(`Отклонение от исходного ${ru(out.dev, 2)} % — в пределах ±${ru(meta.tol, 1)} %.`, `Deviation from the baseline ${out.dev.toFixed(2)}%: within ±${meta.tol}%.`), `${REF.trs492}, разд. ${meta.sec}`, 'st_base');
+  else add('warn', method === 'redundant'
+    ? L(`Отношение показаний камер изменилось на ${ru(out.dev, 2)} % — больше ±0,1 %: возможна неисправность одной из камер; проверьте контрольным источником.`, `The chamber reading ratio changed by ${out.dev.toFixed(2)}%, more than ±0.1%: one of the chambers may be faulty; check with a check source.`)
+    : L(`Отклонение от исходного ${ru(out.dev, 2)} % — больше ±0,5 %: выясните причину; возможно, камере нужна повторная калибровка.`, `Deviation from the baseline ${out.dev.toFixed(2)}%, more than ±0.5%: investigate; the chamber may need recalibration.`), `${REF.trs492}, разд. ${meta.sec}`, 'st_base');
+  out.ok = true;
   return out;
 }
 
