@@ -48,6 +48,13 @@ test('брахитерапия: колодезная камера и фанто�
   assert.match(well, /10,132 мГр\/ч на 1 м/);
   assert.match(well, /\+0,00 % от сертификата|−0,00 % от сертификата|±0,00 % от сертификата/);
 
+  // подсказки к величинам: что обозначает и откуда берётся
+  await page.hover('label[for="br_cert_gamma"]');
+  assert.match(await page.locator('#hover-pop').innerText(), /Постоянная мощности воздушной кермы[\s\S]*TRS-492[\s\S]*ур\. \(36\)/);
+  await page.hover('#br-result th[data-pop]:has-text("kTP")');
+  assert.match(await page.locator('#hover-pop').innerText(), /плотность воздуха[\s\S]*ур\. \(28\)/);
+  await page.mouse.move(0, 0);
+
   // фантом: сертификат тот же (общий для листов)
   await page.click('a[data-goto="brachy/phantom"]');
   await pause();
@@ -81,6 +88,10 @@ test('брахитерапия: колодезная камера и фанто�
   await page.locator('input[name="br_main"]').nth(1).click();
   await pause();
   assert.match(await page.locator('#br-result .plates-dose').innerText(), /10,63\d мГр\/ч на 1 м[\s\S]*от сертификата/);
+
+  await page.hover('#br-result th:has-text("Множитель")');
+  assert.match(await page.locator('#hover-pop').innerText(), /k_?tot[\s\S]*Ubrich/);
+  await page.mouse.move(0, 0);
 
   // поглощённая доза в воде: в точке измерения, Ḋ_w,1 по Ubrich (табл. 7) и на 8 см в воде по TG-43, как в таблице отделения
   assert.match(await page.locator('#br-dose').innerText(), /23,42\d мГр\/мин/);

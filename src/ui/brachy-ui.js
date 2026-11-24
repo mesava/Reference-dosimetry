@@ -12,6 +12,7 @@ import {
 import { $, esc, fmt, fmtSigned, richText, armButton } from './common.js';
 import { renderCells, readCells, setupCells } from './widgets.js';
 import { cellsHtml } from './journal-common.js';
+import { tipAttr } from './brachy-tips.js';
 
 const KEY = 'reference-dosimetry.brachy';
 const SHEETS = ['well', 'phantom'];
@@ -49,13 +50,13 @@ const sub = (s) => richText(s);
 const opt = (v, t, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(t)}</option>`;
 const unitOpts = (units, cur) => Object.entries(units).map(([k, u]) => opt(k, unitLabel(u), cur)).join('');
 const num = (key, label, { hint = '', ph = '', span = '' } = {}) =>
-  `<div class="field${span}"><label for="br_${key}">${sub(label)}</label><input type="text" class="num" inputmode="decimal" id="br_${key}" data-f="${key}" value="${esc(form[key])}"${ph ? ` placeholder="${esc(ph)}"` : ''}${hint ? ` title="${esc(hint)}"` : ''}></div>`;
+  `<div class="field${span}"><label for="br_${key}"${tipAttr(key)}>${sub(label)}</label><input type="text" class="num" inputmode="decimal" id="br_${key}" data-f="${key}" value="${esc(form[key])}"${ph ? ` placeholder="${esc(ph)}"` : ''}${hint ? ` title="${esc(hint)}"` : ''}></div>`;
 const text = (key, label, { ph = '', list = '', span = '' } = {}) =>
-  `<div class="field${span}"><label for="br_${key}">${sub(label)}</label><input type="text" id="br_${key}" data-f="${key}" value="${esc(form[key])}"${ph ? ` placeholder="${esc(ph)}"` : ''}${list ? ` list="${list}"` : ''}></div>`;
+  `<div class="field${span}"><label for="br_${key}"${tipAttr(key)}>${sub(label)}</label><input type="text" id="br_${key}" data-f="${key}" value="${esc(form[key])}"${ph ? ` placeholder="${esc(ph)}"` : ''}${list ? ` list="${list}"` : ''}></div>`;
 const select = (key, label, options, { full = true, span = '' } = {}) =>
-  `<div class="field${span}"><label for="br_${key}">${sub(label)}</label><select id="br_${key}" data-f="${key}"${full ? ' data-full' : ''}>${options}</select></div>`;
+  `<div class="field${span}"><label for="br_${key}"${tipAttr(key)}>${sub(label)}</label><select id="br_${key}" data-f="${key}"${full ? ' data-full' : ''}>${options}</select></div>`;
 const numUnit = (key, label, units, unitKey, { ph = '', span = '' } = {}) =>
-  `<div class="field${span}"><label for="br_${key}">${sub(label)}</label><div class="inline"><input type="text" class="num" inputmode="decimal" id="br_${key}" data-f="${key}" value="${esc(form[key])}"${ph ? ` placeholder="${esc(ph)}"` : ''}><select id="br_${unitKey}" data-f="${unitKey}" aria-label="${esc(L('Единица', 'Unit'))}">${typeof units === 'string' ? units : unitOpts(units, form[unitKey])}</select></div></div>`;
+  `<div class="field${span}"><label for="br_${key}"${tipAttr(key)}>${sub(label)}</label><div class="inline"><input type="text" class="num" inputmode="decimal" id="br_${key}" data-f="${key}" value="${esc(form[key])}"${ph ? ` placeholder="${esc(ph)}"` : ''}><select id="br_${unitKey}" data-f="${unitKey}" aria-label="${esc(L('Единица', 'Unit'))}">${typeof units === 'string' ? units : unitOpts(units, form[unitKey])}</select></div></div>`;
 
 function zoneOpts(cur) {
   const here = zoneName(offsetMin());
@@ -255,7 +256,7 @@ const msgHtml = (msgs) =>
     .join('');
 const chipHtml = (cmp) => (cmp ? `<span class="chip ${cmp.level === 'ok' ? 'ok' : cmp.level === 'warn' ? 'out' : 'error'}">${esc(fmtSigned(cmp.dev, 2))} % ${esc(L('от сертификата', 'from the certificate'))}</span>` : '');
 const uText = (U) => `${fmt(U, 0)} U`;
-const factorRows = (rows) => `<table class="factors"><tbody>${rows.filter(Boolean).map(([k, v]) => `<tr><th>${sub(k)}</th><td>${sub(v)}</td></tr>`).join('')}</tbody></table>`;
+const factorRows = (rows) => `<table class="factors"><tbody>${rows.filter(Boolean).map(([k, v, tip]) => `<tr><th${tip ? tipAttr(tip, { focus: true }) : ''}>${sub(k)}</th><td>${sub(v)}</td></tr>`).join('')}</tbody></table>`;
 
 function certLive() {
   const el = $('#br-cert-live');
@@ -282,12 +283,12 @@ function wellResult() {
   const f = r.factors;
   const rows = [
     [L('Среднее показание', 'Mean reading'), `${fmt(r.readings.mean, 4)} ${unitLabel(CURRENT_UNITS[form.w_unit])} (n = ${r.readings.n}, ${L('разброс', 'spread')} ${fmt(r.readings.relSd, 2)} %)`],
-    ['k_TP', fmt(f.kTP, 4)],
-    f.kLeak !== 1 ? ['k_leak', fmt(f.kLeak, 4)] : null,
-    ['k_elec', fmt(f.kElec, 4)],
-    ['k_pol', fmt(f.kPol, 4)],
-    ['k_s', `${fmt(f.kS, 4)}${f.ks ? ` (${f.ks.preferLinear ? L('линейно', 'linear') : f.ks.equation})` : ''}`],
-    ['k_sm,sm0', `${fmt(f.kSm, 3)}${f.ksmU ? L(` (+${fmt(f.ksmU, 0)} % к неопределённости)`, ` (+${fmt(f.ksmU, 0)}% to the uncertainty)`) : ''}`],
+    ['k_TP', fmt(f.kTP, 4), 'kTP'],
+    f.kLeak !== 1 ? ['k_leak', fmt(f.kLeak, 4), 'kLeak'] : null,
+    ['k_elec', fmt(f.kElec, 4), 'kElec'],
+    ['k_pol', fmt(f.kPol, 4), 'kPol'],
+    ['k_s', `${fmt(f.kS, 4)}${f.ks ? ` (${f.ks.preferLinear ? L('линейно', 'linear') : f.ks.equation})` : ''}`, 'kS'],
+    ['k_sm,sm0', `${fmt(f.kSm, 3)}${f.ksmU ? L(` (+${fmt(f.ksmU, 0)} % к неопределённости)`, ` (+${fmt(f.ksmU, 0)}% to the uncertainty)`) : ''}`, 'kSm'],
     [L('Формула', 'Formula'), L('K̇ = N · I · k_TP · k_leak · k_elec · k_pol · k_s · k_sm,sm0 (TRS-492, ур. 21, 27)', 'K̇ = N · I · k_TP · k_leak · k_elec · k_pol · k_s · k_sm,sm0 (TRS-492, Eq. 21, 27)')],
   ];
   const more = [L(`S_K = ${uText(r.U)}`, `S_K = ${uText(r.U)}`)];
@@ -312,15 +313,16 @@ function phantomResult() {
   const holes = (r.holes ?? []).map((h) => `${h.i + 1}: ${fmt(h.raw, 4)} → ${fmt(h.corr, 4)}`).join('; ');
   const rows = [
     [L('Положения: среднее → с k_TP и без транзита, нКл', 'Positions: mean → with k_TP, transit removed, nC'), holes],
-    Number.isFinite(r.spread) ? [L('Разброс положений', 'Spread of positions'), `${fmt(r.spread, 2)} %`] : null,
-    ['k_pol', fmt(f.kPol, 4)],
-    ['k_s', fmt(f.kS, 4)],
-    ['k_elec', fmt(f.kElec, 4)],
-    ['Ṁ', `${fmt(r.rate, 3)} ${L('нКл/ч', 'nC/h')} (k_τ = 60/τ)`],
+    Number.isFinite(r.spread) ? [L('Разброс положений', 'Spread of positions'), `${fmt(r.spread, 2)} %`, 'spread'] : null,
+    ['k_pol', fmt(f.kPol, 4), 'kPol'],
+    ['k_s', fmt(f.kS, 4), 'kS'],
+    ['k_elec', fmt(f.kElec, 4), 'kElec'],
+    ['Ṁ', `${fmt(r.rate, 3)} ${L('нКл/ч', 'nC/h')} (k_τ = 60/τ)`, 'Mdot'],
+    ['k_r', fmt(0.0064, 4), 'kr'],
   ];
-  const cmpHead = Number.isFinite(r.expected) ? `<th class="v">${esc(L('От сертификата', 'From the certificate'))}</th>` : '';
+  const cmpHead = Number.isFinite(r.expected) ? `<th class="v"${tipAttr('dev', { focus: true })}>${esc(L('От сертификата', 'From the certificate'))}</th>` : '';
   const table = r.variants.length
-    ? `<div class="table-wrap"><table class="factors br-variants"><thead><tr><th>${esc(L('Основной', 'Main'))}</th><th>${esc(L('Вариант', 'Variant'))}</th><th class="v">${esc(L('Множитель', 'Factor'))}</th><th class="v">k_A</th><th class="v">${esc(L('ОМВК, мГр/ч', 'RAKR, mGy/h'))}</th>${cmpHead}</tr></thead><tbody>${r.variants
+    ? `<div class="table-wrap"><table class="factors br-variants"><thead><tr><th>${esc(L('Основной', 'Main'))}</th><th>${esc(L('Вариант', 'Variant'))}</th><th class="v"${tipAttr('factor', { focus: true })}>${esc(L('Множитель', 'Factor'))}</th><th class="v"${tipAttr('kA', { focus: true })}>${sub('k_A')}</th><th class="v"${tipAttr('RAKR', { focus: true })}>${esc(L('ОМВК, мГр/ч', 'RAKR, mGy/h'))}</th>${cmpHead}</tr></thead><tbody>${r.variants
         .map((v) => `<tr${r.main?.id === v.id ? ' class="current"' : ''}><td><input type="radio" name="br_main" value="${esc(v.id)}" aria-label="${esc(L('Основной вариант', 'Main variant'))}"${r.main?.id === v.id ? ' checked' : ''}></td><td>${sub(v.label)}${v.note ? `<br><small>${sub(v.note)}${v.kzp ? `: ${fmt(v.kzp, 4)}` : ''}</small>` : ''}${v.ref ? `<br><small class="ref">${esc(refText(v.ref))}</small>` : ''}</td><td class="v">${esc(fmt(v.factor * 1e3, 4))}·10⁻³</td><td class="v">${esc(fmt(v.kA, 4))}</td><td class="v">${esc(fmt(v.mGyh, 3))}</td>${cmpHead ? `<td class="v">${esc(fmtSigned(v.dev, 2))} %</td>` : ''}</tr>`)
         .join('')}</tbody></table></div>`
     : '';
@@ -332,7 +334,7 @@ function doseResult(r) {
   if (!d) return '';
   if (!Number.isFinite(d.point)) return msgHtml(d.messages);
   const holes = (d.holes ?? []).map((h) => `${h.i + 1}: ${fmt(h.value, 3)}`).join('; ');
-  const head = `<div class="plates-dose"><span>${esc(L('Ḋ_w в точке измерения (8 см в фантоме)', 'Ḋ_w at the measurement point (8 cm in the phantom)'))}</span><b>${esc(fmt(d.point, 3))} ${esc(L('мГр/мин', 'mGy/min'))}</b></div>
+  const head = `<div class="plates-dose"><span${tipAttr('Dw', { focus: true })}>${sub(L('Ḋ_w в точке измерения (8 см в фантоме)', 'Ḋ_w at the measurement point (8 cm in the phantom)'))}</span><b>${esc(fmt(d.point, 3))} ${esc(L('мГр/мин', 'mGy/min'))}</b></div>
     <p class="sub-hint">${sub(L(`${fmt(d.point / 10, 4)} сГр/мин, ${fmt((d.point * 60) / 1e3, 4)} Гр/ч; по положениям, мГр/мин: ${holes}.`, `${fmt(d.point / 10, 4)} cGy/min, ${fmt((d.point * 60) / 1e3, 4)} Gy/h; by position, mGy/min: ${holes}.`))}</p>`;
   const cmp = Number.isFinite(d.expected);
   const cell = (x, n = 3) => `<td class="v">${Number.isFinite(x) ? esc(fmt(x, n)) : '—'}</td>`;
@@ -341,7 +343,7 @@ function doseResult(r) {
     .join('');
   const certRow = cmp ? `<tr><td>${sub(L('По сертификату: Λ · S_K на дату измерения', 'Certificate: Λ · S_K at the measurement date'))}</td>${cell(d.expected, 1)}${cell(d.expected8)}<td class="v">—</td></tr>` : '';
   const table = d.rows.length
-    ? `<div class="table-wrap"><table class="factors br-variants"><thead><tr><th>${esc(L('Способ', 'Method'))}</th><th class="v">${sub(L('Ḋ_w,1 (1 см), мГр/мин', 'Ḋ_w,1 (1 cm), mGy/min'))}</th><th class="v">${sub(L('Ḋ_w (8 см, вода), мГр/мин', 'Ḋ_w (8 cm, water), mGy/min'))}</th>${cmp ? `<th class="v">${esc(L('От сертификата', 'From the certificate'))}</th>` : ''}</tr></thead><tbody>${rows}${certRow}</tbody></table></div>`
+    ? `<div class="table-wrap"><table class="factors br-variants"><thead><tr><th>${esc(L('Способ', 'Method'))}</th><th class="v"${tipAttr('Dw1', { focus: true })}>${sub(L('Ḋ_w,1 (1 см), мГр/мин', 'Ḋ_w,1 (1 cm), mGy/min'))}</th><th class="v"${tipAttr('Dw8', { focus: true })}>${sub(L('Ḋ_w (8 см, вода), мГр/мин', 'Ḋ_w (8 cm, water), mGy/min'))}</th>${cmp ? `<th class="v"${tipAttr('dev', { focus: true })}>${esc(L('От сертификата', 'From the certificate'))}</th>` : ''}</tr></thead><tbody>${rows}${certRow}</tbody></table></div>`
     : '';
   const s = d.source;
   const info = s && Number.isFinite(d.gRatio)
