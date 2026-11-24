@@ -45,7 +45,7 @@ const MODULES = {
   electrons: { title: () => L('Электроны — референсная дозиметрия', 'Electrons — reference dosimetry'), file: 'electrons', importData: importElectrons, status: electronsStatus, tab: 'dosimetry' },
   // kV-рентген — только TRS-398 Rev.1: переключатель протокола в шапке скрыт
   kv: { title: () => L('kV-рентген — референсная дозиметрия', 'kV x-rays — reference dosimetry'), file: 'kv', importData: importKv, status: kvStatus, tab: 'dosimetry', proto: false },
-  // брахитерапия (в разработке): листы «Колодезная камера» и «Фантом PTW 9193», адрес #brachy/well, #brachy/phantom
+  // брахитерапия: листы «Колодезная камера» и «Фантом PTW 9193», адрес #brachy/well, #brachy/phantom
   brachy: { title: () => L('Брахитерапия — сила источника', 'Brachytherapy — source strength'), file: '-', importData: () => {}, status: (t) => brachyStatus(t), tab: 'dosimetry', proto: false },
   // лист «Сеанс» вкладок «МВ фотоны» и «Электроны»: энергии аппарата подряд, каждая — на рабочем листе вкладки
   // (протокол — на рабочем листе); адрес #photons/session, #electrons/session

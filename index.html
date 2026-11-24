@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0d6670">
-<link rel="stylesheet" href="src/ui/styles.css?v=0.79.0">
+<link rel="stylesheet" href="src/ui/styles.css?v=0.79.1">
 </head>
 <body>
 <header class="topbar">
@@ -66,7 +66,7 @@
       <a href="#photons" data-module="photons">МВ фотоны</a>
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv">kV-рентген</a>
-      <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
+      <a href="#brachy" data-module="brachy">Брахитерапия</a>
     </nav>
     <nav class="kv-pages beam-sheets" data-owner="co60" aria-label="Листы вкладки" data-i18n-skip></nav>
     <p class="intro">Рабочий лист калибровки пучка гамма-излучения ⁶⁰Co: мощность поглощённой дозы в воде на опорной глубине и на z<sub>max</sub>. Для ⁶⁰Co k<sub>Q</sub> = 1, качество пучка не измеряют: D<sub>w</sub> = M · N<sub>D,w</sub>. Числа можно вводить с запятой или точкой; обозначения с пунктирным подчёркиванием открывают справку.</p>
@@ -515,7 +515,7 @@
       <a href="#photons" data-module="photons" aria-current="page">МВ фотоны</a>
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv">kV-рентген</a>
-      <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
+      <a href="#brachy" data-module="brachy">Брахитерапия</a>
     </nav>
     <nav class="kv-pages beam-sheets" data-owner="photons" aria-label="Листы вкладки" data-i18n-skip></nav>
     <div class="session-bar no-print" id="ph-sbar" hidden data-i18n-skip></div>
@@ -1079,7 +1079,7 @@
       <a href="#photons" data-module="photons">МВ фотоны</a>
       <a href="#electrons" data-module="electrons" aria-current="page">Электроны</a>
       <a href="#kv" data-module="kv">kV-рентген</a>
-      <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
+      <a href="#brachy" data-module="brachy">Брахитерапия</a>
     </nav>
     <nav class="kv-pages beam-sheets" data-owner="electrons" aria-label="Листы вкладки" data-i18n-skip></nav>
     <div class="session-bar no-print" id="e-sbar" hidden data-i18n-skip></div>
@@ -1549,7 +1549,7 @@
       <a href="#photons" data-module="photons">МВ фотоны</a>
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv" aria-current="page">kV-рентген</a>
-      <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
+      <a href="#brachy" data-module="brachy">Брахитерапия</a>
     </nav>
     <nav class="kv-pages" id="kv-pages" aria-label="Листы вкладки">
       <a href="#kv/modes" data-kv-go="modes">Аппарат и режимы</a>
@@ -2651,7 +2651,7 @@
       <a href="#photons" data-module="photons">МВ фотоны</a>
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv">kV-рентген</a>
-      <a href="#brachy" data-module="brachy" class="wip-link" aria-current="page">Брахитерапия <span class="wip-tag">в разработке</span></a>
+      <a href="#brachy" data-module="brachy" aria-current="page">Брахитерапия</a>
     </nav>
     <div class="sheet-body" id="brachy-root" data-i18n-skip></div>
   </div>
@@ -2681,7 +2681,7 @@
       <a href="#photons" data-module="photons">МВ фотоны</a>
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv">kV-рентген</a>
-      <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
+      <a href="#brachy" data-module="brachy">Брахитерапия</a>
     </nav>
     <nav class="kv-pages beam-sheets" data-owner="" aria-label="Листы вкладки" data-i18n-skip></nav>
     <div id="session-root" data-i18n-skip></div>
@@ -2696,7 +2696,7 @@
       <a href="#photons" data-module="photons">МВ фотоны</a>
       <a href="#electrons" data-module="electrons">Электроны</a>
       <a href="#kv" data-module="kv">kV-рентген</a>
-      <a href="#brachy" data-module="brachy" class="wip-link">Брахитерапия <span class="wip-tag">в разработке</span></a>
+      <a href="#brachy" data-module="brachy">Брахитерапия</a>
     </nav>
     <nav class="kv-pages beam-sheets" data-owner="" aria-label="Листы вкладки" data-i18n-skip></nav>
     <div id="plates-root" data-i18n-skip></div>
@@ -4180,6 +4180,6 @@
   <div class="dlg-body" id="kv-din-body"></div>
 </dialog>
 
-<script type="module" src="src/ui/app.js?v=0.79.0"></script>
+<script type="module" src="src/ui/app.js?v=0.79.1"></script>
 </body>
 </html>

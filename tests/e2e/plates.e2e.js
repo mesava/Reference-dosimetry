@@ -40,7 +40,7 @@ test('в пластинах: привязка к калибровке в вод�
   assert.equal(await page.evaluate(() => location.hash), '#photons/plates');
   assert.match(await page.locator('#plates-root').innerText(), /нужны аппарат и его пучки фотонов в журнале/);
   const norm = (xs) => xs.map((t) => t.replace(/\s+/g, ' ').trim());
-  assert.deepEqual(norm(await page.locator('#module-plates .subtools a').allInnerTexts()), ['⁶⁰Co', 'МВ фотоны', 'Электроны', 'kV-рентген', 'Брахитерапия в разработке']);
+  assert.deepEqual(norm(await page.locator('#module-plates .subtools a').allInnerTexts()), ['⁶⁰Co', 'МВ фотоны', 'Электроны', 'kV-рентген', 'Брахитерапия']);
   assert.deepEqual(norm(await page.locator('#module-plates .beam-sheets a').allInnerTexts()), ['Одна энергия', 'Сеанс: все энергии', 'В пластинах']);
   assert.equal(await page.locator('#module-plates .beam-sheets a[aria-current]').innerText(), 'В пластинах');
   // у ⁶⁰Co — «В воде» и «В пластинах», без сеанса

@@ -1083,7 +1083,6 @@ function render() {
   const root = $('#brachy-root');
   if (!root) return;
   root.innerHTML = `${navHtml()}
-    <div class="plates-banner"><b>${esc(L('Раздел в разработке', 'Section in development'))}</b>: ${esc(L('расчёт, записи в журнал, протокол и пример работают; раздел проверяется на протоколах отделения. Черновик формы хранится в этом браузере.', 'the calculation, journal records, the report and the example work; the section is being checked against the department protocols. The form draft is kept in this browser.'))}</div>
     ${isBrachySample(form) ? `<p class="demo-flag">${esc(L('Сейчас загружен демонстрационный пример: значения вымышленные. Выбор из «Оборудования» в примере не задан.', 'The demo example is loaded: the values are fictitious. No Equipment selection is set in the example.'))}</p>` : ''}
     ${introHtml()}
     ${sheetBody()}`;

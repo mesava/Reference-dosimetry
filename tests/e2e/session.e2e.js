@@ -31,7 +31,7 @@ test('сеанс: два пучка фотонов подряд записыва
   assert.match(await page.locator('#session-root').innerText(), /нужны аппарат и его пучки фотонов в журнале/);
   // подвкладки «Дозиметрии» — без «Сеанса» и «В пластинах»; они — листы вкладки, открыта вкладка «МВ фотоны»
   const norm = (xs) => xs.map((t) => t.replace(/\s+/g, ' ').trim());
-  assert.deepEqual(norm(await page.locator('#module-session .subtools a').allInnerTexts()), ['⁶⁰Co', 'МВ фотоны', 'Электроны', 'kV-рентген', 'Брахитерапия в разработке']);
+  assert.deepEqual(norm(await page.locator('#module-session .subtools a').allInnerTexts()), ['⁶⁰Co', 'МВ фотоны', 'Электроны', 'kV-рентген', 'Брахитерапия']);
   assert.equal(await page.locator('#module-session .subtools a[aria-current]').innerText(), 'МВ фотоны');
   assert.deepEqual(norm(await page.locator('#module-session .beam-sheets a').allInnerTexts()), ['Одна энергия', 'Сеанс: все энергии', 'В пластинах']);
   assert.equal(await page.locator('#module-session .beam-sheets a[aria-current]').innerText(), 'Сеанс: все энергии');
