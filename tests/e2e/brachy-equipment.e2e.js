@@ -163,6 +163,29 @@ test('брахитерапия в «Оборудовании»: афтерлоа
   await page.click('[data-br="record"]');
   await pause();
   assert.match(await page.locator('#brachy-status').innerText(), /Запись в журнале заменена/);
+
+  // протокол измерения (0.77.0): шапка, результат, неопределённость, заключение, подписи; печать — только протокол
+  await page.fill('#br_rec_staff', 'Иванов И. И.');
+  await pause();
+  await page.click('.br-prot-det > summary');
+  await pause();
+  const prot = await page.locator('#br-prot').innerText();
+  assert.match(prot, /Протокол измерения\s+сила источника, колодезная камера/);
+  assert.match(prot, /Дата\s+10\.10\.2026/);
+  assert.match(prot, /Аппарат\s+Flexitron/);
+  assert.match(prot, /PTW TW33004 SourceCheck 4π № W1; N = 4,85e5/);
+  assert.match(prot, /TRS-492 \(2023\), гл\. 8/);
+  assert.match(prot, /1\. Результат[\s\S]*38,8\d* мГр\/ч на 1 м[\s\S]*2\. Неопределённость[\s\S]*Расширенная U, k = 2[\s\S]*Заключение[\s\S]*Отклонение от сертификата/);
+  assert.deepEqual((await page.locator('#br-prot table.kv-prot-sign td.sig-name').allInnerTexts()).map((s) => s.trim()), ['Иванов И. И.', '']);
+  assert.equal(await page.locator('#br-prot button, #br-prot input').count(), 0, 'в протоколе нет кнопок и полей');
+  await page.emulateMedia({ media: 'print' });
+  assert.ok(await page.locator('.br-prot-sec').isHidden(), 'лист печатается без протокола');
+  await page.evaluate(() => document.body.classList.add('print-br-protocol'));
+  assert.ok(await page.locator('#br-prot').isVisible());
+  assert.ok(await page.locator('#brachy-root nav').isHidden());
+  assert.ok(await page.locator('#br-result').isHidden());
+  await page.evaluate(() => document.body.classList.remove('print-br-protocol'));
+  await page.emulateMedia({ media: 'screen' });
   // стабильность без камеры из «Оборудования» — не записывается
   await page.click('a[data-goto="brachy/stab"]');
   await page.waitForSelector('#br_st_method');

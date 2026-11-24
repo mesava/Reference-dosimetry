@@ -2,7 +2,7 @@
 // «Фантом PTW 9193» (DIN 6809-2, DGMP-Bericht 13, руководство PTW), «Сличение камер» (TRS-492, разд. 7.7), «Стабильность»
 // (разд. 8.4–8.5) и «Распад» (TRS-492, разд. 3.4, 7.3). Сертификат
 // источника — общий для листов. Расчёт — core/brachy-sheets.js; черновик формы — в этом браузере.
-import { L, refText } from '../core/i18n.js';
+import { L, refText, getLang } from '../core/i18n.js';
 import { PRESSURE_UNITS, unitLabel, parseNumber } from '../core/units.js';
 import { HALF_LIVES, KSM_SOURCES, PTW_TO_DGMP, APPLICATOR_KA_STEEL, CERT_TOLERANCE } from '../core/brachy-data.js';
 import { kDec } from '../core/brachy.js';
@@ -10,7 +10,7 @@ import {
   BRACHY_DEFAULTS, normalizeBrachy, computeBrachyWell, computeBrachyPhantom, computeBrachySweet, computeBrachyDecay, computeBrachyCross, computeBrachyStability, computeBrachyTg43, fieldTime,
   STRENGTH_UNITS, ACTIVITY_UNITS, GAMMA_UNITS, WELL_N_UNITS, PHANTOM_N_UNITS, CURRENT_UNITS, DOSE_SOURCES,
 } from '../core/brachy-sheets.js';
-import { $, esc, fmt, fmtSigned, richText, armButton, downloadText, savedFileName } from './common.js';
+import { $, esc, fmt, fmtSigned, richText, armButton, downloadText, savedFileName, printToPdf, versionText } from './common.js';
 import { scatterChart, legendSwatch } from './chart.js';
 import { renderCells, readCells, setupCells } from './widgets.js';
 import { cellsHtml } from './journal-common.js';
@@ -18,11 +18,12 @@ import { tipAttr } from './brachy-tips.js';
 import { wellBudget, phantomBudget } from '../core/brachy-unc.js';
 import { parseOverrides } from '../core/uncertainty.js';
 import { brachyMachines, sourceOn, sourceText, sourceModelName, sourceToForm, certRowsFor, wellChamberToForm, phantomChamberToForm, isWellModel, wellChamberLabel } from '../core/brachy-journal.js';
-import { chamberText, chamberUse, cobaltCapable, activeOnly, dayNumber } from '../core/journal.js';
+import { chamberText, chamberUse, cobaltCapable, activeOnly, dayNumber, orgText } from '../core/journal.js';
 import { getJournal, onJournal, updateJournal } from './journal-store.js';
 import { drawChart, legendHtml, segmentLine, trendLine, signalsHtml, pointRules } from './journal-spc-ui.js';
 import { controlChart } from '../core/spc.js';
-import { BRACHY_RECORD_SHEETS, brachySheetText, recordBrachy, brachyRecordsOf, formFromRecord, removeBrachyRecord } from '../core/brachy-records.js';
+import { sampleBrachy, isBrachySample } from '../core/sample-brachy.js';
+import { BRACHY_RECORD_SHEETS, BRACHY_DATE_KEY, brachySheetText, recordBrachy, brachyRecordsOf, formFromRecord, removeBrachyRecord } from '../core/brachy-records.js';
 
 const KEY = 'reference-dosimetry.brachy';
 const SHEETS = ['well', 'sweet', 'phantom', 'cross', 'stab', 'decay', 'tg43', 'log'];
@@ -251,6 +252,194 @@ function doRecord() {
   status(res.replaced
     ? L(`Запись в журнале заменена: ${what}, ${isoDateText(res.record.date)}. Сохраните журнал в файл, если автосохранение не включено.`, `The journal record has been replaced: ${what}, ${isoDateText(res.record.date)}. Save the journal file if autosave is off.`)
     : L(`Записано в журнал: ${what}, ${isoDateText(res.record.date)}. Записи — лист «Журнал»; сохраните журнал в файл, если автосохранение не включено.`, `Recorded to the journal: ${what}, ${isoDateText(res.record.date)}. The records are on the Journal sheet; save the journal file if autosave is off.`));
+}
+
+// ------------------------------------------------------------ протокол измерения (с 0.77.0)
+// Протокол листа, измерение которого записывается в журнал: шапка (дата, учреждение, аппарат, источник, средства и
+// условия измерений, методика), результат (те же числа, что на листе, без кнопок), неопределённость (колодезная камера,
+// фантом), заключение, примечание и подписи. Печатается отдельно от листа (body.print-br-protocol, styles.css); PDF —
+// то же окно печати. Протокол записи журнала — «Открыть» запись на листе «Журнал», затем «Печать протокола».
+let protOpen = false;
+const pStr = (v) => String(v ?? '').trim();
+const pRow = (k, v) => (v ? `<tr><th scope="row">${esc(k)}</th><td>${v}</td></tr>` : '');
+const pressText = (v, unit) => (pStr(v) ? `${esc(pStr(v))} ${esc(unitLabel(PRESSURE_UNITS[unit]) ?? '')}` : '');
+const climateText = (T, P, unit) => [pStr(T) ? `T ${esc(pStr(T))} °C` : '', P ? `P ${P}` : ''].filter(Boolean).join('; ');
+const serialText = (s) => (pStr(s) ? L(` № ${esc(pStr(s))}`, ` S/N ${esc(pStr(s))}`) : '');
+/** Сертификат колодезной камеры из «Оборудования» (если выбрана): номер, лаборатория, дата калибровки. */
+function eqCertText(id) {
+  const b = chamberById(id)?.brachy;
+  if (!b) return '';
+  const parts = [pStr(b.cert) ? L(`сертификат № ${esc(b.cert)}`, `certificate No. ${esc(b.cert)}`) : '', pStr(b.calDate) ? L(`калибровка ${esc(isoDateText(b.calDate))}`, `calibrated ${esc(isoDateText(b.calDate))}`) : '', esc(pStr(b.lab))].filter(Boolean);
+  return parts.length ? ` (${parts.join(', ')})` : '';
+}
+const wellN = () => (pStr(form.w_N) ? `; N = ${esc(pStr(form.w_N))} ${esc(unitLabel(WELL_N_UNITS[form.w_N_unit]) ?? '')}` : '');
+function protDevices() {
+  const well = () => `${esc(pStr(form.w_model) || L('колодезная камера', 'well-type chamber'))}${serialText(form.w_serial)}${eqCertText(form.j_well)}`;
+  if (sheet === 'well') return `${well()}${wellN()}`;
+  if (sheet === 'sweet') return well();
+  if (sheet === 'stab') {
+    const c = chamberById(form.j_well);
+    return c ? esc(chamberText(c)) : '';
+  }
+  if (sheet === 'phantom') {
+    const n = pStr(form.p_N) ? `; ${form.p_calib === 'Nw' ? 'N_D,w' : form.p_calib === 'Na' ? 'N_K' : 'N_X'} = ${esc(pStr(form.p_N))} ${esc(unitLabel(PHANTOM_N_UNITS[form.p_N_unit]) ?? '')}` : '';
+    return `${esc(pStr(form.p_model) || L('камера', 'chamber'))}${serialText(form.p_serial)}${sub(n)}; ${esc(L('фантом PTW 9193', 'PTW 9193 phantom'))}`;
+  }
+  const ref = `${esc(L('эталонная', 'reference'))}: ${esc(pStr(form.x_ref_model) || '—')}${serialText(form.x_ref_serial)}${eqCertText(form.j_ref)}${pStr(form.x_ref_N) ? `; N_ref = ${esc(pStr(form.x_ref_N))} ${esc(unitLabel(WELL_N_UNITS[form.x_ref_N_unit]) ?? '')}` : ''}`;
+  const fld = `${esc(L('рабочая', 'field'))}: ${esc(pStr(form.x_fld_model) || '—')}${serialText(form.x_fld_serial)}`;
+  return `${ref}<br>${fld}`;
+}
+function protClimate() {
+  if (sheet === 'well') return climateText(form.w_T, pressText(form.w_P, form.w_P_unit));
+  if (sheet === 'phantom') return climateText(form.p_holes?.[0]?.T, pressText(form.p_holes?.[0]?.P, form.p_P_unit));
+  if (sheet === 'stab') return form.st_method === 'redundant' ? '' : climateText(form.st_T, pressText(form.st_P, form.st_P_unit));
+  if (sheet === 'cross') {
+    const a = climateText(form.x_ref_T, pressText(form.x_ref_P, form.x_P_unit));
+    const b = climateText(form.x_fld_T, pressText(form.x_fld_P, form.x_P_unit));
+    return a === b ? a : [a && L(`эталонная: ${a}`, `reference: ${a}`), b && L(`рабочая: ${b}`, `field: ${b}`)].filter(Boolean).join('<br>');
+  }
+  return '';
+}
+function protMethod() {
+  const t = {
+    well: L('IAEA TRS-492 (2023), гл. 8: ОМВК колодезной камерой (ур. 21, 27); сравнение с сертификатом — разд. 8.6.2', 'IAEA TRS-492 (2023), Ch. 8: RAKR with a well-type chamber (Eq. 21, 27); comparison with the certificate: Sec. 8.6.2'),
+    phantom: L('DIN 6809-2, DGMP-Bericht 13, руководство PTW к фантому 9193; сравнение с сертификатом — IAEA TRS-492 (2023), разд. 8.6.2', 'DIN 6809-2, DGMP Report 13, PTW manual of the 9193 phantom; comparison with the certificate: IAEA TRS-492 (2023), Sec. 8.6.2'),
+    stab: L(`IAEA TRS-492 (2023), разд. 8.5; метод: ${stabMethodText(form.st_method)}`, `IAEA TRS-492 (2023), Sec. 8.5; method: ${stabMethodText(form.st_method)}`),
+    cross: L('IAEA TRS-492 (2023), разд. 7.7, ур. 18–20 (сличение с эталонной камерой)', 'IAEA TRS-492 (2023), Sec. 7.7, Eq. 18–20 (cross-calibration against the reference chamber)'),
+    sweet: L('IAEA TRS-492 (2023), разд. 8.2.1 (кривая отклика по положению источника)', 'IAEA TRS-492 (2023), Sec. 8.2.1 (response curve by source position)'),
+  }[sheet];
+  return esc(t ?? '');
+}
+function protSource() {
+  if (!['well', 'phantom', 'sweet'].includes(sheet)) return '';
+  const nuc = HALF_LIVES[form.nuclide]?.label ?? form.nuclide;
+  const name = pStr(form.src_name);
+  const unit = unitLabel(STRENGTH_UNITS[form.cert_unit] ?? ACTIVITY_UNITS[form.cert_unit]) ?? '';
+  const cert = sheet !== 'sweet' && pStr(form.cert_value) ? L(`; по сертификату ${esc(pStr(form.cert_value))} ${esc(unit)}${pStr(form.cert_date) ? ` на ${esc(isoDateText(form.cert_date))}` : ''}`, `; certificate ${esc(pStr(form.cert_value))} ${esc(unit)}${pStr(form.cert_date) ? ` at ${esc(isoDateText(form.cert_date))}` : ''}`) : '';
+  return `${esc(nuc)}${name ? `, ${esc(name)}` : ''}${cert}`;
+}
+function protMachine() {
+  if (!['well', 'phantom', 'sweet'].includes(sheet)) return '';
+  const m = getJournal().machines.find((x) => x.id === form.j_machine && x.kind === 'brachy');
+  return m ? esc([machineName(m), pStr(m.serial) ? L(`№ ${m.serial}`, `S/N ${m.serial}`) : ''].filter(Boolean).join(', ')) : '';
+}
+/** Результат листа для протокола: то же, что на листе, без кнопок, полей и сведений-подсказок. */
+function protResult(done) {
+  const results = { well: wellResult, sweet: sweetResult, cross: crossResult, stab: stabResult, phantom: phantomResult };
+  const tmp = document.createElement('div');
+  tmp.innerHTML = results[sheet]();
+  for (const el of tmp.querySelectorAll(done ? '.actions, .jlink-st.none' : '.actions')) el.remove();
+  for (const el of tmp.querySelectorAll('input[type="radio"]')) el.replaceWith(el.checked ? '●' : '');
+  for (const el of tmp.querySelectorAll('[id]')) el.removeAttribute('id');
+  return (done ? '' : `<p class="sub-hint">${esc(L('Расчёт не выполнен: заполните лист.', 'The calculation is not done: complete the sheet.'))}</p>`) + tmp.innerHTML;
+}
+/** Неопределённость для протокола (колодезная камера, фантом): составляющие и U, k = 2. */
+function protUnc() {
+  const { b, value } = budgetFor();
+  if (!Number.isFinite(b.uc)) return '';
+  const rows = b.rows.filter((r) => Number.isFinite(r.value)).map((r) => `<tr><td>${sub(r.label)}</td><td class="v">${esc(uNum(r.value))}</td></tr>`).join('');
+  const abs = Number.isFinite(value) ? L(` (±${fmt((value * b.U) / 100, 3)} мГр/ч на 1 м)`, ` (±${fmt((value * b.U) / 100, 3)} mGy/h at 1 m)`) : '';
+  return `<table><thead><tr><th>${esc(L('Составляющая', 'Component'))}</th><th class="v">${esc(L('u, % (k = 1)', 'u, % (k = 1)'))}</th></tr></thead><tbody>${rows}
+    <tr><th scope="row">${sub(L('Суммарная u_c', 'Combined u_c'))}</th><td class="v">${esc(uNum(b.uc))}</td></tr>
+    <tr><th scope="row">${sub(L('Расширенная U, k = 2', 'Expanded U, k = 2'))}</th><td class="v">${esc(fmt(b.U, 1))}</td></tr></tbody></table>
+    <p class="kv-prot-note">${sub(L(`Расширенная неопределённость ОМВК ±${fmt(b.U, 1)} %${abs}; ${sheet === 'well' ? 'составляющие — IAEA TRS-492 (2023), табл. 10' : 'составляющие — Ubrich 2014'}, свои значения — с листа.`, `Expanded uncertainty of the RAKR ±${fmt(b.U, 1)}%${abs}; ${sheet === 'well' ? 'components: IAEA TRS-492 (2023), Table 10' : 'components: Ubrich 2014'}, own values from the sheet.`))}</p>`;
+}
+/** Заключение по результату r листа. */
+function protConclusion(r) {
+  if (!r?.ok && sheet !== 'phantom') return [];
+  if (sheet === 'well' || sheet === 'phantom') {
+    if (!Number.isFinite(r.U)) return [];
+    const out = [L(`ОМВК на время измерения ${fmt(r.mGyh, 3)} мГр/ч на 1 м (S_K = ${fmt(r.U, 0)} U).`, `RAKR at the measurement time ${fmt(r.mGyh, 3)} mGy/h at 1 m (S_K = ${fmt(r.U, 0)} U).`)];
+    if (r.compare) out.push(r.compare.text + (r.compare.ref ? ` (${refText(r.compare.ref)})` : ''));
+    else out.push(L('Сравнение с сертификатом источника не выполнено: нет данных сертификата или даты.', 'No comparison with the source certificate: the certificate data or the date are missing.'));
+    return out;
+  }
+  if (sheet === 'stab') {
+    if (!Number.isFinite(r.dev)) return [L('Исходное значение не задано: отклонение не вычислено.', 'No baseline: the deviation was not calculated.')];
+    return [r.pass
+      ? L(`Отклонение от исходного ${fmtSigned(r.dev, 2)} %: в пределах ±${fmt(r.tol, 1)} %. Камера стабильна (IAEA TRS-492, разд. 8.5).`, `Deviation from the baseline ${fmtSigned(r.dev, 2)}%: within ±${fmt(r.tol, 1)}%. The chamber is stable (IAEA TRS-492, Sec. 8.5).`)
+      : L(`Отклонение от исходного ${fmtSigned(r.dev, 2)} %: вне ±${fmt(r.tol, 1)} %. Выяснить причину; при подтверждении — внеочередная калибровка камеры (IAEA TRS-492, разд. 8.5).`, `Deviation from the baseline ${fmtSigned(r.dev, 2)}%: outside ±${fmt(r.tol, 1)}%. Find the cause; if confirmed, recalibrate the chamber (IAEA TRS-492, Sec. 8.5).`)];
+  }
+  if (sheet === 'cross') {
+    const nu = unitLabel(WELL_N_UNITS[r.unit]) ?? '';
+    const out = [L(`Калибровочный коэффициент рабочей камеры N = ${fmt(+r.N.toPrecision(6), Math.max(0, 5 - Math.floor(Math.log10(Math.abs(r.N)))))} ${nu}.`, `Field chamber calibration coefficient N = ${fmt(+r.N.toPrecision(6), Math.max(0, 5 - Math.floor(Math.log10(Math.abs(r.N)))))} ${nu}.`)];
+    if (r.prev) out.push(L(`Отличие от прежнего коэффициента ${fmtSigned(r.prev.dev, 2)} %.`, `Difference from the previous coefficient ${fmtSigned(r.prev.dev, 2)}%.`));
+    return out;
+  }
+  const out = [L(`Максимум отклика в положении ${fmt(r.xPeak, 1)} мм.`, `Response maximum at ${fmt(r.xPeak, 1)} mm.`)];
+  if (Number.isFinite(r.atCert?.shift)) out.push(L(`Сдвиг от опорной точки сертификата ${fmtSigned(r.atCert.shift, 1)} мм.`, `Shift from the certificate reference point ${fmtSigned(r.atCert.shift, 1)} mm.`));
+  if (Number.isFinite(r.atMeas?.rel)) out.push(L(`Отклик в положении измерения ${fmt(r.atMeas.x, 1)} мм — ${fmt(r.atMeas.rel * 100, 2)} % от максимума.`, `Response at the measurement position ${fmt(r.atMeas.x, 1)} mm: ${fmt(r.atMeas.rel * 100, 2)}% of the maximum.`));
+  return out;
+}
+function protSign() {
+  const staff = String(form.rec_staff ?? '').split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+  const line = (role, name) =>
+    `<tr><th scope="row">${esc(role)}</th><td class="sig-name">${esc(name) || '&nbsp;'}</td><td class="sig-gap"></td><td class="sig-line">&nbsp;</td></tr>
+    <tr class="sig-cap"><th></th><td>${esc(L('должность, ФИО', 'position, name'))}</td><td class="sig-gap"></td><td>${esc(L('подпись', 'signature'))}</td></tr>`;
+  const rows = [...(staff.length ? staff : ['']).map((n, k) => line(k === 0 ? L('Измерения провёл', 'Measured by') : '', n)), line(L('Протокол проверил', 'Checked by'), '')];
+  return `<table class="kv-prot-sign"><tbody>${rows.join('')}</tbody></table>`;
+}
+/** Протокол измерения листа (HTML). */
+function brachyProtocolHtml() {
+  const r = sheetCompute();
+  const time = pStr(form[{ well: 'w_time', phantom: 'p_time', stab: 'st_time', cross: 'x_ref_time' }[sheet]]);
+  const date = pStr(form[BRACHY_DATE_KEY[sheet]]);
+  const head = `<h3 class="br-prot-title">${esc(L('Протокол измерения', 'Measurement report'))}<small>${esc(brachySheetText(sheet))}</small></h3>
+    <table class="kv-prot-head"><tbody>
+    ${pRow(L('Дата', 'Date'), date ? esc(`${isoDateText(date)}${time ? `, ${time}` : ''}`) : '—')}
+    ${pRow(L('Учреждение', 'Institution'), esc(orgText(getJournal())) || '—')}
+    ${pRow(L('Аппарат', 'Unit'), protMachine())}
+    ${pRow(L('Источник', 'Source'), protSource())}
+    ${pRow(L('Средства измерений', 'Measuring equipment'), protDevices() || '—')}
+    ${pRow(L('Условия измерений', 'Conditions'), protClimate())}
+    ${pRow(L('Методика измерений', 'Method'), protMethod())}
+  </tbody></table>`;
+  const parts = [head];
+  let n = 0;
+  const sec = (title, body) => {
+    n += 1;
+    parts.push(`<h4 class="kv-prot-h">${n}. ${esc(title)}</h4>${body}`);
+  };
+  sec(L('Результат', 'Result'), protResult(sheet === 'phantom' ? !!r.main : !!r.ok));
+  if ((sheet === 'well' || sheet === 'phantom') && Number.isFinite(r.U)) sec(L('Неопределённость', 'Uncertainty'), protUnc());
+  const concl = protConclusion(r);
+  if (concl.length) parts.push(`<h4 class="kv-prot-h">${esc(L('Заключение', 'Conclusion'))}</h4><p>${concl.map(sub).join('<br>')}</p>`);
+  const notes = pStr(form.rec_notes);
+  if (notes) parts.push(`<h4 class="kv-prot-h">${esc(L('Примечания', 'Notes'))}</h4><p class="kv-prot-notes">${esc(notes)}</p>`);
+  parts.push(protSign());
+  parts.push(`<p class="kv-prot-ver">${esc(L(`Расчёт: калькулятор «Клиническая дозиметрия», ${versionText()}, https://mesava.github.io/Reference-dosimetry/`, `Calculation: Clinical Dosimetry calculator, ${versionText()}, https://mesava.github.io/Reference-dosimetry/`))}</p>`);
+  return parts.join('');
+}
+function protHtml(n) {
+  if (!BRACHY_RECORD_SHEETS.includes(sheet)) return '';
+  return `<section class="start-card plates-card br-prot-sec"><h2><span class="step-no">${n}</span> ${esc(L('Протокол измерения', 'Measurement report'))}</h2>
+    <div class="actions"><button type="button" data-br="prot-print">${esc(L('Печать протокола', 'Print the report'))}</button><button type="button" data-br="prot-pdf">${esc(L('Сохранить протокол в PDF', 'Save the report as PDF'))}</button></div>
+    <details class="br-prot-det"${protOpen ? ' open' : ''}><summary>${esc(L('Показать протокол', 'Show the report'))}</summary><div class="kv-prot br-prot" id="br-prot"></div></details>
+    <p class="sub-hint">${esc(L('Протокол — по текущим полям листа; печатается без остального листа. Подписи — из поля «Выполнил(и)». Протокол прежнего измерения: лист «Журнал» → «Открыть», затем «Печать протокола».', 'The report follows the current sheet fields and is printed without the rest of the sheet. Signatures come from the “Performed by” field. For an earlier measurement: the Journal sheet → Open, then Print the report.'))}</p>
+  </section>`;
+}
+function protLive() {
+  const box = $('#br-prot');
+  if (!box) return;
+  box.innerHTML = brachyProtocolHtml();
+  box.lang = getLang();
+  const chart = box.querySelector('.br-chart');
+  if (chart) sweetChart(chart);
+}
+function printProtocol(pdf) {
+  readForm();
+  const det = document.querySelector('#brachy-root .br-prot-det');
+  if (det) det.open = true;
+  protLive();
+  document.body.classList.add('print-br-protocol');
+  const off = () => {
+    document.body.classList.remove('print-br-protocol');
+    window.removeEventListener('afterprint', off);
+  };
+  window.addEventListener('afterprint', off);
+  const date = pStr(form[BRACHY_DATE_KEY[sheet]]);
+  if (pdf) printToPdf([L('Протокол', 'Report'), L('брахитерапия', 'brachytherapy'), brachySheetText(sheet), date].filter(Boolean).join('_'), status);
+  else window.print();
 }
 
 // лист «Журнал»
@@ -665,8 +854,7 @@ function sweetResult() {
     ${factorRows(rows)}${table}${msgHtml(r.messages)}`;
 }
 
-function sweetChart() {
-  const box = $('#br-sweet-chart');
+function sweetChart(box = $('#br-sweet-chart')) {
   if (!box) return;
   const r = computeBrachySweet(form);
   if (!r.ok) return;
@@ -985,23 +1173,24 @@ function resultCardHtml(n) {
 
 function sheetBody() {
   if (sheet === 'log') return logHtml();
-  if (sheet === 'sweet') return `${sweetSetupHtml()}${sweetRowsHtml()}${resultCardHtml(3)}${recordHtml(4)}`;
+  if (sheet === 'sweet') return `${sweetSetupHtml()}${sweetRowsHtml()}${resultCardHtml(3)}${recordHtml(4)}${protHtml(5)}`;
   if (sheet === 'decay') return `${sourceHtml()}${decayParamsHtml()}${resultCardHtml(3)}`;
-  if (sheet === 'cross') return `${crossSetupHtml()}${crossChamberHtml(2, 'x_ref_', L('Эталонная камера', 'Reference chamber'))}${crossChamberHtml(3, 'x_fld_', L('Рабочая камера', 'Field chamber'))}${resultCardHtml(4)}${recordHtml(5)}`;
-  if (sheet === 'stab') return `${stabSetupHtml()}${stabMeasureHtml()}${resultCardHtml(3)}${recordHtml(4)}`;
+  if (sheet === 'cross') return `${crossSetupHtml()}${crossChamberHtml(2, 'x_ref_', L('Эталонная камера', 'Reference chamber'))}${crossChamberHtml(3, 'x_fld_', L('Рабочая камера', 'Field chamber'))}${resultCardHtml(4)}${recordHtml(5)}${protHtml(6)}`;
+  if (sheet === 'stab') return `${stabSetupHtml()}${stabMeasureHtml()}${resultCardHtml(3)}${recordHtml(4)}${protHtml(5)}`;
   if (sheet === 'tg43') return `${sourceHtml()}${tg43ParamsHtml()}${tg43RowsHtml()}${resultCardHtml(4)}`;
-  if (sheet === 'well') return `${sourceHtml()}${wellChamberHtml()}${wellMeasureHtml()}${resultCardHtml(4)}${uncHtml(5)}${recordHtml(6)}`;
-  return `${sourceHtml()}${phantomChamberHtml()}${phantomMeasureHtml()}${resultCardHtml(4)}${doseHtml()}${ownKtotHtml()}${uncHtml(7)}${recordHtml(8)}`;
+  if (sheet === 'well') return `${sourceHtml()}${wellChamberHtml()}${wellMeasureHtml()}${resultCardHtml(4)}${uncHtml(5)}${recordHtml(6)}${protHtml(7)}`;
+  return `${sourceHtml()}${phantomChamberHtml()}${phantomMeasureHtml()}${resultCardHtml(4)}${doseHtml()}${ownKtotHtml()}${uncHtml(7)}${recordHtml(8)}${protHtml(9)}`;
 }
 
 function render() {
   const root = $('#brachy-root');
   if (!root) return;
   root.innerHTML = `${navHtml()}
-    <div class="plates-banner"><b>${esc(L('Раздел в разработке', 'Section in development'))}</b>: ${esc(L('расчёт и записи в журнал работают; протокол появится на следующем этапе. Черновик формы хранится в этом браузере.', 'the calculation and journal records work; the report comes in the next stage. The form draft is kept in this browser.'))}</div>
+    <div class="plates-banner"><b>${esc(L('Раздел в разработке', 'Section in development'))}</b>: ${esc(L('расчёт, записи в журнал, протокол и пример работают; раздел проверяется на протоколах отделения. Черновик формы хранится в этом браузере.', 'the calculation, journal records, the report and the example work; the section is being checked against the department protocols. The form draft is kept in this browser.'))}</div>
+    ${isBrachySample(form) && sheet !== 'log' ? `<p class="demo-flag">${esc(L('Сейчас загружен демонстрационный пример: значения вымышленные. Выбор из «Оборудования» в примере не задан.', 'The demo example is loaded: the values are fictitious. No Equipment selection is set in the example.'))}</p>` : ''}
     ${introHtml()}
     ${sheetBody()}
-    ${['decay', 'tg43', 'log'].includes(sheet) ? '' : `<div class="actions"><button type="button" data-br="clear">${esc(L('Очистить измерение', 'Clear the measurement'))}</button></div>`}`;
+    ${sheet === 'log' ? '' : `<div class="actions">${['decay', 'tg43'].includes(sheet) ? '' : `<button type="button" data-br="clear">${esc(L('Очистить измерение', 'Clear the measurement'))}</button>`}<button type="button" data-br="sample">${esc(L('Загрузить пример', 'Load the example'))}</button></div>`}`;
   for (const el of root.querySelectorAll('.cells[data-series]')) {
     const key = el.dataset.series;
     const m = key.match(/^p_hole(\d)$/);
@@ -1016,6 +1205,19 @@ function render() {
     });
   }
   trendCharts();
+  root.querySelector('.br-prot-det')?.addEventListener('toggle', (e) => {
+    protOpen = e.target.open;
+    if (protOpen) protLive();
+  });
+  const sample = root.querySelector('[data-br="sample"]');
+  if (sample) {
+    armButton(sample, sample.textContent, () => L('Заменить поля всех листов примером?', 'Replace the fields of all sheets with the example?'), () => {
+      form = normalizeBrachy({ ...sampleBrachy(), rec_staff: form.rec_staff, log_f: form.log_f });
+      persist();
+      render();
+      status(L('Загружен демонстрационный пример (вымышленные данные): источник ¹⁹²Ir HDR, все листы заполнены одним днём измерений 15.09.2026.', 'The demo example is loaded (fictitious data): an HDR ¹⁹²Ir source, all sheets filled with one measurement day, 2026-09-15.'));
+    });
+  }
   const clear = root.querySelector('[data-br="clear"]');
   if (clear) {
     armButton(clear, clear.textContent, () => L('Очистить показания этого листа?', 'Clear the readings of this sheet?'), () => {
@@ -1168,6 +1370,7 @@ function live() {
   box.innerHTML = results[sheet]();
   if (sheet === 'sweet') sweetChart();
   uncLive();
+  protLive();
 }
 
 // ------------------------------------------------------------ ввод
@@ -1264,6 +1467,10 @@ function onClick(e) {
   if (!b) return;
   if (b.dataset.br === 'record') {
     doRecord();
+    return;
+  }
+  if (b.dataset.br === 'prot-print' || b.dataset.br === 'prot-pdf') {
+    printProtocol(b.dataset.br === 'prot-pdf');
     return;
   }
   if (b.dataset.br === 'open') {

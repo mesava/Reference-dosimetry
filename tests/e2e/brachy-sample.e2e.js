@@ -1,0 +1,49 @@
+// Пример вкладки «Брахитерапия» (0.77.0): загрузка двумя нажатиями, все листы считаются, протокол заполнен.
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { startServer, launch, openPage } from './helpers.js';
+
+let server;
+let browser;
+before(async () => {
+  server = await startServer();
+  browser = await launch();
+});
+after(async () => {
+  await browser?.close();
+  await server?.close();
+});
+
+test('брахитерапия: пример заполняет все листы, результаты и протокол', async () => {
+  const { page, errors } = await openPage(browser);
+  const pause = (ms = 250) => page.waitForTimeout(ms);
+  await page.goto(`${server.url}/index.html#brachy/well`);
+  await page.waitForSelector('[data-br="sample"]');
+  await page.click('[data-br="sample"]');
+  await page.click('[data-br="sample"]');
+  await pause();
+  assert.match(await page.locator('#brachy-status').innerText(), /Загружен демонстрационный пример/);
+  assert.match(await page.locator('#brachy-root .demo-flag').innerText(), /демонстрационный пример/);
+  assert.match(await page.locator('#br-result').innerText(), /35,3\d* мГр\/ч на 1 м[\s\S]*\+0,3\d* % от сертификата/);
+  const expect = {
+    sweet: /Максимум отклика\s+1229,9 мм/,
+    phantom: /мГр\/ч на 1 м[\s\S]*от сертификата/,
+    cross: /N рабочей камеры\s+5000\d\d Гр·м²·ч⁻¹·А⁻¹[\s\S]*от прежнего/,
+    stab: /Отклонение от исходного\s+[−+]0,\d\d %\s*в пределах ±0,5 %/,
+    decay: /\d/,
+    tg43: /Ḋw,1 = Λ · SK/,
+  };
+  for (const [sh, re] of Object.entries(expect)) {
+    await page.click(`a[data-goto="brachy/${sh}"]`);
+    await pause(400);
+    const res = await page.locator('#br-result').innerText();
+    assert.match(res, re, sh);
+    assert.equal(await page.locator('#br-result .br-err').count(), 0, `${sh}: без ошибок`);
+    if (await page.locator('.br-prot-det').count()) {
+      if (!(await page.locator('.br-prot-det').evaluate((d) => d.open))) await page.click('.br-prot-det > summary');
+      await pause();
+      assert.match(await page.locator('#br-prot').innerText(), /Заключение[\s\S]*Примечания\s+Демонстрационные данные/, `${sh}: протокол`);
+    }
+  }
+  assert.deepEqual(errors, []);
+});

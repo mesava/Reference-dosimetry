@@ -1773,6 +1773,22 @@ table.kv-prot-sign tr.sig-cap td { padding: 1px 0 0; font-size: 10.5px; color: v
   .kv-prot-note, .kv-prot-ver { color: #333; }
   .kv-prot table, .kv-prot tr { break-inside: avoid; }
 }
+/* протокол измерения брахитерапии (0.77.0): на экране — в раскрывающемся блоке листа; печатается без остального листа */
+.br-prot-det > summary { cursor: pointer; color: var(--accent); font-weight: 500; }
+.br-prot-det[open] > summary { margin-bottom: 8px; }
+.br-prot .plates-dose { margin: 4px 0 6px; }
+.br-prot .br-chart { max-width: 640px; }
+.br-prot-title { margin: 0 0 8px; font: 600 17px var(--font-display); }
+.br-prot-title small { display: block; font: 400 14px var(--font-body); color: var(--muted); }
+.br-prot table.factors th { text-transform: none; letter-spacing: normal; }
+@media print {
+  body:not(.print-br-protocol) #brachy-root .br-prot-sec { display: none !important; }
+  body.print-br-protocol #brachy-root > :not(.br-prot-sec), body.print-br-protocol #module-brachy .subtools, body.print-br-protocol #brachy-status { display: none !important; }
+  body.print-br-protocol #module-brachy main.start { display: block; padding: 12mm 14mm; max-width: none; }
+  body.print-br-protocol .br-prot-sec { display: block !important; border: 0; padding: 0; background: none; }
+  body.print-br-protocol .br-prot-sec > h2, body.print-br-protocol .br-prot-sec > .sub-hint, body.print-br-protocol .br-prot-det > summary { display: none; }
+  body.print-br-protocol .br-prot .chip { border: 0; padding: 0; background: none; color: #000; }
+}
 
 /* ------------------------------------------------------------ оформление 0.65.0: цвет вида пучка, «Начало», меню на телефоне
    Цвет вида пучка (атрибут data-beam у <html>, ставит look.js): ⁶⁰Co — кобальтовый синий, МВ фотоны — фиолетовый,
