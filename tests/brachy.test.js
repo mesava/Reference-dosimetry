@@ -41,6 +41,11 @@ import {
   applicatorKaSteel,
   geometryLine,
   tg43Transverse,
+  sweetSpot,
+  responseAt,
+  strengthAt,
+  timeForStrength,
+  decayDates,
 } from '../src/core/brachy.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''} ${a} ≠ ${b} (±${tol})`);
@@ -319,4 +324,72 @@ test('TG-43: G_L линейного источника (ур. 4), пересчё
   assert.equal(UBRICH_KTOT_DW1['mhdr-v2']['30016'], 74.55);
   // Λ по Ubrich (табл. 3) для Co0.A86 ≈ (k_tot)Ḋw,1/(k_tot)K̇a,100 при одной камере: 76,49/6,99e-3 → 1,094 сГр·ч⁻¹·Ед⁻¹
   near(76.49 / 6.99e-3 / 1e4, 1.094, 0.001);
+});
+
+test('Максимум отклика колодезной камеры (TRS-492, разд. 8.2.1): вершина параболы, плато, проверки шага и запаса', () => {
+  // кривая — парабола с вершиной 56,3 мм, шаг 2 мм, 40…72 мм
+  const f = (x) => 100 - 0.05 * (x - 56.3) ** 2;
+  const pts = [];
+  for (let x = 40; x <= 72; x += 2) pts.push({ x, m: f(x) });
+  const r = sweetSpot([...pts].reverse());
+  assert.ok(r.ok);
+  assert.equal(r.method, 'parabola');
+  near(r.xPeak, 56.3, 1e-9);
+  near(r.mPeak, 100, 1e-9);
+  assert.deepEqual(r.warnings, []);
+  assert.equal(r.maxStep, 2);
+  // 99,5 %: (x − 56,3)² = 10 → ±3,16 мм; хорда между точками даёт плато чуть уже
+  near(r.plateau[99.5].from, 56.3 - Math.sqrt(10), 0.2);
+  near(r.plateau[99.5].to, 56.3 + Math.sqrt(10), 0.2);
+  near(r.plateau[99].to - r.plateau[99].from, 2 * Math.sqrt(20), 0.4);
+  // отклик в точке: по параболе у вершины, по ломаной дальше; вне кривой — NaN
+  near(responseAt(r, 56.3), 1, 1e-12);
+  near(responseAt(r, 58.3), f(58.3) / 100, 1e-12);
+  near(responseAt(r, 41), (f(40) + f(42)) / 200, 1e-12);
+  assert.ok(Number.isNaN(responseAt(r, 80)));
+  // знак тока не важен
+  const neg = sweetSpot(pts.map((p) => ({ x: p.x, m: -p.m })));
+  near(neg.xPeak, 56.3, 1e-9);
+  near(neg.mPeak, -100, 1e-9);
+  near(responseAt(neg, 56.3), 1, 1e-12);
+  // шаг 4 мм — больше 2,5 мм; кривая до 60 мм — запас вверх меньше 10 мм
+  const coarse = sweetSpot(pts.filter((p) => p.x % 4 === 0 && p.x <= 60));
+  assert.ok(coarse.warnings.includes('step'));
+  assert.ok(coarse.warnings.includes('margin'));
+  // максимум на краю
+  assert.ok(sweetSpot(pts.filter((p) => p.x <= 56)).warnings.includes('edge'));
+  // мало точек, повторы
+  assert.ok(sweetSpot(pts.slice(0, 2)).error);
+  assert.ok(sweetSpot([...pts.slice(0, 3), pts[0]]).error);
+  // плоская вершина — парабола по более широкому участку; монотонная кривая — наибольшее показание
+  const flat = sweetSpot([{ x: 0, m: 90 }, { x: 2, m: 100 }, { x: 4, m: 100 }, { x: 6, m: 100 }, { x: 8, m: 90 }]);
+  assert.equal(flat.method, 'parabola');
+  near(flat.xPeak, 4, 1e-9);
+  const lin = sweetSpot([{ x: 0, m: 98 }, { x: 2, m: 99 }, { x: 4, m: 100 }]);
+  assert.equal(lin.method, 'max');
+  assert.equal(lin.xPeak, 4);
+  assert.ok(lin.warnings.includes('edge'));
+});
+
+test('Распад по датам (TRS-492, ур. 8–9): сила на дату, дата порога, шаг таблицы по суткам, неделям и месяцам', () => {
+  const half = HALF_LIVES['Co-60'].days;
+  const t0 = Date.UTC(2021, 9, 27, 9);
+  // через период полураспада — половина
+  near(strengthAt(33.11, t0, t0 + half * 86400000, half), 33.11 / 2, 1e-12);
+  near(timeForStrength(33.11, t0, 33.11 / 4, half), t0 + 2 * half * 86400000, 1);
+  // 33,11 → 20 ГБк: T½·log₂(33,11/20) = 1400 сут
+  const t20 = timeForStrength(33.11, t0, 20, half);
+  near((t20 - t0) / 86400000, half * Math.log2(33.11 / 20), 1e-6);
+  assert.equal(new Date(t20).toISOString().slice(0, 10), '2025-08-27');
+  near(strengthAt(33.11, t0, t20, half), 20, 1e-9);
+  assert.ok(Number.isNaN(timeForStrength(33.11, t0, 0, half)));
+  // ¹⁹²Ir: 16 недель — 17 строк, последняя — через 112 сут
+  const w = decayDates(t0, t0 + 112 * 86400000, 1, 'w');
+  assert.equal(w.length, 17);
+  assert.equal(w[16] - w[0], 112 * 86400000);
+  // месяцы: 31 января → 28/29 февраля → 31 марта
+  const m = decayDates(Date.UTC(2024, 0, 31, 8), Date.UTC(2024, 3, 30), 1, 'm');
+  assert.deepEqual(m.map((t) => new Date(t).toISOString().slice(0, 13)), ['2024-01-31T08', '2024-02-29T08', '2024-03-31T08']);
+  assert.equal(decayDates(t0, t0 + 1000 * 86400000, 1, 'd').length, 500);
+  assert.deepEqual(decayDates(t0, t0 - 1, 1, 'd'), []);
 });

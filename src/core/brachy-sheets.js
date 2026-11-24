@@ -26,6 +26,11 @@ import {
   phantomFactor,
   PHANTOM_N_UNITS,
   tg43Transverse,
+  sweetSpot,
+  responseAt,
+  strengthAt,
+  timeForStrength,
+  decayDates,
 } from './brachy.js';
 
 const REF = {
@@ -121,6 +126,26 @@ export const BRACHY_DEFAULTS = {
   p_lambda: '',
   p_L: '',
   p_gL8: '',
+
+  // максимум отклика колодезной камеры: положения источника, мм, и показания
+  s_x: ['', '', '', '', ''],
+  s_M: ['', '', '', '', ''],
+  s_step: '2,5',
+  s_unit: 'nA',
+  s_ref: '', // система отсчёта положения (например, «по пульту аппарата, от конца канала»)
+  s_date: '',
+  s_cert_pos: '', // положение опорной точки в сертификате камеры, мм
+  w_pos: '', // положение источника при измерении на листе «Колодезная камера», мм
+
+  // распад: таблица силы источника по датам
+  d_basis: 'cert', // 'cert' | 'well' | 'phantom' — от сертификата или от измерения
+  d_from: '',
+  d_to: '',
+  d_n: '',
+  d_unit: '', // 'd' | 'w' | 'm'; пусто — по нуклиду
+  d_zone: '',
+  d_target: '',
+  d_target_unit: 'mGy/h',
 };
 
 /** Нормализация черновика: недостающие поля — по умолчанию, массивы — нужной формы. */
@@ -554,6 +579,131 @@ export function computeBrachyPhantom(input, { offsetMin = 0 } = {}) {
   if (cert.gammaUperGBq > 0) out.A = main.U / cert.gammaUperGBq;
   out.compare = certCompare(cert, tMeas, main.U, add);
   if (cert.ok && !Number.isFinite(tMeas)) add('warn', L('Не указана дата измерения: сравнение с сертификатом невозможно.', 'The measurement date is not given: no comparison with the certificate.'), null, 'p_date');
+  return out;
+}
+
+// ——— Максимум отклика колодезной камеры ———
+
+/**
+ * Лист «Максимум отклика»: опорная точка колодезной камеры по кривой «положение — показание» (TRS-492, разд. 8.2.1,
+ * рис. 6); отклик в положении измерения листа «Колодезная камера» и в положении из сертификата камеры.
+ */
+export function computeBrachySweet(input) {
+  const f = normalizeBrachy(input);
+  const messages = [];
+  const add = makeAdd(messages);
+  const pts = [];
+  const n = Math.max(f.s_x.length, f.s_M.length);
+  for (let i = 0; i < n; i++) {
+    const x = parseNumber(f.s_x[i]);
+    const m = parseNumber(f.s_M[i]);
+    if (isBlank(f.s_x[i]) && isBlank(f.s_M[i])) continue;
+    if (!Number.isFinite(x) || !Number.isFinite(m)) {
+      add('warn', L(`Строка ${i + 1}: нужны и положение, и показание — строка пропущена.`, `Row ${i + 1}: both the position and the reading are needed; the row is skipped.`), null, `s_x_${i}`);
+      continue;
+    }
+    pts.push({ x, m });
+  }
+  const out = { ok: false, messages, n: pts.length };
+  if (pts.length < 3) {
+    add('info', L('Введите показания хотя бы в трёх положениях источника; шаг — не больше 2,5 мм, не меньше 10 мм в обе стороны от ожидаемого максимума.', 'Enter readings at no fewer than three source positions; step at most 2.5 mm, at least 10 mm on both sides of the expected maximum.'), `${REF.trs492}, разд. 8.2.1`, 's_x_0');
+    return out;
+  }
+  const r = sweetSpot(pts);
+  if (r.error) {
+    add('error', L(`Кривая отклика: ${r.error}.`, `Response curve: ${r.error}.`), null, 's_x_0');
+    return out;
+  }
+  Object.assign(out, r, { ok: true });
+  if (r.warnings.includes('step')) add('warn', L(`Наибольший шаг между положениями ${ru(r.maxStep, 1)} мм — больше 2,5 мм: максимум найден грубее.`, `The largest step between positions is ${r.maxStep.toFixed(1)} mm, above 2.5 mm: the maximum is less precise.`), `${REF.trs492}, разд. 8.2.1`, 's_step');
+  if (r.warnings.includes('edge')) add('warn', L('Наибольшее показание — в крайнем положении: максимум, вероятно, за пределами кривой. Продолжите измерения дальше.', 'The largest reading is at an end position: the maximum is probably outside the curve. Extend the measurements.'), `${REF.trs492}, разд. 8.2.1`, 's_x_0');
+  else if (r.warnings.includes('margin')) add('warn', L(`Кривая заходит за максимум меньше чем на 10 мм (вниз ${ru(r.margin.below, 1)} мм, вверх ${ru(r.margin.above, 1)} мм): плато может быть оценено не полностью.`, `The curve extends less than 10 mm beyond the maximum (down ${r.margin.below.toFixed(1)} mm, up ${r.margin.above.toFixed(1)} mm): the plateau may be incomplete.`), `${REF.trs492}, разд. 8.2.1`, 's_x_0');
+  if (r.method !== 'parabola') add('info', L('Парабола по вершине не получилась (кривая не выпуклая у максимума) — взято наибольшее показание.', 'A parabola could not be fitted at the top (the curve is not convex at the maximum); the largest reading is used.'), null, 's_x_0');
+  // отклик в положении измерения и в положении сертификата
+  const resp = (x) => (Number.isFinite(x) ? responseAt(r, x) : NaN);
+  const wPos = parseNumber(f.w_pos);
+  out.atMeas = { x: wPos, rel: resp(wPos) };
+  if (Number.isFinite(wPos)) {
+    if (!Number.isFinite(out.atMeas.rel)) add('warn', L('Положение измерения листа «Колодезная камера» вне кривой отклика.', 'The measurement position of the Well-type chamber sheet is outside the response curve.'), null, 'w_pos');
+    else if (out.atMeas.rel < 0.999) add('warn', L(`В положении измерения ${ru(wPos, 1)} мм отклик ${ru(out.atMeas.rel * 100, 2)} % от максимума: показание занижено на ${ru((1 - out.atMeas.rel) * 100, 2)} %. Мерьте в максимуме (${ru(r.xPeak, 1)} мм).`, `At the measurement position ${wPos} mm the response is ${(out.atMeas.rel * 100).toFixed(2)}% of the maximum: the reading is ${((1 - out.atMeas.rel) * 100).toFixed(2)}% low. Measure at the maximum (${r.xPeak.toFixed(1)} mm).`), `${REF.trs492}, разд. 8.2.1`, 'w_pos');
+  }
+  const cPos = parseNumber(f.s_cert_pos);
+  out.atCert = { x: cPos, rel: resp(cPos) };
+  if (Number.isFinite(cPos) && Number.isFinite(r.xPeak)) {
+    out.atCert.shift = r.xPeak - cPos;
+    if (Math.abs(out.atCert.shift) > 1) add('warn', L(`Максимум сдвинут относительно сертификата камеры на ${ru(out.atCert.shift, 1)} мм: проверьте систему отсчёта положения (длину ампулопровода, глубину катетера) — при калибровке и сейчас она должна быть одной.`, `The maximum is shifted by ${out.atCert.shift.toFixed(1)} mm from the chamber certificate: check the position reference (transfer tube length, catheter depth); it must be the same as at the calibration.`), `${REF.trs492}, разд. 8.2.1`, 's_cert_pos');
+  }
+  return out;
+}
+
+// ——— Распад ———
+
+/** Шаг таблицы распада по умолчанию: ¹⁹²Ir — неделя до 16 недель, ⁶⁰Co — месяц до 5 лет, прочие — сутки до 2 T½. */
+function decayDefaults(nuclide, half) {
+  if (nuclide === 'Ir-192') return { n: 1, unit: 'w', span: 16 * 7 };
+  if (nuclide === 'Co-60') return { n: 1, unit: 'm', span: 5 * 365.25 };
+  return { n: Math.max(1, Math.round(half / 10)), unit: 'd', span: 2 * half };
+}
+
+/**
+ * Лист «Распад»: сила источника по датам от сертификата или от измерения (TRS-492, ур. 8–9; разд. 3.4.2 — время в UTC,
+ * ISO 8601), дата, когда сила упадёт до заданной. sources — результаты листов (well, phantom) для базы «от измерения».
+ */
+export function computeBrachyDecay(input, { offsetMin = 0, well = null, phantom = null } = {}) {
+  const f = normalizeBrachy(input);
+  const messages = [];
+  const add = makeAdd(messages);
+  const cert = readCertificate(f, add, offsetMin);
+  const out = { ok: false, messages, cert, rows: [] };
+  let base = null;
+  if (f.d_basis === 'well' || f.d_basis === 'phantom') {
+    const r = f.d_basis === 'well' ? well : phantom;
+    if (r?.ok && Number.isFinite(r.U) && Number.isFinite(r.tMeas)) base = { U: r.U, t: r.tMeas, label: f.d_basis === 'well' ? L('измерение колодезной камерой', 'well-type chamber measurement') : L('измерение в фантоме PTW 9193', 'PTW 9193 phantom measurement') };
+    else add('info', L('На выбранном листе нет результата с датой измерения — таблица от сертификата.', 'The chosen sheet has no result with a measurement date; the table starts from the certificate.'), null, 'd_basis');
+  }
+  if (!base && cert.ok) base = { U: cert.U, t: cert.tCert, label: L('сертификат источника', 'source certificate') };
+  if (!base) {
+    if (!messages.some((m) => m.level === 'error')) add('info', L('Введите силу источника и дату сертификата в разделе 1.', 'Enter the source strength and the certificate date in section 1.'), null, 'cert_value');
+    return out;
+  }
+  const half = cert.half;
+  if (!Number.isFinite(half)) return out;
+  out.base = base;
+  out.half = half;
+  const def = decayDefaults(f.nuclide, half);
+  const tFrom = isBlank(f.d_from) ? base.t : fieldTime(f.d_from, '', f.d_zone, offsetMin).ms;
+  if (!Number.isFinite(tFrom)) {
+    add('error', L('Не удалось прочитать дату начала таблицы.', 'Could not read the table start date.'), null, 'd_from');
+    return out;
+  }
+  const tTo = isBlank(f.d_to) ? tFrom + def.span * 86400000 : fieldTime(f.d_to, '', f.d_zone, offsetMin).ms;
+  if (!Number.isFinite(tTo) || tTo < tFrom) {
+    add('error', L('Дата конца таблицы должна быть не раньше начала.', 'The table end date must not be before the start.'), null, 'd_to');
+    return out;
+  }
+  const n = isBlank(f.d_n) ? def.n : parseNumber(f.d_n);
+  const unit = ['d', 'w', 'm'].includes(f.d_unit) ? f.d_unit : def.unit;
+  if (!(n > 0)) {
+    add('error', L('Шаг таблицы должен быть больше нуля.', 'The table step must be greater than zero.'), null, 'd_n');
+    return out;
+  }
+  out.step = { n, unit };
+  const dates = decayDates(tFrom, tTo, n, unit);
+  if (dates.length >= 500) add('warn', L('Таблица ограничена 500 строками: увеличьте шаг.', 'The table is limited to 500 rows: increase the step.'), null, 'd_n');
+  out.rows = dates.map((t) => {
+    const U = strengthAt(base.U, base.t, t, half);
+    return { t, days: (t - base.t) / 86400000, frac: U / base.U, U, mGyh: U / 1e3, A: cert.gammaUperGBq > 0 ? U / cert.gammaUperGBq : NaN };
+  });
+  // дата достижения заданной силы
+  if (!isBlank(f.d_target)) {
+    const c = certificateToU({ value: parseNumber(f.d_target), unit: f.d_target_unit, gamma: parseNumber(f.cert_gamma), gammaUnit: f.cert_gamma_unit });
+    if (c.error) add('error', L(`Пороговая сила источника: ${c.error}.`, `Threshold source strength: ${c.error}.`), null, 'd_target');
+    else {
+      out.target = { U: c.U, t: timeForStrength(base.U, base.t, c.U, half) };
+      if (c.U > base.U) add('info', L('Пороговая сила больше исходной — она была раньше даты отсчёта.', 'The threshold is above the base strength: it was reached before the base date.'), null, 'd_target');
+    }
+  }
+  out.ok = out.rows.length > 0;
   return out;
 }
 

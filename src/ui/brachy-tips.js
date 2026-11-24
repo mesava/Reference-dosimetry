@@ -147,6 +147,42 @@ const TIPS = {
     pop('Радиальная функция дозы g<sub>L</sub>(8 см)', ['Учитывает ослабление и рассеяние в воде на 8 см относительно 1 см (g<sub>L</sub>(1) = 1). Для ¹⁹²Ir HDR около 0,97, для ⁶⁰Co — 0,884.'], `${TG43}, ур. (1); ${HEBD}.`),
     pop('Radial dose function g<sub>L</sub>(8 cm)', ['Accounts for attenuation and scatter in water at 8 cm relative to 1 cm (g<sub>L</sub>(1) = 1). About 0.97 for ¹⁹²Ir HDR, 0.884 for ⁶⁰Co.'], `${TG43}, Eq. (1); ${HEBD}.`),
   ),
+  s_x: () => L(
+    pop('Положение источника', ['Положение, на которое аппарат выводит источник в колодец камеры, в мм — по той же системе отсчёта, что на пульте (длина ампулопровода, глубина катетера). Шаг — не больше 2,5 мм, диапазон — не меньше 10 мм в обе стороны от ожидаемого максимума.'], `${T492}, разд. 8.2.1.`),
+    pop('Source position', ['The position the afterloader drives the source to in the chamber well, in mm, in the same reference system as on the console (transfer tube length, catheter depth). Step at most 2.5 mm, range at least 10 mm on both sides of the expected maximum.'], 'IAEA TRS-492 (2023), Sec. 8.2.1.'),
+  ),
+  xPeak: () => L(
+    pop('Максимум отклика (опорная точка)', ['Положение источника с наибольшим откликом камеры. Ищется как вершина параболы, проведённой МНК через точки с откликом не ниже 99 % от наибольшего (при плоской вершине — по более широкому участку, до 90 %); если выпуклая парабола не получилась — наибольшее показание. В этом положении измеряют силу источника: отклик там меньше всего зависит от неточности положения.'], `${T492}, разд. 8.2.1, рис. 6.`),
+    pop('Response maximum (reference point)', ['The source position with the largest chamber response. Found as the vertex of a least-squares parabola through the points with a response of at least 99% of the largest (for a flat top, over a wider range, down to 90%); if no convex parabola fits, the largest reading. The source strength is measured there: the response is least sensitive to position errors.'], 'IAEA TRS-492 (2023), Sec. 8.2.1, Fig. 6.'),
+  ),
+  plateau: () => L(
+    pop('Плато', ['Отрезок положений, где отклик не ниже 99,5 % (или 99 %) от максимума — по линейной интерполяции между измеренными точками. Чем шире плато, тем меньше показание зависит от смещения источника.'], `${T492}, разд. 8.2.1.`),
+    pop('Plateau', ['The range of positions where the response is at least 99.5% (or 99%) of the maximum, by linear interpolation between the measured points. The wider the plateau, the less the reading depends on a source shift.'], 'IAEA TRS-492 (2023), Sec. 8.2.1.'),
+  ),
+  s_step: () => L(
+    pop('Шаг положений', ['Расстояние между соседними положениями источника. TRS-492: не больше 2,5 мм, чтобы кривая достаточно точно описывала вершину. Кнопка «+» добавляет строку с положением «последнее + шаг».'], `${T492}, разд. 8.2.1.`),
+    pop('Position step', ['The distance between neighbouring source positions. TRS-492: at most 2.5 mm, so that the curve describes the top well enough. The “+” button adds a row with the position “last + step”.'], 'IAEA TRS-492 (2023), Sec. 8.2.1.'),
+  ),
+  s_cert_pos: () => L(
+    pop('Опорная точка по сертификату камеры', ['Положение источника, в котором камеру калибровали (точка калибровки), — из сертификата. Сдвиг измеренного максимума больше 1 мм обычно значит, что система отсчёта другая: другой ампулопровод, глубина катетера или подстройка привода источника.'], `${T492}, разд. 8.2.1.`),
+    pop('Reference point in the chamber certificate', ['The source position at which the chamber was calibrated (calibration point), from the certificate. A shift of the measured maximum above 1 mm usually means a different reference: another transfer tube, catheter depth or a source drive adjustment.'], 'IAEA TRS-492 (2023), Sec. 8.2.1.'),
+  ),
+  w_pos: () => L(
+    pop('Положение источника при измерении', ['Положение, в котором мерили силу источника. Лист «Максимум отклика» показывает отклик в нём: если он меньше 99,9 % от максимума, показание занижено на эту разницу.'], `${T492}, разд. 8.2.1.`),
+    pop('Source position at the measurement', ['The position where the source strength was measured. The Sweet spot sheet shows the response there: if it is below 99.9% of the maximum, the reading is low by the difference.'], 'IAEA TRS-492 (2023), Sec. 8.2.1.'),
+  ),
+  frac: () => L(
+    pop('Доля от отсчёта', ['K̇(t)/K̇(t<sub>0</sub>) = 2<sup>−Δt/T½</sup> = 1/k<sub>dec</sub>. Время облучения для той же дозы растёт обратно этой доле.'], `${T492}, ур. (8)–(9).`),
+    pop('Fraction of the base', ['K̇(t)/K̇(t<sub>0</sub>) = 2<sup>−Δt/T½</sup> = 1/k<sub>dec</sub>. The irradiation time for the same dose grows inversely to this fraction.'], 'IAEA TRS-492 (2023), Eq. (8)–(9).'),
+  ),
+  d_target: () => L(
+    pop('Порог замены источника', ['Сила источника (или активность), при которой источник меняют. Дата: t = t<sub>0</sub> + T<sub>½</sub> · log₂(K̇<sub>0</sub>/K̇<sub>порог</sub>).'], `${T492}, ур. (8).`),
+    pop('Source replacement threshold', ['The source strength (or activity) at which the source is replaced. Date: t = t<sub>0</sub> + T<sub>½</sub> · log₂(K̇<sub>0</sub>/K̇<sub>threshold</sub>).'], 'IAEA TRS-492 (2023), Eq. (8).'),
+  ),
+  d_basis: () => L(
+    pop('Отсчёт таблицы распада', ['От сертификата — сила источника по сертификату на его дату. От измерения — результат листа «Колодезная камера» или «Фантом PTW 9193» на время измерения: так получают значения для системы планирования по своему измерению.'], `${T492}, разд. 7.3, 8.6.`),
+    pop('Decay table base', ['From the certificate: the certificate source strength at its date. From a measurement: the result of the Well-type chamber or PTW 9193 phantom sheet at the measurement time; this gives values for the treatment planning system from your own measurement.'], 'IAEA TRS-492 (2023), Sec. 7.3, 8.6.'),
+  ),
 };
 // одинаковые величины под разными ключами полей
 Object.assign(TIPS, {

@@ -571,4 +571,149 @@ export function tg43Transverse({ dw1, r, L, gL }) {
   return { value: dw1 * g * gL, gRatio: g };
 }
 
+// ------------------------------------------------------------ максимум отклика колодезной камеры (TRS-492, разд. 8.2.1)
+
+/** Шаг позиций источника не больше 2,5 мм и запас не меньше 10 мм по обе стороны от максимума: TRS-492, разд. 8.2.1. */
+export const SWEET_MAX_STEP_MM = 2.5;
+export const SWEET_MARGIN_MM = 10;
+
+/**
+ * Опорная точка (максимум отклика) колодезной камеры по кривой «положение источника — показание», TRS-492, разд. 8.2.1,
+ * рис. 6. Точки сортируются по положению; максимум — вершина параболы МНК по точкам с откликом не ниже 99 % от
+ * наибольшего (не меньше трёх ближайших к нему точек), при плоской вершине — по более широкому участку (до 90 %);
+ * если выпуклая парабола не получается — наибольшее показание.
+ * Плато — отрезок, где отклик (линейная интерполяция) не ниже 99,5 % и 99 % от максимума.
+ * @param {{x:number, m:number}[]} points — положение, мм; показание (ток или заряд за одно время)
+ */
+export function sweetSpot(points) {
+  const pts = points.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.m)).sort((a, b) => a.x - b.x);
+  const out = { ok: false, points: pts, warnings: [] };
+  if (pts.length < 3) return { ...out, error: L('нужно не меньше трёх положений источника', 'at least three source positions are needed') };
+  if (new Set(pts.map((p) => p.x)).size !== pts.length) return { ...out, error: L('положения источника повторяются', 'source positions are repeated') };
+  const sign = Math.sign(pts.reduce((a, p) => a + p.m, 0)) || 1;
+  const v = pts.map((p) => ({ x: p.x, m: p.m * sign }));
+  let iMax = 0;
+  v.forEach((p, i) => { if (p.m > v[iMax].m) iMax = i; });
+  const mMax = v[iMax].m;
+  // точки для параболы: не ниже 99 % от наибольшего; если вершина плоская (парабола не выпуклая) — шире, до 90 %
+  const x0 = v[iMax].x;
+  const det = (M) => M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
+  const fitParabola = (fit) => {
+    const S = [0, 0, 0, 0, 0];
+    const T = [0, 0, 0];
+    for (const p of fit) {
+      const dx = p.x - x0;
+      for (let k = 0; k <= 4; k++) S[k] += dx ** k;
+      for (let k = 0; k <= 2; k++) T[k] += p.m * dx ** k;
+    }
+    // нормальные уравнения для m = c0 + c1·dx + c2·dx²
+    const A = [[S[0], S[1], S[2]], [S[1], S[2], S[3]], [S[2], S[3], S[4]]];
+    const D = det(A);
+    if (Math.abs(D) < 1e-12) return null;
+    const col = (j) => A.map((r, i) => r.map((c, k) => (k === j ? T[i] : c)));
+    const c0 = det(col(0)) / D;
+    const c1 = det(col(1)) / D;
+    const c2 = det(col(2)) / D;
+    const from = Math.min(...fit.map((p) => p.x));
+    const to = Math.max(...fit.map((p) => p.x));
+    if (!(c2 < 0)) return null;
+    const xv = x0 - c1 / (2 * c2);
+    if (xv < from || xv > to) return null;
+    return { c0, c1, c2, x0, from, to, n: fit.length, xv, mv: c0 + c1 * (xv - x0) + c2 * (xv - x0) ** 2 };
+  };
+  const nearest3 = () => [...v].sort((a, b) => Math.abs(a.x - x0) - Math.abs(b.x - x0)).slice(0, 3);
+  let fitted = null;
+  let lastN = 0;
+  for (const level of [0.99, 0.98, 0.95, 0.9]) {
+    let fit = v.filter((p) => p.m >= level * mMax);
+    if (fit.length < 3) fit = nearest3();
+    if (fit.length === lastN) continue;
+    lastN = fit.length;
+    fitted = fitParabola(fit);
+    if (fitted) break;
+  }
+  let xPeak = x0;
+  let mPeak = mMax;
+  let method = 'max';
+  if (fitted) {
+    xPeak = fitted.xv;
+    mPeak = fitted.mv;
+    method = 'parabola';
+    const { c0, c1, c2, from, to, n } = fitted;
+    out.fit = { c0, c1, c2, x0, from, to, n };
+  }
+  out.xPeak = xPeak;
+  out.mPeak = mPeak * sign;
+  out.method = method;
+  out.rel = v.map((p) => ({ x: p.x, rel: p.m / mPeak }));
+  // плато: от максимума в обе стороны до пересечения порога
+  const cross = (level) => {
+    const r = out.rel;
+    let lo = NaN;
+    let hi = NaN;
+    for (let i = iMax; i > 0; i--) if (r[i - 1].rel < level) { lo = r[i - 1].x + ((level - r[i - 1].rel) / (r[i].rel - r[i - 1].rel)) * (r[i].x - r[i - 1].x); break; }
+    for (let i = iMax; i < r.length - 1; i++) if (r[i + 1].rel < level) { hi = r[i].x + ((r[i].rel - level) / (r[i].rel - r[i + 1].rel)) * (r[i + 1].x - r[i].x); break; }
+    return { from: lo, to: hi };
+  };
+  out.plateau = { 99.5: cross(0.995), 99: cross(0.99) };
+  // проверки по разд. 8.2.1
+  const steps = v.slice(1).map((p, i) => p.x - v[i].x);
+  out.maxStep = Math.max(...steps);
+  if (out.maxStep > SWEET_MAX_STEP_MM + 1e-9) out.warnings.push('step');
+  out.margin = { below: xPeak - v[0].x, above: v[v.length - 1].x - xPeak };
+  if (out.margin.below < SWEET_MARGIN_MM - 1e-9 || out.margin.above < SWEET_MARGIN_MM - 1e-9) out.warnings.push('margin');
+  if (iMax === 0 || iMax === v.length - 1) out.warnings.push('edge');
+  out.ok = true;
+  return out;
+}
+
+/** Относительный отклик в положении x по кривой (линейная интерполяция; вне кривой — NaN). */
+export function responseAt(sweet, x) {
+  const r = sweet?.rel ?? [];
+  if (!Number.isFinite(x) || r.length < 2 || x < r[0].x || x > r[r.length - 1].x) return NaN;
+  if (sweet.fit && x >= sweet.fit.from && x <= sweet.fit.to) {
+    const { c0, c1, c2, x0 } = sweet.fit;
+    return (c0 + c1 * (x - x0) + c2 * (x - x0) ** 2) / (sweet.mPeak * Math.sign(sweet.mPeak));
+  }
+  for (let i = 1; i < r.length; i++) if (x <= r[i].x) return r[i - 1].rel + ((x - r[i - 1].x) / (r[i].x - r[i - 1].x)) * (r[i].rel - r[i - 1].rel);
+  return NaN;
+}
+
+// ------------------------------------------------------------ распад: сила источника по датам (TRS-492, разд. 3.4, 7.3)
+
+/** Сила источника на время t по сертификату: K(t) = K(t_ref) / k_dec, TRS-492, ур. (8)–(9). */
+export function strengthAt(Uref, tRef, t, halfDays) {
+  return Uref / kDec(t, tRef, halfDays);
+}
+
+/** Время, когда сила источника упадёт до Utarget: t = t_ref + t½·log₂(U_ref/U_target), мс UTC. */
+export function timeForStrength(Uref, tRef, Utarget, halfDays) {
+  if (!(Uref > 0) || !(Utarget > 0)) return NaN;
+  return tRef + halfDays * DAY_MS * Math.log2(Uref / Utarget);
+}
+
+/**
+ * Даты таблицы распада от from до to (мс UTC) с шагом n суток, недель или календарных месяцев (по UTC, день месяца
+ * сохраняется, для коротких месяцев — последний день). Не больше 500 строк.
+ */
+export function decayDates(from, to, n, unit) {
+  const out = [];
+  if (!Number.isFinite(from) || !Number.isFinite(to) || !(n > 0) || to < from) return out;
+  if (unit === 'm') {
+    const d0 = new Date(from);
+    for (let k = 0; out.length < 500; k += n) {
+      const y = d0.getUTCFullYear();
+      const mo = d0.getUTCMonth() + k;
+      const last = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+      const t = Date.UTC(y, mo, Math.min(d0.getUTCDate(), last), d0.getUTCHours(), d0.getUTCMinutes());
+      if (t > to + 1) break;
+      out.push(t);
+    }
+    return out;
+  }
+  const step = n * DAY_MS * (unit === 'w' ? 7 : 1);
+  for (let t = from; t <= to + 1 && out.length < 500; t += step) out.push(t);
+  return out;
+}
+
 export { REF as BRACHY_CORE_REF };

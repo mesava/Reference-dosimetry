@@ -2,10 +2,11 @@
 // в фантоме PTW 9193 и ¹⁹²Ir в колодезной камере), сверенные с её результатами.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeBrachyWell, computeBrachyPhantom, normalizeBrachy, fieldTime, BRACHY_DEFAULTS } from '../src/core/brachy-sheets.js';
+import { computeBrachyWell, computeBrachyPhantom, computeBrachySweet, computeBrachyDecay, normalizeBrachy, fieldTime, BRACHY_DEFAULTS } from '../src/core/brachy-sheets.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''} ${a} ≠ ${b} (±${tol})`);
 const rel = (a, b, tolRel, msg) => near(a / b, 1, tolRel, msg);
+const HALF_LIVES_CO = 1925.21;
 const errors = (r) => r.messages.filter((m) => m.level === 'error');
 
 test('Поля по умолчанию и нормализация черновика', () => {
@@ -213,4 +214,66 @@ test('Фантом, ¹⁹²Ir: k_zp по камере (PTW 30013 → M30001), м
   // меньше 4 положений — предупреждение; несоответствие единицы и типа калибровки — ошибка
   assert.ok(computeBrachyPhantom({ ...ir, p_holes: [ir.p_holes[0]] }).messages.some((m) => m.level === 'warn' && m.field === 'p_hole0'));
   assert.equal(errors(computeBrachyPhantom({ ...ir, p_calib: 'Ns' })).length, 1);
+});
+
+test('Лист «Максимум отклика»: точки из полей, отклик в положении измерения и сдвиг от сертификата камеры', () => {
+  const xs = [];
+  for (let x = 40; x <= 72; x += 2) xs.push(x);
+  const s_x = xs.map((x) => String(x).replace('.', ','));
+  const s_M = xs.map((x) => (10 - 0.005 * (x - 56.3) ** 2).toFixed(4).replace('.', ','));
+  const r = computeBrachySweet({ s_x: [...s_x, '', '74'], s_M: [...s_M, '', ''], w_pos: '50', s_cert_pos: '54' });
+  assert.ok(r.ok);
+  assert.equal(r.n, xs.length);
+  near(r.xPeak, 56.3, 0.01);
+  // строка с положением без показания — пропущена с предупреждением; пустая — без
+  assert.ok(r.messages.some((m) => m.field === `s_x_${xs.length + 1}` && m.level === 'warn'));
+  assert.ok(!r.messages.some((m) => m.field === `s_x_${xs.length}`));
+  // 50 мм: отклик (10 − 0,005·6,3²)/10 = 98,0 % — предупреждение «мерьте в максимуме»
+  near(r.atMeas.rel, 1 - 0.0005 * 6.3 ** 2, 0.0005);
+  assert.ok(r.messages.some((m) => m.field === 'w_pos' && m.level === 'warn'));
+  near(r.atCert.shift, 2.3, 0.01);
+  assert.ok(r.messages.some((m) => m.field === 's_cert_pos'));
+  // в максимуме — без предупреждения
+  const ok = computeBrachySweet({ s_x, s_M, w_pos: '56,3', s_cert_pos: '56' });
+  assert.ok(!ok.messages.some((m) => m.level === 'warn'));
+  // пустой лист — подсказка, без ошибок
+  const empty = computeBrachySweet({});
+  assert.equal(empty.ok, false);
+  assert.deepEqual(errors(empty), []);
+});
+
+test('Лист «Распад»: от сертификата ⁶⁰Co по месяцам на 5 лет, дата порога 20 ГБк; от измерения; ¹⁹²Ir по неделям', () => {
+  const base = { nuclide: 'Co-60', cert_value: '33,11', cert_unit: 'GBq', cert_gamma: '306', cert_gamma_unit: 'uGy·m2/(h·GBq)', cert_date: '2021-10-27', cert_time: '12:00', cert_zone: '+3' };
+  const r = computeBrachyDecay({ ...base, d_target: '20', d_target_unit: 'GBq' });
+  assert.ok(r.ok);
+  assert.deepEqual(errors(r), []);
+  assert.deepEqual(r.step, { n: 1, unit: 'm' });
+  assert.equal(r.rows.length, 61);
+  assert.equal(r.rows[0].t, Date.UTC(2021, 9, 27, 9));
+  near(r.rows[0].A, 33.11, 1e-9);
+  near(r.rows[0].frac, 1, 1e-12);
+  near(r.rows[60].frac, 2 ** (-r.rows[60].days / HALF_LIVES_CO), 1e-12);
+  // K̇_R = Γ·A: 33,11 ГБк · 306 мкГр·м²/(ч·ГБк) = 10,13 мГр/ч
+  near(r.rows[0].mGyh, 10.132, 0.001);
+  assert.equal(new Date(r.target.t).toISOString().slice(0, 10), '2025-08-27');
+  // свой шаг и пределы
+  const q = computeBrachyDecay({ ...base, d_from: '2026-01-01', d_to: '2026-12-31', d_n: '3', d_unit: 'm', d_zone: '+3' });
+  assert.equal(q.rows.length, 4);
+  assert.equal(new Date(q.rows[3].t).toISOString().slice(0, 10), '2026-09-30');
+  assert.ok(errors(computeBrachyDecay({ ...base, d_from: '2026-02-01', d_to: '2026-01-01' })).some((m) => m.field === 'd_to'));
+  // от измерения: другой лист без результата — от сертификата с подсказкой
+  const noWell = computeBrachyDecay({ ...base, d_basis: 'well' }, { well: { ok: false } });
+  assert.ok(noWell.messages.some((m) => m.field === 'd_basis'));
+  near(noWell.base.U, r.base.U, 1e-9);
+  const tM = Date.UTC(2026, 0, 10, 8);
+  const fromWell = computeBrachyDecay({ ...base, d_basis: 'well' }, { well: { ok: true, U: 5000, tMeas: tM } });
+  assert.equal(fromWell.base.U, 5000);
+  assert.equal(fromWell.rows[0].t, tM);
+  // ¹⁹²Ir — по неделям, 16 недель
+  const ir = computeBrachyDecay(IR_CERT);
+  assert.deepEqual(ir.step, { n: 1, unit: 'w' });
+  assert.equal(ir.rows.length, 17);
+  near(ir.rows[16].frac, 2 ** (-112 / 73.827), 1e-12);
+  // пусто — подсказка, без ошибок
+  assert.deepEqual(errors(computeBrachyDecay({})), []);
 });

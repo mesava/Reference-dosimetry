@@ -1,21 +1,22 @@
-// Вкладка «Брахитерапия»: листы «Колодезная камера» (IAEA TRS-492) и «Фантом PTW 9193» (DIN 6809-2, DGMP-Bericht 13,
-// руководство PTW). Сертификат источника — общий для обоих листов. Расчёт — core/brachy-sheets.js; черновик формы —
-// в этом браузере. Журнал, неопределённость и протокол — следующие этапы.
+// Вкладка «Брахитерапия»: листы «Колодезная камера» (IAEA TRS-492), «Максимум отклика» (TRS-492, разд. 8.2.1),
+// «Фантом PTW 9193» (DIN 6809-2, DGMP-Bericht 13, руководство PTW) и «Распад» (TRS-492, разд. 3.4, 7.3). Сертификат
+// источника — общий для листов. Расчёт — core/brachy-sheets.js; черновик формы — в этом браузере.
 import { L, refText } from '../core/i18n.js';
 import { PRESSURE_UNITS, unitLabel, parseNumber } from '../core/units.js';
 import { HALF_LIVES, KSM_SOURCES, PTW_TO_DGMP, APPLICATOR_KA_STEEL } from '../core/brachy-data.js';
 import { kDec } from '../core/brachy.js';
 import {
-  BRACHY_DEFAULTS, normalizeBrachy, computeBrachyWell, computeBrachyPhantom, fieldTime,
+  BRACHY_DEFAULTS, normalizeBrachy, computeBrachyWell, computeBrachyPhantom, computeBrachySweet, computeBrachyDecay, fieldTime,
   STRENGTH_UNITS, ACTIVITY_UNITS, GAMMA_UNITS, WELL_N_UNITS, PHANTOM_N_UNITS, CURRENT_UNITS, DOSE_SOURCES,
 } from '../core/brachy-sheets.js';
-import { $, esc, fmt, fmtSigned, richText, armButton } from './common.js';
+import { $, esc, fmt, fmtSigned, richText, armButton, downloadText, savedFileName } from './common.js';
+import { scatterChart, legendSwatch } from './chart.js';
 import { renderCells, readCells, setupCells } from './widgets.js';
 import { cellsHtml } from './journal-common.js';
 import { tipAttr } from './brachy-tips.js';
 
 const KEY = 'reference-dosimetry.brachy';
-const SHEETS = ['well', 'phantom'];
+const SHEETS = ['well', 'sweet', 'phantom', 'decay'];
 let sheet = 'well';
 let form = normalizeBrachy({});
 let statusEl = null;
@@ -72,11 +73,23 @@ const when = (pre, label, timeHint) => `<div class="field"><label for="br_${pre}
 
 // ------------------------------------------------------------ разметка
 function navHtml() {
-  const items = [['well', L('Колодезная камера', 'Well-type chamber')], ['phantom', L('Фантом PTW 9193', 'PTW 9193 phantom')]];
+  const items = [['well', L('Колодезная камера', 'Well-type chamber')], ['sweet', L('Максимум отклика', 'Sweet spot')], ['phantom', L('Фантом PTW 9193', 'PTW 9193 phantom')], ['decay', L('Распад', 'Decay')]];
   return `<nav class="kv-pages" aria-label="${esc(L('Листы вкладки', 'Tab sheets'))}">${items.map(([k, t]) => `<a href="#brachy/${k}" data-goto="brachy/${k}"${k === sheet ? ' aria-current="page"' : ''}>${esc(t)}</a>`).join('')}</nav>`;
 }
 
 function introHtml() {
+  if (sheet === 'sweet') {
+    return `<p class="start-when">${sub(L(
+      'Опорная точка колодезной камеры — положение источника с наибольшим откликом. Источник проходит ряд положений с шагом не больше 2,5 мм, не меньше 10 мм в обе стороны от ожидаемого максимума; по кривой находится максимум и плато. Положение зависит от системы отсчёта (длина ампулопровода, глубина катетера), поэтому его проверяют при каждом измерении силы источника (IAEA TRS-492, разд. 8.2.1).',
+      'The reference point of a well-type chamber is the source position with the largest response. The source steps through positions at most 2.5 mm apart, at least 10 mm on both sides of the expected maximum; the curve gives the maximum and the plateau. The position depends on the reference system (transfer tube length, catheter depth), so it is checked at every source strength measurement (IAEA TRS-492, Sec. 8.2.1).',
+    ))}</p>`;
+  }
+  if (sheet === 'decay') {
+    return `<p class="start-when">${sub(L(
+      'Сила источника по датам: от сертификата или от своего измерения, K̇(t) = K̇(t_0) · 2^(−Δt/T½) (IAEA TRS-492, ур. 8–9, табл. 3). Время — по выбранному поясу и в UTC (ISO 8601, разд. 3.4.2). Можно найти дату, когда сила упадёт до порога замены источника.',
+      'Source strength by date, from the certificate or from your own measurement: K̇(t) = K̇(t_0) · 2^(−Δt/T½) (IAEA TRS-492, Eq. 8–9, Table 3). Times in the chosen zone and in UTC (ISO 8601, Sec. 3.4.2). You can find the date when the strength falls to the source replacement threshold.',
+    ))}</p>`;
+  }
   return sheet === 'well'
     ? `<p class="start-when">${sub(L(
         'Сила источника по колодезной камере (IAEA TRS-492, гл. 7–8): ОМВК K̇_δ,R и сила воздушной кермы S_K (численно S_K в U = ОМВК в мкГр/ч на 1 м). Калибровочный коэффициент — из строки сертификата камеры для своего аппарата, адаптера и нуклида. Перевод между ¹⁹²Ir и ⁶⁰Co не допускается.',
@@ -132,6 +145,7 @@ function wellMeasureHtml() {
       ${num('w_T', L('Температура, °C', 'Temperature, °C'))}
       ${numUnit('w_P', L('Давление', 'Pressure'), PRESSURE_UNITS, 'w_P_unit')}
       ${select('w_unit', L('Единица тока', 'Current unit'), unitOpts(CURRENT_UNITS, form.w_unit))}
+      ${num('w_pos', L('Положение источника, мм', 'Source position, mm'), { hint: L('Лист «Максимум отклика» проверяет, что это максимум', 'The Sweet spot sheet checks that this is the maximum') })}
     </div>
     <div class="series">${cellsHtml('w_I', L('Ток', 'Current'), form.w_I, unitLabel(CURRENT_UNITS[form.w_unit]))}</div>
     <div class="grid">
@@ -216,20 +230,176 @@ function ownKtotHtml() {
     <p class="sub-hint">${sub(L('k_tot = K̇_колодезная / (N · Ṁ): тот же источник; ОМВК колодезной камеры пересчитывается на время измерения в фантоме по распаду. Аппликатор, в котором мерили в фантоме, входит в k_tot. Определив k_tot один раз, дальше сила источника считается по фантому с ним.', 'k_tot = K̇_well / (N · Ṁ): same source; the well-type chamber RAKR is decay-corrected to the phantom measurement time. The applicator used in the phantom is included in k_tot. Once k_tot is determined, the source strength is calculated from the phantom with it.'))}</p></section>`;
 }
 
+// ------------------------------------------------------------ лист «Максимум отклика»
+function sweetSetupHtml() {
+  return `<section class="start-card plates-card"><h2><span class="step-no">1</span> ${esc(L('Камера и система отсчёта', 'Chamber and position reference'))}</h2>
+    <div class="grid">
+      ${text('w_model', L('Камера', 'Chamber'), { ph: 'PTW TM33004' })}
+      <div class="field"><label for="br_s_date">${esc(L('Дата', 'Date'))}</label><input type="date" id="br_s_date" data-f="s_date" value="${esc(form.s_date)}"></div>
+      ${text('s_ref', L('Система отсчёта положения', 'Position reference'), { ph: L('по пульту аппарата, ампулопровод №…', 'as on the afterloader console, transfer tube no. …'), span: ' span-2' })}
+      ${num('s_cert_pos', L('Опорная точка по сертификату камеры, мм', 'Reference point in the chamber certificate, mm'))}
+      ${num('s_step', L('Шаг положений, мм', 'Position step, mm'))}
+      ${select('s_unit', L('Единица тока', 'Current unit'), unitOpts(CURRENT_UNITS, form.s_unit))}
+    </div></section>`;
+}
+
+function sweetRowsHtml() {
+  const n = Math.max(form.s_x.length, form.s_M.length, 3);
+  const u = unitLabel(CURRENT_UNITS[form.s_unit]) ?? '';
+  const rows = Array.from({ length: n }, (_, i) => `<div class="pair-row"><span class="pair-no">${i + 1}</span>
+      <input type="text" class="num" inputmode="decimal" id="br_s_x_${i}" data-sx="${i}" aria-label="${esc(L(`Положение ${i + 1}, мм`, `Position ${i + 1}, mm`))}" value="${esc(form.s_x[i] ?? '')}">
+      <input type="text" class="num" inputmode="decimal" id="br_s_M_${i}" data-sm="${i}" aria-label="${esc(L(`Показание ${i + 1}`, `Reading ${i + 1}`))}" value="${esc(form.s_M[i] ?? '')}"></div>`).join('');
+  return `<section class="start-card plates-card"><h2><span class="step-no">2</span> ${esc(L('Кривая отклика', 'Response curve'))}</h2>
+    <div class="pairs br-sweet">
+      <div class="pairs-head"><span class="pair-no">№</span><span${tipAttr('s_x', { focus: true })}>${esc(L('Положение, мм', 'Position, mm'))}</span><span>${esc(L(`Показание, ${u}`, `Reading, ${u}`))}</span></div>
+      <div class="pairs-list">${rows}</div>
+      <div class="cells-tools">
+        <button type="button" class="icon-btn" data-br="s-add" aria-label="${esc(L('Добавить положение (+шаг)', 'Add a position (+step)'))}" title="${esc(L('Добавить положение (+шаг)', 'Add a position (+step)'))}">+</button>
+        <button type="button" class="icon-btn" data-br="s-del" aria-label="${esc(L('Убрать последнее положение', 'Remove the last position'))}" title="${esc(L('Убрать последнее положение', 'Remove the last position'))}"${n <= 3 ? ' disabled' : ''}>−</button>
+      </div>
+      <p class="eq">${sub(L('Кнопка «+» ставит в следующую строку положение «последнее + шаг». Показания — ток или заряд за одно и то же время; поправки к ним не нужны: важна только форма кривой.', 'The “+” button puts “last + step” into the next row. Readings are currents or charges over the same time; no corrections are needed, only the curve shape matters.'))}</p>
+    </div></section>`;
+}
+
+function sweetResult() {
+  const r = computeBrachySweet(form);
+  if (!r.ok) return msgHtml(r.messages);
+  const pl = (k) => (Number.isFinite(r.plateau[k].from) && Number.isFinite(r.plateau[k].to) ? L(`${fmt(r.plateau[k].from, 1)}–${fmt(r.plateau[k].to, 1)} мм (ширина ${fmt(r.plateau[k].to - r.plateau[k].from, 1)} мм)`, `${fmt(r.plateau[k].from, 1)}–${fmt(r.plateau[k].to, 1)} mm (width ${fmt(r.plateau[k].to - r.plateau[k].from, 1)} mm)`) : L('за пределами кривой', 'beyond the curve'));
+  const u = unitLabel(CURRENT_UNITS[form.s_unit]) ?? '';
+  const rows = [
+    [L('Максимум', 'Maximum'), `${fmt(r.mPeak, 4)} ${u}; ${r.method === 'parabola' ? L(`вершина параболы по ${r.fit.n} точкам`, `parabola vertex over ${r.fit.n} points`) : L('наибольшее показание', 'largest reading')}`, 'xPeak'],
+    [L('Плато ≥ 99,5 %', 'Plateau ≥ 99.5%'), pl(99.5), 'plateau'],
+    [L('Плато ≥ 99 %', 'Plateau ≥ 99%'), pl(99), 'plateau'],
+    [L('Наибольший шаг', 'Largest step'), `${fmt(r.maxStep, 2)} ${L('мм', 'mm')}`, 's_step'],
+    Number.isFinite(r.atMeas.rel) ? [L('Отклик в положении измерения', 'Response at the measurement position'), `${fmt(r.atMeas.x, 1)} ${L('мм', 'mm')}: ${fmt(r.atMeas.rel * 100, 2)} %`, 'w_pos'] : null,
+    Number.isFinite(r.atCert.x) ? [L('Опорная точка сертификата', 'Certificate reference point'), `${fmt(r.atCert.x, 1)} ${L('мм', 'mm')}${Number.isFinite(r.atCert.rel) ? `: ${fmt(r.atCert.rel * 100, 2)} %` : ''}${Number.isFinite(r.atCert.shift) ? L(`, сдвиг ${fmtSigned(r.atCert.shift, 1)} мм`, `, shift ${fmtSigned(r.atCert.shift, 1)} mm`) : ''}`, 's_cert_pos'] : null,
+  ];
+  const table = `<div class="table-wrap"><table class="factors br-variants"><thead><tr><th class="v">${esc(L('Положение, мм', 'Position, mm'))}</th><th class="v">${esc(L(`Показание, ${u}`, `Reading, ${u}`))}</th><th class="v">${esc(L('Отклик, %', 'Response, %'))}</th></tr></thead><tbody>${r.points
+    .map((p, i) => `<tr${Math.abs(p.x - r.xPeak) < 1e-9 ? ' class="current"' : ''}><td class="v">${esc(fmt(p.x, 1))}</td><td class="v">${esc(fmt(p.m, 4))}</td><td class="v">${esc(fmt(r.rel[i].rel * 100, 2))}</td></tr>`)
+    .join('')}</tbody></table></div>`;
+  return `<div class="plates-dose"><span${tipAttr('xPeak', { focus: true })}>${esc(L('Максимум отклика', 'Response maximum'))}</span><b>${esc(fmt(r.xPeak, 1))} ${esc(L('мм', 'mm'))}</b></div>
+    <div class="actions"><button type="button" data-br="s-use">${esc(L(`Мерить в ${fmt(r.xPeak, 1)} мм на листе «Колодезная камера»`, `Measure at ${fmt(r.xPeak, 1)} mm on the Well-type chamber sheet`))}</button></div>
+    <div class="br-chart" id="br-sweet-chart"></div>
+    <p class="chart-legend">${legendSwatch({ cls: 's1' })} ${esc(L('измерения', 'measurements'))} ${legendSwatch({ cls: 's2', line: true })} ${esc(L('парабола у вершины', 'parabola at the top'))}</p>
+    ${factorRows(rows)}${table}${msgHtml(r.messages)}`;
+}
+
+function sweetChart() {
+  const box = $('#br-sweet-chart');
+  if (!box) return;
+  const r = computeBrachySweet(form);
+  if (!r.ok) return;
+  const series = [{ cls: 's1', shape: 'circle', points: r.rel.map((p) => ({ x: p.x, y: p.rel * 100, title: `${fmt(p.x, 1)} ${L('мм', 'mm')}: ${fmt(p.rel * 100, 2)} %` })) }];
+  if (r.fit) {
+    const pts = [];
+    for (let i = 0; i <= 40; i++) {
+      const x = r.fit.from + ((r.fit.to - r.fit.from) * i) / 40;
+      const dx = x - r.fit.x0;
+      pts.push({ x, y: ((r.fit.c0 + r.fit.c1 * dx + r.fit.c2 * dx * dx) / Math.abs(r.mPeak)) * 100 });
+    }
+    series.push({ cls: 's2', line: true, points: pts });
+  }
+  const vlines = [{ x: r.xPeak, label: L(`максимум ${fmt(r.xPeak, 1)}`, `maximum ${fmt(r.xPeak, 1)}`) }];
+  if (Number.isFinite(r.atMeas.rel)) vlines.push({ x: r.atMeas.x, label: L('измерение', 'measurement'), row: 1 });
+  if (Number.isFinite(r.atCert.rel)) vlines.push({ x: r.atCert.x, label: L('сертификат', 'certificate'), row: 1 });
+  scatterChart(box, {
+    label: L('Относительный отклик колодезной камеры по положению источника', 'Relative well-type chamber response by source position'),
+    xLabel: L('Положение источника, мм', 'Source position, mm'),
+    yLabel: L('Отклик, %', 'Response, %'),
+    fmt: (v, d) => fmt(v, d),
+    series,
+    vlines,
+    aspect: 0.45,
+    minHeight: 220,
+    maxHeight: 360,
+  });
+}
+
+// ------------------------------------------------------------ лист «Распад»
+function decayParamsHtml() {
+  const bases = [['cert', L('от сертификата источника', 'from the source certificate')], ['well', L('от измерения колодезной камерой', 'from the well-type chamber measurement')], ['phantom', L('от измерения в фантоме PTW 9193', 'from the PTW 9193 phantom measurement')]];
+  const units = [['', L('по нуклиду', 'by nuclide')], ['d', L('сутки', 'days')], ['w', L('недели', 'weeks')], ['m', L('месяцы', 'months')]];
+  const tUnits = `<optgroup label="${esc(L('Сила источника', 'Source strength'))}">${unitOpts(STRENGTH_UNITS, form.d_target_unit)}</optgroup><optgroup label="${esc(L('Активность (нужна Γ_δ)', 'Activity (Γ_δ needed)'))}">${unitOpts(ACTIVITY_UNITS, form.d_target_unit)}</optgroup>`;
+  return `<section class="start-card plates-card"><h2><span class="step-no">2</span> ${esc(L('Таблица', 'Table'))}</h2>
+    <div class="grid">
+      ${select('d_basis', L('Отсчёт', 'Base'), bases.map(([k, t]) => opt(k, t, form.d_basis)).join(''), { span: ' span-2' })}
+      <div class="field"><label for="br_d_from">${esc(L('С даты (пусто — с даты отсчёта)', 'From (blank: the base date)'))}</label><input type="date" id="br_d_from" data-f="d_from" value="${esc(form.d_from)}"></div>
+      <div class="field"><label for="br_d_to">${esc(L('По дату (пусто — по умолчанию)', 'To (blank: default)'))}</label><input type="date" id="br_d_to" data-f="d_to" value="${esc(form.d_to)}"></div>
+      ${num('d_n', L('Шаг', 'Step'), { ph: '1' })}
+      ${select('d_unit', L('Единица шага', 'Step unit'), units.map(([k, t]) => opt(k, t, form.d_unit)).join(''))}
+      <div class="field"><label for="br_d_zone">${esc(L('Часовой пояс таблицы', 'Table time zone'))}</label><select id="br_d_zone" data-f="d_zone">${zoneOpts(form.d_zone)}</select></div>
+      ${numUnit('d_target', L('Порог замены источника', 'Source replacement threshold'), tUnits, 'd_target_unit', { span: ' span-2' })}
+    </div></section>`;
+}
+
+/** Дата и время в поясе zone ('' — компьютера, 'UTC', '+3', '+5:30'): «ДД.ММ.ГГГГ ЧЧ:ММ». */
+function zoneMinutes(zone) {
+  if (!zone) return offsetMin();
+  if (zone === 'UTC') return 0;
+  const m = String(zone).match(/^([+-])(\d{1,2})(?::(\d{2}))?$/);
+  return m ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3] ?? 0)) : offsetMin();
+}
+function dateText(t, zone, withTime = true) {
+  const d = new Date(t + zoneMinutes(zone) * 60000);
+  const p = (x) => String(x).padStart(2, '0');
+  const day = L(`${p(d.getUTCDate())}.${p(d.getUTCMonth() + 1)}.${d.getUTCFullYear()}`, `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`);
+  return withTime ? `${day} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}` : day;
+}
+const isoUtc = (t) => new Date(t).toISOString().slice(0, 16).replace('T', ' ') + 'Z';
+
+function decayCompute() {
+  const o = { offsetMin: offsetMin() };
+  return computeBrachyDecay(form, { ...o, well: computeBrachyWell(form, o), phantom: computeBrachyPhantom(form, o) });
+}
+
+function decayResult() {
+  const r = decayCompute();
+  if (!r.ok) return msgHtml(r.messages);
+  const z = form.d_zone;
+  const hasA = r.rows.some((x) => Number.isFinite(x.A));
+  const head = `<div class="plates-dose"><span>${esc(L('Отсчёт', 'Base'))} — ${esc(r.base.label)}</span><b>${esc(fmt(r.base.U / 1e3, 3))} ${esc(L('мГр/ч на 1 м', 'mGy/h at 1 m'))}</b><span>${esc(dateText(r.base.t, z))}</span></div>`;
+  const target = r.target && Number.isFinite(r.target.t)
+    ? `<p class="sub-hint"${tipAttr('d_target')}>${sub(L(`Сила ${fmt(r.target.U / 1e3, 3)} мГр/ч на 1 м (${fmt(r.target.U, 0)} U) — ${dateText(r.target.t, z)} (${isoUtc(r.target.t)}), через ${fmt((r.target.t - r.base.t) / 86400000, 1)} сут от отсчёта.`, `Strength ${fmt(r.target.U / 1e3, 3)} mGy/h at 1 m (${fmt(r.target.U, 0)} U): ${dateText(r.target.t, z)} (${isoUtc(r.target.t)}), ${fmt((r.target.t - r.base.t) / 86400000, 1)} d after the base.`))}</p>`
+    : '';
+  const table = `<div class="table-wrap"><table class="factors br-variants br-decay"><thead><tr><th>${esc(L('Дата', 'Date'))}</th><th>UTC</th><th class="v">${esc(L('Сутки', 'Days'))}</th><th class="v"${tipAttr('frac', { focus: true })}>${esc(L('Доля', 'Fraction'))}</th><th class="v"${tipAttr('RAKR', { focus: true })}>${esc(L('ОМВК, мГр/ч', 'RAKR, mGy/h'))}</th><th class="v">S_K, U</th>${hasA ? `<th class="v"${tipAttr('cert_gamma', { focus: true })}>${esc(L('A_app, ГБк', 'A_app, GBq'))}</th>` : ''}</tr></thead><tbody>${r.rows
+    .map((x) => `<tr><td>${esc(dateText(x.t, z))}</td><td><small>${esc(isoUtc(x.t))}</small></td><td class="v">${esc(fmt(x.days, 1))}</td><td class="v">${esc(fmt(x.frac, 4))}</td><td class="v">${esc(fmt(x.mGyh, 3))}</td><td class="v">${esc(fmt(x.U, 0))}</td>${hasA ? `<td class="v">${esc(fmt(x.A, 2))}</td>` : ''}</tr>`)
+    .join('')}</tbody></table></div>`;
+  const stepText = { d: L('сут', 'd'), w: L('нед.', 'wk'), m: L('мес.', 'mo') }[r.step.unit];
+  return `${head}<p class="sub-hint">${sub(L(`T½ = ${fmt(r.half, 3)} сут; шаг ${fmt(r.step.n, 0)} ${stepText}; ${r.rows.length} строк.`, `T½ = ${fmt(r.half, 3)} d; step ${fmt(r.step.n, 0)} ${stepText}; ${r.rows.length} rows.`))}</p>${target}
+    <div class="actions"><button type="button" data-br="d-csv">${esc(L('Скачать таблицу (CSV)', 'Download the table (CSV)'))}</button></div>${table}${msgHtml(r.messages)}`;
+}
+
+function decayCsv() {
+  const r = decayCompute();
+  if (!r.ok) return;
+  const en = L('ru', 'en') === 'en';
+  const sep = en ? ',' : ';';
+  const num = (v, d) => (Number.isFinite(v) ? (en ? v.toFixed(d) : v.toFixed(d).replace('.', ',')) : '');
+  const head = [L('Дата', 'Date'), 'UTC', L('Сутки', 'Days'), L('Доля', 'Fraction'), L('ОМВК, мГр/ч на 1 м', 'RAKR, mGy/h at 1 m'), 'S_K, U', L('A_app, ГБк', 'A_app, GBq')];
+  const lines = [head.join(sep), ...r.rows.map((x) => [dateText(x.t, form.d_zone), isoUtc(x.t), num(x.days, 2), num(x.frac, 5), num(x.mGyh, 4), num(x.U, 1), num(x.A, 3)].join(sep))];
+  downloadText(`\ufeff${lines.join('\r\n')}\r\n`, savedFileName(L('таблица-распада', 'decay-table'), [form.src_name, HALF_LIVES[form.nuclide]?.label, new Date(r.base.t).toISOString().slice(0, 10)], 'csv'), 'text/csv;charset=utf-8');
+  status(L('Таблица распада сохранена.', 'The decay table has been saved.'));
+}
+
 function resultCardHtml(n) {
   return `<section class="start-card plates-card"><h2><span class="step-no">${n}</span> ${esc(L('Результат', 'Result'))}</h2><div id="br-result" aria-live="polite"></div></section>`;
+}
+
+function sheetBody() {
+  if (sheet === 'sweet') return `${sweetSetupHtml()}${sweetRowsHtml()}${resultCardHtml(3)}`;
+  if (sheet === 'decay') return `${sourceHtml()}${decayParamsHtml()}${resultCardHtml(3)}`;
+  if (sheet === 'well') return `${sourceHtml()}${wellChamberHtml()}${wellMeasureHtml()}${resultCardHtml(4)}`;
+  return `${sourceHtml()}${phantomChamberHtml()}${phantomMeasureHtml()}${resultCardHtml(4)}${doseHtml()}${ownKtotHtml()}`;
 }
 
 function render() {
   const root = $('#brachy-root');
   if (!root) return;
   root.innerHTML = `${navHtml()}
-    <div class="plates-banner"><b>${esc(L('Раздел в разработке', 'Section in development'))}</b>: ${esc(L('расчёт работает, запись в журнал, бюджет неопределённости и протокол появятся на следующих этапах. Черновик формы хранится в этом браузере.', 'the calculation works; journal records, the uncertainty budget and the report come in the next stages. The form draft is kept in this browser.'))}</div>
+    <div class="plates-banner"><b>${esc(L('Раздел в разработке', 'Section in development'))}</b>: ${esc(L('расчёт работает; кросс-калибровка, бюджет неопределённости, запись в журнал и протокол появятся на следующих этапах. Черновик формы хранится в этом браузере.', 'the calculation works; cross-calibration, the uncertainty budget, journal records and the report come in the next stages. The form draft is kept in this browser.'))}</div>
     ${introHtml()}
-    ${sourceHtml()}
-    ${sheet === 'well' ? `${wellChamberHtml()}${wellMeasureHtml()}` : `${phantomChamberHtml()}${phantomMeasureHtml()}`}
-    ${resultCardHtml(4)}${sheet === 'phantom' ? `${doseHtml()}${ownKtotHtml()}` : ''}
-    <div class="actions"><button type="button" data-br="clear">${esc(L('Очистить измерение', 'Clear the measurement'))}</button></div>`;
+    ${sheetBody()}
+    ${sheet === 'decay' ? '' : `<div class="actions"><button type="button" data-br="clear">${esc(L('Очистить измерение', 'Clear the measurement'))}</button></div>`}`;
   for (const el of root.querySelectorAll('.cells[data-series]')) {
     const key = el.dataset.series;
     const m = key.match(/^p_hole(\d)$/);
@@ -240,6 +410,7 @@ function render() {
   if (clear) {
     armButton(clear, clear.textContent, () => L('Очистить показания этого листа?', 'Clear the readings of this sheet?'), () => {
       if (sheet === 'well') Object.assign(form, { w_I: [...BRACHY_DEFAULTS.w_I], w_leak: '', w_T: '', w_P: '', w_pol_plus: '', w_pol_minus: '', w_ks_m1: '', w_ks_m2: '', w_date: '', w_time: '' });
+      else if (sheet === 'sweet') Object.assign(form, { s_x: [...BRACHY_DEFAULTS.s_x], s_M: [...BRACHY_DEFAULTS.s_M], s_date: '' });
       else Object.assign(form, { p_holes: structuredClone(BRACHY_DEFAULTS.p_holes), p_transit: '', p_pol_plus: ['', '', ''], p_pol_minus: ['', '', ''], p_ks_v2: ['', '', ''], p_date: '', p_time: '', p_wellK: '' });
       persist();
       render();
@@ -381,7 +552,8 @@ function live() {
     const dose = $('#br-dose');
     if (dose) dose.innerHTML = doseResult(r);
   }
-  box.innerHTML = sheet === 'well' ? wellResult() : phantomResult();
+  box.innerHTML = sheet === 'well' ? wellResult() : sheet === 'sweet' ? sweetResult() : sheet === 'decay' ? decayResult() : phantomResult();
+  if (sheet === 'sweet') sweetChart();
 }
 
 // ------------------------------------------------------------ ввод
@@ -390,6 +562,8 @@ function readForm() {
   if (!root) return;
   for (const el of root.querySelectorAll('[data-f]')) form[el.dataset.f] = el.value;
   for (const el of root.querySelectorAll('[data-hole]')) form.p_holes[+el.dataset.hole][el.dataset.hf] = el.value;
+  for (const el of root.querySelectorAll('[data-sx]')) form.s_x[+el.dataset.sx] = el.value;
+  for (const el of root.querySelectorAll('[data-sm]')) form.s_M[+el.dataset.sm] = el.value;
   for (const el of root.querySelectorAll('.cells[data-series]')) {
     const key = el.dataset.series;
     const m = key.match(/^p_hole(\d)$/);
@@ -414,7 +588,7 @@ function onInput(e) {
 function onChange(e) {
   const t = e.target;
   if (t.name === 'br_main') return;
-  if (t.dataset.full !== undefined || t.id === 'br_w_unit') {
+  if (t.dataset.full !== undefined || t.id === 'br_w_unit' || t.id === 'br_s_unit') {
     readForm();
     persist();
     render();
@@ -433,6 +607,39 @@ function onClick(e) {
       form.p_ktot = String(+r.ktotFromWell.toPrecision(5)).replace('.', L(',', '.'));
       form.p_main = 'own';
     }
+  } else if (b.dataset.br === 's-add') {
+    readForm();
+    // следующее положение = последнее заполненное + шаг; в первую пустую строку после него или в новую
+    let li = -1;
+    form.s_x.forEach((v, i) => { if (Number.isFinite(parseNumber(v))) li = i; });
+    const last = li >= 0 ? parseNumber(form.s_x[li]) : NaN;
+    const step = parseNumber(form.s_step);
+    const next = Number.isFinite(last) && Number.isFinite(step) ? String(+(last + step).toFixed(3)).replace('.', L(',', '.')) : '';
+    const i = li + 1;
+    if (i < form.s_x.length && !String(form.s_x[i] ?? '').trim()) form.s_x[i] = next;
+    else {
+      form.s_x.push(next);
+      while (form.s_M.length < form.s_x.length - 1) form.s_M.push('');
+      form.s_M.push('');
+    }
+    persist();
+    render();
+    $(`#br_s_M_${i < form.s_x.length ? i : form.s_x.length - 1}`)?.focus();
+    return;
+  } else if (b.dataset.br === 's-del') {
+    readForm();
+    if (form.s_x.length > 3) {
+      form.s_x.pop();
+      form.s_M.pop();
+    }
+  } else if (b.dataset.br === 's-use') {
+    const r = computeBrachySweet(form);
+    if (!r.ok) return;
+    form.w_pos = String(+r.xPeak.toFixed(1)).replace('.', L(',', '.'));
+    status(L(`Положение измерения на листе «Колодезная камера» — ${form.w_pos} мм.`, `Measurement position on the Well-type chamber sheet: ${form.w_pos} mm.`));
+  } else if (b.dataset.br === 'd-csv') {
+    decayCsv();
+    return;
   } else return;
   persist();
   render();
@@ -449,7 +656,7 @@ export function initBrachy() {
   document.addEventListener('langchange', render);
 }
 
-/** Открыть лист (адрес #brachy/well, #brachy/phantom; без листа — тот, с которым работали). */
+/** Открыть лист (адрес #brachy/well, #brachy/sweet, #brachy/phantom, #brachy/decay; без листа — тот, с которым работали). */
 export function renderBrachy(s) {
   if (SHEETS.includes(s)) sheet = s;
   persist();
