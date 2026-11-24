@@ -152,7 +152,8 @@ function chamberDims(f) {
 function usedInRecords(j, key, id) {
   return (j.sessions || []).some((s) => (s.beams || []).some((b) => b[key] === id) || (s.checks || []).some((c) => c[key] === id || (key === 'chamberId' && c.summary?.workChamberId === id)))
     || (j.plateChecks || []).some((p) => p.binding?.[key] === id)
-    || kvEquipUsed(j, key, id);
+    || kvEquipUsed(j, key, id)
+    || (j.brachyRecords || []).some((r) => r[key] === id || (key === 'chamberId' && r.refChamberId === id));
 }
 const RECORDS_TITLE = () => L('Есть в записях журнала: записи ссылаются на эту запись оборудования (протокол, карты пар камер)', 'Used in journal records: they refer to this equipment entry (report, chamber pair charts)');
 

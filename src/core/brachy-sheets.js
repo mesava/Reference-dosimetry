@@ -74,6 +74,10 @@ export const BRACHY_DEFAULTS = {
   j_ref_row: '',
   j_fld: '',
   j_fld_row: '',
+  // запись в журнал (с 0.76.0): кто выполнил, примечание; отбор на листе «Журнал»
+  rec_staff: '',
+  rec_notes: '',
+  log_f: '',
 
   // колодезная камера
   w_model: '',

@@ -21,6 +21,8 @@ const reasonText = (r) =>
     factors: L('после того как k_pol и k_s второй камеры стали известны', 'after k_pol and k_s of the second chamber became known'),
     binding: L('после новой привязки пластин к калибровке в воде', 'after a new binding of the plates to a calibration in water'),
     applicator: L('после смены стандартного тубуса, места сравнения дозы или единицы задания', 'after a change of the reference applicator, the dose comparison point or the setting unit'),
+    source: L('после замены источника', 'after the source exchange'),
+    baseline: L('после нового исходного значения камеры', 'after a new chamber baseline'),
   })[r] ?? '';
 
 const stageText = (p) => (p.stage === 'found' ? L(' (до подстройки)', ' (before adjustment)') : p.stage === 'left' ? L(' (после подстройки)', ' (after adjustment)') : '');
@@ -46,11 +48,11 @@ function segmentLines(chart, xMax) {
 const segmentMarks = (chart) =>
   chart.segments.slice(1).map((seg, i) => ({
     x: chart.points[seg.from].day,
-    label: seg.reason === 'adjust' ? L('подстройка', 'adjustment') : seg.reason === 'equipment' ? L('оборудование', 'equipment') : seg.reason === 'geometry' ? L('геометрия', 'geometry') : seg.reason === 'factors' ? 'k_pol, k_s' : seg.reason === 'binding' ? L('привязка', 'binding') : seg.reason === 'applicator' ? L('тубус', 'applicator') : L('новый отсчёт', 'new count'),
+    label: seg.reason === 'adjust' ? L('подстройка', 'adjustment') : seg.reason === 'equipment' ? L('оборудование', 'equipment') : seg.reason === 'geometry' ? L('геометрия', 'geometry') : seg.reason === 'factors' ? 'k_pol, k_s' : seg.reason === 'binding' ? L('привязка', 'binding') : seg.reason === 'applicator' ? L('тубус', 'applicator') : seg.reason === 'source' ? L('источник', 'source') : seg.reason === 'baseline' ? L('исходное', 'baseline') : L('новый отсчёт', 'new count'),
     row: i % 2,
   }));
 
-function drawChart(box, chart, { tol, label, yLabel, pointTitle, check, extraLines = [], extraNotes = [], yExtra = [] }) {
+export function drawChart(box, chart, { tol, label, yLabel, pointTitle, check, extraLines = [], extraNotes = [], yExtra = [] }) {
   const pts = chart.points;
   const days = pts.map((p) => p.day);
   const x0 = Math.min(...days);
@@ -87,10 +89,10 @@ function drawChart(box, chart, { tol, label, yLabel, pointTitle, check, extraLin
   });
 }
 
-const legendHtml = (items) => items.map(([sw, text]) => `<span class="item">${legendSwatch(sw)}<span>${esc(text)}</span></span>`).join('');
+export const legendHtml = (items) => items.map(([sw, text]) => `<span class="item">${legendSwatch(sw)}<span>${esc(text)}</span></span>`).join('');
 
 /** Строка об отсчёте: с какого сеанса, сколько точек, CL, σ, границы. */
-function segmentLine(chart, unit = '%') {
+export function segmentLine(chart, unit = '%') {
   const seg = chart.current;
   const from = fmtDate(chart.points[seg.from].date);
   const head = L(`Текущий отсчёт — с ${from} (${reasonText(seg.reason)}), записей: ${seg.n}.`, `Current count: from ${from} (${reasonText(seg.reason)}), records: ${seg.n}.`);
@@ -113,7 +115,7 @@ function segmentLine(chart, unit = '%') {
   );
 }
 
-function trendLine(chart, tol, { vsBase = '' } = {}) {
+export function trendLine(chart, tol, { vsBase = '' } = {}) {
   const t = chart.trend;
   const w = chart.trendWait;
   if (!t && w) {
@@ -140,7 +142,7 @@ function trendLine(chart, tol, { vsBase = '' } = {}) {
 }
 
 /** Сигналы (3σ, CUSUM) и, отдельно, наблюдения (2 из 3, 8 подряд, 6 подряд) — последние сверху. */
-function signalsHtml(chart, name = () => '', none = '') {
+export function signalsHtml(chart, name = () => '', none = '') {
   const item = (p, keys) => `<li><b>${esc(fmtDate(p.date))}</b>${esc(stageText(p))}${name(p) ? `, ${esc(name(p))}` : ''}: ${esc(fmtSigned(p.value, 2))} % — ${esc(keys.map(signalText).join('; '))}</li>`;
   const list = chart.points.filter((p) => p.signals.length).slice(-8).reverse();
   // наблюдения — только в текущем отсчёте и без точек, где уже есть сигнал
@@ -155,7 +157,7 @@ function signalsHtml(chart, name = () => '', none = '') {
   return head + obs;
 }
 /** Сигналы и наблюдения точки для подсказки. */
-const pointRules = (p) => `${p.signals.length ? ` — ${p.signals.map(signalText).join('; ')}` : ''}${p.watch?.length ? ` (${L('наблюдение', 'observation')}: ${p.watch.map(signalText).join('; ')})` : ''}`;
+export const pointRules = (p) => `${p.signals.length ? ` — ${p.signals.map(signalText).join('; ')}` : ''}${p.watch?.length ? ` (${L('наблюдение', 'observation')}: ${p.watch.map(signalText).join('; ')})` : ''}`;
 
 const helpHtml = () => `<details class="jsb-more"><summary>${esc(L('Как читать карту', 'How to read the chart'))}</summary><p class="sub-hint">${esc(
   L(

@@ -4,7 +4,7 @@
 // источника — общий для листов. Расчёт — core/brachy-sheets.js; черновик формы — в этом браузере.
 import { L, refText } from '../core/i18n.js';
 import { PRESSURE_UNITS, unitLabel, parseNumber } from '../core/units.js';
-import { HALF_LIVES, KSM_SOURCES, PTW_TO_DGMP, APPLICATOR_KA_STEEL } from '../core/brachy-data.js';
+import { HALF_LIVES, KSM_SOURCES, PTW_TO_DGMP, APPLICATOR_KA_STEEL, CERT_TOLERANCE } from '../core/brachy-data.js';
 import { kDec } from '../core/brachy.js';
 import {
   BRACHY_DEFAULTS, normalizeBrachy, computeBrachyWell, computeBrachyPhantom, computeBrachySweet, computeBrachyDecay, computeBrachyCross, computeBrachyStability, computeBrachyTg43, fieldTime,
@@ -17,12 +17,15 @@ import { cellsHtml } from './journal-common.js';
 import { tipAttr } from './brachy-tips.js';
 import { wellBudget, phantomBudget } from '../core/brachy-unc.js';
 import { parseOverrides } from '../core/uncertainty.js';
-import { brachyMachines, sourceOn, sourceText, sourceToForm, certRowsFor, wellChamberToForm, phantomChamberToForm, isWellModel, wellChamberLabel } from '../core/brachy-journal.js';
-import { chamberText, chamberUse, cobaltCapable, activeOnly } from '../core/journal.js';
-import { getJournal, onJournal } from './journal-store.js';
+import { brachyMachines, sourceOn, sourceText, sourceModelName, sourceToForm, certRowsFor, wellChamberToForm, phantomChamberToForm, isWellModel, wellChamberLabel } from '../core/brachy-journal.js';
+import { chamberText, chamberUse, cobaltCapable, activeOnly, dayNumber } from '../core/journal.js';
+import { getJournal, onJournal, updateJournal } from './journal-store.js';
+import { drawChart, legendHtml, segmentLine, trendLine, signalsHtml, pointRules } from './journal-spc-ui.js';
+import { controlChart } from '../core/spc.js';
+import { BRACHY_RECORD_SHEETS, brachySheetText, recordBrachy, brachyRecordsOf, formFromRecord, removeBrachyRecord } from '../core/brachy-records.js';
 
 const KEY = 'reference-dosimetry.brachy';
-const SHEETS = ['well', 'sweet', 'phantom', 'cross', 'stab', 'decay', 'tg43'];
+const SHEETS = ['well', 'sweet', 'phantom', 'cross', 'stab', 'decay', 'tg43', 'log'];
 let sheet = 'well';
 let form = normalizeBrachy({});
 let statusEl = null;
@@ -82,8 +85,8 @@ const when = (pre, label, timeHint) => `<div class="field"><label for="br_${pre}
 // подставляется в поля листа (их можно поправить); в черновике хранятся только id выбранного.
 const isoToday = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 /** Дата измерения листа: по ней выбирается источник, стоявший в аппарате. */
-const measDate = () => (sheet === 'phantom' ? form.p_date : sheet === 'cross' ? form.x_ref_date : sheet === 'stab' ? form.st_date : form.w_date) || isoToday();
-const MEAS_DATE_IDS = ['br_w_date', 'br_p_date', 'br_x_ref_date', 'br_st_date'];
+const measDate = () => (sheet === 'sweet' ? form.s_date : sheet === 'phantom' ? form.p_date : sheet === 'cross' ? form.x_ref_date : sheet === 'stab' ? form.st_date : form.w_date) || isoToday();
+const MEAS_DATE_IDS = ['br_w_date', 'br_p_date', 'br_x_ref_date', 'br_st_date', 'br_s_date'];
 /** Афтерлоадер и источник журнала по выбору: явно выбранный источник или стоявший в аппарате на дату измерения. */
 function journalSource() {
   const m = brachyMachines(getJournal()).find((x) => x.id === form.j_machine) ?? null;
@@ -166,12 +169,18 @@ function journalSourceHtml() {
     ${m ? select('j_source', L('Источник', 'Source'), sOpts, { span: ' span-2' }) : ''}
     ${m && !s ? `<p class="sub-hint span-all">${esc(L('На дату измерения источника в аппарате нет: проверьте даты установки и замены в «Оборудовании».', 'There is no source in the afterloader on the measurement date: check the installation and replacement dates in Equipment.'))}</p>` : ''}`;
 }
-function journalWellHtml() {
+function journalWellHtml(rows = true) {
   const list = wellChambers();
   if (!list.length) return '';
   const c = chamberById(form.j_well);
   return `${select('j_well', L('Камера из «Оборудования»', 'Chamber from Equipment'), opt('', NOT_EQ(), form.j_well) + chOpts(list, form.j_well), { span: ' span-2' })}
-    ${rowSelect(c, 'j_row', L('Строка сертификата', 'Certificate row'))}`;
+    ${rows ? rowSelect(c, 'j_row', L('Строка сертификата', 'Certificate row')) : ''}`;
+}
+/** Только афтерлоадер (лист «Максимум отклика»: положение зависит от аппарата и ампулопровода). */
+function journalMachineHtml() {
+  const ms = brachyMachines(getJournal());
+  if (!ms.length) return '';
+  return select('j_machine', L('Афтерлоадер из «Оборудования»', 'Afterloader from Equipment'), opt('', NOT_EQ(), form.j_machine) + ms.map((x) => opt(x.id, x.name || L('афтерлоадер без названия', 'unnamed afterloader'), form.j_machine)).join(''), { span: ' span-2' });
 }
 function journalPhantomHtml() {
   const { marked, other } = phantomChambers();
@@ -190,9 +199,231 @@ function journalCrossHtml(pre) {
 }
 const anyEquipment = () => brachyMachines(getJournal()).length || wellChambers().length;
 
+// ------------------------------------------------------------ запись в журнал и лист «Журнал» (с 0.76.0)
+// Измерения листов «Колодезная камера», «Фантом PTW 9193», «Стабильность», «Сличение камер», «Максимум отклика»
+// записываются в журнал отделения (j.brachyRecords, core/brachy-records.js); лист «Журнал» — список записей с отбором
+// по аппарату или камере, тренд отклонения от сертификата источника и от исходного значения камеры.
+const staffNames = () => (getJournal().staff ?? []).map((s) => String(s.name ?? '').trim()).filter(Boolean);
+/** Результат листа sh по текущей форме. */
+function sheetCompute(sh = sheet) {
+  const o = { offsetMin: offsetMin() };
+  if (sh === 'well') return computeBrachyWell(form, o);
+  if (sh === 'phantom') return computeBrachyPhantom(form, o);
+  if (sh === 'stab') return computeBrachyStability(form, o);
+  if (sh === 'cross') return computeBrachyCross(form, o);
+  return computeBrachySweet(form);
+}
+const logLink = () => {
+  const n = (getJournal().brachyRecords ?? []).length;
+  return `<a href="#brachy/log" data-goto="brachy/log">${esc(L(`Журнал брахитерапии (записей: ${n})`, `Brachytherapy journal (${n} records)`))}</a>`;
+};
+function recordHtml(n) {
+  if (!BRACHY_RECORD_SHEETS.includes(sheet)) return '';
+  const by = ['well', 'phantom', 'sweet'].includes(sheet) ? L('по афтерлоадеру', 'by afterloader') : L('по камере', 'by chamber');
+  return `<section class="start-card plates-card"><h2><span class="step-no">${n}</span> ${esc(L('Запись в журнал', 'Journal record'))}</h2>
+    <datalist id="br-staff">${staffNames().map((x) => `<option value="${esc(x)}">`).join('')}</datalist>
+    <div class="grid">
+      ${text('rec_staff', L('Выполнил(и)', 'Performed by'), { list: 'br-staff', ph: L('через запятую', 'comma-separated'), span: ' span-2' })}
+      ${text('rec_notes', L('Примечание к записи', 'Record note'), { span: ' span-2' })}
+    </div>
+    <div class="actions"><button type="button" data-br="record">${esc(L('Записать в журнал', 'Record to the journal'))}</button>${logLink()}</div>
+    <p class="sub-hint">${esc(L(`Запись — измерение этого листа за день ${by} из «Оборудования»: повторная запись того же дня заменяет прежнюю. Записи хранятся в журнале отделения — сохраните его в файл, если автосохранение не включено.`, `A record is the measurement of this sheet on a day ${by} from Equipment: recording the same day again replaces the earlier one. The records are kept in the department journal: save it to the file if autosave is off.`))}</p>
+  </section>`;
+}
+
+function doRecord() {
+  readForm();
+  const r = sheetCompute();
+  const src = ['well', 'phantom'].includes(sheet) ? journalSource().s?.id ?? '' : '';
+  let res = null;
+  updateJournal((j) => {
+    res = recordBrachy(j, { sheet, form, r, staff: String(form.rec_staff ?? '').split(/[,;]/), notes: form.rec_notes, sourceId: src, today: isoToday() });
+    return res.error ? j : res.journal;
+  }, 'brachy');
+  if (res.error) {
+    status(res.error);
+    return;
+  }
+  form.rec_notes = '';
+  persist();
+  render();
+  const what = brachySheetText(sheet);
+  status(res.replaced
+    ? L(`Запись в журнале заменена: ${what}, ${isoDateText(res.record.date)}. Сохраните журнал в файл, если автосохранение не включено.`, `The journal record has been replaced: ${what}, ${isoDateText(res.record.date)}. Save the journal file if autosave is off.`)
+    : L(`Записано в журнал: ${what}, ${isoDateText(res.record.date)}. Записи — лист «Журнал»; сохраните журнал в файл, если автосохранение не включено.`, `Recorded to the journal: ${what}, ${isoDateText(res.record.date)}. The records are on the Journal sheet; save the journal file if autosave is off.`));
+}
+
+// лист «Журнал»
+const machineName = (m) => m?.name || L('афтерлоадер без названия', 'unnamed afterloader');
+/** Источник записи коротко: модель и номер. */
+function recSource(j, r) {
+  const m = j.machines.find((x) => x.id === r.machineId);
+  const s = m?.sources?.find((x) => x.id === r.sourceId);
+  if (!s) return '';
+  return [sourceModelName(s), s.serial ? `№ ${s.serial}` : ''].filter(Boolean).join(', ');
+}
+const isoDateText = (d) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d ?? ''));
+  return m ? L(`${m[3]}.${m[2]}.${m[1]}`, String(d)) : String(d ?? '');
+};
+const stabMethodText = (k) => Object.fromEntries(ST_METHODS())[k] ?? k;
+/** Результат записи для таблицы: текст и отметка. */
+function recResult(r) {
+  const s = r.summary ?? {};
+  if (r.sheet === 'well' || r.sheet === 'phantom') {
+    const text = L(`${fmt(s.mGyh, 3)} мГр/ч на 1 м (${fmt(s.U, 0)} U)`, `${fmt(s.mGyh, 3)} mGy/h at 1 m (${fmt(s.U, 0)} U)`) + (s.variantLabel ? ` · ${s.variantLabel}` : '');
+    return { text, chip: Number.isFinite(s.dev) ? chipHtml({ dev: s.dev, level: s.level || 'ok' }) : '' };
+  }
+  if (r.sheet === 'stab') {
+    const cls = s.pass ? 'ok' : 'out';
+    return { text: `${stabMethodText(s.method)}: ${fmt(s.value, 4)} / ${fmt(s.base, 4)}`, chip: Number.isFinite(s.dev) ? `<span class="chip ${cls}">${esc(fmtSigned(s.dev, 2))} % ${esc(L(`от исходного (±${fmt(s.tol, 1)} %)`, `from the baseline (±${fmt(s.tol, 1)}%)`))}</span>` : '' };
+  }
+  if (r.sheet === 'cross') {
+    const u = unitLabel(WELL_N_UNITS[s.unit]) ?? '';
+    return { text: `N = ${Number.isFinite(s.N) ? fmt(+s.N.toPrecision(6), Math.max(0, 5 - Math.floor(Math.log10(Math.abs(s.N))))) : '—'} ${u}`, chip: Number.isFinite(s.dev) ? `<span class="chip ${Math.abs(s.dev) <= 0.5 ? 'ok' : 'out'}">${esc(fmtSigned(s.dev, 2))} % ${esc(L('от прежнего', 'from the previous'))}</span>` : '' };
+  }
+  if (r.sheet === 'sweet') {
+    const p = s.plateau;
+    const pl = p && Number.isFinite(p.from) && Number.isFinite(p.to) ? L(`; плато 99 %: ${fmt(p.from, 1)}–${fmt(p.to, 1)} мм`, `; 99% plateau: ${fmt(p.from, 1)}–${fmt(p.to, 1)} mm`) : '';
+    return { text: L(`максимум ${fmt(s.xPeak, 1)} мм${pl}`, `maximum ${fmt(s.xPeak, 1)} mm${pl}`), chip: Number.isFinite(s.shift) ? `<span class="chip ${Math.abs(s.shift) <= 1 ? 'ok' : 'out'}">${esc(fmtSigned(s.shift, 1))} ${esc(L('мм от сертификата', 'mm from the certificate'))}</span>` : '' };
+  }
+  return { text: '', chip: '' };
+}
+/** Отбор на листе «Журнал»: '' — все, «m:id» — афтерлоадер, «c:id» — камера. */
+function logFilterOptions(j) {
+  const ms = brachyMachines(j);
+  const used = new Set((j.brachyRecords ?? []).flatMap((r) => [r.chamberId, r.refChamberId]).filter(Boolean));
+  const chs = j.chambers.filter((c) => used.has(c.id) || isWellModel(c.form?.ch_model));
+  return opt('', L('все записи', 'all records'), form.log_f)
+    + ms.map((m) => opt(`m:${m.id}`, L(`афтерлоадер: ${machineName(m)}`, `afterloader: ${machineName(m)}`), form.log_f)).join('')
+    + chs.map((c) => opt(`c:${c.id}`, L(`камера: ${chamberText(c)}`, `chamber: ${chamberText(c)}`), form.log_f)).join('');
+}
+function logRecords(j) {
+  const [k, id] = String(form.log_f ?? '').split(':');
+  return brachyRecordsOf(j, k === 'm' ? { machineId: id } : k === 'c' ? { chamberId: id } : {}).slice().reverse();
+}
+function logHtml() {
+  const j = getJournal();
+  const all = j.brachyRecords ?? [];
+  const recs = logRecords(j);
+  const rows = recs.map((r) => {
+    const m = j.machines.find((x) => x.id === r.machineId);
+    const c = j.chambers.find((x) => x.id === r.chamberId);
+    const ref = j.chambers.find((x) => x.id === r.refChamberId);
+    const res = recResult(r);
+    const who = [m ? machineName(m) : '', c ? chamberText(c) : '', ref ? L(`эталонная: ${chamberText(ref)}`, `reference: ${chamberText(ref)}`) : ''].filter(Boolean).join('; ');
+    return `<tr>
+      <td data-cap="${esc(L('Дата', 'Date'))}">${esc(isoDateText(r.date))}</td>
+      <td data-cap="${esc(L('Вид', 'Kind'))}">${esc(brachySheetText(r.sheet))}${r.summary?.nuclide ? ` · ${esc(HALF_LIVES[r.summary.nuclide]?.label ?? r.summary.nuclide)}` : ''}</td>
+      <td data-cap="${esc(L('Аппарат, камера', 'Afterloader, chamber'))}">${esc(who || '—')}${recSource(j, r) ? `<br><small>${esc(recSource(j, r))}</small>` : ''}</td>
+      <td data-cap="${esc(L('Результат', 'Result'))}">${esc(res.text)} ${res.chip}${r.notes ? `<br><small>${esc(r.notes)}</small>` : ''}</td>
+      <td data-cap="${esc(L('Выполнил', 'Performed by'))}">${esc((r.staff ?? []).join(', ') || '—')}</td>
+      <td class="del"><button type="button" class="link-btn" data-br="open" data-rec="${esc(r.id)}">${esc(L('Открыть на листе', 'Open on the sheet'))}</button> <button type="button" class="link-btn danger" data-br-del="${esc(r.id)}">${esc(L('Удалить', 'Delete'))}</button></td>
+    </tr>`;
+  }).join('');
+  return `<section class="start-card plates-card"><h2><span class="step-no">1</span> ${esc(L('Записи', 'Records'))}</h2>
+    ${all.length ? `<div class="grid">${select('log_f', L('Показать', 'Show'), logFilterOptions(j), { span: ' span-2' })}</div>` : ''}
+    ${recs.length
+      ? `<div class="table-wrap"><table class="factors jf-table br-log-t"><thead><tr><th>${esc(L('Дата', 'Date'))}</th><th>${esc(L('Вид', 'Kind'))}</th><th>${esc(L('Аппарат, камера', 'Afterloader, chamber'))}</th><th>${esc(L('Результат', 'Result'))}</th><th>${esc(L('Выполнил', 'Performed by'))}</th><th class="del"><span class="visually-hidden">${esc(L('Действия', 'Actions'))}</span></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : `<p class="sub-hint">${esc(all.length ? L('По этому отбору записей нет.', 'No records for this selection.') : L('Записей пока нет: на листах «Колодезная камера», «Фантом PTW 9193», «Стабильность», «Сличение камер» и «Максимум отклика» — кнопка «Записать в журнал».', 'No records yet: the Well-type chamber, PTW 9193 phantom, Stability, Cross-calibration and Sweet spot sheets have the Record to the journal button.'))}</p>`}
+  </section>
+  ${trendHtml(j, recs)}`;
+}
+
+/** Группы для контрольных карт: сила источника — по аппарату и листу, стабильность — по камере и методу. */
+function spcGroups(j, recs) {
+  const groups = new Map();
+  const add = (key, g, r) => {
+    if (!groups.has(key)) groups.set(key, { ...g, recs: [] });
+    groups.get(key).recs.push(r);
+  };
+  for (const r of recs) {
+    if (!Number.isFinite(r.summary?.dev)) continue;
+    if (r.sheet === 'well' || r.sheet === 'phantom') {
+      const m = j.machines.find((x) => x.id === r.machineId);
+      add(`s|${r.machineId}|${r.sheet}`, { kind: 'src', sheet: r.sheet, title: L(`Сила источника, ${r.sheet === 'well' ? 'колодезная камера' : 'фантом PTW 9193'}: ${machineName(m)}`, `Source strength, ${r.sheet === 'well' ? 'well-type chamber' : 'PTW 9193 phantom'}: ${machineName(m)}`) }, r);
+    } else if (r.sheet === 'stab') {
+      const c = j.chambers.find((x) => x.id === r.chamberId);
+      add(`c|${r.chamberId}|${r.summary.method}`, { kind: 'stab', title: L(`Стабильность: ${chamberText(c) || 'камера'} (${stabMethodText(r.summary.method)})`, `Stability: ${chamberText(c) || 'chamber'} (${stabMethodText(r.summary.method)})`), tol: r.summary.tol || 0.5 }, r);
+    }
+  }
+  return [...groups.values()].map((g) => ({ ...g, recs: g.recs.slice().sort((x, y) => String(x.date).localeCompare(String(y.date))) }));
+}
+/** Точки карты: новый отсчёт — после замены источника (сила источника) или с новым исходным значением (стабильность). */
+function spcPoints(g) {
+  return g.recs.map((r, i) => {
+    const prev = g.recs[i - 1];
+    const restart = !!prev && (g.kind === 'src' ? r.sourceId !== prev.sourceId : r.summary.base !== prev.summary.base);
+    return { day: dayNumber(r.date), value: r.summary.dev, date: r.date, ...(restart ? { restart: true, reason: g.kind === 'src' ? 'source' : 'baseline' } : {}) };
+  });
+}
+/** Контрольные карты (с 0.76.0): карта индивидуальных значений I-MR, сигналы 3σ и CUSUM, тренд (core/spc.js). */
+function trendHtml(j, recs) {
+  const groups = spcGroups(j, recs);
+  if (!groups.length) return '';
+  return `<section class="start-card plates-card"><h2><span class="step-no">2</span> ${esc(L('Тренды и контрольные карты', 'Trends and control charts'))}</h2>
+    ${groups.map((g, i) => {
+      const tol = g.kind === 'src' ? CERT_TOLERANCE.hdrInvestigate : g.tol;
+      const chart = controlChart(spcPoints(g), { tol });
+      const tolText = g.kind === 'src'
+        ? L(`допуск: ±${CERT_TOLERANCE.hdrInvestigate} % — выяснить причину, ±${CERT_TOLERANCE.hdrStop} % — не использовать (HDR, TRS-492, разд. 8.6.2)`, `tolerance: ±${CERT_TOLERANCE.hdrInvestigate}%: investigate, ±${CERT_TOLERANCE.hdrStop}%: do not use (HDR, TRS-492, Sec. 8.6.2)`)
+        : L(`допуск ±${fmt(tol, 1)} % (TRS-492, разд. 8.5)`, `tolerance ±${fmt(tol, 1)}% (TRS-492, Sec. 8.5)`);
+      return `<h3 class="sub-h">${esc(g.title)}</h3>
+      <div class="chart" id="br-spc-${i}"></div>
+      <div class="chart-legend">${legendHtml([
+        [{ cls: 't1' }, g.kind === 'src' ? L('отклонение от сертификата', 'deviation from the certificate') : L('отклонение от исходного', 'deviation from the baseline')],
+        [{ cls: 'sig', shape: 'square' }, L('сигнал карты', 'chart signal')],
+        [{ line: true, cls: 'cl' }, L('центральная линия', 'centre line')],
+        [{ line: true, cls: 'lim2' }, '±2σ'],
+        [{ line: true, cls: 'lim3', dashed: true }, '±3σ'],
+        [{ line: true, cls: 'aux', dashed: true }, tolText],
+      ])}</div>
+      <div class="hs-spc-summary"><p>${chart.current ? segmentLine(chart) : ''}</p>${chart.trend || chart.trendWait ? `<p>${trendLine(chart, tol)}</p>` : ''}${signalsHtml(chart, () => '', g.kind === 'src' ? L('Сигналов нет: сила источника меняется в пределах обычного разброса.', 'No signals: the source strength varies within its usual scatter.') : L('Сигналов нет: показание камеры меняется в пределах обычного разброса.', 'No signals: the chamber reading varies within its usual scatter.'))}</div>`;
+    }).join('')}
+    <p class="sub-hint">${esc(L('Отсчёт карты начинается заново после замены источника (сила источника) и с новым исходным значением камеры (стабильность). Сигнал — повод разобраться, а не выход за допуск: точка за 3σ — скачок, накопленная сумма (CUSUM) — небольшой устойчивый сдвиг. σ = MR̄/1,128 по первым 20 записям отсчёта (Montgomery, Introduction to Statistical Quality Control; Pawlicki и др., Med Phys 32 (2005) 2777).', 'The chart count restarts after a source exchange (source strength) and with a new chamber baseline (stability). A signal is a reason to investigate, not an out-of-tolerance result: a point beyond 3σ is a jump, the cumulative sum (CUSUM) a small sustained shift. σ = MR̄/1.128 from the first 20 records of the count (Montgomery, Introduction to Statistical Quality Control; Pawlicki et al., Med Phys 32 (2005) 2777).'))}</p>
+  </section>`;
+}
+function trendCharts() {
+  if (sheet !== 'log') return;
+  const j = getJournal();
+  spcGroups(j, logRecords(j)).forEach((g, i) => {
+    const box = $(`#br-spc-${i}`);
+    if (!box) return;
+    const tol = g.kind === 'src' ? CERT_TOLERANCE.hdrInvestigate : g.tol;
+    const chart = controlChart(spcPoints(g), { tol });
+    const days = chart.points.map((p) => p.day);
+    const x0 = Math.min(...days) - 400;
+    const x1 = Math.max(...days) + 400;
+    const stop = CERT_TOLERANCE.hdrStop;
+    drawChart(box, chart, {
+      tol,
+      label: L(`Контрольная карта: ${g.title}`, `Control chart: ${g.title}`),
+      yLabel: g.kind === 'src' ? L('Отклонение от сертификата, %', 'Deviation from the certificate, %') : L('Отклонение от исходного, %', 'Deviation from the baseline, %'),
+      check: () => false,
+      pointTitle: (p) => `${isoDateText(p.date)}: ${fmtSigned(p.value, 2)} %${Number.isFinite(p.z) ? ` (${fmtSigned(p.z, 1)}σ)` : ''}${pointRules(p)}`,
+      extraLines: g.kind === 'src' ? [stop, -stop].map((a) => ({ cls: 'aux', a, b: 0, x0, x1, dashed: true })) : [],
+      extraNotes: g.kind === 'src' ? [{ x: Math.min(...days), y: stop, text: `+${stop} %`, anchor: 'start' }, { x: Math.min(...days), y: -stop, text: `−${stop} %`, anchor: 'start', below: true }] : [],
+      yExtra: g.kind === 'src' ? [-stop, stop] : [],
+    });
+  });
+}
+
+function openRecord(id) {
+  const rec = (getJournal().brachyRecords ?? []).find((r) => r.id === id);
+  if (!rec) return;
+  form = normalizeBrachy(formFromRecord(form, rec));
+  form.rec_staff = (rec.staff ?? []).join(', ');
+  form.rec_notes = rec.notes ?? '';
+  sheet = rec.sheet;
+  persist();
+  location.hash = `#brachy/${rec.sheet}`;
+  render();
+  status(L(`Открыта запись журнала: ${brachySheetText(rec.sheet)}, ${isoDateText(rec.date)}. Поля листа заменены данными записи.`, `Journal record opened: ${brachySheetText(rec.sheet)}, ${isoDateText(rec.date)}. The sheet fields are replaced with the record data.`));
+}
+
 // ------------------------------------------------------------ разметка
 function navHtml() {
-  const items = [['well', L('Колодезная камера', 'Well-type chamber')], ['sweet', L('Максимум отклика', 'Sweet spot')], ['phantom', L('Фантом PTW 9193', 'PTW 9193 phantom')], ['cross', L('Сличение камер', 'Cross-calibration')], ['stab', L('Стабильность', 'Stability')], ['decay', L('Распад', 'Decay')], ['tg43', L('Доза TG-43', 'TG-43 dose')]];
+  const items = [['well', L('Колодезная камера', 'Well-type chamber')], ['sweet', L('Максимум отклика', 'Sweet spot')], ['phantom', L('Фантом PTW 9193', 'PTW 9193 phantom')], ['cross', L('Сличение камер', 'Cross-calibration')], ['stab', L('Стабильность', 'Stability')], ['decay', L('Распад', 'Decay')], ['tg43', L('Доза TG-43', 'TG-43 dose')], ['log', L('Журнал', 'Journal')]];
   return `<nav class="kv-pages" aria-label="${esc(L('Листы вкладки', 'Tab sheets'))}">${items.map(([k, t]) => `<a href="#brachy/${k}" data-goto="brachy/${k}"${k === sheet ? ' aria-current="page"' : ''}>${esc(t)}</a>`).join('')}</nav>`;
 }
 
@@ -213,6 +444,12 @@ function introHtml() {
     return `<p class="start-when">${sub(L(
       'Проверка стабильности колодезной камеры: не реже четырёх раз в год, до и после каждой замены источника. Показание с поправками на T, P и распад сравнивается с исходным, допуск ±0,5 %; при второй камере — отношение показаний, ±0,1 % (IAEA TRS-492, разд. 8.4–8.5). Исходное значение задают при вводе в работу и после каждой калибровки.',
       'Well-type chamber stability check: at least four times a year and before and after each source exchange. The reading corrected for T, P and decay is compared with the baseline, tolerance ±0.5%; with a redundant chamber, the reading ratio, ±0.1% (IAEA TRS-492, Sec. 8.4–8.5). The baseline is set at commissioning and after each recalibration.',
+    ))}</p>`;
+  }
+  if (sheet === 'log') {
+    return `<p class="start-when">${sub(L(
+      'Записи брахитерапии в журнале отделения: сила источника по колодезной камере и в фантоме (с отклонением от сертификата; HDR — выяснить причину при расхождении больше 3 %, не использовать при больше 5 %, IAEA TRS-492, разд. 8.6.2), проверки стабильности камеры (±0,5 %, разд. 8.5), сличения камер и максимум отклика. Запись открывается на своём листе.',
+      'Brachytherapy records in the department journal: source strength with the well-type chamber and in the phantom (with the deviation from the certificate; HDR: investigate above 3%, do not use above 5%, IAEA TRS-492, Sec. 8.6.2), chamber stability checks (±0.5%, Sec. 8.5), cross-calibrations and the sweet spot. A record opens on its own sheet.',
     ))}</p>`;
   }
   if (sheet === 'tg43') {
@@ -376,6 +613,8 @@ function ownKtotHtml() {
 function sweetSetupHtml() {
   return `<section class="start-card plates-card"><h2><span class="step-no">1</span> ${esc(L('Камера и система отсчёта', 'Chamber and position reference'))}</h2>
     <div class="grid">
+      ${journalMachineHtml()}
+      ${journalWellHtml()}
       ${text('w_model', L('Камера', 'Chamber'), { ph: 'PTW TM33004' })}
       <div class="field"><label for="br_s_date">${esc(L('Дата', 'Date'))}</label><input type="date" id="br_s_date" data-f="s_date" value="${esc(form.s_date)}"></div>
       ${text('s_ref', L('Система отсчёта положения', 'Position reference'), { ph: L('по пульту аппарата, ампулопровод №…', 'as on the afterloader console, transfer tube no. …'), span: ' span-2' })}
@@ -588,6 +827,7 @@ function stabSetupHtml() {
   const nucs = ['Cs-137', 'Sr-90', 'Co-60'].map((k) => opt(k, HALF_LIVES[k].label, form.st_check_nuclide)).join('');
   return `<section class="start-card plates-card"><h2><span class="step-no">1</span> ${esc(L('Метод и исходное значение', 'Method and baseline'))}</h2>
     <div class="grid">
+      ${journalWellHtml(false)}
       ${select('st_method', L('Метод', 'Method'), ST_METHODS().map(([k, t]) => opt(k, t, m)).join(''), { span: ' span-2' })}
       ${m === 'check' ? `${select('st_check_nuclide', L('Контрольный источник', 'Check source'), nucs)}${num('st_half', L('Свой t½, сут', 'Own t½, days'), { hint: L('Пусто — TRS-492, табл. 3; например, для ²⁴¹Am', 'Blank: TRS-492, Table 3; e.g. for ²⁴¹Am') })}` : ''}
       ${m === 'hdr' ? nucSelect() : ''}
@@ -744,29 +984,38 @@ function resultCardHtml(n) {
 }
 
 function sheetBody() {
-  if (sheet === 'sweet') return `${sweetSetupHtml()}${sweetRowsHtml()}${resultCardHtml(3)}`;
+  if (sheet === 'log') return logHtml();
+  if (sheet === 'sweet') return `${sweetSetupHtml()}${sweetRowsHtml()}${resultCardHtml(3)}${recordHtml(4)}`;
   if (sheet === 'decay') return `${sourceHtml()}${decayParamsHtml()}${resultCardHtml(3)}`;
-  if (sheet === 'cross') return `${crossSetupHtml()}${crossChamberHtml(2, 'x_ref_', L('Эталонная камера', 'Reference chamber'))}${crossChamberHtml(3, 'x_fld_', L('Рабочая камера', 'Field chamber'))}${resultCardHtml(4)}`;
-  if (sheet === 'stab') return `${stabSetupHtml()}${stabMeasureHtml()}${resultCardHtml(3)}`;
+  if (sheet === 'cross') return `${crossSetupHtml()}${crossChamberHtml(2, 'x_ref_', L('Эталонная камера', 'Reference chamber'))}${crossChamberHtml(3, 'x_fld_', L('Рабочая камера', 'Field chamber'))}${resultCardHtml(4)}${recordHtml(5)}`;
+  if (sheet === 'stab') return `${stabSetupHtml()}${stabMeasureHtml()}${resultCardHtml(3)}${recordHtml(4)}`;
   if (sheet === 'tg43') return `${sourceHtml()}${tg43ParamsHtml()}${tg43RowsHtml()}${resultCardHtml(4)}`;
-  if (sheet === 'well') return `${sourceHtml()}${wellChamberHtml()}${wellMeasureHtml()}${resultCardHtml(4)}${uncHtml(5)}`;
-  return `${sourceHtml()}${phantomChamberHtml()}${phantomMeasureHtml()}${resultCardHtml(4)}${doseHtml()}${ownKtotHtml()}${uncHtml(7)}`;
+  if (sheet === 'well') return `${sourceHtml()}${wellChamberHtml()}${wellMeasureHtml()}${resultCardHtml(4)}${uncHtml(5)}${recordHtml(6)}`;
+  return `${sourceHtml()}${phantomChamberHtml()}${phantomMeasureHtml()}${resultCardHtml(4)}${doseHtml()}${ownKtotHtml()}${uncHtml(7)}${recordHtml(8)}`;
 }
 
 function render() {
   const root = $('#brachy-root');
   if (!root) return;
   root.innerHTML = `${navHtml()}
-    <div class="plates-banner"><b>${esc(L('Раздел в разработке', 'Section in development'))}</b>: ${esc(L('расчёт работает; запись в журнал и протокол появятся на следующих этапах. Черновик формы хранится в этом браузере.', 'the calculation works; journal records and the report come in the next stages. The form draft is kept in this browser.'))}</div>
+    <div class="plates-banner"><b>${esc(L('Раздел в разработке', 'Section in development'))}</b>: ${esc(L('расчёт и записи в журнал работают; протокол появится на следующем этапе. Черновик формы хранится в этом браузере.', 'the calculation and journal records work; the report comes in the next stage. The form draft is kept in this browser.'))}</div>
     ${introHtml()}
     ${sheetBody()}
-    ${sheet === 'decay' || sheet === 'tg43' ? '' : `<div class="actions"><button type="button" data-br="clear">${esc(L('Очистить измерение', 'Clear the measurement'))}</button></div>`}`;
+    ${['decay', 'tg43', 'log'].includes(sheet) ? '' : `<div class="actions"><button type="button" data-br="clear">${esc(L('Очистить измерение', 'Clear the measurement'))}</button></div>`}`;
   for (const el of root.querySelectorAll('.cells[data-series]')) {
     const key = el.dataset.series;
     const m = key.match(/^p_hole(\d)$/);
     renderCells(el, m ? form.p_holes[+m[1]].M : form[key]);
     setupCells(el, onInput);
   }
+  for (const del of root.querySelectorAll('[data-br-del]')) {
+    armButton(del, del.textContent, () => L('Удалить запись?', 'Delete the record?'), () => {
+      updateJournal((j) => removeBrachyRecord(j, del.dataset.brDel), 'brachy');
+      render();
+      status(L('Запись удалена. Сохраните журнал в файл, если автосохранение не включено.', 'The record has been deleted. Save the journal file if autosave is off.'));
+    });
+  }
+  trendCharts();
   const clear = root.querySelector('[data-br="clear"]');
   if (clear) {
     armButton(clear, clear.textContent, () => L('Очистить показания этого листа?', 'Clear the readings of this sheet?'), () => {
@@ -1013,6 +1262,14 @@ function onChange(e) {
 function onClick(e) {
   const b = e.target.closest('button[data-br]');
   if (!b) return;
+  if (b.dataset.br === 'record') {
+    doRecord();
+    return;
+  }
+  if (b.dataset.br === 'open') {
+    openRecord(b.dataset.rec);
+    return;
+  }
   if (b.dataset.br === 'wellk') {
     const k = wellKFromSheet();
     if (Number.isFinite(k)) form.p_wellK = String(+k.toFixed(4)).replace('.', L(',', '.'));
@@ -1109,8 +1366,10 @@ export function initBrachy() {
   root?.addEventListener('click', onClick);
   document.addEventListener('langchange', render);
   // «Оборудование» изменилось (открыт другой журнал, добавлен источник): списки выбора — заново
-  onJournal(() => {
-    if (!$('#module-brachy')?.hidden) render();
+  onJournal(({ source } = {}) => {
+    // свои записи перерисовывает сам лист; при вводе на листе — не мешать (фокус)
+    if (source === 'brachy' || $('#module-brachy')?.hidden || $('#brachy-root')?.contains(document.activeElement)) return;
+    render();
   });
 }
 
