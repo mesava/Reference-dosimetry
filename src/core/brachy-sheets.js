@@ -4,7 +4,7 @@
 import { L } from './i18n.js';
 import { parseNumber, isBlank, pressureToKPa, PRESSURE_UNITS, ru } from './units.js';
 import { temperaturePressure } from './common.js';
-import { HALF_LIVES, KSM_SOURCES, STABILITY_TOL, PHANTOM_CO60, PHANTOM_CO60_LITERATURE, APPLICATOR_KA_STEEL, DOSE_SOURCES, UBRICH_KTOT_DW1, UBRICH_KTOT_DW1_REF } from './brachy-data.js';
+import { HALF_LIVES, KSM_SOURCES, STABILITY_TOL, GL_R_IR, GL_R_CO, GL_TABLE, GL_REF, PHANTOM_CO60, PHANTOM_CO60_LITERATURE, APPLICATOR_KA_STEEL, DOSE_SOURCES, UBRICH_KTOT_DW1, UBRICH_KTOT_DW1_REF } from './brachy-data.js';
 import {
   halfLifeDays,
   kDec,
@@ -32,6 +32,9 @@ import {
   timeForStrength,
   decayDates,
   crossCalibrate,
+  geometryLineAt,
+  geometryLine,
+  interpTable,
 } from './brachy.js';
 
 const REF = {
@@ -204,6 +207,20 @@ export const BRACHY_DEFAULTS = {
   u_scen: '1',
   u_over_w: '',
   u_over_p: '',
+
+  // доза в воде по TG-43 (справочно): модель источника, сила источника, точки (r, θ)
+  t_src: '',
+  t_lambda: '',
+  t_L: '',
+  t_basis: 'cert', // 'cert' | 'well' | 'phantom' | 'manual'
+  t_SK: '', // своя S_K, Ед (для 'manual')
+  t_date: '', // пусто — сейчас
+  t_time: '',
+  t_zone: '',
+  t_th: '90',
+  t_r: ['1', '2', '3', '5', '8'],
+  t_g: ['', '', '', '', ''],
+  t_F: ['', '', '', '', ''],
 };
 
 /** Нормализация черновика: недостающие поля — по умолчанию, массивы — нужной формы. */
@@ -947,6 +964,101 @@ export function computeBrachyStability(input, { offsetMin = 0 } = {}) {
     ? L(`Отношение показаний камер изменилось на ${ru(out.dev, 2)} % — больше ±0,1 %: возможна неисправность одной из камер; проверьте контрольным источником.`, `The chamber reading ratio changed by ${out.dev.toFixed(2)}%, more than ±0.1%: one of the chambers may be faulty; check with a check source.`)
     : L(`Отклонение от исходного ${ru(out.dev, 2)} % — больше ±0,5 %: выясните причину; возможно, камере нужна повторная калибровка.`, `Deviation from the baseline ${out.dev.toFixed(2)}%, more than ±0.5%: investigate; the chamber may need recalibration.`), `${REF.trs492}, разд. ${meta.sec}`, 'st_base');
   out.ok = true;
+  return out;
+}
+
+// ——— Доза в воде по TG-43 (справочно) ———
+
+/**
+ * Лист «Доза TG-43»: мощность поглощённой дозы в воде в точках (r, θ) по формализму линейного источника TG-43U1
+ * (ур. 1, 4): Ḋ = S_K · Λ · G_L(r,θ)/G_L(1 см, 90°) · g_L(r) · F(r,θ). Λ и g_L(r) — консенсус HEBD (табл. IV, V,
+ * LII, LIII); F(r,θ) = 1 на поперечной оси, в других направлениях — своя (таблицы F в HEBD для каждой модели).
+ * Сила источника — по сертификату на дату расчёта, по листу «Колодезная камера» или «Фантом» (с распадом) или своя.
+ * now — текущее время, мс UTC (если дата не указана).
+ */
+export function computeBrachyTg43(input, { offsetMin = 0, now = Date.now(), well = null, phantom = null } = {}) {
+  const f = normalizeBrachy(input);
+  const messages = [];
+  const add = makeAdd(messages);
+  const out = { ok: false, messages, rows: [] };
+  // модель источника
+  let src = DOSE_SOURCES.find((x) => x.id === f.t_src && x.nuclide === f.nuclide && x.lambda);
+  if (f.t_src === 'other') {
+    const lambda = parseNumber(f.t_lambda);
+    const Lc = isBlank(f.t_L) ? 0 : parseNumber(f.t_L);
+    if (!(lambda > 0)) {
+      add(isBlank(f.t_lambda) ? 'info' : 'error', L('Введите постоянную мощности дозы Λ своей модели источника.', 'Enter the dose rate constant Λ of your source model.'), null, 't_lambda');
+      return out;
+    }
+    if (!(Lc >= 0)) {
+      add('error', L('Активная длина L не может быть отрицательной.', 'The active length L cannot be negative.'), null, 't_L');
+      return out;
+    }
+    src = { id: 'other', name: L('своя модель', 'own model'), lambda, L: Lc, ref: null };
+  }
+  if (!src) {
+    add('info', L('Выберите модель источника: Λ и g_L(r) — консенсусные данные HEBD.', 'Choose the source model: Λ and g_L(r) are HEBD consensus data.'), REF.hebd, 't_src');
+    return out;
+  }
+  out.source = src;
+  const table = GL_TABLE[src.id];
+  const rs = f.nuclide === 'Co-60' ? GL_R_CO : GL_R_IR;
+  // сила источника на время расчёта
+  const cert = readCertificate(f, () => {}, offsetMin);
+  const tt = fieldTime(f.t_date, f.t_time, f.t_zone, offsetMin);
+  if (tt.error) add('error', L(`Дата расчёта: ${tt.error}.`, `Calculation date: ${tt.error}.`), null, 't_date');
+  const t = tt.missing ? now : tt.ms;
+  out.t = t;
+  out.tNow = tt.missing;
+  let base = null;
+  if (f.t_basis === 'manual') {
+    const SK = parseNumber(f.t_SK);
+    if (SK > 0) base = { U: SK, t: NaN, label: L('своя S_K', 'own S_K') };
+    else add(isBlank(f.t_SK) ? 'info' : 'error', L('Введите силу воздушной кермы S_K, Ед.', 'Enter the air kerma strength S_K, U.'), null, 't_SK');
+  } else if (f.t_basis === 'well' || f.t_basis === 'phantom') {
+    const r = f.t_basis === 'well' ? well : phantom;
+    if (r?.ok && Number.isFinite(r.U) && Number.isFinite(r.tMeas)) base = { U: r.U, t: r.tMeas, label: f.t_basis === 'well' ? L('измерение колодезной камерой', 'well-type chamber measurement') : L('измерение в фантоме PTW 9193', 'PTW 9193 phantom measurement') };
+    else add('info', L('На выбранном листе нет результата с датой измерения.', 'The chosen sheet has no result with a measurement date.'), null, 't_basis');
+  } else if (cert.ok && Number.isFinite(cert.U)) base = { U: cert.U, t: cert.tCert, label: L('сертификат источника', 'source certificate') };
+  else add('info', L('Введите силу источника и дату сертификата в разделе 1.', 'Enter the source strength and the certificate date in section 1.'), null, 'cert_value');
+  if (!base || !Number.isFinite(t)) return out;
+  const SK = Number.isFinite(base.t) && Number.isFinite(cert.half) ? strengthAt(base.U, base.t, t, cert.half) : base.U;
+  out.base = base;
+  out.SK = SK;
+  out.dw1 = SK * src.lambda; // сГр/ч на 1 см
+  const th = isBlank(f.t_th) ? 90 : parseNumber(f.t_th);
+  if (!(th >= 0 && th <= 180)) {
+    add('error', L('Угол θ — от 0° до 180°.', 'The angle θ must be from 0° to 180°.'), null, 't_th');
+    return out;
+  }
+  out.theta = th;
+  const g1 = geometryLine(1, src.L);
+  const n = Math.max(f.t_r.length, f.t_g.length, f.t_F.length);
+  let needF = false;
+  let needG = false;
+  for (let i = 0; i < n; i++) {
+    const r = parseNumber(f.t_r[i]);
+    if (!Number.isFinite(r)) continue;
+    if (!(r > 0)) {
+      add('error', L(`Строка ${i + 1}: расстояние должно быть больше нуля.`, `Row ${i + 1}: the distance must be greater than zero.`), null, `t_r_${i}`);
+      continue;
+    }
+    const ownG = parseNumber(f.t_g[i]);
+    const ownF = parseNumber(f.t_F[i]);
+    const gTab = table ? interpTable(rs, table, r) : NaN;
+    const g = Number.isFinite(ownG) ? ownG : gTab;
+    const F = Number.isFinite(ownF) ? ownF : Math.abs(th - 90) < 1e-9 ? 1 : NaN;
+    const G = geometryLineAt(r, th, src.L) / g1;
+    if (!Number.isFinite(g)) needG = true;
+    if (!Number.isFinite(F)) needF = true;
+    const value = out.dw1 * G * g * F;
+    out.rows.push({ i, r, G, g, gOwn: Number.isFinite(ownG), F, FOwn: Number.isFinite(ownF), value });
+  }
+  if (needG) add('warn', L(table ? `g_L(r) в HEBD — от ${ru(rs[0], 2)} до ${ru(rs[rs.length - 1], 0)} см: вне этого — введите свою.` : 'Для своей модели введите g_L(r) в каждой строке.', table ? `HEBD g_L(r) covers ${rs[0]}–${rs[rs.length - 1]} cm: outside that, enter your own.` : 'For your own model, enter g_L(r) in each row.'), GL_REF[f.nuclide] ?? null, 't_r_0');
+  if (needF) add('warn', L(`Вне поперечной оси (θ = ${ru(th, 0)}°) нужна функция анизотропии F(r,θ) — возьмите из таблиц HEBD для своей модели.`, `Off the transverse axis (θ = ${th}°) the anisotropy function F(r,θ) is needed: take it from the HEBD tables for your model.`), REF.hebd, 't_th');
+  if (f.t_basis !== 'manual' && !Number.isFinite(cert.half) && Number.isFinite(base.t)) add('error', L('Не задан период полураспада.', 'The half-life is not set.'), null, 'half');
+  add('info', L('Справочно: формализм TG-43 не учитывает неоднородности и ограниченность среды. Для проверки системы планирования — таблицы «вдоль-поперёк» HEBD для своей модели.', 'For reference: the TG-43 formalism ignores heterogeneities and finite scatter conditions. For a TPS check, use the HEBD along-away tables for your model.'), `${REF.tg43}; ${REF.hebd}`, null);
+  out.ok = out.rows.length > 0;
   return out;
 }
 

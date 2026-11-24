@@ -233,6 +233,22 @@ const TIPS = {
     pop('Неопределённость ОМВК', ['u<sub>c</sub> — суммарная стандартная неопределённость: корень из суммы квадратов строк бюджета (составляющие считаются некоррелированными). U = k · u<sub>c</sub> при k = 2 (около 95 %). Для поглощённой дозы в воде по TG-43 добавляется неопределённость Λ: по TRS-492 при u(Λ) = 0,5 % и сценарии 1 U ≈ 1,9 %.'], `${T492}, разд. 9, табл. 10; прил. VI.`),
     pop('RAKR uncertainty', ['u<sub>c</sub> is the combined standard uncertainty: root sum of squares of the budget rows (components assumed uncorrelated). U = k · u<sub>c</sub> with k = 2 (about 95%). For the absorbed dose to water per TG-43, the Λ uncertainty is added: per TRS-492, with u(Λ) = 0.5% and scenario 1, U ≈ 1.9%.'], 'IAEA TRS-492 (2023), Sec. 9, Table 10; App. VI.'),
   ),
+  t_src: () => L(
+    pop('Модель источника для TG-43', ['Λ — постоянная мощности дозы (сГр·ч⁻¹·Ед⁻¹), L — активная длина, g<sub>L</sub>(r) — радиальная функция дозы: консенсусные данные HEBD для моделей HDR ¹⁹²Ir и ⁶⁰Co. Для другой модели введите Λ и L из её публикации и g<sub>L</sub>(r) в строках точек.'], `${HEBD}, табл. IV, V, LII, LIII.`),
+    pop('Source model for TG-43', ['Λ is the dose rate constant (cGy·h⁻¹·U⁻¹), L the active length, g<sub>L</sub>(r) the radial dose function: HEBD consensus data for HDR ¹⁹²Ir and ⁶⁰Co models. For another model, enter Λ and L from its publication and g<sub>L</sub>(r) in the point rows.'], 'Perez-Calatayud et al. 2012, AAPM Report 229 (HEBD), Tables IV, V, LII, LIII.'),
+  ),
+  t_g: () => L(
+    pop('Радиальная функция дозы g<sub>L</sub>(r)', ['Спад дозы на поперечной оси из-за ослабления и рассеяния (без закона обратных квадратов), g<sub>L</sub>(1 см) = 1. По таблице HEBD с линейной интерполяцией между узлами, r от 0,25 до 10 см; своё значение в строке заменяет табличное.'], `${TG43}, ур. (5); ${HEBD}, табл. V, LII.`),
+    pop('Radial dose function g<sub>L</sub>(r)', ['Dose fall-off on the transverse axis due to attenuation and scatter (without the inverse square law), g<sub>L</sub>(1 cm) = 1. From the HEBD table with linear interpolation, r from 0.25 to 10 cm; an own value in the row replaces the table one.'], 'Rivard et al. 2004 (TG-43U1), Eq. (5); HEBD, Tables V, LII.'),
+  ),
+  t_F: () => L(
+    pop('Функция анизотропии F(r,θ)', ['Отношение дозы в направлении θ к дозе на поперечной оси (θ = 90°) на том же расстоянии, без геометрии. На поперечной оси F = 1. Для других углов возьмите значение из таблицы F(r,θ) HEBD для своей модели (например, для mHDR-v1 — табл. VI).'], `${TG43}, ур. (6); ${HEBD}.`),
+    pop('Anisotropy function F(r,θ)', ['Ratio of the dose in direction θ to that on the transverse axis (θ = 90°) at the same distance, geometry excluded. On the transverse axis F = 1. For other angles, take the value from the HEBD F(r,θ) table for your model (e.g. Table VI for mHDR-v1).'], 'Rivard et al. 2004 (TG-43U1), Eq. (6); HEBD.'),
+  ),
+  t_G: () => L(
+    pop('Геометрический фактор G<sub>L</sub>(r,θ)/G<sub>L</sub>(1 см, 90°)', ['Учитывает закон обратных квадратов для линейного источника длиной L: G<sub>L</sub> = β/(L·r·sin θ), β — угол, под которым источник виден из точки; на оси источника — 1/(r² − L²/4).'], `${TG43}, ур. (4).`),
+    pop('Geometry factor G<sub>L</sub>(r,θ)/G<sub>L</sub>(1 cm, 90°)', ['Accounts for the inverse square law for a line source of length L: G<sub>L</sub> = β/(L·r·sin θ), β being the angle the source subtends at the point; on the source axis 1/(r² − L²/4).'], 'Rivard et al. 2004 (TG-43U1), Eq. (4).'),
+  ),
   repeat: () => L(
     pop('Повторяемость', ['Относительное стандартное отклонение показаний серии от их среднего. Исходные данные повторяемости набирают большим числом измерений при вводе в работу; отклонение за установленные пределы — исследовать. Здесь предупреждение — при разбросе больше 0,5 %.'], `${T492}, разд. 8.4.`),
     pop('Repeatability', ['Relative standard deviation of the series readings from their mean. Baseline repeatability data are collected with many measurements at commissioning; a value outside the set limits is investigated. Here a warning appears for a spread above 0.5%.'], 'IAEA TRS-492 (2023), Sec. 8.4.'),
@@ -243,7 +259,7 @@ Object.assign(TIPS, {
   w_T0: TIPS.kTP, p_T0: TIPS.kTP, w_kelec: TIPS.kElec, p_kelec: TIPS.kElec, w_leak: TIPS.kLeak,
   w_pol_plus: TIPS.kPol, w_ks_m1: TIPS.kS, w_ksm_mode: TIPS.kSm, w_ksm: TIPS.kSm, p_ka_value: TIPS.p_ka, kA: TIPS.p_ka,
   kzp: TIPS.p_kzp, p_wellK: TIPS.p_ktot, w_P0: TIPS.kTP, p_P0: TIPS.kTP,
-  x_P0: TIPS.x_T0, x_ref_kelec: TIPS.kElec, x_ref_leak: TIPS.kLeak, x_fld_leak: TIPS.kLeak, st_half: TIPS.st_check_nuclide, p_NU: TIPS.u_c, w_NU: TIPS.u_c, st_T0: TIPS.kTP, st_P0: TIPS.kTP,
+  x_P0: TIPS.x_T0, x_ref_kelec: TIPS.kElec, x_ref_leak: TIPS.kLeak, x_fld_leak: TIPS.kLeak, st_half: TIPS.st_check_nuclide, p_NU: TIPS.u_c, w_NU: TIPS.u_c, t_lambda: TIPS.p_lambda, t_L: TIPS.p_L, t_th: TIPS.t_F, t_basis: TIPS.d_basis, st_T0: TIPS.kTP, st_P0: TIPS.kTP,
 });
 
 /** Атрибуты подсказки для элемента (пусто, если подсказки нет); focus — сделать элемент фокусируемым с клавиатуры. */

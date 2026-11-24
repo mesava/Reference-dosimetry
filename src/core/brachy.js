@@ -563,6 +563,28 @@ export function geometryLine(r, L) {
 }
 
 /**
+ * Геометрическая функция линейного источника в точке (r, θ): G_L = β/(L·r·sin θ), при θ = 0° и 180° —
+ * 1/(r² − L²/4) (TG-43U1, ур. 4). β — угол, под которым виден источник из точки. θ — в градусах.
+ */
+export function geometryLineAt(r, thetaDeg, L) {
+  if (!(r > 0) || !(L >= 0) || !Number.isFinite(thetaDeg)) return NaN;
+  if (L === 0) return 1 / (r * r);
+  const th = (thetaDeg * Math.PI) / 180;
+  const y = r * Math.sin(th);
+  const z = r * Math.cos(th);
+  if (Math.abs(y) < 1e-9) return r > L / 2 ? 1 / (r * r - (L * L) / 4) : NaN;
+  const beta = Math.atan((z + L / 2) / y) - Math.atan((z - L / 2) / y);
+  return beta / (L * y);
+}
+
+/** Линейная интерполяция по таблице (xs по возрастанию); вне таблицы — NaN. */
+export function interpTable(xs, ys, x) {
+  if (!Number.isFinite(x) || x < xs[0] - 1e-12 || x > xs[xs.length - 1] + 1e-12) return NaN;
+  for (let i = 1; i < xs.length; i++) if (x <= xs[i] + 1e-12) return ys[i - 1] + ((x - xs[i - 1]) / (xs[i] - xs[i - 1])) * (ys[i] - ys[i - 1]);
+  return ys[ys.length - 1];
+}
+
+/**
  * Мощность поглощённой дозы в воде на поперечной оси по TG-43 (F(r, 90°) = 1): Ḋ(r) = Ḋ_w,1 · G_L(r)/G_L(1) · g_L(r),
  * TG-43U1, ур. (1). Ḋ_w,1 = Λ · S_K (ур. 1 при r = 1 см): Λ — сГр·ч⁻¹·Ед⁻¹, S_K — Ед → сГр/ч.
  */

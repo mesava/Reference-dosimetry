@@ -269,3 +269,37 @@ test('брахитерапия: бюджет неопределённости н
   assert.equal(await page.locator('tr[data-ur]').count() >= 4, true);
   assert.deepEqual(errors, []);
 });
+
+test('брахитерапия: доза в воде по TG-43 в точках на поперечной оси', async () => {
+  const { page, errors } = await openPage(browser);
+  const pause = (ms = 250) => page.waitForTimeout(ms);
+  await page.goto(`${server.url}/index.html#brachy/tg43`);
+  await page.waitForSelector('#br_t_src');
+  assert.match(await page.locator('#brachy-root nav a[aria-current="page"]').innerText(), /Доза TG-43/);
+  await page.selectOption('#br_nuclide', 'Co-60');
+  await pause();
+  await page.selectOption('#br_cert_unit', 'GBq');
+  await pause();
+  await page.fill('#br_cert_value', '33,11');
+  await page.fill('#br_cert_gamma', '306');
+  await page.selectOption('#br_cert_gamma_unit', 'uGy·m2/(h·GBq)');
+  await page.fill('#br_cert_date', '2026-11-02');
+  await page.fill('#br_cert_time', '10:00');
+  await page.selectOption('#br_cert_zone', '+3');
+  await page.selectOption('#br_t_src', 'co0a86');
+  await pause();
+  await page.fill('#br_t_date', '2026-11-02');
+  await page.fill('#br_t_time', '10:00');
+  await page.selectOption('#br_t_zone', '+3');
+  await pause();
+  const res = await page.locator('#br-result').innerText();
+  assert.match(res, /110,63\d+ Гр\/ч/);
+  assert.match(res, /8,00[\s\S]*0,884[\s\S]*25,72\d/);
+  // точка добавляется кнопкой «+»
+  await page.click('[data-br="t-add"]');
+  await pause();
+  await page.fill('#br_t_r_5', '0,5');
+  await pause();
+  assert.match(await page.locator('#br-result').innerText(), /0,50[\s\S]*1,028/);
+  assert.deepEqual(errors, []);
+});

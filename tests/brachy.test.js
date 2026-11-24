@@ -13,6 +13,9 @@ import {
   PHANTOM_KZP_IR,
   DOSE_SOURCES,
   UBRICH_KTOT_DW1,
+  GL_TABLE,
+  GL_R_IR,
+  GL_R_CO,
 } from '../src/core/brachy-data.js';
 import {
   kDec,
@@ -46,6 +49,8 @@ import {
   strengthAt,
   timeForStrength,
   decayDates,
+  geometryLineAt,
+  interpTable,
 } from '../src/core/brachy.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''} ${a} ≠ ${b} (±${tol})`);
@@ -392,4 +397,23 @@ test('Распад по датам (TRS-492, ур. 8–9): сила на дат�
   assert.deepEqual(m.map((t) => new Date(t).toISOString().slice(0, 13)), ['2024-01-31T08', '2024-02-29T08', '2024-03-31T08']);
   assert.equal(decayDates(t0, t0 + 1000 * 86400000, 1, 'd').length, 500);
   assert.deepEqual(decayDates(t0, t0 - 1, 1, 'd'), []);
+});
+
+test('TG-43U1: геометрическая функция в точке (ур. 4), g_L(r) HEBD (табл. V, LII) согласована с g_L(8 см) источников', () => {
+  near(geometryLineAt(1, 90, 0.35), 0.98998, 5e-6);
+  near(geometryLineAt(2, 0, 0.35), 1 / (4 - 0.35 ** 2 / 4), 1e-12);
+  near(geometryLineAt(2, 180, 0.35), 1 / (4 - 0.35 ** 2 / 4), 1e-12);
+  // в дальней зоне — закон обратных квадратов; симметрия θ ↔ 180° − θ
+  near(geometryLineAt(50, 30, 0.35) * 2500, 1, 1e-4);
+  near(geometryLineAt(3, 30, 0.35), geometryLineAt(3, 150, 0.35), 1e-12);
+  assert.ok(Number.isNaN(geometryLineAt(0.1, 0, 0.35)));
+  near(interpTable([1, 2, 3], [1, 0.9, 0.7], 2.5), 0.8, 1e-12);
+  assert.ok(Number.isNaN(interpTable([1, 2], [1, 2], 3)));
+  for (const s of DOSE_SOURCES.filter((x) => x.lambda)) {
+    const t = GL_TABLE[s.id];
+    const rs = s.nuclide === 'Co-60' ? GL_R_CO : GL_R_IR;
+    assert.equal(t.length, rs.length, s.id);
+    assert.equal(t[rs.indexOf(1)], 1, s.id);
+    assert.equal(t[rs.indexOf(8)], s.gL8, s.id);
+  }
 });

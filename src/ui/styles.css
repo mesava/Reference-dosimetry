@@ -748,6 +748,7 @@ table.factors.pc-table td.note { font-size: 12px; color: var(--muted); border-bo
 /* kV-рентген: таблица качеств сертификата (кВ, СПО, значение) */
 .cert-table { max-width: 560px; }
 .cert-table .pairs-head, .cert-table .pair-row { grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 72px minmax(0, 1fr); }
+.br-tg .pairs-head, .br-tg .pair-row { grid-template-columns: 28px repeat(3, minmax(0, 1fr)); }
 .cert-table .cells-tools { flex-wrap: wrap; align-items: center; }
 .cert-table .cells-tools .link-btn { margin-left: auto; }
 #kv-din-box { margin-top: 8px; }

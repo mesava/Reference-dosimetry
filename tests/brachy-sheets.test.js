@@ -2,7 +2,7 @@
 // в фантоме PTW 9193 и ¹⁹²Ir в колодезной камере), сверенные с её результатами.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeBrachyWell, computeBrachyPhantom, computeBrachySweet, computeBrachyDecay, computeBrachyCross, computeBrachyStability, normalizeBrachy, fieldTime, BRACHY_DEFAULTS } from '../src/core/brachy-sheets.js';
+import { computeBrachyWell, computeBrachyPhantom, computeBrachySweet, computeBrachyDecay, computeBrachyCross, computeBrachyStability, computeBrachyTg43, normalizeBrachy, fieldTime, BRACHY_DEFAULTS } from '../src/core/brachy-sheets.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''} ${a} ≠ ${b} (±${tol})`);
 const rel = (a, b, tolRel, msg) => near(a / b, 1, tolRel, msg);
@@ -346,4 +346,28 @@ test('Лист «Стабильность» (TRS-492, разд. 8.5): контр
   assert.equal(red.pass, true);
   assert.equal(computeBrachyStability({ st_method: 'redundant', st_I: ['10'], st_I2: ['8'], st_base: '1,247' }).pass, false);
   assert.deepEqual(errors(computeBrachyStability({})), []);
+});
+
+test('Лист «Доза TG-43»: Λ · S_K на 1 см и на 8 см совпадают с листом фантома, распад к дате расчёта, своя модель и F', () => {
+  const co = { nuclide: 'Co-60', cert_value: '33,11', cert_unit: 'GBq', cert_gamma: '306', cert_gamma_unit: 'uGy·m2/(h·GBq)', cert_date: '2026-11-02', cert_time: '10:00', cert_zone: '+3', t_src: 'co0a86', t_date: '2026-11-02', t_time: '10:00', t_zone: '+3', t_r: ['1', '8', '2,5', '12'] };
+  const r = computeBrachyTg43(co);
+  assert.ok(r.ok);
+  near(r.SK, 10131.66, 0.01);
+  near((r.rows[0].value * 10) / 60, 1844.0, 0.05); // мГр/мин, как «По сертификату» на листе фантома
+  near((r.rows[1].value * 10) / 60, 25.72, 0.01);
+  near(r.rows[2].g, (0.984 + 0.968) / 2, 1e-12);
+  assert.ok(Number.isNaN(r.rows[3].value)); // 12 см — вне таблицы HEBD
+  assert.ok(r.messages.some((m) => m.level === 'warn'));
+  // через период полураспада — вдвое меньше
+  const later = computeBrachyTg43({ ...co, t_date: '', t_time: '' }, { now: Date.UTC(2026, 10, 2, 7) + 1925.21 * 86400000 });
+  near(later.SK, r.SK / 2, 1e-6);
+  // вне поперечной оси без F — нет значения; со своей F — есть
+  const th = computeBrachyTg43({ ...co, t_th: '45', t_r: ['2', '2'], t_F: ['', '0,95'] });
+  assert.ok(Number.isNaN(th.rows[0].value));
+  near(th.rows[1].value, th.dw1 * th.rows[1].G * 0.984 * 0.95, 1e-9);
+  assert.ok(th.messages.some((m) => m.field === 't_th'));
+  // своя модель и своя S_K: точечный источник, g из строки
+  const own = computeBrachyTg43({ nuclide: 'Ir-192', t_src: 'other', t_lambda: '1,11', t_basis: 'manual', t_SK: '40000', t_r: ['2'], t_g: ['1,005'] });
+  near(own.rows[0].value, (40000 * 1.11 * 1.005) / 4, 1e-9);
+  assert.deepEqual(errors(computeBrachyTg43({})), []);
 });

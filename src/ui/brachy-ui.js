@@ -7,7 +7,7 @@ import { PRESSURE_UNITS, unitLabel, parseNumber } from '../core/units.js';
 import { HALF_LIVES, KSM_SOURCES, PTW_TO_DGMP, APPLICATOR_KA_STEEL } from '../core/brachy-data.js';
 import { kDec } from '../core/brachy.js';
 import {
-  BRACHY_DEFAULTS, normalizeBrachy, computeBrachyWell, computeBrachyPhantom, computeBrachySweet, computeBrachyDecay, computeBrachyCross, computeBrachyStability, fieldTime,
+  BRACHY_DEFAULTS, normalizeBrachy, computeBrachyWell, computeBrachyPhantom, computeBrachySweet, computeBrachyDecay, computeBrachyCross, computeBrachyStability, computeBrachyTg43, fieldTime,
   STRENGTH_UNITS, ACTIVITY_UNITS, GAMMA_UNITS, WELL_N_UNITS, PHANTOM_N_UNITS, CURRENT_UNITS, DOSE_SOURCES,
 } from '../core/brachy-sheets.js';
 import { $, esc, fmt, fmtSigned, richText, armButton, downloadText, savedFileName } from './common.js';
@@ -19,7 +19,7 @@ import { wellBudget, phantomBudget } from '../core/brachy-unc.js';
 import { parseOverrides } from '../core/uncertainty.js';
 
 const KEY = 'reference-dosimetry.brachy';
-const SHEETS = ['well', 'sweet', 'phantom', 'cross', 'stab', 'decay'];
+const SHEETS = ['well', 'sweet', 'phantom', 'cross', 'stab', 'decay', 'tg43'];
 let sheet = 'well';
 let form = normalizeBrachy({});
 let statusEl = null;
@@ -76,7 +76,7 @@ const when = (pre, label, timeHint) => `<div class="field"><label for="br_${pre}
 
 // ------------------------------------------------------------ разметка
 function navHtml() {
-  const items = [['well', L('Колодезная камера', 'Well-type chamber')], ['sweet', L('Максимум отклика', 'Sweet spot')], ['phantom', L('Фантом PTW 9193', 'PTW 9193 phantom')], ['cross', L('Сличение камер', 'Cross-calibration')], ['stab', L('Стабильность', 'Stability')], ['decay', L('Распад', 'Decay')]];
+  const items = [['well', L('Колодезная камера', 'Well-type chamber')], ['sweet', L('Максимум отклика', 'Sweet spot')], ['phantom', L('Фантом PTW 9193', 'PTW 9193 phantom')], ['cross', L('Сличение камер', 'Cross-calibration')], ['stab', L('Стабильность', 'Stability')], ['decay', L('Распад', 'Decay')], ['tg43', L('Доза TG-43', 'TG-43 dose')]];
   return `<nav class="kv-pages" aria-label="${esc(L('Листы вкладки', 'Tab sheets'))}">${items.map(([k, t]) => `<a href="#brachy/${k}" data-goto="brachy/${k}"${k === sheet ? ' aria-current="page"' : ''}>${esc(t)}</a>`).join('')}</nav>`;
 }
 
@@ -97,6 +97,12 @@ function introHtml() {
     return `<p class="start-when">${sub(L(
       'Проверка стабильности колодезной камеры: не реже четырёх раз в год, до и после каждой замены источника. Показание с поправками на T, P и распад сравнивается с исходным, допуск ±0,5 %; при второй камере — отношение показаний, ±0,1 % (IAEA TRS-492, разд. 8.4–8.5). Исходное значение задают при вводе в работу и после каждой калибровки.',
       'Well-type chamber stability check: at least four times a year and before and after each source exchange. The reading corrected for T, P and decay is compared with the baseline, tolerance ±0.5%; with a redundant chamber, the reading ratio, ±0.1% (IAEA TRS-492, Sec. 8.4–8.5). The baseline is set at commissioning and after each recalibration.',
+    ))}</p>`;
+  }
+  if (sheet === 'tg43') {
+    return `<p class="start-when">${sub(L(
+      'Справочно: мощность поглощённой дозы в воде в точках вокруг источника по формализму линейного источника TG-43U1: Ḋ(r,θ) = S_K · Λ · G_L(r,θ)/G_L(1 см, 90°) · g_L(r) · F(r,θ) (Rivard 2004, ур. 1, 4). Λ и g_L(r) — консенсус HEBD (AAPM/ESTRO, 2012); на поперечной оси F = 1. Удобно для проверки значений системы планирования.',
+      'For reference: absorbed dose rate to water at points around the source per the TG-43U1 line-source formalism: Ḋ(r,θ) = S_K · Λ · G_L(r,θ)/G_L(1 cm, 90°) · g_L(r) · F(r,θ) (Rivard 2004, Eq. 1, 4). Λ and g_L(r) are HEBD consensus data (AAPM/ESTRO, 2012); F = 1 on the transverse axis. Useful for checking treatment planning system values.',
     ))}</p>`;
   }
   if (sheet === 'decay') {
@@ -563,6 +569,55 @@ function uncLive() {
     <p class="sub-hint">${sub(L(`u_c = ${fmt(b.uc, 2)} %; U = ${fmt(b.k, 0)} · u_c = ${fmt(b.U, 2)} %${abs}.`, `u_c = ${fmt(b.uc, 2)}%; U = ${fmt(b.k, 0)} · u_c = ${fmt(b.U, 2)}%${abs}.`))}</p>${msgHtml(b.messages)}`;
 }
 
+// ------------------------------------------------------------ лист «Доза TG-43»
+function tg43ParamsHtml() {
+  const srcs = DOSE_SOURCES.filter((x) => x.nuclide === form.nuclide && x.lambda);
+  const options = [opt('', L('не выбрана', 'not chosen'), form.t_src), ...srcs.map((x) => opt(x.id, x.name, form.t_src)), opt('other', L('другая — ввести Λ, L', 'other: enter Λ, L'), form.t_src)].join('');
+  const bases = [['cert', L('по сертификату на дату расчёта', 'from the certificate at the calculation date')], ['well', L('по листу «Колодезная камера»', 'from the Well-type chamber sheet')], ['phantom', L('по листу «Фантом PTW 9193»', 'from the PTW 9193 phantom sheet')], ['manual', L('своя S_K', 'own S_K')]];
+  return `<section class="start-card plates-card"><h2><span class="step-no">2</span> ${esc(L('Модель источника и сила', 'Source model and strength'))}</h2>
+    <div class="grid">
+      ${select('t_src', L('Модель источника (HEBD)', 'Source model (HEBD)'), options, { span: ' span-2' })}
+      ${form.t_src === 'other' ? `${num('t_lambda', L('Λ, сГр·ч⁻¹·Ед⁻¹', 'Λ, cGy·h⁻¹·U⁻¹'))}${num('t_L', L('Активная длина L, см (пусто — точечный)', 'Active length L, cm (blank: point source)'))}` : ''}
+      ${select('t_basis', L('Сила источника', 'Source strength'), bases.map(([k, t]) => opt(k, t, form.t_basis)).join(''), { span: ' span-2' })}
+      ${form.t_basis === 'manual' ? num('t_SK', L('S_K, Ед', 'S_K, U')) : ''}
+      ${when('t_', L('Дата расчёта (пусто — сейчас)', 'Calculation date (blank: now)'), L('Время расчёта', 'Calculation time'))}
+      ${num('t_th', L('Угол θ к оси источника, °', 'Angle θ to the source axis, °'))}
+    </div></section>`;
+}
+
+function tg43RowsHtml() {
+  const n = Math.max(form.t_r.length, 3);
+  const rows = Array.from({ length: n }, (_, i) => `<div class="pair-row br-tg-row"><span class="pair-no">${i + 1}</span>
+      <input type="text" class="num" inputmode="decimal" id="br_t_r_${i}" data-tr="${i}" aria-label="${esc(L(`Расстояние ${i + 1}, см`, `Distance ${i + 1}, cm`))}" value="${esc(form.t_r[i] ?? '')}">
+      <input type="text" class="num" inputmode="decimal" id="br_t_g_${i}" data-tg="${i}" aria-label="${esc(L(`Своя g_L, строка ${i + 1}`, `Own g_L, row ${i + 1}`))}" placeholder="${esc(L('HEBD', 'HEBD'))}" value="${esc(form.t_g[i] ?? '')}">
+      <input type="text" class="num" inputmode="decimal" id="br_t_F_${i}" data-tf="${i}" aria-label="${esc(L(`Своя F, строка ${i + 1}`, `Own F, row ${i + 1}`))}" placeholder="${esc(Math.abs(parseNumber(form.t_th) - 90) < 1e-9 || !form.t_th ? '1' : '')}" value="${esc(form.t_F[i] ?? '')}"></div>`).join('');
+  return `<section class="start-card plates-card"><h2><span class="step-no">3</span> ${esc(L('Точки', 'Points'))}</h2>
+    <div class="pairs br-tg">
+      <div class="pairs-head"><span class="pair-no">№</span><span>${esc(L('r, см', 'r, cm'))}</span><span${tipAttr('t_g', { focus: true })}>${sub(L('Своя g_L(r)', 'Own g_L(r)'))}</span><span${tipAttr('t_F', { focus: true })}>${sub(L('Своя F(r,θ)', 'Own F(r,θ)'))}</span></div>
+      <div class="pairs-list">${rows}</div>
+      <div class="cells-tools">
+        <button type="button" class="icon-btn" data-br="t-add" aria-label="${esc(L('Добавить точку', 'Add a point'))}" title="${esc(L('Добавить точку', 'Add a point'))}">+</button>
+        <button type="button" class="icon-btn" data-br="t-del" aria-label="${esc(L('Убрать последнюю точку', 'Remove the last point'))}" title="${esc(L('Убрать последнюю точку', 'Remove the last point'))}"${n <= 1 ? ' disabled' : ''}>−</button>
+      </div>
+    </div></section>`;
+}
+
+function tg43Result() {
+  const o = { offsetMin: offsetMin() };
+  const r = computeBrachyTg43(form, { ...o, now: Date.now(), well: computeBrachyWell(form, o), phantom: computeBrachyPhantom(form, o) });
+  if (!r.ok) return msgHtml(r.messages);
+  const s = r.source;
+  const cell = (x, n) => `<td class="v">${Number.isFinite(x) ? esc(fmt(x, n)) : '—'}</td>`;
+  const rows = r.rows
+    .map((x) => `<tr><td class="v">${esc(fmt(x.r, 2))}</td>${cell(x.G, 5)}<td class="v">${Number.isFinite(x.g) ? esc(fmt(x.g, 3)) + (x.gOwn ? '*' : '') : '—'}</td><td class="v">${Number.isFinite(x.F) ? esc(fmt(x.F, 3)) + (x.FOwn ? '*' : '') : '—'}</td>${cell(x.value / 100, 4)}${cell((x.value * 10) / 60, 3)}</tr>`)
+    .join('');
+  const table = `<div class="table-wrap"><table class="factors br-variants"><thead><tr><th class="v">${esc(L('r, см', 'r, cm'))}</th><th class="v"${tipAttr('t_G', { focus: true })}>${sub('G_L/G_L(1)')}</th><th class="v"${tipAttr('t_g', { focus: true })}>${sub('g_L(r)')}</th><th class="v"${tipAttr('t_F', { focus: true })}>${sub('F(r,θ)')}</th><th class="v">${esc(L('Ḋ, Гр/ч', 'Ḋ, Gy/h'))}</th><th class="v">${esc(L('Ḋ, мГр/мин', 'Ḋ, mGy/min'))}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  const atText = r.tNow ? L(`сейчас (${dateText(r.t, form.t_zone)})`, `now (${dateText(r.t, form.t_zone)})`) : dateText(r.t, form.t_zone);
+  return `<div class="plates-dose"><span${tipAttr('Dw1', { focus: true })}>${sub(L('Ḋ_w,1 = Λ · S_K (1 см, 90°)', 'Ḋ_w,1 = Λ · S_K (1 cm, 90°)'))}</span><b>${esc(fmt(r.dw1 / 100, 4))} ${esc(L('Гр/ч', 'Gy/h'))}</b></div>
+    <p class="sub-hint">${sub(L(`${s.name}: Λ = ${fmt(s.lambda, 3)} сГр·ч⁻¹·Ед⁻¹, L = ${fmt(s.L, 2)} см; S_K = ${fmt(r.SK, 0)} Ед (${r.base.label}) на ${atText}; θ = ${fmt(r.theta, 0)}°.`, `${s.name}: Λ = ${fmt(s.lambda, 3)} cGy·h⁻¹·U⁻¹, L = ${fmt(s.L, 2)} cm; S_K = ${fmt(r.SK, 0)} U (${r.base.label}) at ${atText}; θ = ${fmt(r.theta, 0)}°.`))}${s.ref ? ` <span class="ref">(${esc(refText(s.ref))})</span>` : ''}</p>
+    ${table}${r.rows.some((x) => x.gOwn || x.FOwn) ? `<p class="sub-hint">${esc(L('* — своё значение.', '* own value.'))}</p>` : ''}${msgHtml(r.messages)}`;
+}
+
 function resultCardHtml(n) {
   return `<section class="start-card plates-card"><h2><span class="step-no">${n}</span> ${esc(L('Результат', 'Result'))}</h2><div id="br-result" aria-live="polite"></div></section>`;
 }
@@ -572,6 +627,7 @@ function sheetBody() {
   if (sheet === 'decay') return `${sourceHtml()}${decayParamsHtml()}${resultCardHtml(3)}`;
   if (sheet === 'cross') return `${crossSetupHtml()}${crossChamberHtml(2, 'x_ref_', L('Эталонная камера', 'Reference chamber'))}${crossChamberHtml(3, 'x_fld_', L('Рабочая камера', 'Field chamber'))}${resultCardHtml(4)}`;
   if (sheet === 'stab') return `${stabSetupHtml()}${stabMeasureHtml()}${resultCardHtml(3)}`;
+  if (sheet === 'tg43') return `${sourceHtml()}${tg43ParamsHtml()}${tg43RowsHtml()}${resultCardHtml(4)}`;
   if (sheet === 'well') return `${sourceHtml()}${wellChamberHtml()}${wellMeasureHtml()}${resultCardHtml(4)}${uncHtml(5)}`;
   return `${sourceHtml()}${phantomChamberHtml()}${phantomMeasureHtml()}${resultCardHtml(4)}${doseHtml()}${ownKtotHtml()}${uncHtml(7)}`;
 }
@@ -583,7 +639,7 @@ function render() {
     <div class="plates-banner"><b>${esc(L('Раздел в разработке', 'Section in development'))}</b>: ${esc(L('расчёт работает; запись в журнал и протокол появятся на следующих этапах. Черновик формы хранится в этом браузере.', 'the calculation works; journal records and the report come in the next stages. The form draft is kept in this browser.'))}</div>
     ${introHtml()}
     ${sheetBody()}
-    ${sheet === 'decay' ? '' : `<div class="actions"><button type="button" data-br="clear">${esc(L('Очистить измерение', 'Clear the measurement'))}</button></div>`}`;
+    ${sheet === 'decay' || sheet === 'tg43' ? '' : `<div class="actions"><button type="button" data-br="clear">${esc(L('Очистить измерение', 'Clear the measurement'))}</button></div>`}`;
   for (const el of root.querySelectorAll('.cells[data-series]')) {
     const key = el.dataset.series;
     const m = key.match(/^p_hole(\d)$/);
@@ -738,7 +794,7 @@ function live() {
     const dose = $('#br-dose');
     if (dose) dose.innerHTML = doseResult(r);
   }
-  const results = { well: wellResult, sweet: sweetResult, decay: decayResult, cross: crossResult, stab: stabResult, phantom: phantomResult };
+  const results = { well: wellResult, sweet: sweetResult, decay: decayResult, cross: crossResult, stab: stabResult, phantom: phantomResult, tg43: tg43Result };
   box.innerHTML = results[sheet]();
   if (sheet === 'sweet') sweetChart();
   uncLive();
@@ -752,6 +808,9 @@ function readForm() {
   for (const el of root.querySelectorAll('[data-hole]')) form.p_holes[+el.dataset.hole][el.dataset.hf] = el.value;
   for (const el of root.querySelectorAll('[data-sx]')) form.s_x[+el.dataset.sx] = el.value;
   for (const el of root.querySelectorAll('[data-sm]')) form.s_M[+el.dataset.sm] = el.value;
+  for (const el of root.querySelectorAll('[data-tr]')) form.t_r[+el.dataset.tr] = el.value;
+  for (const el of root.querySelectorAll('[data-tg]')) form.t_g[+el.dataset.tg] = el.value;
+  for (const el of root.querySelectorAll('[data-tf]')) form.t_F[+el.dataset.tf] = el.value;
   const own = root.querySelectorAll('input[data-uk]');
   if (own.length) {
     const o = {};
@@ -782,7 +841,7 @@ function onInput(e) {
 function onChange(e) {
   const t = e.target;
   if (t.name === 'br_main') return;
-  if (t.dataset.full !== undefined || t.id === 'br_w_unit' || t.id === 'br_s_unit' || t.id === 'br_x_unit' || t.id === 'br_st_unit') {
+  if (t.dataset.full !== undefined || t.id === 'br_w_unit' || t.id === 'br_s_unit' || t.id === 'br_x_unit' || t.id === 'br_st_unit' || t.id === 'br_t_th') {
     readForm();
     persist();
     render();
@@ -852,6 +911,22 @@ function onClick(e) {
     const v = r.method === 'redundant' ? r.value : r.r1.corr;
     Object.assign(form, { st_base: String(+v.toPrecision(6)).replace('.', L(',', '.')), st_base_date: form.st_date, st_base_time: form.st_time, st_base_zone: form.st_zone });
     status(L(`Исходное значение — ${form.st_base}.`, `Baseline: ${form.st_base}.`));
+  } else if (b.dataset.br === 't-add') {
+    readForm();
+    form.t_r.push('');
+    form.t_g.push('');
+    form.t_F.push('');
+    persist();
+    render();
+    $(`#br_t_r_${form.t_r.length - 1}`)?.focus();
+    return;
+  } else if (b.dataset.br === 't-del') {
+    readForm();
+    if (form.t_r.length > 1) {
+      form.t_r.pop();
+      form.t_g.length = Math.min(form.t_g.length, form.t_r.length);
+      form.t_F.length = Math.min(form.t_F.length, form.t_r.length);
+    }
   } else if (b.dataset.br === 'u-clear') {
     form[`u_over_${sheet === 'well' ? 'w' : 'p'}`] = '';
   } else if (b.dataset.br === 'd-csv') {
