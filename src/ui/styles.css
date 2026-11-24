@@ -1174,6 +1174,11 @@ textarea.curve-data { min-height: 200px; height: 220px; font: 12.5px/1.45 var(--
 /* рентгенотерапевтический аппарат в «Оборудовании»: таблица аппликаторов, режимы, замечания в карточке */
 .jkv-mode { border: 1px solid var(--rule); border-radius: var(--radius); padding: 10px 12px; background: var(--calc); display: grid; gap: 8px; min-width: 0; }
 .jkv-mode > .sub-h { margin: 0; }
+/* источник афтерлоадера и строка сертификата колодезной камеры (с 0.75.0) */
+.jbr-src { border: 1px solid var(--rule); border-radius: var(--radius); padding: 10px 12px; background: var(--calc); display: grid; gap: 8px; min-width: 0; }
+.jbr-src > .jcard-head { margin: 0; }
+.jbr-src .row-tools { margin: 0; }
+.jbr-src.current { border-color: var(--accent); }
 .jkv-mode .row-tools { margin: 0; }
 .jkv-apps { display: flex; flex-wrap: wrap; gap: 4px 18px; }
 .jkv-apps .check { font-size: 13.5px; }

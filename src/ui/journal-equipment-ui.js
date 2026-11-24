@@ -24,6 +24,10 @@ import { kvCertText, hasKvCert, kvModeElectrometer, KV_CERT_FORM_KEYS } from '..
 import { KV_DEFAULTS } from '../core/kv.js';
 import { KV_PHANTOMS } from '../core/kv-tables.js';
 import { kvModeUsed, kvAppUsed, kvEquipUsed } from '../core/kv-records.js';
+import { HALF_LIVES, WELL_CHAMBERS, WELL_OTHER } from '../core/brachy-data.js';
+import { STRENGTH_UNITS, ACTIVITY_UNITS, GAMMA_UNITS, WELL_N_UNITS } from '../core/brachy.js';
+import { newBrachySource, newBrachyCertRow, normalizeBrachyMachine, normalizeBrachyCert, findWellChamber, isWellModel, SOURCE_MODELS, sourceText, sourceOn } from '../core/brachy-journal.js';
+import { tipAttr } from './brachy-tips.js';
 import { getMyChambers } from './store.js';
 import { $, esc, fmt, makeStatus, armButton, notifyUpdate, today, richText, currentProtocol, plainSymbols } from './common.js';
 import { localizeDecimals } from './i18n.js';
@@ -101,12 +105,12 @@ const missChip = (miss) => (miss.length ? `<span class="chip warn">${richText(L(
 // ------------------------------------------------------------ камеры
 const OTHER_MAKER = 'other';
 /** Производители камер: из базы фотонов, плоскопараллельных камер базы электронов и камер только для kV-рентгена. */
-const chamberMakers = () => [...new Set([...CHAMBERS.map((c) => c.maker), ...E_CHAMBERS.filter((c) => c.type === 'pp').map((c) => c.maker), ...KV_ONLY_CHAMBERS.map((c) => c.maker)])];
+const chamberMakers = () => [...new Set([...CHAMBERS.map((c) => c.maker), ...E_CHAMBERS.filter((c) => c.type === 'pp').map((c) => c.maker), ...KV_ONLY_CHAMBERS.map((c) => c.maker), ...WELL_CHAMBERS.map((c) => c.maker)])];
 /** Производитель камеры записи: выбранный в карточке или по модели; «Другая», своя — 'other'. */
 function chamberMakerOf(c) {
   const m = c.form?.ch_model ?? '';
-  if (m === 'OTHER' || m === 'CUSTOM' || String(m).startsWith('MY:')) return OTHER_MAKER;
-  return findChamber(m)?.maker ?? findEChamber(m)?.maker ?? findKvOnlyChamber(m)?.maker ?? c.maker ?? '';
+  if (m === 'OTHER' || m === 'CUSTOM' || m === WELL_OTHER || String(m).startsWith('MY:')) return OTHER_MAKER;
+  return findChamber(m)?.maker ?? findEChamber(m)?.maker ?? findKvOnlyChamber(m)?.maker ?? findWellChamber(m)?.maker ?? c.maker ?? '';
 }
 /** Модели камер производителя: камеры базы фотонов, затем плоскопараллельные (для электронов и ⁶⁰Co). */
 function chamberModels(maker) {
@@ -115,14 +119,16 @@ function chamberModels(maker) {
   const cyl = CHAMBERS.filter((c) => c.maker === maker).map((c) => [c.id, `${c.model}${c.note ? ` — ${plainSymbols(chamberNote(c))}` : ''}${kvModelOfJournal(c.id) ? L(' · и для kV-рентгена', ' · also for kV x-rays') : ''}`]);
   const pp = E_CHAMBERS.filter((c) => c.type === 'pp' && c.maker === maker).map((c) => [c.id, `${c.model} — ${L('плоскопараллельная, для электронов и ⁶⁰Co', 'plane-parallel, for electrons and ⁶⁰Co')}`]);
   const kv = KV_ONLY_CHAMBERS.filter((c) => c.maker === maker).map((c) => [c.id, `${c.model} — ${L('плоскопараллельная, для kV-рентгена (низкие энергии)', 'plane-parallel, for kV x-rays (low energy)')}`]);
-  return [...cyl, ...pp, ...kv];
+  // колодезные камеры (с 0.75.0) — для брахитерапии
+  const well = WELL_CHAMBERS.filter((c) => c.maker === maker).map((c) => [c.id, `${c.model} — ${L('колодезная, для брахитерапии', 'well-type, for brachytherapy')}`]);
+  return [...cyl, ...pp, ...kv, ...well];
 }
 function makerOptions(makers, cur, otherText) {
   return [`<option value="">${esc(L('— производитель —', '— manufacturer —'))}</option>`, ...makers.map((m) => `<option value="${esc(m)}"${m === cur ? ' selected' : ''}>${esc(m)}</option>`), `<option value="${OTHER_MAKER}"${cur === OTHER_MAKER ? ' selected' : ''}>${esc(otherText)}</option>`].join('');
 }
 function chamberModelOptions(maker, cur) {
   if (maker === OTHER_MAKER) {
-    const opts = [['OTHER', L('Другая камера — для электронов и ⁶⁰Co, k_Q вручную', 'Other chamber: for electrons and ⁶⁰Co, k_Q entered manually')]];
+    const opts = [['OTHER', L('Другая камера — для электронов и ⁶⁰Co, k_Q вручную', 'Other chamber: for electrons and ⁶⁰Co, k_Q entered manually')], [WELL_OTHER, L('Другая колодезная камера — для брахитерапии', 'Other well-type chamber: for brachytherapy')]];
     if (cur === 'CUSTOM') opts.push(['CUSTOM', L('Своя камера (из вкладки «МВ фотоны»)', 'Custom chamber (from the MV photons tab)')]);
     return opts.map(([v, t]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(plainSymbols(t))}</option>`).join('');
   }
@@ -152,6 +158,8 @@ const RECORDS_TITLE = () => L('Есть в записях журнала: зап
 
 /** Камера выбрана в режимах аппаратов kV или есть в их записях: применение «kV-рентген» не снимается. */
 const kvUsedBy = (j, id) => kvChamberInModes(j, id) || kvEquipUsed(j, 'chamberId', id);
+/** Камера есть в записях брахитерапии (с 0.76.0): применение «брахитерапия» не снимается. */
+const brachyUsedBy = (j, id) => (j.brachyRecords ?? []).some((r) => r.chamberId === id || r.refChamberId === id);
 
 /** «Применение» камеры: флажки МВ фотоны и ⁶⁰Co, электроны, kV-рентген (те, для которых годится модель). */
 function useField(j, c, use, uses) {
@@ -165,6 +173,7 @@ function useField(j, c, use, uses) {
     box('photon', photonCapable(f) ? L('МВ фотоны и ⁶⁰Co', 'MV photons and ⁶⁰Co') : '⁶⁰Co', cobaltCapable(f), uses.photon || uses.cobalt),
     box('electron', L('электроны', 'electrons'), electronCapable(f), uses.electron),
     box('kv', L('kV-рентген', 'kV x-rays'), true, kvUsedBy(j, c.id)),
+    box('brachy', L('брахитерапия (фантом PTW 9193)', 'brachytherapy (PTW 9193 phantom)'), cobaltCapable(f), brachyUsedBy(j, c.id)),
   ].join('');
   const sub = chamberUseSet(c)
     ? L('поля ниже — только для отмеченного; списки камер во вкладках — тоже', 'the fields below are only for what is ticked; so are the chamber lists in the tabs')
@@ -364,31 +373,35 @@ function chamberCard(c, j = getJournal()) {
   const uses = chamberUses(j, c.id);
   // «Применение» (с 0.50.0): поля — только отмеченного; пока не отмечено — по модели и по тому, где камерой мерили
   const use = chamberUse(c, j);
+  // колодезная камера (с 0.75.0): только сертификат брахитерапии
+  const well = isWellModel(f.ch_model);
   const ph = use.photon && photonCapable(f);
   const el = use.electron && electronCapable(f);
   const coOnly = use.photon && !photonCapable(f) && cobaltCapable(f);
   const phCross = ph && f.ch_cal_route === 'cross';
   const elCross = el && f.e_cal_route === 'cross';
   // свидетельство для МВ и ⁶⁰Co — когда камера отмечена для фотонов, электронов или ⁶⁰Co (до выбора модели полей нет)
-  const mv = !isBlank(f.ch_model) && (ph || el || coOnly || uses.cobalt);
+  // и для фантома PTW 9193 вкладки «Брахитерапия»: камеру калибруют в ⁶⁰Co (DIN 6809-2)
+  const mv = !isBlank(f.ch_model) && !well && (ph || el || coOnly || uses.cobalt || use.brachy);
   // камера из списка вкладки kV: плоскопараллельная только для kV или цилиндрическая из табл. 32 (её калибруют и в рентгене)
   const kvCapable = !!kvModelOfJournal(f.ch_model);
-  const forWhat = [photonCapable(f) && L('фотонов', 'photons'), electronCapable(f) && L('электронов', 'electrons'), cobaltCapable(f) && '⁶⁰Co', kvCapable && L('kV-рентгена', 'kV x-rays')].filter(Boolean);
+  const forWhat = [photonCapable(f) && L('фотонов', 'photons'), electronCapable(f) && L('электронов', 'electrons'), cobaltCapable(f) && '⁶⁰Co', kvCapable && L('kV-рентгена', 'kV x-rays'), well && L('брахитерапии', 'brachytherapy')].filter(Boolean);
   const forText = forWhat.length ? L(`для ${forWhat.length > 1 ? `${forWhat.slice(0, -1).join(', ')} и ${forWhat.at(-1)}` : forWhat[0]}`, `for ${forWhat.length > 1 ? `${forWhat.slice(0, -1).join(', ')} and ${forWhat.at(-1)}` : forWhat[0]}`) : '';
   // N_D,w в ⁶⁰Co нужен, если хоть для одного вида пучков камера калибруется в ⁶⁰Co, если она выбрана у пучка ⁶⁰Co
   // (или модель ещё не выбрана)
-  const needNdw = mv && ((ph && !phCross) || (el && !elCross) || coOnly || uses.cobalt);
+  const needNdw = mv && ((ph && !phCross) || (el && !elCross) || coOnly || uses.cobalt || use.brachy);
   const units = Object.entries(NDW_UNITS).map(([v, u]) => [v, unitLabel(u)]);
   const maker = chamberMakerOf(c);
   const pane = certPaneOf(j, c.id);
   return `<div class="jcard" data-card="chamber:${esc(c.id)}">
-    <div class="jcard-head"><b>${esc(chamberText(c) || L('Новая камера', 'New chamber'))}</b><span class="chips">${isRetired(c) ? retiredChip('chamber', c) : `${missChip(chamberMissing(c, uses, 'trs'))}${chamberDueChips(c, j, mv, use.kv)}`}</span></div>
+    <div class="jcard-head"><b>${esc(chamberText(c) || L('Новая камера', 'New chamber'))}</b><span class="chips">${isRetired(c) ? retiredChip('chamber', c) : `${missChip(chamberMissing(c, uses, 'trs'))}${well ? dueChip(c.brachy?.dueDate ?? '', '') : chamberDueChips(c, j, mv, use.kv)}`}</span></div>
     ${retireBlock('chamber', c)}
     <div class="grid">
       ${field(L('Производитель', 'Manufacturer'), `<select ${bind(k, c.id, 'maker')}>${makerOptions(chamberMakers(), maker, L('Другая или своя камера', 'Other or custom chamber'))}</select>`, { forId: fieldId(k, c.id, 'maker') })}
       ${maker ? field(L('Модель', 'Model'), `<select ${bind(k, c.id, 'form.ch_model')}>${chamberModelOptions(maker, f.ch_model)}</select>`, { forId: fieldId(k, c.id, 'form.ch_model'), sub: [custom ? esc([f.cc_maker, f.cc_model].filter(Boolean).join(' ')) : '', esc(forText), esc(chamberDims(f))].filter(Boolean).join(' · ') }) : ''}
       ${field(L('Заводской №', 'Serial No.'), input(k, c.id, 'form.ch_serial', f.ch_serial), { forId: fieldId(k, c.id, 'form.ch_serial') })}
-      ${isBlank(f.ch_model) ? '' : useField(j, c, use, uses)}
+      ${isBlank(f.ch_model) || well ? '' : useField(j, c, use, uses)}
+      ${f.ch_model === WELL_OTHER ? field(L('Название', 'Name'), input(k, c.id, 'form.e_other_name', f.e_other_name, { placeholder: 'Nucletron SDS' }), { forId: fieldId(k, c.id, 'form.e_other_name') }) : ''}
       ${ph && !custom ? field(L('Длина полости, мм', 'Cavity length, mm'), input(k, c.id, 'length', c.length, { num: true, placeholder: Number.isFinite(findChamber(f.ch_model)?.lengthMm) ? fmt(findChamber(f.ch_model).lengthMm, 1) : '' }), { forId: fieldId(k, c.id, 'length'), sub: Number.isFinite(findChamber(f.ch_model)?.lengthMm) ? L(`для k<sub>vol</sub> в пучках БВФ; пусто — из базы (${lengthSourceText(findChamber(f.ch_model))})`, `for k<sub>vol</sub> in FFF beams; blank: from the database (${lengthSourceText(findChamber(f.ch_model))})`) : L('для k<sub>vol</sub> в пучках БВФ: в базе длины нет — возьмите из паспорта камеры', 'for k<sub>vol</sub> in FFF beams: the database has no length; take it from the chamber datasheet') }) : ''}
       ${other
         ? `${field(L('Название', 'Name'), input(k, c.id, 'form.e_other_name', f.e_other_name), { forId: fieldId(k, c.id, 'form.e_other_name') })}
@@ -397,9 +410,10 @@ function chamberCard(c, j = getJournal()) {
         : ''}
     </div>
     ${isBlank(f.ch_model) ? `<p class="sub-hint">${esc(L('Выберите модель и отметьте, для чего камера: появятся поля её сертификатов — для МВ фотонов, электронов и ⁶⁰Co и (отдельно) kV-сертификата.', 'Select the model and tick what the chamber is used for: the fields of its certificates appear, for MV photons, electrons and ⁶⁰Co and (separately) the kV certificate.'))}</p>` : ''}
-    ${!isBlank(f.ch_model) && !mv && !use.kv ? `<p class="sub-hint">${esc(L('Отметьте в «Применении», для чего камера: появятся поля её сертификатов.', 'Tick in “Use” what the chamber is used for: the fields of its certificates appear.'))}</p>` : ''}
+    ${!isBlank(f.ch_model) && !mv && !use.kv && !well ? `<p class="sub-hint">${esc(L('Отметьте в «Применении», для чего камера: появятся поля её сертификатов.', 'Tick in “Use” what the chamber is used for: the fields of its certificates appear.'))}</p>` : ''}
     ${mv && use.kv ? certPaneTabs(c.id, pane) : ''}
     ${mv ? `<div data-cert-pane="mv"${pane === 'kv' ? ' hidden' : ''}><h4 class="sub-h">${esc(L('Свидетельство для МВ фотонов, электронов и ⁶⁰Co', 'Certificate for MV photons, electrons and ⁶⁰Co'))}</h4>
+    ${use.brachy ? `<p class="sub-hint">${esc(L('Это же свидетельство (N_D,w в ⁶⁰Co, T₀, P₀) подставляется на лист «Фантом PTW 9193» вкладки «Брахитерапия» (DIN 6809-2).', 'The same certificate (N_D,w in ⁶⁰Co, T₀, P₀) is filled into the PTW 9193 phantom sheet of the Brachytherapy tab (DIN 6809-2).'))}</p>` : ''}
     <p class="sub-hint">${esc(use.kv ? L('Калибровка в пучке ⁶⁰Co или перекрёстная. К kV-рентгену не относится: у него свой kV-сертификат на ярлыке «kV-рентген», со своими T₀, P₀ и сведениями о свидетельстве.', 'Calibration in a ⁶⁰Co beam or cross-calibration. It does not apply to kV x-rays: they have their own kV certificate on the kV x-rays tab, with its own T₀, P₀ and certificate details.') : L('Калибровка в пучке ⁶⁰Co или перекрёстная.', 'Calibration in a ⁶⁰Co beam or cross-calibration.'))}</p>
     <div class="grid">
       ${ph ? field(L('Калибровка для фотонов', 'Calibration for photons'), select(k, c.id, 'form.ch_cal_route', f.ch_cal_route || 'co60', [['co60', L('N_D,w в пучке ⁶⁰Co', 'N_D,w in a ⁶⁰Co beam')], ['cross', L('перекрёстная в пучке МВ фотонов (TRS-398)', 'cross-calibration in an MV photon beam (TRS-398)')]]), { forId: fieldId(k, c.id, 'form.ch_cal_route'), cls: el ? '' : 'span-2' }) : ''}
@@ -429,10 +443,111 @@ function chamberCard(c, j = getJournal()) {
     </div>
     ${certTools(j, c, 'mv')}</div>` : ''}
     ${use.kv ? `<div data-cert-pane="kv"${mv && pane !== 'kv' ? ' hidden' : ''}>${kvCertBlock(j, c)}</div>` : ''}
+    ${well ? brachyCertBlock(j, c) : ''}
     <div class="grid">
       ${notesField(k, c.id, c.notes)}
     </div>
     <div class="row-tools">${retireButton('chamber', c)}<button type="button" class="link-btn danger" data-del="chamber:${esc(c.id)}"${usedInRecords(j, 'chamberId', c.id) ? ` disabled title="${esc(RECORDS_TITLE())}"` : ''}>${esc(L('Удалить камеру', 'Delete chamber'))}</button></div>
+  </div>`;
+}
+
+// ------------------------------------------------------------ брахитерапия (с 0.75.0)
+const nuclideOptions = () => Object.entries(HALF_LIVES).map(([k, h]) => [k, h.label]);
+const unitOptions = (units) => Object.entries(units).map(([k, u]) => [k, unitLabel(u)]);
+/** Часовой пояс времени сертификата источника: как на компьютере, UTC или смещение в часах (как на листах вкладки). */
+const zoneOptions = () => [['', L('как на компьютере', 'as on this computer')], ['UTC', 'UTC'], ...Array.from({ length: 27 }, (_, i) => i - 12).filter((h) => h).map((h) => [`${h > 0 ? '+' : ''}${h}`, `UTC${h > 0 ? '+' : '−'}${Math.abs(h)}`]), ['+5:30', 'UTC+5:30']];
+/** Модели источников для нуклида: из консенсуса HEBD и TRS-492, табл. 8; '' — своя (название вводится). */
+const sourceModelOptions = (nuclide, own) => [['', own], ...SOURCE_MODELS.filter((x) => x.nuclide === nuclide).map((x) => [x.id, x.name])];
+/** Подпись поля с подсказкой листов «Брахитерапии» (что обозначает величина и откуда берётся). */
+const tip = (key, text) => `<span${tipAttr(key)}>${text}</span>`;
+/** Источник есть в записях брахитерапии (с 0.76.0): такие не удаляются. */
+const brachySourceUsed = (j, id) => (j.brachyRecords ?? []).some((r) => r.sourceId === id);
+
+/**
+ * Сертификат колодезной камеры: строки «аппарат + адаптер + нуклид» с калибровочным коэффициентом N (TRS-492, разд. 7),
+ * общие T₀, P₀ и сведения о свидетельстве. На листе «Колодезная камера» строка выбирается и подставляется.
+ */
+function brachyCertBlock(j, c) {
+  const b = c.brachy ?? normalizeBrachyCert({});
+  const k = 'chamber';
+  const fid = (key) => fieldId(k, c.id, `brachy.${key}`);
+  const rk = 'brachyrow';
+  const rows = b.rows.map((r, i) => {
+    const fr = (key) => fieldId(rk, r.id, key);
+    return `<div class="jbr-src jbr-row">
+      <div class="jcard-head"><b>${esc(L(`Строка ${i + 1}`, `Row ${i + 1}`))}</b></div>
+      <div class="grid">
+        ${field(L('Аппарат и адаптер', 'Afterloader and adapter'), input(rk, r.id, 'label', r.label, { placeholder: L('Flexitron, адаптер 077.212', 'Flexitron, adapter 077.212') }), { forId: fr('label'), cls: 'span-2' })}
+        ${field(L('Нуклид', 'Nuclide'), select(rk, r.id, 'nuclide', r.nuclide, nuclideOptions()), { forId: fr('nuclide') })}
+        ${field(tip('kSm', L('Источник при калибровке', 'Source at calibration')), select(rk, r.id, 'sm0', r.sm0, sourceModelOptions(r.nuclide, L('— не указан —', '— not given —'))), { forId: fr('sm0'), sub: L('для k<sub>sm,sm0</sub>', 'for k<sub>sm,sm0</sub>') })}
+        ${field(tip('w_N', L('Калибровочный коэффициент N', 'Calibration coefficient N')), `<div class="inline">${input(rk, r.id, 'N', r.N, { num: true })}${select(rk, r.id, 'N_unit', r.N_unit, unitOptions(WELL_N_UNITS), { aria: L('Единица', 'Unit') })}</div>`, { forId: fr('N'), cls: 'span-2' })}
+        ${field(tip('w_NU', L('U(N), % (k = 2)', 'U(N), % (k = 2)')), input(rk, r.id, 'U', r.U, { num: true }), { forId: fr('U') })}
+        ${field(tip('s_cert_pos', L('Опорная точка, мм', 'Reference point, mm')), input(rk, r.id, 'pos', r.pos, { num: true }), { forId: fr('pos'), sub: L('положение источника при калибровке', 'source position at calibration') })}
+      </div>
+      <div class="row-tools"><button type="button" class="link-btn danger" data-del="brachyrow:${esc(c.id)}:${esc(r.id)}">${esc(L('Удалить строку', 'Delete row'))}</button></div>
+    </div>`;
+  }).join('');
+  return `<h4 class="sub-h">${esc(L('Сертификат колодезной камеры', 'Well-type chamber certificate'))}</h4>
+    <p class="sub-hint">${L('Строка — сочетание аппарата, адаптера (держателя источника) и нуклида, для которого лаборатория дала калибровочный коэффициент N (IAEA TRS-492, разд. 7). Пересчёт между нуклидами не допускается. На листе «Колодезная камера» вкладки «Брахитерапия» строка выбирается и подставляется; модель источника при калибровке нужна для k<sub>sm,sm0</sub>.', 'A row is the combination of afterloader, adapter (source holder) and nuclide for which the laboratory gave the calibration coefficient N (IAEA TRS-492, Sec. 7). Conversion between nuclides is not permitted. On the Well-type chamber sheet of the Brachytherapy tab the row is selected and filled in; the source model at calibration is needed for k<sub>sm,sm0</sub>.')}</p>
+    ${b.rows.length ? `<div class="jbeams">${rows}</div>` : `<p class="sub-hint">${esc(L('Строк пока нет: добавьте по строке на каждое сочетание аппарата, адаптера и нуклида из сертификата.', 'No rows yet: add a row for each afterloader, adapter and nuclide combination in the certificate.'))}</p>`}
+    <div class="row-tools"><button type="button" class="link-btn" data-add-brachyrow="${esc(c.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить строку сертификата', 'Add a certificate row'))}</button></div>
+    <div class="grid">
+      ${field(tip('kTP', L('T₀ из сертификата, °C', 'T₀ from the certificate, °C')), input(k, c.id, 'brachy.T0', b.T0, { num: true }), { forId: fid('T0') })}
+      ${field(tip('kTP', L('P₀ из сертификата, кПа', 'P₀ from the certificate, kPa')), input(k, c.id, 'brachy.P0', b.P0, { num: true }), { forId: fid('P0') })}
+      ${field(L('Лаборатория', 'Laboratory'), input(k, c.id, 'brachy.lab', b.lab, { placeholder: 'PTW Dosimetry' }), { forId: fid('lab') })}
+      ${field(L('№ сертификата', 'Certificate No.'), input(k, c.id, 'brachy.cert', b.cert), { forId: fid('cert') })}
+      ${field(L('Дата калибровки', 'Calibration date'), input(k, c.id, 'brachy.calDate', b.calDate, { type: 'date' }), { forId: fid('calDate') })}
+      ${field(L('Действует до', 'Valid until'), input(k, c.id, 'brachy.dueDate', b.dueDate, { type: 'date' }), { forId: fid('dueDate'), sub: L('за 30 дней до срока появится напоминание', 'a reminder appears 30 days before') })}
+    </div>`;
+}
+
+/** Источник афтерлоадера: нуклид, модель, номер, сертификат (как в паспорте источника), установка и замена. */
+function brachySourceBlock(j, m, s, cur) {
+  const k = 'brachysrc';
+  const fid = (key) => fieldId(k, s.id, key);
+  const activity = Object.hasOwn(ACTIVITY_UNITS, s.certUnit);
+  const unitOpts = [...unitOptions(STRENGTH_UNITS), ...unitOptions(ACTIVITY_UNITS)];
+  const head = sourceText(s) || L('Новый источник', 'New source');
+  return `<div class="jbr-src${s === cur ? ' current' : ''}">
+    <div class="jcard-head"><b data-live="brsrc-${val(s.id)}">${esc(head)}</b>${s === cur ? `<span class="chip done">${esc(L('в аппарате', 'in the afterloader'))}</span>` : ''}</div>
+    <div class="grid">
+      ${field(L('Радионуклид', 'Radionuclide'), select(k, s.id, 'nuclide', s.nuclide, nuclideOptions()), { forId: fid('nuclide') })}
+      ${field(tip('t_src', L('Модель источника', 'Source model')), select(k, s.id, 'model', s.model, sourceModelOptions(s.nuclide, L('своя (ввести название)', 'own (enter the name)'))), { forId: fid('model'), cls: 'span-2', sub: L('из консенсуса HEBD (Λ, g<sub>L</sub>(r) для дозы TG-43) и TRS-492, табл. 8 (k<sub>sm,sm0</sub>)', 'from the HEBD consensus (Λ, g<sub>L</sub>(r) for the TG-43 dose) and TRS-492, Table 8 (k<sub>sm,sm0</sub>)') })}
+      ${s.model ? '' : field(L('Название модели', 'Model name'), input(k, s.id, 'modelName', s.modelName), { forId: fid('modelName') })}
+      ${field(L('Заводской № источника', 'Source serial No.'), input(k, s.id, 'serial', s.serial), { forId: fid('serial') })}
+      ${field(tip('cert_value', L('Значение в сертификате', 'Certificate value')), `<div class="inline">${input(k, s.id, 'certValue', s.certValue, { num: true })}${select(k, s.id, 'certUnit', s.certUnit, unitOpts, { aria: L('Единица', 'Unit') })}</div>`, { forId: fid('certValue'), cls: 'span-2', sub: L('ОМВК (мощность воздушной кермы на 1 м), S<sub>K</sub> или активность', 'RAKR (air kerma rate at 1 m), S<sub>K</sub> or activity') })}
+      ${activity ? field(tip('cert_gamma', L('Γ<sub>δ</sub> из сертификата', 'Γ<sub>δ</sub> from the certificate')), `<div class="inline">${input(k, s.id, 'certGamma', s.certGamma, { num: true })}${select(k, s.id, 'certGammaUnit', s.certGammaUnit, unitOptions(GAMMA_UNITS), { aria: L('Единица', 'Unit') })}</div>`, { forId: fid('certGamma'), cls: 'span-2', sub: L('для перевода активности в ОМВК', 'to convert activity to RAKR') }) : ''}
+      ${field(L('Дата сертификата', 'Certificate date'), input(k, s.id, 'certDate', s.certDate, { type: 'date' }), { forId: fid('certDate') })}
+      ${field(L('Время', 'Time'), input(k, s.id, 'certTime', s.certTime, { type: 'time' }), { forId: fid('certTime'), sub: L('пусто — 00:00', 'blank: 00:00') })}
+      ${field(L('Часовой пояс', 'Time zone'), select(k, s.id, 'certZone', s.certZone, zoneOptions()), { forId: fid('certZone') })}
+      ${field(tip('cert_U', L('U сертификата, % (k = 2)', 'Certificate U, % (k = 2)')), input(k, s.id, 'certU', s.certU, { num: true }), { forId: fid('certU') })}
+      ${field(L('Установлен', 'Installed'), input(k, s.id, 'installed', s.installed, { type: 'date' }), { forId: fid('installed') })}
+      ${field(L('Заменён', 'Replaced'), input(k, s.id, 'removed', s.removed, { type: 'date' }), { forId: fid('removed'), sub: L('пусто — источник в аппарате', 'blank: the source is in the afterloader') })}
+      ${field(L('Примечания', 'Notes'), notesArea(k, s.id, 'notes', s.notes), { forId: fid('notes'), cls: 'span-all' })}
+    </div>
+    <div class="row-tools"><button type="button" class="link-btn danger" data-del="brachysrc:${esc(m.id)}:${esc(s.id)}"${brachySourceUsed(j, s.id) ? ` disabled title="${esc(L('Источник есть в записях журнала', 'The source is used in journal records'))}"` : ''}>${esc(L('Удалить источник', 'Delete source'))}</button></div>
+  </div>`;
+}
+
+/** Афтерлоадер (с 0.75.0): название, номер, история источников — новые сверху; текущий отмечен «в аппарате». */
+function brachyMachineCard(j, m) {
+  const k = 'machine';
+  const cur = sourceOn(m, today());
+  const hasRecords = (j.brachyRecords ?? []).some((r) => r.machineId === m.id);
+  return `<div class="jcard jbr" data-card="machine:${esc(m.id)}">
+    <div class="jcard-head"><b>${esc(m.name || L('Новый афтерлоадер', 'New afterloader'))}</b><span class="chips"><span class="chip none">${esc(L('афтерлоадер', 'afterloader'))}</span></span></div>
+    <div class="grid">
+      ${field(L('Аппарат', 'Machine'), input(k, m.id, 'name', m.name, { placeholder: 'microSelectron Digital' }), { forId: fieldId(k, m.id, 'name') })}
+      ${field(L('Заводской №', 'Serial No.'), input(k, m.id, 'serial', m.serial), { forId: fieldId(k, m.id, 'serial') })}
+      ${notesField(k, m.id, m.notes)}
+    </div>
+    <h3 class="sub-h">${esc(L('Источники', 'Sources'))}</h3>
+    <p class="sub-hint">${esc(L('Каждая замена источника — новый источник: сертификат (как в паспорте источника), даты установки и замены. При добавлении нового у прежнего ставится дата замены. На листах вкладки «Брахитерапия» по дате измерения подставляется источник, стоявший в аппарате.', 'Each source exchange is a new source: its certificate (as in the source certificate), installation and replacement dates. Adding a new one sets the replacement date of the previous one. On the sheets of the Brachytherapy tab the source that was in the afterloader on the measurement date is filled in.'))}</p>
+    <div class="row-tools eq-add-row"><button type="button" class="link-btn" data-add-brachysrc="${esc(m.id)}"><span aria-hidden="true">+</span> ${esc(L('Добавить источник', 'Add a source'))}</button></div>
+    <div class="jbeams">${[...m.sources].reverse().map((s) => brachySourceBlock(j, m, s, cur)).join('') || `<p class="sub-hint">${esc(L('Источников пока нет.', 'No sources yet.'))}</p>`}</div>
+    <div class="row-tools">
+      <button type="button" class="link-btn danger" data-del="machine:${esc(m.id)}"${hasRecords ? ` disabled title="${esc(L('У аппарата есть записи в журнале', 'The machine has records in the journal'))}"` : ''}>${esc(L('Удалить аппарат', 'Delete machine'))}</button>
+    </div>
   </div>`;
 }
 
@@ -707,6 +822,7 @@ function kvMachineCard(j, m) {
 
 function machineCard(j, m) {
   if (m.kind === 'kv') return kvMachineCard(j, m);
+  if (m.kind === 'brachy') return brachyMachineCard(j, m);
   // тип аппарата задаётся кнопкой добавления и не меняется (с 0.52.3 выбора «Тип» в карточке нет): ускоритель —
   // пучки фотонов и электронов, аппарат ⁶⁰Co — пучки ⁶⁰Co; тип виден в заголовке карточки и на ярлыке
   const k = 'machine';
@@ -811,7 +927,7 @@ function setSheet(kind, id) {
   }
 }
 /** Вид аппарата для ярлыка. */
-const machineKindText = (m) => (m.kind === 'kv' ? L('рентгенотерапевтический', 'x-ray therapy') : m.kind === 'cobalt' ? '⁶⁰Co' : L('ускоритель', 'linac'));
+const machineKindText = (m) => (m.kind === 'kv' ? L('рентгенотерапевтический', 'x-ray therapy') : m.kind === 'brachy' ? L('афтерлоадер', 'afterloader') : m.kind === 'cobalt' ? '⁶⁰Co' : L('ускоритель', 'linac'));
 /** Отметка на ярлыке по сроку калибровки: прошёл — ошибка, подходит — внимание (как отметка срока в карточке). */
 function dueState(due) {
   const st = dueStatus(due, today()).status;
@@ -837,7 +953,12 @@ function sheetTab(j, kind, x) {
       n = x.modes.length;
       w = countWord(n, [L('режим', 'mode'), L('режима', 'modes'), L('режимов', 'modes')], ['mode', 'modes']);
     }
-    const name = x.name || (x.kind === 'kv' ? L('Новый рентгенотерапевтический аппарат', 'New x-ray therapy unit') : x.kind === 'cobalt' ? L('Новый аппарат ⁶⁰Co', 'New ⁶⁰Co unit') : L('Новый ускоритель', 'New linac'));
+    if (x.kind === 'brachy') {
+      st = sourceOn(x, today()) ? 'done' : '';
+      n = x.sources.length;
+      w = countWord(n, [L('источник', 'source'), L('источника', 'sources'), L('источников', 'sources')], ['source', 'sources']);
+    }
+    const name = x.name || (x.kind === 'kv' ? L('Новый рентгенотерапевтический аппарат', 'New x-ray therapy unit') : x.kind === 'brachy' ? L('Новый афтерлоадер', 'New afterloader') : x.kind === 'cobalt' ? L('Новый аппарат ⁶⁰Co', 'New ⁶⁰Co unit') : L('Новый ускоритель', 'New linac'));
     return { name, small: machineKindText(x), st, title: `${machineKindText(x)}; ${n} ${w}` };
   }
   const chamber = kind === 'chamber';
@@ -1109,7 +1230,7 @@ function renderReadout() {
   const kvModes = j.machines.reduce((s, m) => s + (m.kind === 'kv' ? m.modes.length : 0), 0);
   const kvText = j.machines.some((m) => m.kind === 'kv') ? L(`; режимов рентгенотерапевтических аппаратов: ${kvModes}`, `; x-ray therapy modes: ${kvModes}`) : '';
   $('#eq-result').innerHTML = `<div class="dose-row"><div class="dose-big">${j.machines.length}<small>${esc(wMachines)} · ${beams} ${esc(wBeams)}</small></div>
-    <div class="secondary">${esc(L(`камер: ${j.chambers.length}${offText(j.chambers)}; электрометров: ${j.electrometers.length}${offText(j.electrometers)}; записей в журнале: ${j.sessions.length + (j.kvRecords?.length ?? 0)}`, `chambers: ${j.chambers.length}${offText(j.chambers)}; electrometers: ${j.electrometers.length}${offText(j.electrometers)}; records in the journal: ${j.sessions.length + (j.kvRecords?.length ?? 0)}`) + kvText)}</div></div>`;
+    <div class="secondary">${esc(L(`камер: ${j.chambers.length}${offText(j.chambers)}; электрометров: ${j.electrometers.length}${offText(j.electrometers)}; записей в журнале: ${j.sessions.length + (j.kvRecords?.length ?? 0) + (j.brachyRecords?.length ?? 0)}`, `chambers: ${j.chambers.length}${offText(j.chambers)}; electrometers: ${j.electrometers.length}${offText(j.electrometers)}; records in the journal: ${j.sessions.length + (j.kvRecords?.length ?? 0) + (j.brachyRecords?.length ?? 0)}`) + kvText)}</div></div>`;
   const msgs = [];
   for (const d of due) {
     msgs.push(`<li class="${d.status === 'overdue' ? 'warn' : 'info'}"><span class="lvl">${esc(d.status === 'overdue' ? L('Срок калибровки прошёл', 'Calibration overdue') : L('Срок калибровки подходит', 'Calibration due soon'))}</span><span>${esc(`${d.text}: ${d.status === 'overdue' ? L(`до ${fmtDate(d.dueDate)}`, `until ${fmtDate(d.dueDate)}`) : L(`до ${fmtDate(d.dueDate)}, осталось ${d.days} дн.`, `until ${fmtDate(d.dueDate)}, ${d.days} days left`)}`)}</span></li>`);
@@ -1246,7 +1367,9 @@ function onInput(e) {
           : kind === 'machine' ? j.machines
             : kind === 'kvapp' ? j.machines.flatMap((m) => m.applicators || [])
               : kind === 'kvmode' ? j.machines.flatMap((m) => m.modes || [])
-                : j.machines.flatMap((m) => m.beams);
+                : kind === 'brachysrc' ? j.machines.flatMap((m) => m.sources || [])
+                  : kind === 'brachyrow' ? j.chambers.flatMap((c) => c.brachy?.rows || [])
+                    : j.machines.flatMap((m) => m.beams);
     const obj = list.find((x) => x.id === id);
     if (!obj) return j;
     // флажок аппликатора у режима: «app:<id аппликатора>»; снятый референсный перестаёт быть референсным
@@ -1279,6 +1402,11 @@ function onInput(e) {
       if (ch && chamberUseSet(ch) && !ch.use.kv) ch.use = { ...ch.use, kv: true };
       return j;
     }
+    // сертификат колодезной камеры (с 0.75.0): первый ввод заводит его
+    if (kind === 'chamber' && path.startsWith('brachy.') && !obj.brachy) obj.brachy = normalizeBrachyCert({});
+    // другая модель источника — своё название не нужно; другой нуклид — модель выбирается заново
+    if (kind === 'brachysrc' && path === 'nuclide' && obj.nuclide !== value) obj.model = '';
+    if (kind === 'brachyrow' && path === 'nuclide' && obj.nuclide !== value) obj.sm0 = '';
     // дата списания не очищается: в работу возвращает кнопка «Вернуть в работу»
     if (path === 'retired' && !value) return j;
     const parts = path.split('.');
@@ -1290,7 +1418,7 @@ function onInput(e) {
     // другой производитель — модель выбирается заново (у «другого» электрометра своё название сохраняется)
     if (kind === 'chamber' && path === 'maker') {
       const cur = obj.form.ch_model ?? '';
-      const keep = value === OTHER_MAKER ? cur === 'OTHER' || cur === 'CUSTOM' : findChamber(cur)?.maker === value || findEChamber(cur)?.maker === value || findKvOnlyChamber(cur)?.maker === value;
+      const keep = value === OTHER_MAKER ? cur === 'OTHER' || cur === 'CUSTOM' || cur === WELL_OTHER : findChamber(cur)?.maker === value || findEChamber(cur)?.maker === value || findKvOnlyChamber(cur)?.maker === value || findWellChamber(cur)?.maker === value;
       if (!keep) obj.form.ch_model = value === OTHER_MAKER ? 'OTHER' : '';
     }
     if (kind === 'electrometer' && path === 'maker') {
@@ -1379,6 +1507,12 @@ function remove(what) {
           if (x.refApplicator === b) x.refApplicator = '';
         }
       }
+    } else if (kind === 'brachysrc') {
+      const m = j.machines.find((x) => x.id === a);
+      if (m) m.sources = m.sources.filter((x) => x.id !== b);
+    } else if (kind === 'brachyrow') {
+      const c = j.chambers.find((x) => x.id === a);
+      if (c?.brachy) c.brachy.rows = c.brachy.rows.filter((x) => x.id !== b);
     } else if (kind === 'kvmode') {
       const m = j.machines.find((x) => x.id === a);
       if (m) {
@@ -1487,6 +1621,32 @@ function onClick(e) {
       return j;
     }, 'equipment');
     document.getElementById(fieldId('kvapp', a.id, 'name'))?.focus();
+  } else if (t.dataset.addBrachysrc) {
+    // новый источник: нуклид, модель и единица — как у прежнего, установлен сегодня; у прежнего — дата замены
+    const m0 = getJournal().machines.find((x) => x.id === t.dataset.addBrachysrc);
+    const last = m0?.sources.at(-1);
+    const s = newBrachySource({ installed: today(), ...(last ? { nuclide: last.nuclide, model: last.model, modelName: last.modelName, certUnit: last.certUnit, certZone: last.certZone } : {}) });
+    updateJournal((j) => {
+      const m = j.machines.find((x) => x.id === t.dataset.addBrachysrc);
+      if (!m) return j;
+      for (const x of m.sources) if (isBlank(x.removed)) x.removed = today();
+      m.sources.push(s);
+      return j;
+    }, 'equipment');
+    document.getElementById(fieldId('brachysrc', s.id, 'serial'))?.focus();
+  } else if (t.dataset.addBrachyrow) {
+    // новая строка сертификата колодезной камеры: нуклид и единица — как у прежней
+    const c0 = getJournal().chambers.find((x) => x.id === t.dataset.addBrachyrow);
+    const last = c0?.brachy?.rows.at(-1);
+    const r = newBrachyCertRow(last ? { nuclide: last.nuclide, N_unit: last.N_unit, sm0: last.sm0 } : {});
+    updateJournal((j) => {
+      const c = j.chambers.find((x) => x.id === t.dataset.addBrachyrow);
+      if (!c) return j;
+      if (!c.brachy) c.brachy = normalizeBrachyCert({});
+      c.brachy.rows.push(r);
+      return j;
+    }, 'equipment');
+    document.getElementById(fieldId('brachyrow', r.id, 'label'))?.focus();
   } else if (t.dataset.kvcertAdd || t.dataset.kvcertDel) {
     // таблица качеств kV-сертификата в карточке камеры: строка в конец или убрать последнюю
     const id = t.dataset.kvcertAdd || t.dataset.kvcertDel;
@@ -1553,6 +1713,14 @@ function onClick(e) {
     setSheet('machine', id);
     updateJournal((j) => {
       j.machines.push(normalizeKvMachine({ ...MACHINE_DEFAULTS, id, kind: 'kv' }));
+      return j;
+    }, 'equipment');
+    document.getElementById(fieldId('machine', id, 'name'))?.focus();
+  } else if (t.id === 'eq-add-brachy') {
+    const id = uid('m');
+    setSheet('machine', id);
+    updateJournal((j) => {
+      j.machines.push(normalizeBrachyMachine({ ...MACHINE_DEFAULTS, id, kind: 'brachy' }));
       return j;
     }, 'equipment');
     document.getElementById(fieldId('machine', id, 'name'))?.focus();

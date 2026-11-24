@@ -242,3 +242,15 @@ export const UBRICH_KTOT_DW1 = {
   co0a86: { '30015': 77.18, '30016': 77.02, '31010': 76.49 },
 };
 export const UBRICH_KTOT_DW1_REF = `${REF.ubrich14}, ур. (6), табл. 7`;
+
+/**
+ * Колодезные камеры для «Оборудования» (с 0.75.0): модель выбирается в карточке камеры, сертификат — строки
+ * «аппарат + адаптер + нуклид» (TRS-492, разд. 7). WELLOTHER — другая колодезная камера, название вводится в карточке.
+ * PTW TW33004 — для k_s по линейному варианту (TRS-492, разд. 8.2.3.7).
+ */
+export const WELL_CHAMBERS = [
+  { id: 'PTW33004', maker: 'PTW', model: 'TW33004 SourceCheck 4π' },
+  { id: 'SIHDR1000P', maker: 'Standard Imaging', model: 'HDR 1000 Plus' },
+  { id: 'SIIVB1000', maker: 'Standard Imaging', model: 'IVB 1000' },
+];
+export const WELL_OTHER = 'WELLOTHER';

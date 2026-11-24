@@ -33,24 +33,24 @@ const journal = () =>
 test('«Применение» камеры: пока не отмечено — по модели и по тому, где камерой мерили; отмеченное — как отмечено', () => {
   const j = journal();
   // камера только для kV-рентгена
-  assert.deepEqual(chamberUse(j.chambers[0], j), { photon: false, electron: false, kv: true });
+  assert.deepEqual(chamberUse(j.chambers[0], j), { photon: false, electron: false, kv: true, brachy: false });
   // FC65-G с N_D,w и kV-сертификатом — и МВ, и kV
-  assert.deepEqual(chamberUse(j.chambers[1], j), { photon: true, electron: true, kv: true });
+  assert.deepEqual(chamberUse(j.chambers[1], j), { photon: true, electron: true, kv: true, brachy: false });
   // фотонная камера с kV-сертификатом без N_D,w и без пучков МВ — только kV
-  assert.deepEqual(chamberUse({ form: { ch_model: 'PTW30013' }, kv: CERT }), { photon: false, electron: false, kv: true });
+  assert.deepEqual(chamberUse({ form: { ch_model: 'PTW30013' }, kv: CERT }), { photon: false, electron: false, kv: true, brachy: false });
   // камера режима аппарата kV без сертификата — тоже kV
   const j2 = journal();
   j2.chambers.push({ id: 'ch3', form: { ch_model: 'PTW30013', ch_serial: '4' } });
   j2.machines[0].modes[0].chamberId = 'ch3';
-  assert.deepEqual(chamberUse(j2.chambers[2], j2), { photon: false, electron: false, kv: true });
+  assert.deepEqual(chamberUse(j2.chambers[2], j2), { photon: false, electron: false, kv: true, brachy: false });
   // фотонная камера без kV — пучки МВ, без kV
-  assert.deepEqual(chamberUse({ form: { ch_model: 'PTW30013', ch_ndw: '0,053' } }), { photon: true, electron: true, kv: false });
-  assert.deepEqual(chamberUse({ form: {} }), { photon: false, electron: false, kv: false });
+  assert.deepEqual(chamberUse({ form: { ch_model: 'PTW30013', ch_ndw: '0,053' } }), { photon: true, electron: true, kv: false, brachy: false });
+  assert.deepEqual(chamberUse({ form: {} }), { photon: false, electron: false, kv: false, brachy: false });
   assert.equal(chamberUseSet(j.chambers[1]), false);
   // отмечено в карточке — как отмечено
   const set = { form: { ch_model: 'PTW30013', ch_ndw: '0,053' }, use: { photon: false, electron: false, kv: true } };
   assert.equal(chamberUseSet(set), true);
-  assert.deepEqual(chamberUse(set), { photon: false, electron: false, kv: true });
+  assert.deepEqual(chamberUse(set), { photon: false, electron: false, kv: true, brachy: false });
 });
 
 test('«Применение» камеры: какие камеры предлагаются для пучков и что нужно в карточке', () => {
@@ -126,7 +126,7 @@ test('камера, добавленная из вкладки kV, отмече�
   const j = normalizeJournal({ ...JOURNAL_TAG, chambers: [{ id: 'c1', form: { ch_model: 'PTW30013', ch_serial: '0000', ch_ndw: '0,053' }, use: { photon: true, electron: false, kv: false } }] });
   const v = normalizeKvVisit({ ...SAMPLE_KV, kv_machine: 'Xstrahl 300' });
   const res = kvMachineFromVisit(j, v);
-  assert.deepEqual(res.journal.chambers[0].use, { photon: true, electron: false, kv: true });
+  assert.deepEqual(res.journal.chambers[0].use, { photon: true, electron: false, kv: true, brachy: false });
   assert.deepEqual(res.report.chambersAdded, []);
   // в пустой журнал — новая запись только для kV, N_D,w в ⁶⁰Co ей не нужен
   const r2 = kvMachineFromVisit(normalizeJournal({ ...JOURNAL_TAG }), v);

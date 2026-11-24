@@ -17,6 +17,9 @@ import { cellsHtml } from './journal-common.js';
 import { tipAttr } from './brachy-tips.js';
 import { wellBudget, phantomBudget } from '../core/brachy-unc.js';
 import { parseOverrides } from '../core/uncertainty.js';
+import { brachyMachines, sourceOn, sourceText, sourceToForm, certRowsFor, wellChamberToForm, phantomChamberToForm, isWellModel, wellChamberLabel } from '../core/brachy-journal.js';
+import { chamberText, chamberUse, cobaltCapable, activeOnly } from '../core/journal.js';
+import { getJournal, onJournal } from './journal-store.js';
 
 const KEY = 'reference-dosimetry.brachy';
 const SHEETS = ['well', 'sweet', 'phantom', 'cross', 'stab', 'decay', 'tg43'];
@@ -74,6 +77,119 @@ const when = (pre, label, timeHint) => `<div class="field"><label for="br_${pre}
   <div class="field"><label for="br_${pre}time">${esc(L('Время', 'Time'))}</label><input type="time" id="br_${pre}time" data-f="${pre}time" value="${esc(form[`${pre}time`])}" title="${esc(timeHint)}"></div>
   <div class="field"><label for="br_${pre}zone">${esc(L('Часовой пояс', 'Time zone'))}</label><select id="br_${pre}zone" data-f="${pre}zone">${zoneOpts(form[`${pre}zone`])}</select></div>`;
 
+// ------------------------------------------------------------ выбор из «Оборудования» (с 0.75.0)
+// Афтерлоадер и источник, колодезная камера и строка её сертификата, камера фантома — из журнала отделения. Выбранное
+// подставляется в поля листа (их можно поправить); в черновике хранятся только id выбранного.
+const isoToday = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+/** Дата измерения листа: по ней выбирается источник, стоявший в аппарате. */
+const measDate = () => (sheet === 'phantom' ? form.p_date : sheet === 'cross' ? form.x_ref_date : sheet === 'stab' ? form.st_date : form.w_date) || isoToday();
+const MEAS_DATE_IDS = ['br_w_date', 'br_p_date', 'br_x_ref_date', 'br_st_date'];
+/** Афтерлоадер и источник журнала по выбору: явно выбранный источник или стоявший в аппарате на дату измерения. */
+function journalSource() {
+  const m = brachyMachines(getJournal()).find((x) => x.id === form.j_machine) ?? null;
+  if (!m) return { m: null, s: null };
+  const s = form.j_source ? m.sources.find((x) => x.id === form.j_source) ?? null : sourceOn(m, measDate());
+  return { m, s };
+}
+const wellChambers = () => activeOnly(getJournal().chambers).filter((c) => isWellModel(c.form?.ch_model));
+const chamberById = (id) => (id ? getJournal().chambers.find((c) => c.id === id) ?? null : null);
+/** Строка сертификата камеры c для нуклида листа: выбранная (поле key) или первая. */
+function certRow(c, key) {
+  const rows = certRowsFor(c, form.nuclide);
+  return rows.find((r) => r.id === form[key]) ?? rows[0] ?? null;
+}
+/** Подставить источник журнала в поля листа. */
+function applySource() {
+  const { m, s } = journalSource();
+  if (s) Object.assign(form, sourceToForm(s, m));
+}
+/** Подставить колодезную камеру и строку сертификата; k_sm,sm0 — по моделям источника аппарата и источника калибровки. */
+function applyWell() {
+  const c = chamberById(form.j_well);
+  const row = c && certRow(c, 'j_row');
+  if (!row) return;
+  const sm = journalSource().s?.model ?? '';
+  Object.assign(form, wellChamberToForm(c, row, { name: wellChamberLabel(c.form), sourceModel: sm }));
+  // TRS-492, табл. 8 — только для Standard Imaging HDR 1000 Plus (держатель 70010) и моделей источников таблицы
+  const inTable = (id) => KSM_SOURCES.some((k) => k.id === id);
+  if (c.form?.ch_model === 'SIHDR1000P' && row.sm0 && sm && row.sm0 !== sm && inTable(row.sm0) && inTable(sm)) Object.assign(form, { w_ksm_mode: 'table', w_sm: sm, w_sm0: row.sm0 });
+}
+/** Камеры для фантома: отмеченные для брахитерапии, затем остальные с N_D,w в ⁶⁰Co. */
+function phantomChambers() {
+  const j = getJournal();
+  const all = activeOnly(j.chambers).filter((c) => cobaltCapable(c.form));
+  const marked = all.filter((c) => chamberUse(c, j).brachy);
+  return { marked, other: all.filter((c) => !marked.includes(c) && String(c.form?.ch_ndw ?? '').trim()) };
+}
+const modelName = (c) => chamberText({ ...c, form: { ...c.form, ch_serial: '' } });
+function applyPhantom() {
+  const c = chamberById(form.j_phantom);
+  if (c) Object.assign(form, phantomChamberToForm(c, { name: modelName(c) }));
+}
+/** Эталонная и рабочая камеры листа «Сличение камер»: модель, номер, N эталонной с T₀ и P₀, прежний N рабочей. */
+function applyCross() {
+  const ref = chamberById(form.j_ref);
+  const rr = ref && certRow(ref, 'j_ref_row');
+  if (rr) {
+    Object.assign(form, { x_ref_model: wellChamberLabel(ref.form), x_ref_serial: String(ref.form?.ch_serial ?? ''), x_ref_N: rr.N, x_ref_N_unit: rr.N_unit, x_T0: ref.brachy?.T0 || '20', x_P0: ref.brachy?.P0 || '101,325', x_P0_unit: 'kPa' });
+  }
+  const fld = chamberById(form.j_fld);
+  if (fld) {
+    const fr = certRow(fld, 'j_fld_row');
+    Object.assign(form, { x_fld_model: wellChamberLabel(fld.form), x_fld_serial: String(fld.form?.ch_serial ?? '') });
+    if (fr && (!rr || fr.N_unit === rr.N_unit)) form.x_fld_prev = fr.N;
+  }
+}
+const chOpts = (list, cur) => list.map((c) => opt(c.id, chamberText(c) || L('камера без названия', 'unnamed chamber'), cur)).join('');
+/** Выбор строки сертификата камеры c (поле key). */
+function rowSelect(c, key, label) {
+  if (!c) return '';
+  const rows = certRowsFor(c, form.nuclide);
+  const cur = certRow(c, key)?.id ?? '';
+  const nuc = HALF_LIVES[form.nuclide]?.label ?? form.nuclide;
+  const o = rows.length
+    ? rows.map((r) => opt(r.id, `${r.label || L('строка', 'row')} — N = ${r.N || '—'}`, cur)).join('')
+    : opt('', L(`нет строк для ${nuc}`, `no rows for ${nuc}`), '');
+  return select(key, label, o, { span: ' span-2' });
+}
+const EQ_HINT = () => L('Афтерлоадер с источниками и камеры с сертификатами можно завести в «Оборудовании» — тогда их данные подставятся сюда сами.', 'Afterloaders with their sources and chambers with certificates can be entered in Equipment: then their data are filled in here.');
+const NOT_EQ = () => L('— не из «Оборудования» —', '— not from Equipment —');
+function journalSourceHtml() {
+  const ms = brachyMachines(getJournal());
+  if (!ms.length) return '';
+  const { m, s } = journalSource();
+  const mOpts = opt('', NOT_EQ(), form.j_machine) + ms.map((x) => opt(x.id, x.name || L('афтерлоадер без названия', 'unnamed afterloader'), form.j_machine)).join('');
+  const auto = m ? sourceOn(m, measDate()) : null;
+  const none = L('источника нет', 'no source');
+  const sOpts = m ? opt('', L(`по дате измерения: ${sourceText(auto) || none}`, `by the measurement date: ${sourceText(auto) || none}`), form.j_source) + [...m.sources].reverse().map((x) => opt(x.id, sourceText(x) || L('источник без данных', 'source without data'), form.j_source)).join('') : '';
+  return `${select('j_machine', L('Афтерлоадер из «Оборудования»', 'Afterloader from Equipment'), mOpts, { span: ' span-2' })}
+    ${m ? select('j_source', L('Источник', 'Source'), sOpts, { span: ' span-2' }) : ''}
+    ${m && !s ? `<p class="sub-hint span-all">${esc(L('На дату измерения источника в аппарате нет: проверьте даты установки и замены в «Оборудовании».', 'There is no source in the afterloader on the measurement date: check the installation and replacement dates in Equipment.'))}</p>` : ''}`;
+}
+function journalWellHtml() {
+  const list = wellChambers();
+  if (!list.length) return '';
+  const c = chamberById(form.j_well);
+  return `${select('j_well', L('Камера из «Оборудования»', 'Chamber from Equipment'), opt('', NOT_EQ(), form.j_well) + chOpts(list, form.j_well), { span: ' span-2' })}
+    ${rowSelect(c, 'j_row', L('Строка сертификата', 'Certificate row'))}`;
+}
+function journalPhantomHtml() {
+  const { marked, other } = phantomChambers();
+  if (!marked.length && !other.length) return '';
+  const o = opt('', NOT_EQ(), form.j_phantom) + chOpts(marked, form.j_phantom)
+    + (other.length ? `<optgroup label="${esc(L('другие камеры с N_D,w в ⁶⁰Co', 'other chambers with N_D,w in ⁶⁰Co'))}">${chOpts(other, form.j_phantom)}</optgroup>` : '');
+  return select('j_phantom', L('Камера из «Оборудования»', 'Chamber from Equipment'), o, { span: ' span-2' });
+}
+function journalCrossHtml(pre) {
+  const list = wellChambers();
+  if (!list.length) return '';
+  const key = pre === 'x_ref_' ? 'j_ref' : 'j_fld';
+  const c = chamberById(form[key]);
+  return `${select(key, L('Камера из «Оборудования»', 'Chamber from Equipment'), opt('', NOT_EQ(), form[key]) + chOpts(list, form[key]), { span: ' span-2' })}
+    ${rowSelect(c, `${key}_row`, pre === 'x_ref_' ? L('Строка сертификата', 'Certificate row') : L('Строка сертификата (прежний N)', 'Certificate row (previous N)'))}`;
+}
+const anyEquipment = () => brachyMachines(getJournal()).length || wellChambers().length;
+
 // ------------------------------------------------------------ разметка
 function navHtml() {
   const items = [['well', L('Колодезная камера', 'Well-type chamber')], ['sweet', L('Максимум отклика', 'Sweet spot')], ['phantom', L('Фантом PTW 9193', 'PTW 9193 phantom')], ['cross', L('Сличение камер', 'Cross-calibration')], ['stab', L('Стабильность', 'Stability')], ['decay', L('Распад', 'Decay')], ['tg43', L('Доза TG-43', 'TG-43 dose')]];
@@ -127,7 +243,9 @@ function sourceHtml() {
   const h = HALF_LIVES[form.nuclide];
   const unitAll = `<optgroup label="${esc(L('Сила источника', 'Source strength'))}">${unitOpts(STRENGTH_UNITS, form.cert_unit)}</optgroup><optgroup label="${esc(L('Активность (нужна Γ_δ)', 'Activity (Γ_δ needed)'))}">${unitOpts(ACTIVITY_UNITS, form.cert_unit)}</optgroup>`;
   return `<section class="start-card plates-card"><h2><span class="step-no">1</span> ${esc(L('Источник и его сертификат', 'Source and its certificate'))}</h2>
+    ${anyEquipment() ? '' : `<p class="sub-hint">${esc(EQ_HINT())} <a href="#equipment">${esc(L('Открыть «Оборудование»', 'Open Equipment'))}</a></p>`}
     <div class="grid">
+      ${journalSourceHtml()}
       ${select('nuclide', L('Радионуклид', 'Radionuclide'), nucOpts)}
       ${num('half', L('Свой t½, сут', 'Own t½, days'), { ph: h ? String(+h.days.toFixed(3)).replace('.', L(',', '.')) : '', hint: L('Пусто — TRS-492, табл. 3', 'Blank: TRS-492, Table 3') })}
       ${text('src_name', L('Модель и номер источника', 'Source model and number'), { span: ' span-2' })}
@@ -145,6 +263,7 @@ function wellChamberHtml() {
   const m = form.w_ksm_mode;
   return `<section class="start-card plates-card"><h2><span class="step-no">2</span> ${esc(L('Колодезная камера и её сертификат', 'Well-type chamber and its certificate'))}</h2>
     <div class="grid">
+      ${journalWellHtml()}
       ${text('w_model', L('Камера', 'Chamber'), { ph: 'PTW TM33004' })}
       ${text('w_serial', L('Заводской номер', 'Serial number'))}
       ${numUnit('w_N', L('Калибровочный коэффициент N', 'Calibration coefficient N'), WELL_N_UNITS, 'w_N_unit', { span: ' span-2' })}
@@ -188,6 +307,7 @@ function phantomChamberHtml() {
   return `<section class="start-card plates-card"><h2><span class="step-no">2</span> ${esc(L('Камера в фантоме', 'Chamber in the phantom'))}</h2>
     <datalist id="br-models">${models.map((m) => `<option value="${esc(m)}">`).join('')}</datalist>
     <div class="grid">
+      ${journalPhantomHtml()}
       ${text('p_model', L('Камера', 'Chamber'), { ph: 'PTW 30013', list: 'br-models' })}
       ${text('p_serial', L('Заводской номер', 'Serial number'))}
       ${select('p_calib', L('Калибровка в ⁶⁰Co', 'Calibration in ⁶⁰Co'), calibs.map(([k, t]) => opt(k, t, form.p_calib)).join(''), { span: ' span-2' })}
@@ -422,6 +542,7 @@ function crossChamberHtml(n, pre, title) {
   const isRef = pre === 'x_ref_';
   return `<section class="start-card plates-card"><h2><span class="step-no">${n}</span> ${esc(title)}</h2>
     <div class="grid">
+      ${journalCrossHtml(pre)}
       ${text(`${pre}model`, L('Камера', 'Chamber'), { ph: 'PTW TM33004' })}
       ${text(`${pre}serial`, L('Заводской номер', 'Serial number'))}
       ${isRef ? `${numUnit('x_ref_N', L('Калибровочный коэффициент N_ref', 'Calibration coefficient N_ref'), WELL_N_UNITS, 'x_ref_N_unit', { span: ' span-2' })}${num('x_ref_kelec', L('k_elec', 'k_elec'))}` : num('x_fld_prev', L('Прежний N (для сравнения)', 'Previous N (for comparison)'))}
@@ -838,9 +959,50 @@ function onInput(e) {
   live();
 }
 
+/** Выбор из «Оборудования»: подставить данные при смене поля id; true — подставлено, нужна перерисовка. */
+function applyJournalPick(id) {
+  if (id === 'br_j_machine' || id === 'br_j_source' || (MEAS_DATE_IDS.includes(id) && form.j_machine && !form.j_source)) {
+    // другой аппарат — источник по дате измерения; другая дата — источник «по дате» другой
+    if (id === 'br_j_machine') form.j_source = '';
+    applySource();
+    if (form.j_well) applyWell();
+    return true;
+  }
+  if (id === 'br_j_well' || id === 'br_j_row') {
+    if (id === 'br_j_well') form.j_row = '';
+    applyWell();
+    return true;
+  }
+  if (id === 'br_nuclide' && (form.j_well || form.j_ref || form.j_fld)) {
+    if (form.j_well) applyWell();
+    if (form.j_ref || form.j_fld) applyCross();
+    return true;
+  }
+  if (id === 'br_j_phantom') {
+    applyPhantom();
+    return true;
+  }
+  if (['br_j_ref', 'br_j_ref_row', 'br_j_fld', 'br_j_fld_row'].includes(id)) {
+    if (id === 'br_j_ref') form.j_ref_row = '';
+    if (id === 'br_j_fld') form.j_fld_row = '';
+    applyCross();
+    return true;
+  }
+  return false;
+}
+
 function onChange(e) {
   const t = e.target;
   if (t.name === 'br_main') return;
+  if (/^br_j_|^br_nuclide$/.test(t.id) || MEAS_DATE_IDS.includes(t.id)) {
+    readForm();
+    if (applyJournalPick(t.id)) {
+      persist();
+      render();
+      document.getElementById(t.id)?.focus({ preventScroll: true });
+      return;
+    }
+  }
   if (t.dataset.full !== undefined || t.id === 'br_w_unit' || t.id === 'br_s_unit' || t.id === 'br_x_unit' || t.id === 'br_st_unit' || t.id === 'br_t_th') {
     readForm();
     persist();
@@ -946,6 +1108,10 @@ export function initBrachy() {
   root?.addEventListener('change', onChange);
   root?.addEventListener('click', onClick);
   document.addEventListener('langchange', render);
+  // «Оборудование» изменилось (открыт другой журнал, добавлен источник): списки выбора — заново
+  onJournal(() => {
+    if (!$('#module-brachy')?.hidden) render();
+  });
 }
 
 /** Открыть лист (адрес #brachy/well, #brachy/sweet, #brachy/phantom, #brachy/cross, #brachy/stab, #brachy/decay; без листа — тот, с которым работали). */

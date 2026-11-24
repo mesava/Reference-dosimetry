@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0d6670">
-<link rel="stylesheet" href="src/ui/styles.css?v=0.74.0">
+<link rel="stylesheet" href="src/ui/styles.css?v=0.75.0">
 </head>
 <body>
 <header class="topbar">
@@ -3882,8 +3882,8 @@
 
     <section class="step" aria-labelledby="eq-s2">
       <header><span class="step-no">2</span><h2 id="eq-s2">Аппараты и пучки</h2>
-        <p class="hint">Каждый аппарат — свой лист: ярлык с названием над карточкой открывает его. Пучки, которые есть на аппарате: название (у фотонов — признак БВФ). Мерить — во вкладке дозиметрии: в разделе 1 выбирается пучок журнала, подставляются его настройки, камера и электрометр. Настройки пучка (геометрия, напряжения, МЕ, номинал, пересчёт на d<sub>max</sub>, способ k<sub>Q</sub>, у ⁶⁰Co — источник и ошибка таймера) задаются кнопкой «Настройки пучка — во вкладке…» или «Сохранить настройки пучка в журнал» во вкладке. У рентгенотерапевтического аппарата вместо пучков — аппликаторы и режимы: напряжение, ток, фильтр, СПО, отмеченные аппликаторы и стандартный из них (проверяется по TRS-398 Rev.1); камера режима — в таблице «Камеры режимов» в карточке аппарата.</p></header>
-      <div class="row-tools eq-add-row"><button type="button" class="link-btn" id="eq-add-machine"><span aria-hidden="true">+</span> Добавить ускоритель</button><button type="button" class="link-btn" id="eq-add-cobalt"><span aria-hidden="true">+</span> Добавить аппарат ⁶⁰Co</button><button type="button" class="link-btn" id="eq-add-kv"><span aria-hidden="true">+</span> Добавить рентгенотерапевтический аппарат</button></div>
+        <p class="hint">Каждый аппарат — свой лист: ярлык с названием над карточкой открывает его. Пучки, которые есть на аппарате: название (у фотонов — признак БВФ). Мерить — во вкладке дозиметрии: в разделе 1 выбирается пучок журнала, подставляются его настройки, камера и электрометр. Настройки пучка (геометрия, напряжения, МЕ, номинал, пересчёт на d<sub>max</sub>, способ k<sub>Q</sub>, у ⁶⁰Co — источник и ошибка таймера) задаются кнопкой «Настройки пучка — во вкладке…» или «Сохранить настройки пучка в журнал» во вкладке. У рентгенотерапевтического аппарата вместо пучков — аппликаторы и режимы: напряжение, ток, фильтр, СПО, отмеченные аппликаторы и стандартный из них (проверяется по TRS-398 Rev.1); камера режима — в таблице «Камеры режимов» в карточке аппарата. У афтерлоадера — история источников с их сертификатами; на листах вкладки «Брахитерапия» подставляется источник, стоявший в аппарате в день измерения.</p></header>
+      <div class="row-tools eq-add-row"><button type="button" class="link-btn" id="eq-add-machine"><span aria-hidden="true">+</span> Добавить ускоритель</button><button type="button" class="link-btn" id="eq-add-cobalt"><span aria-hidden="true">+</span> Добавить аппарат ⁶⁰Co</button><button type="button" class="link-btn" id="eq-add-kv"><span aria-hidden="true">+</span> Добавить рентгенотерапевтический аппарат</button><button type="button" class="link-btn" id="eq-add-brachy"><span aria-hidden="true">+</span> Добавить афтерлоадер</button></div>
       <nav class="kv-pages eq-mtabs" id="eq-mtabs" aria-label="Аппараты отделения" data-i18n-skip hidden></nav>
       <div id="eq-machines" class="jcards" data-i18n-skip></div>
     </section>
@@ -4151,6 +4151,6 @@
   <div class="dlg-body" id="kv-din-body"></div>
 </dialog>
 
-<script type="module" src="src/ui/app.js?v=0.74.0"></script>
+<script type="module" src="src/ui/app.js?v=0.75.0"></script>
 </body>
 </html>

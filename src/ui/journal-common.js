@@ -80,7 +80,7 @@ export function dueChip(dueDate, label = '') {
 }
 
 /** Варианты списка аппаратов с пучками (рентгенотерапевтические — без пучков, их записей в журнале пока нет). */
-export const beamMachines = (j) => j.machines.filter((m) => m.kind !== 'kv');
+export const beamMachines = (j) => j.machines.filter((m) => m.kind !== 'kv' && m.kind !== 'brachy');
 export function machineOptions(j, selected = '') {
   const list = beamMachines(j);
   if (!list.length) return `<option value="">${esc(L('— в «Оборудовании» нет аппаратов —', '— no machines in Equipment —'))}</option>`;

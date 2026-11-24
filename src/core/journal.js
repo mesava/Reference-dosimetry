@@ -25,15 +25,18 @@ import { L } from './i18n.js';
 import { normalizeKvMachine, findKvOnlyChamber } from './kv-machine.js';
 import { kvChamberLabel } from './kv-tables.js';
 import { CERT_META_KEYS, certMetaOf, certOn, certStamp, normalizeCertEntry } from './chamber-certs.js';
+import { normalizeBrachyMachine, normalizeBrachyCert, hasBrachy, isWellModel, wellChamberLabel, brachyCertMissing } from './brachy-journal.js';
 
 /** version — наибольший формат файла, который понимает эта версия калькулятора (2 — с аппаратами ⁶⁰Co, 3 — с рентгенотерапевтическими). */
-export const JOURNAL_TAG = { app: 'reference-dosimetry', module: 'journal', version: 4 };
+export const JOURNAL_TAG = { app: 'reference-dosimetry', module: 'journal', version: 5 };
 /**
  * Формат файла журнала: 3, если в нём есть рентгенотерапевтические аппараты (с 0.41.0), 2 — если аппараты или пучки
  * ⁶⁰Co (прежняя версия страницы сочла бы их ускорителями и должна отказаться открыть файл), иначе 1 — такой журнал
  * открывается и прежней версией.
  */
 export const journalFormat = (j) =>
+  // 5 — с брахитерапией (с 0.75.0): афтерлоадеры, сертификаты колодезных камер, записи брахитерапии
+  hasBrachy(j) ? 5 :
   // 4 — с раздельными сертификатами камеры (с 0.53.0): история или сведения kV-сертификата заполнены — прежние версии
   // такой файл не открывают (иначе прочли бы его без них)
   j.chambers.some((c) => (Array.isArray(c.certHistory) && c.certHistory.length) || Object.values(c.kvCal ?? {}).some((v) => !isBlank(v))) ? 4
@@ -124,7 +127,7 @@ export const photonCapable = (cf) => !!findChamber(cf?.ch_model) || cf?.ch_model
 export const electronCapable = (cf) => !!findEChamber(cf?.ch_model) || cf?.ch_model === 'OTHER' || cf?.ch_model === 'CUSTOM';
 /** Камеру можно взять для ⁶⁰Co: любую — в пучке ⁶⁰Co допускаются и цилиндрические, и плоскопараллельные (TRS-398, разд. 5.2.1);
  * кроме камер только для kV-рентгена (мягкое излучение: PTW 23342, 23344, 34013). */
-export const cobaltCapable = (cf) => !isBlank(cf?.ch_model) && !findKvOnlyChamber(cf.ch_model);
+export const cobaltCapable = (cf) => !isBlank(cf?.ch_model) && !findKvOnlyChamber(cf.ch_model) && !isWellModel(cf.ch_model);
 
 /** Камера выбрана в режимах рентгенотерапевтических аппаратов «Оборудования». */
 export const kvChamberInModes = (j, chamberId) => !!chamberId && (j?.machines ?? []).some((m) => m.kind === 'kv' && (m.modes ?? []).some((x) => x.chamberId === chamberId));
@@ -138,15 +141,20 @@ const MV_CAL_KEYS = ['ch_ndw', 'ch_cross_ndw', 'e_cross_ndw', 'e_cross_kn'];
  */
 export function chamberUse(c, j = null) {
   const u = c?.use;
-  if (u && typeof u === 'object') return { photon: !!u.photon, electron: !!u.electron, kv: !!u.kv };
+  // брахитерапия (с 0.75.0): колодезная камера с сертификатом для афтерлоадеров
+  const brachy = !!c?.brachy?.rows?.length;
+  if (u && typeof u === 'object') return { photon: !!u.photon, electron: !!u.electron, kv: !!u.kv, brachy: !!u.brachy };
   const f = c?.form || {};
-  if (isBlank(f.ch_model)) return { photon: false, electron: false, kv: false };
-  if (findKvOnlyChamber(f.ch_model)) return { photon: false, electron: false, kv: true };
+  if (isBlank(f.ch_model)) return { photon: false, electron: false, kv: false, brachy };
+  // колодезная камера — только для брахитерапии
+  if (isWellModel(f.ch_model)) return { photon: false, electron: false, kv: false, brachy: true };
+  if (findKvOnlyChamber(f.ch_model)) return { photon: false, electron: false, kv: true, brachy };
   const uses = j ? chamberUses(j, c.id) : { photon: false, electron: false, cobalt: false };
   const kv = !!c.kv || kvChamberInModes(j, c.id);
   const mv = uses.photon || uses.electron || uses.cobalt || MV_CAL_KEYS.some((k) => !isBlank(f[k]));
-  if (kv && !mv) return { photon: false, electron: false, kv: true };
-  return { photon: cobaltCapable(f), electron: electronCapable(f), kv };
+  if (kv && !mv) return { photon: false, electron: false, kv: true, brachy };
+  if (brachy && !mv && !kv) return { photon: false, electron: false, kv: false, brachy };
+  return { photon: cobaltCapable(f), electron: electronCapable(f), kv, brachy };
 }
 /** Применение отмечено в карточке камеры (а не взято по модели). */
 export const chamberUseSet = (c) => !!c?.use && typeof c.use === 'object';
@@ -258,7 +266,7 @@ export const STAFF_DEFAULTS = { id: '', name: '' };
 export const SESSION_DEFAULTS = { id: '', machineId: '', date: '', mode: 'cal', protocol: 'trs', staff: [''], notes: '', env: { T: '', P: '', P_unit: 'kPa', H: '' }, beams: [], saved: '' };
 
 export function newJournal() {
-  return { ...JOURNAL_TAG, institution: '', department: '', staff: [], chambers: [], electrometers: [], machines: [], sessions: [], plateChecks: [], kvRecords: [] };
+  return { ...JOURNAL_TAG, institution: '', department: '', staff: [], chambers: [], electrometers: [], machines: [], sessions: [], plateChecks: [], kvRecords: [], brachyRecords: [] };
 }
 
 const arr = (v) => (Array.isArray(v) ? v : []);
@@ -289,6 +297,7 @@ export function normalizeJournal(obj) {
   j.machines = arr(obj.machines).map((m) => {
     const machine = withId({ ...MACHINE_DEFAULTS, ...m }, 'm');
     if (machine.kind === 'kv') return normalizeKvMachine(machine);
+    if (machine.kind === 'brachy') return normalizeBrachyMachine(machine);
     machine.beams = arr(m?.beams).map((b) => withId({ ...BEAM_DEFAULTS, ...b, form: { ...(b?.form || {}) } }, 'b'));
     return withCalGeo(machine);
   });
@@ -309,6 +318,16 @@ export function normalizeJournal(obj) {
     })
     // в один день записей может быть несколько (с 0.47.0 — по режимам): по времени записи
     .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.saved ?? '').localeCompare(String(b.saved ?? '')));
+  // записи брахитерапии (с 0.75.0): измерения листов вкладки «Брахитерапия» по афтерлоадеру и источнику
+  j.brachyRecords = arr(obj.brachyRecords)
+    .filter((r) => r && typeof r === 'object')
+    .map((r) => withId({ ...r, staff: arr(r.staff), summary: { ...(r.summary || {}) }, form: { ...(r.form || {}) } }, 'br'))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.saved ?? '').localeCompare(String(b.saved ?? '')));
+  for (const c of j.chambers) {
+    const b = normalizeBrachyCert(c.brachy);
+    if (b) c.brachy = b;
+    else delete c.brachy;
+  }
   for (const c of j.chambers) migrateChamberCerts(c, j);
   return j;
 }
@@ -476,6 +495,7 @@ export function chamberText(c) {
     ? [f.cc_maker, f.cc_model].filter((s) => !isBlank(s)).join(' ') || L('своя камера', 'custom chamber')
     : f.ch_model === 'OTHER'
       ? String(f.e_other_name || '').trim() || L('другая камера', 'other chamber')
+      : isWellModel(f.ch_model) ? wellChamberLabel(f)
       : findChamber(f.ch_model) ? chamberLabel(findChamber(f.ch_model)) : findEChamber(f.ch_model) ? eChamberLabel(findEChamber(f.ch_model)) : findKvOnlyChamber(f.ch_model) ? kvChamberLabel(findKvOnlyChamber(f.ch_model)) : String(f.ch_model || '—');
   return [model, isBlank(f.ch_serial) ? '' : `${L('№', 'S/N')} ${f.ch_serial}`].filter(Boolean).join(' ');
 }
@@ -505,12 +525,15 @@ export function electrometerText(e) {
 export function chamberMissing(c, uses = null, protocol = '') {
   const f = c?.form || {};
   if (isBlank(f.ch_model)) return [L('модель', 'model')];
+  // колодезная камера (с 0.75.0): название «другой» и строки её сертификата
+  if (isWellModel(f.ch_model)) return [f.ch_model === 'WELLOTHER' && isBlank(f.e_other_name) && L('название', 'name'), ...brachyCertMissing(c)].filter(Boolean);
   // камера для kV-рентгена (только kV или с kV-сертификатом и без пучков МВ и ⁶⁰Co): N_D,w в ⁶⁰Co ей не нужен
   const used = uses && (uses.photon || uses.electron || uses.cobalt);
   const nameMiss = f.ch_model === 'OTHER' && isBlank(f.e_other_name) ? [L('название', 'name')] : [];
   // применение отмечено в карточке (с 0.50.0): нужно то, что требуют отмеченные виды пучков
   const set = chamberUseSet(c) ? chamberUse(c) : null;
-  if (!used && set && !set.photon && !set.electron) return nameMiss;
+  // только брахитерапия (фантом PTW 9193, с 0.75.0) — нужен N_D,w в ⁶⁰Co (DIN 6809-2)
+  if (!used && set && !set.photon && !set.electron) return set.brachy && cobaltCapable(f) && isBlank(f.ch_ndw) ? [...nameMiss, 'N_D,w'] : nameMiss;
   if (!used && !set && (findKvOnlyChamber(f.ch_model) || c.kv)) return nameMiss;
   const u = used ? uses : set ? { photon: set.photon && photonCapable(f), electron: set.electron, cobalt: set.photon && !photonCapable(f) } : photonCapable(f) ? { photon: true } : { electron: true };
   const ph = !!u.photon && photonCapable(f);
@@ -644,6 +667,8 @@ export function dueStatus(dueDate, today, soonDays = 30) {
 export function chamberDueDates(c, j = null) {
   const u = chamberUse(c, j);
   // как в карточке камеры: свидетельство для МВ и ⁶⁰Co — и у камеры, которой мерили пучок ⁶⁰Co
+  // колодезная камера (с 0.75.0) — только сертификат брахитерапии
+  if (isWellModel(c?.form?.ch_model)) return [{ cert: 'brachy', dueDate: c.brachy?.dueDate ?? '', text: chamberText(c) }];
   const mv = u.photon || u.electron || !u.kv || (!!j && chamberUses(j, c.id).cobalt);
   const both = mv && u.kv;
   const name = chamberText(c);
@@ -1477,7 +1502,7 @@ function tabForm(form, kind) {
   if (f.ch_model !== 'CUSTOM') for (const k of PH_CHAMBER_KEYS) if (k.startsWith('cc_')) f[k] = FORM_DEFAULTS[k];
   return f;
 }
-const copyJournal = (j) => ({ ...j, chambers: j.chambers.map((c) => ({ ...c, form: { ...c.form } })), electrometers: j.electrometers.map((e) => ({ ...e, form: { ...e.form } })), machines: j.machines.map((m) => (m.kind === 'kv' ? structuredClone(m) : { ...m, calGeo: Object.fromEntries(Object.entries(m.calGeo || {}).map(([k, g]) => [k, { ...g }])), beams: m.beams.map((b) => ({ ...b, form: { ...b.form } })) })) });
+const copyJournal = (j) => ({ ...j, chambers: j.chambers.map((c) => ({ ...c, form: { ...c.form } })), electrometers: j.electrometers.map((e) => ({ ...e, form: { ...e.form } })), machines: j.machines.map((m) => (m.kind === 'kv' || m.kind === 'brachy' ? structuredClone(m) : { ...m, calGeo: Object.fromEntries(Object.entries(m.calGeo || {}).map(([k, g]) => [k, { ...g }])), beams: m.beams.map((b) => ({ ...b, form: { ...b.form } })) })) });
 /** Камера формы вкладки: найти в журнале по модели и номеру или добавить (в копии журнала). chForm — поля записи. */
 function matchChamber(journal, chForm, kind) {
   const ch = journal.chambers.find((c) => sameChamber(c.form, chForm, kind));
