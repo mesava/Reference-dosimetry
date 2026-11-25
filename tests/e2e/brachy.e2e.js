@@ -180,7 +180,7 @@ test('брахитерапия: максимум отклика колодезн
   assert.match(decay, /27\.08\.2025/);
   // результат на дату — как в книге отделения: активность, керма в Гр/с, мГр/ч, мкГр/ч, U, проверка через Γ, диапазон
   const at = await page.locator('#br-result table.br-decay-at').innerText();
-  assert.match(at, /Активность A\(t\)\s+33,110\s+ГБк/);
+  assert.match(at, /Активность A\(t\), справочно\s+33,110\s+ГБк/);
   assert.match(at, /0,8949\s+Ки/);
   assert.match(at, /Керма K\(t\)\s+10,13\d\d\s+мГр\/ч/);
   assert.match(at, /Гр\/с/);

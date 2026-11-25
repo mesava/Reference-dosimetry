@@ -72,7 +72,7 @@ const numUnit = (key, label, units, unitKey, { ph = '', span = '' } = {}) =>
 
 function zoneOpts(cur) {
   const here = zoneName(offsetMin());
-  const items = [opt('', L(`как на компьютере (${here})`, `as on this computer (${here})`), cur), opt('UTC', 'UTC', cur)];
+  const items = [opt('', L(`местное, ${here}`, `local, ${here}`), cur), opt('UTC', 'UTC', cur)];
   for (let h = -12; h <= 14; h++) if (h) items.push(opt(`${h > 0 ? '+' : ''}${h}`, `UTC${h > 0 ? '+' : '−'}${Math.abs(h)}`, cur));
   items.push(opt('+5:30', 'UTC+5:30', cur));
   return items.join('');
@@ -80,7 +80,7 @@ function zoneOpts(cur) {
 /** Дата, время и часовой пояс (prefix: cert_, w_, p_). */
 const when = (pre, label, timeHint) => `<div class="field"><label for="br_${pre}date"${tipAttr(`${pre}date`)}>${esc(label)}</label><input type="date" id="br_${pre}date" data-f="${pre}date" value="${esc(form[`${pre}date`])}"></div>
   <div class="field"><label for="br_${pre}time">${esc(L('Время', 'Time'))}</label><input type="time" id="br_${pre}time" data-f="${pre}time" value="${esc(form[`${pre}time`])}" title="${esc(timeHint)}"></div>
-  <div class="field"><label for="br_${pre}zone">${esc(L('Часовой пояс', 'Time zone'))}</label><select id="br_${pre}zone" data-f="${pre}zone">${zoneOpts(form[`${pre}zone`])}</select></div>`;
+  <div class="field"><label for="br_${pre}zone">${esc(L('Часовой пояс', 'Time zone'))}</label><select id="br_${pre}zone" data-f="${pre}zone" title="${esc(L('«Местное» — часовой пояс этого компьютера', '“Local”: the time zone of this computer'))}">${zoneOpts(form[`${pre}zone`])}</select></div>`;
 
 // ------------------------------------------------------------ выбор из «Оборудования» (с 0.75.0)
 // Афтерлоадер и источник, колодезная камера и строка её сертификата, камера фантома — из журнала отделения. Выбранное
@@ -782,8 +782,8 @@ function sweetChart(box = $('#br-sweet-chart')) {
 // ------------------------------------------------------------ лист «Распад»
 /** «Распад», раздел 2: опорная активность A₀ со своей датой (как в книге отделения: даты A₀ и K₀ могут быть разными). */
 function decayA0Html() {
-  return `<section class="step" data-optional><header><span class="step-no">2</span><h2>${esc(L('Опорная активность', 'Reference activity'))}</h2></header>
-    <p class="sub-hint">${sub(L('Если в паспорте активность дана отдельно от ОМВК и на другую дату — введите её здесь. Пусто — активность считается из ОМВК через Γ_δ (или берётся из раздела 1, если сертификат дан в активности).', 'If the certificate gives the activity separately from the RAKR and at another date, enter it here. Blank: the activity is calculated from the RAKR via Γ_δ (or taken from section 1 if the certificate is given as an activity).'))}</p>
+  return `<section class="step" data-optional><header><span class="step-no">2</span><h2>${esc(L('Опорная активность (справочно)', 'Reference activity (for reference)'))}</h2></header>
+    <p class="sub-hint">${sub(L('Если в паспорте активность дана отдельно от ОМВК и на другую дату — введите её здесь. Пусто — активность считается из ОМВК через Γ_δ (или берётся из раздела 1, если сертификат дан в активности). Активность (кажущаяся) — устаревшая величина, только для сверки с паспортом: сила источника и сравнение с сертификатом — по ОМВК (TRS-492, дополнение I).', 'If the certificate gives the activity separately from the RAKR and at another date, enter it here. Blank: the activity is calculated from the RAKR via Γ_δ (or taken from section 1 if the certificate is given as an activity). The (apparent) activity is an antiquated quantity, only for comparison with the certificate: the source strength and the comparison with the certificate use the RAKR (TRS-492, Appendix I).'))}</p>
     <div class="grid">
       ${numUnit('d_A0', L('A₀ — активность', 'A₀, activity'), ACTIVITY_UNITS, 'd_A0_unit', { span: ' span-2' })}
       ${when('d_A0_', L('Дата A₀', 'A₀ date'), L('Пусто — 00:00', 'Blank: 00:00'))}
@@ -799,7 +799,7 @@ function decayParamsHtml() {
     <div class="grid">
       ${when('d_at_', L('Дата расчёта (пусто — сейчас)', 'Calculation date (blank: now)'), L('Пусто — 00:00', 'Blank: 00:00'))}
       ${select('d_basis', L('Отсчёт ОМВК', 'RAKR base'), bases.map(([k, t]) => opt(k, t, form.d_basis)).join(''), { span: ' span-2' })}
-      <div class="field"><label for="br_d_from">${esc(L('Прогноз с даты (пусто — с даты расчёта)', 'Forecast from (blank: the calculation date)'))}</label><input type="date" id="br_d_from" data-f="d_from" value="${esc(form.d_from)}"></div>
+      <div class="field"><label for="br_d_from">${esc(L('Прогноз с даты (пусто — с даты расчёта, не раньше даты отсчёта)', 'Forecast from (blank: the calculation date; not before the base date)'))}</label><input type="date" id="br_d_from" data-f="d_from" value="${esc(form.d_from)}"></div>
       <div class="field"><label for="br_d_to">${esc(L('По дату (пусто — 8 строк)', 'To (blank: 8 rows)'))}</label><input type="date" id="br_d_to" data-f="d_to" value="${esc(form.d_to)}"></div>
       ${num('d_n', L('Шаг', 'Step'), { ph: '1' })}
       ${select('d_unit', L('Единица шага', 'Step unit'), units.map(([k, t]) => opt(k, t, form.d_unit || 'w')).join(''))}
@@ -853,7 +853,7 @@ function decayResult() {
   rows.push(row(L(`λ = ln 2 / T½ (T½ = ${fmt(r.half, 3)} сут)`, `λ = ln 2 / T½ (T½ = ${fmt(r.half, 3)} d)`), fmtSci(r.lambda, 4), L('с⁻¹', 's⁻¹'), 'dec_lambda'));
   if (Number.isFinite(a.A)) {
     rows.push(grp(L(`Активность${a.Avia === 'gamma' ? ' (из ОМВК через Γ_δ, справочно)' : ''}`, `Activity${a.Avia === 'gamma' ? ' (from the RAKR via Γ_δ, reference)' : ''}`)),
-      row(L('Активность A(t)', 'Activity A(t)'), fmt(a.A, 3), L('ГБк', 'GBq'), 'dec_A'), row(L('Активность A(t)', 'Activity A(t)'), fmt(a.Ci, 4), L('Ки', 'Ci'), 'dec_A'));
+      row(L('Активность A(t), справочно', 'Activity A(t), for reference'), fmt(a.A, 3), L('ГБк', 'GBq'), 'dec_A'), row(L('Активность A(t), справочно', 'Activity A(t), for reference'), fmt(a.Ci, 4), L('Ки', 'Ci'), 'dec_A'));
     if (Number.isFinite(a.dA)) rows.push(row(L('Изменение от A₀', 'Change from A₀'), fmtSigned(a.dA * 100, 2), '%', 'dec_f'));
   }
   if (Number.isFinite(a.mGyh)) {

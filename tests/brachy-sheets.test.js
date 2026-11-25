@@ -368,6 +368,12 @@ test('Лист «Распад»: ⁶⁰Co из активности, свой ш
   assert.equal(q.rows.length, 4);
   assert.equal(new Date(q.rows[3].t).toISOString().slice(0, 10), '2026-09-30');
   assert.ok(errors(computeBrachyDecay({ ...base, d_from: '2026-02-01', d_to: '2026-01-01' })).some((m) => m.field === 'd_to'));
+  // прогноз не раньше даты отсчёта (сертификат 27.10.2021 12:00): начало таблицы — дата сертификата, с подсказкой
+  const early = computeBrachyDecay({ ...base, d_from: '2021-09-01', d_zone: '+3' });
+  assert.equal(early.rows[0].t, Date.UTC(2021, 9, 27, 9));
+  assert.ok(early.messages.some((m) => m.field === 'd_from' && m.level === 'info'));
+  const calcEarly = computeBrachyDecay({ ...base, d_at_date: '2021-10-01' });
+  assert.equal(calcEarly.rows[0].t, Date.UTC(2021, 9, 27, 9), 'дата расчёта раньше сертификата — таблица с даты сертификата');
   // от измерения: другой лист без результата — от сертификата с подсказкой
   const noWell = computeBrachyDecay({ ...base, d_basis: 'well' }, { well: { ok: false } });
   assert.ok(noWell.messages.some((m) => m.field === 'd_basis'));

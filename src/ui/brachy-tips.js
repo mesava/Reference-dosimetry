@@ -254,8 +254,8 @@ const TIPS = {
     pop('Decay constant λ', ['λ = ln 2 / T<sub>½</sub>, s⁻¹, for comparison with the certificate (often rounded there).'], 'IAEA TRS-492 (2023), Sec. 3.4, Table 3.'),
   ),
   dec_A: () => L(
-    pop('Активность на дату расчёта', ['A(t) = A<sub>0</sub> · 2<sup>−Δt/T½</sup>, в ГБк и Ки (1 Ки = 37 ГБк). Без A<sub>0</sub> — кажущаяся активность из ОМВК: A = K̇/Γ<sub>δ</sub>. Только для справки.'], `${T492}, ур. (8), прил. I.`),
-    pop('Activity at the calculation date', ['A(t) = A<sub>0</sub> · 2<sup>−Δt/T½</sup>, in GBq and Ci (1 Ci = 37 GBq). Without A<sub>0</sub>: the apparent activity from the RAKR, A = K̇/Γ<sub>δ</sub>. For reference only.'], 'IAEA TRS-492 (2023), Eq. (8), Annex I.'),
+    pop('Активность на дату расчёта', ['A(t) = A<sub>0</sub> · 2<sup>−Δt/T½</sup>, в ГБк и Ки (1 Ки = 37 ГБк). Без A<sub>0</sub> — кажущаяся активность из ОМВК: A = K̇/Γ<sub>δ</sub>. Только для справки: TRS-492 относит кажущуюся активность к устаревшим величинам (зависит от выбранной Γ<sub>δ</sub>, расхождение до 10 %) и не рекомендует её для дозиметрии; сила источника и сравнение с сертификатом — по ОМВК.'], `${T492}, ур. (8), дополнение I.`),
+    pop('Activity at the calculation date', ['A(t) = A<sub>0</sub> · 2<sup>−Δt/T½</sup>, in GBq and Ci (1 Ci = 37 GBq). Without A<sub>0</sub>: the apparent activity from the RAKR, A = K̇/Γ<sub>δ</sub>. For reference only: TRS-492 lists the apparent activity among antiquated quantities (it depends on the chosen Γ<sub>δ</sub>, up to 10% difference) and does not recommend it for dosimetry; the source strength and the comparison with the certificate use the RAKR.'], 'IAEA TRS-492 (2023), Eq. (8), Appendix I.'),
   ),
   dec_K: () => L(
     pop('Мощность воздушной кермы на 1 м', ['K̇(t) = K̇<sub>0</sub> · 2<sup>−Δt/T½</sup>: ОМВК на дату расчёта в Гр/с, мГр/ч, мкГр/ч и сила воздушной кермы S<sub>K</sub> в U (численно равна ОМВК в мкГр/ч на 1 м). Это значение вводят в систему планирования.'], `${T492}, ур. (8)–(9); TG-43U1.`),

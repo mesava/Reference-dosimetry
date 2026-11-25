@@ -906,10 +906,16 @@ export function computeBrachyDecay(input, { offsetMin = 0, well = null, phantom 
   }
   out.at = at;
   // прогноз по датам: от даты расчёта (или своей), по неделям, 8 строк — или свой шаг и пределы
-  const tFrom = isBlank(f.d_from) ? tAt : fieldTime(f.d_from, '', f.d_zone, offsetMin).ms;
+  let tFrom = isBlank(f.d_from) ? tAt : fieldTime(f.d_from, '', f.d_zone, offsetMin).ms;
   if (!Number.isFinite(tFrom)) {
     add('error', L('Не удалось прочитать дату начала таблицы.', 'Could not read the table start date.'), null, 'd_from');
     return out;
+  }
+  // нижняя граница прогноза — дата отсчёта (сертификат или измерение; без ОМВК — дата A₀): раньше неё прогноз не нужен
+  const tBound = base?.t ?? a0?.t;
+  if (Number.isFinite(tBound) && tFrom < tBound) {
+    tFrom = tBound;
+    add('info', L('Прогноз начинается с даты отсчёта: раньше неё он не нужен.', 'The forecast starts at the base date: earlier values are not needed.'), null, 'd_from');
   }
   const n = isBlank(f.d_n) ? DECAY_DEFAULT.n : parseNumber(f.d_n);
   const unit = ['d', 'w', 'm'].includes(f.d_unit) ? f.d_unit : DECAY_DEFAULT.unit;
