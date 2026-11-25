@@ -83,15 +83,16 @@ export function renderStart() {
       <section class="start-card" data-card="dosimetry">
         <h3>${esc(L('Дозиметрия', 'Dosimetry'))}</h3>
         <p class="start-when">${L(
-          '<b>Когда:</b> калибровка в воде в референсных условиях TRS-398 Rev.1 — одной энергии или всех энергий аппарата подряд, с подробным протоколом: все поправки со ссылками на протокол, PDF со строками для подписей, файл с данными.',
-          '<b>When:</b> calibration in water under TRS-398 Rev.1 reference conditions, of a single energy or of all energies of a machine in a row, with a detailed report: all corrections with protocol references, a PDF with signature lines, a data file.',
+          '<b>Когда:</b> калибровка в воде в референсных условиях TRS-398 Rev.1 — одной энергии или всех энергий аппарата подряд, или проверка силы источника брахитерапии по TRS-492, с подробным протоколом: все поправки со ссылками на протокол, PDF со строками для подписей, файл с данными.',
+          '<b>When:</b> calibration in water under TRS-398 Rev.1 reference conditions, of a single energy or of all energies of a machine in a row, or a brachytherapy source strength check per TRS-492, with a detailed report: all corrections with protocol references, a PDF with signature lines, a data file.',
         )}</p>
-        <p class="start-note">${esc(L('Один пучок:', 'A single beam:'))}</p>
+        <p class="start-note">${esc(L('Один пучок или источник брахитерапии:', 'A single beam or brachytherapy source:'))}</p>
         <div class="start-row">
           ${go('co60', '⁶⁰Co')}
           ${go('photons', esc(L('МВ фотоны', 'MV photons')))}
           ${go('electrons', esc(L('Электроны', 'Electrons')))}
           ${go('kv', esc(L('kV-рентген', 'kV x-rays')))}
+          ${go('brachy', esc(L('Брахитерапия', 'Brachytherapy')))}
         </div>
         <p class="start-note">${esc(L('Все энергии аппарата подряд, каждая записывается в журнал (лист «Сеанс» вкладки):', 'All energies of a machine in a row, each recorded to the journal (the Session sheet of the tab):'))}</p>
         <div class="start-row">
