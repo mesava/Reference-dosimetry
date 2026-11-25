@@ -40,6 +40,9 @@ test('брахитерапия в «Оборудовании»: афтерлоа
   await s1.locator('input[data-bind$="|certValue"]').fill('40,1');
   await s1.locator('input[data-bind$="|certDate"]').fill('2026-06-01');
   await s1.locator('input[data-bind$="|installed"]').fill('2026-06-02');
+  // паспорт целиком (с 0.80.4): Γδ и k для U — новый источник перенимает их от прежнего
+  await s1.locator('input[data-bind$="|certGamma"]').fill('108');
+  await s1.locator('select[data-bind$="|certK"]').selectOption('3');
   await pause();
   await card.locator('[data-add-brachysrc]').click();
   await pause();
@@ -48,6 +51,10 @@ test('брахитерапия в «Оборудовании»: афтерлоа
   const s2 = src().first();
   assert.equal(await s2.locator('select[data-bind$="|model"]').inputValue(), 'mhdr-v2');
   assert.notEqual(await src().nth(1).locator('input[data-bind$="|removed"]').inputValue(), '');
+  assert.equal(await s2.locator('input[data-bind$="|certGamma"]').inputValue(), '108');
+  assert.equal(await s2.locator('select[data-bind$="|certK"]').inputValue(), '3');
+  await s2.locator('input[data-bind$="|certA0"]').fill('370');
+  await s2.locator('input[data-bind$="|certA0Date"]').fill('2026-08-28');
   await s2.locator('input[data-bind$="|serial"]').fill('B-2');
   await s2.locator('input[data-bind$="|certValue"]').fill('41,5');
   await s2.locator('input[data-bind$="|certDate"]').fill('2026-09-01');
@@ -116,6 +123,8 @@ test('брахитерапия в «Оборудовании»: афтерлоа
   await pause();
   assert.equal(await page.inputValue('#br_cert_value'), '41,5');
   assert.equal(await page.inputValue('#br_cert_date'), '2026-09-01');
+  assert.equal(await page.inputValue('#br_cert_gamma'), '108');
+  assert.equal(await page.inputValue('#br_cert_k'), '3');
   // колодезная камера и строка сертификата: N, модель, k_sm,sm0 — тот же источник
   const wid = await page.locator('#br_j_well option').nth(1).getAttribute('value');
   await page.selectOption('#br_j_well', wid);

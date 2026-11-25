@@ -102,3 +102,18 @@ test('журнал с брахитерапией: формат 5, записи �
   // без брахитерапии — прежний формат
   assert.equal(journalFormat(normalizeJournal({ ...JOURNAL_TAG, machines: [{ id: 'm1', beams: [] }] })), 1);
 });
+
+test('Γδ, k для U и активность из паспорта источника — на листы (с 0.80.4)', () => {
+  const m = afterloader();
+  const s = { ...m.sources[1], certGamma: '30.18', certGammaUnit: 'aGy·m2/(s·Bq)', certK: '3', certA0: '370', certA0Unit: 'GBq', certA0Date: '2026-08-28', certA0Time: '12:00', certA0Zone: '+3' };
+  const f = sourceToForm(s, m);
+  assert.deepEqual([f.cert_gamma, f.cert_gamma_unit, f.cert_k], ['30.18', 'aGy·m2/(s·Bq)', '3']);
+  assert.deepEqual([f.d_A0, f.d_A0_unit, f.d_A0_date, f.d_A0_time, f.d_A0_zone], ['370', 'GBq', '2026-08-28', '12:00', '+3']);
+  // k не задан в «Оборудовании» — на листе остаётся выбранный там
+  assert.equal('cert_k' in sourceToForm({ ...s, certK: '' }, m), false);
+  // у другого источника без паспортной активности — A₀ очищается, а не остаётся от прежнего
+  assert.equal(sourceToForm({ ...s, certA0: '' }, m).d_A0, '');
+  // старые записи журнала без новых полей — нормализуются в пустые строки
+  const n = normalizeBrachyMachine({ ...m, sources: [{ id: 'x', nuclide: 'Ir-192' }] });
+  assert.deepEqual([n.sources[0].certK, n.sources[0].certA0, n.sources[0].certA0Unit], ['', '', 'GBq']);
+});

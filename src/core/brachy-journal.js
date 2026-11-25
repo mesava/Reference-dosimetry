@@ -26,6 +26,13 @@ export const BRACHY_SOURCE_DEFAULTS = {
   certTime: '',
   certZone: '',
   certU: '',
+  certK: '', // коэффициент охвата U сертификата: '2' или '3' (пусто — как на листе)
+  // активность из паспорта со своей датой (справочно, TRS-492, доп. I): в паспорте даты активности и ОМВК бывают разными
+  certA0: '',
+  certA0Unit: 'GBq',
+  certA0Date: '',
+  certA0Time: '',
+  certA0Zone: '',
   installed: '', // дата установки (ISO)
   removed: '', // дата замены (ISO); пусто — источник в аппарате
   notes: '',
@@ -141,6 +148,13 @@ export function sourceToForm(s, m = null) {
     cert_time: s.certTime,
     cert_zone: s.certZone,
     cert_U: s.certU,
+    ...(s.certK === '2' || s.certK === '3' ? { cert_k: s.certK } : {}),
+    // опорная активность листа «Распад» — из паспорта источника (у другого источника — своя или пусто)
+    d_A0: s.certA0,
+    d_A0_unit: s.certA0Unit || 'GBq',
+    d_A0_date: s.certA0Date,
+    d_A0_time: s.certA0Time,
+    d_A0_zone: s.certA0Zone,
     ...(model ? { p_src: model, t_src: model } : {}),
   };
 }

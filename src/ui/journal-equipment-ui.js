@@ -517,13 +517,18 @@ function brachySourceBlock(j, m, s, cur) {
       ${s.model ? '' : field(L('Название модели', 'Model name'), input(k, s.id, 'modelName', s.modelName), { forId: fid('modelName') })}
       ${field(L('Заводской № источника', 'Source serial No.'), input(k, s.id, 'serial', s.serial), { forId: fid('serial') })}
       ${field(tip('cert_value', L('Значение в сертификате', 'Certificate value')), `<div class="inline">${input(k, s.id, 'certValue', s.certValue, { num: true })}${select(k, s.id, 'certUnit', s.certUnit, unitOpts, { aria: L('Единица', 'Unit') })}</div>`, { forId: fid('certValue'), cls: 'span-2', sub: L('ОМВК (мощность воздушной кермы на 1 м), S<sub>K</sub> или активность', 'RAKR (air kerma rate at 1 m), S<sub>K</sub> or activity') })}
-      ${activity ? field(tip('cert_gamma', L('Γ<sub>δ</sub> из сертификата', 'Γ<sub>δ</sub> from the certificate')), `<div class="inline">${input(k, s.id, 'certGamma', s.certGamma, { num: true })}${select(k, s.id, 'certGammaUnit', s.certGammaUnit, unitOptions(GAMMA_UNITS), { aria: L('Единица', 'Unit') })}</div>`, { forId: fid('certGamma'), cls: 'span-2', sub: L('для перевода активности в ОМВК', 'to convert activity to RAKR') }) : ''}
       ${field(L('Дата сертификата', 'Certificate date'), input(k, s.id, 'certDate', s.certDate, { type: 'date' }), { forId: fid('certDate') })}
       ${field(L('Время', 'Time'), input(k, s.id, 'certTime', s.certTime, { type: 'time' }), { forId: fid('certTime'), sub: L('пусто — 00:00', 'blank: 00:00') })}
       ${field(L('Часовой пояс', 'Time zone'), select(k, s.id, 'certZone', s.certZone, zoneOptions()), { forId: fid('certZone') })}
-      ${field(tip('cert_U', L('U сертификата, % (k = 2)', 'Certificate U, % (k = 2)')), input(k, s.id, 'certU', s.certU, { num: true }), { forId: fid('certU') })}
+      ${field(tip('cert_gamma', L('Γ<sub>δ</sub> из сертификата', 'Γ<sub>δ</sub> from the certificate')), `<div class="inline">${input(k, s.id, 'certGamma', s.certGamma, { num: true })}${select(k, s.id, 'certGammaUnit', s.certGammaUnit, unitOptions(GAMMA_UNITS), { aria: L('Единица', 'Unit') })}</div>`, { forId: fid('certGamma'), cls: 'span-2', sub: activity ? L('для перевода активности в ОМВК', 'to convert activity to RAKR') : L('справочно: кажущаяся активность и проверка через Γ<sub>δ</sub> на листе «Распад»', 'for reference: the apparent activity and the Γ<sub>δ</sub> check on the Decay sheet') })}
+      ${field(tip('cert_U', L('U сертификата, %', 'Certificate U, %')), input(k, s.id, 'certU', s.certU, { num: true }), { forId: fid('certU') })}
+      ${field(L('k для U сертификата', 'k of the certificate U'), select(k, s.id, 'certK', s.certK, [['', L('— как на листе —', '— as on the sheet —')], ['2', 'k = 2 (P ≈ 95 %)'], ['3', 'k = 3 (P ≈ 99,7 %)']]), { forId: fid('certK') })}
+      ${field(tip('d_A0', L('Активность в паспорте (справочно)', 'Activity in the certificate (for reference)')), `<div class="inline">${input(k, s.id, 'certA0', s.certA0, { num: true })}${select(k, s.id, 'certA0Unit', s.certA0Unit, unitOptions(ACTIVITY_UNITS), { aria: L('Единица', 'Unit') })}</div>`, { forId: fid('certA0'), cls: 'span-2', sub: L('если дана отдельно от ОМВК, со своей датой; на лист «Распад» как A₀', 'if given separately from the RAKR, with its own date; to the Decay sheet as A₀') })}
+      ${field(L('Дата активности', 'Activity date'), input(k, s.id, 'certA0Date', s.certA0Date, { type: 'date' }), { forId: fid('certA0Date') })}
+      ${field(L('Время', 'Time'), input(k, s.id, 'certA0Time', s.certA0Time, { type: 'time' }), { forId: fid('certA0Time'), sub: L('пусто — 00:00', 'blank: 00:00') })}
+      ${field(L('Часовой пояс', 'Time zone'), select(k, s.id, 'certA0Zone', s.certA0Zone, zoneOptions()), { forId: fid('certA0Zone') })}
       ${field(L('Установлен', 'Installed'), input(k, s.id, 'installed', s.installed, { type: 'date' }), { forId: fid('installed') })}
-      ${field(L('Заменён', 'Replaced'), input(k, s.id, 'removed', s.removed, { type: 'date' }), { forId: fid('removed'), sub: L('пусто — источник в аппарате', 'blank: the source is in the afterloader') })}
+      ${field(L('Заменён или выведен', 'Replaced or removed'), input(k, s.id, 'removed', s.removed, { type: 'date' }), { forId: fid('removed'), sub: L('пусто — источник в аппарате; с этой даты на листы не подставляется, записи журнала остаются', 'blank: the source is in the afterloader; from this date it is not filled in on the sheets, journal records stay') })}
       ${field(L('Примечания', 'Notes'), notesArea(k, s.id, 'notes', s.notes), { forId: fid('notes'), cls: 'span-all' })}
     </div>
     <div class="row-tools"><button type="button" class="link-btn danger" data-del="brachysrc:${esc(m.id)}:${esc(s.id)}"${brachySourceUsed(j, s.id) ? ` disabled title="${esc(L('Источник есть в записях журнала', 'The source is used in journal records'))}"` : ''}>${esc(L('Удалить источник', 'Delete source'))}</button></div>
@@ -1626,7 +1631,7 @@ function onClick(e) {
     // новый источник: нуклид, модель и единица — как у прежнего, установлен сегодня; у прежнего — дата замены
     const m0 = getJournal().machines.find((x) => x.id === t.dataset.addBrachysrc);
     const last = m0?.sources.at(-1);
-    const s = newBrachySource({ installed: today(), ...(last ? { nuclide: last.nuclide, model: last.model, modelName: last.modelName, certUnit: last.certUnit, certZone: last.certZone } : {}) });
+    const s = newBrachySource({ installed: today(), ...(last ? { nuclide: last.nuclide, model: last.model, modelName: last.modelName, certUnit: last.certUnit, certZone: last.certZone, certGamma: last.certGamma, certGammaUnit: last.certGammaUnit, certK: last.certK, certA0Unit: last.certA0Unit, certA0Zone: last.certA0Zone } : {}) });
     updateJournal((j) => {
       const m = j.machines.find((x) => x.id === t.dataset.addBrachysrc);
       if (!m) return j;
