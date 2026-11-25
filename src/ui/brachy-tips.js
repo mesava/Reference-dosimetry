@@ -204,6 +204,35 @@ const TIPS = {
     pop('Отсчёт таблицы распада', ['От сертификата — сила источника по сертификату на его дату. От измерения — результат листа «Колодезная камера» или «Фантом PTW 9193» на время измерения: так получают значения для системы планирования по своему измерению.'], `${T492}, разд. 7.3, 8.6.`),
     pop('Decay table base', ['From the certificate: the certificate source strength at its date. From a measurement: the result of the Well-type chamber or PTW 9193 phantom sheet at the measurement time; this gives values for the treatment planning system from your own measurement.'], 'IAEA TRS-492 (2023), Sec. 7.3, 8.6.'),
   ),
+  // ярлыки листов (с 0.80.1): для чего лист и когда он нужен
+  tab_decay: () => L(
+    pop('Распад', ['Калькулятор распада по паспорту источника: активность и ОМВК на любую дату, прогноз по неделям, дата порога замены. Нужен перед измерением (ожидаемое значение) и для ввода в систему планирования.'], `${T492}, разд. 3.4, 7.3, ур. (8)–(9).`),
+    pop('Decay', ['Decay calculator from the source certificate: activity and RAKR at any date, weekly forecast, replacement threshold date. Used before a measurement (expected value) and for the treatment planning system.'], 'IAEA TRS-492 (2023), Sec. 3.4, 7.3, Eq. (8)–(9).'),
+  ),
+  tab_stab: () => L(
+    pop('Стабильность', ['Периодическая проверка, что колодезная камера с электрометром не изменилась с калибровки: контрольный источник, пучок, источник HDR или вторая камера. Не реже 4 раз в год и до и после каждой замены источника; допуск ±0,5 %.'], `${T492}, разд. 8.4–8.5.`),
+    pop('Stability', ['Periodic check that the well-type chamber and electrometer have not changed since calibration: check source, beam, HDR source or a second chamber. At least four times a year and before and after each source exchange; tolerance ±0.5%.'], 'IAEA TRS-492 (2023), Sec. 8.4–8.5.'),
+  ),
+  tab_cross: () => L(
+    pop('Сличение камер', ['Калибровочный коэффициент рабочей колодезной камеры по эталонной, калиброванной в лаборатории: обе камеры мерят один источник того же нуклида. Нужно, только если у отделения есть эталонная и рабочая камеры; после поверки эталонной или с новой рабочей камерой.'], `${T492}, разд. 7.7, ур. (18)–(20).`),
+    pop('Cross-calibration', ['Calibration coefficient of the field well-type chamber from the reference chamber calibrated at a laboratory: both measure one source of the same nuclide. Needed only if the department has a reference and a field chamber; after the reference recalibration or for a new field chamber.'], 'IAEA TRS-492 (2023), Sec. 7.7, Eq. (18)–(20).'),
+  ),
+  tab_sweet: () => L(
+    pop('Максимум отклика', ['Положение источника в колодезной камере с наибольшим показанием (опорная точка): кривая «положение — показание» с шагом не больше 2,5 мм. Проверяют при вводе камеры, смене держателя или ампулопровода и периодически; положение записывают в рабочий лист.'], `${T492}, разд. 8.2.1.`),
+    pop('Sweet spot', ['The source position in the well-type chamber with the largest reading (reference point): position–reading curve with steps of at most 2.5 mm. Checked at commissioning, after a holder or transfer tube change and periodically; the position is recorded on the worksheet.'], 'IAEA TRS-492 (2023), Sec. 8.2.1.'),
+  ),
+  tab_well: () => L(
+    pop('Колодезная камера', ['Основное измерение силы источника: ОМВК и S<sub>K</sub> (или Ḋ<sub>w</sub> на 1 см при калибровке в N<sub>D,w</sub>) и сравнение с сертификатом — при каждой замене источника.'], `${T492}, гл. 7–8.`),
+    pop('Well-type chamber', ['The main source strength measurement: RAKR and S<sub>K</sub> (or Ḋ<sub>w</sub> at 1 cm with an N<sub>D,w</sub> calibration) and comparison with the certificate, at each source exchange.'], 'IAEA TRS-492 (2023), Ch. 7–8.'),
+  ),
+  tab_phantom: () => L(
+    pop('Фантом PTW 9193', ['Измерение силы источника цилиндрической камерой в фантоме (четыре положения на 8 см) и поглощённая доза в воде на 1 и 8 см — независимая проверка колодезной камеры или основной метод, если колодезной нет.'], 'DIN 6809-2; DGMP-Bericht 13; руководство PTW 9193.'),
+    pop('PTW 9193 phantom', ['Source strength with a cylindrical chamber in the phantom (four positions at 8 cm) and the absorbed dose to water at 1 and 8 cm: an independent check of the well-type chamber, or the main method without one.'], 'DIN 6809-2; DGMP Report 13; PTW 9193 manual.'),
+  ),
+  tab_tg43: () => L(
+    pop('Доза TG-43 (справочно)', ['Не часть измерения: мощность дозы в воде в любых точках (r, θ) вокруг источника по формализму TG-43 с данными HEBD (Λ, g<sub>L</sub>, F). Для сверки точек дозы с системой планирования после ввода нового источника. Доза по измерению уже есть на листах «Фантом PTW 9193» и «Колодезная камера».'], 'AAPM TG-43U1 (Rivard 2004), ур. (1), (4); HEBD (Perez-Calatayud 2012).'),
+    pop('TG-43 dose (reference)', ['Not part of the measurement: the dose rate to water at any points (r, θ) around the source per the TG-43 formalism with HEBD data (Λ, g<sub>L</sub>, F). For checking dose points against the treatment planning system after a new source is entered. The measured dose is already on the PTW 9193 phantom and Well-type chamber sheets.'], 'AAPM TG-43U1 (Rivard 2004), Eq. (1), (4); HEBD (Perez-Calatayud 2012).'),
+  ),
   d_A0: () => L(
     pop('Опорная активность A<sub>0</sub>', ['Активность из паспорта источника на её дату. В паспорте даты активности и ОМВК могут быть разными (например, паспорт ИРМ) — поэтому у A<sub>0</sub> своя дата. Пусто — если сертификат дан в активности, A<sub>0</sub> берётся из раздела 1. Кажущаяся активность — производная величина, только для справки.'], `${T492}, прил. I.`),
     pop('Reference activity A<sub>0</sub>', ['The activity from the source certificate at its date. The certificate may give the activity and the RAKR at different dates, so A<sub>0</sub> has its own date. Blank: if the certificate is given as an activity, A<sub>0</sub> is taken from section 1. The apparent activity is a derived quantity, for reference only.'], 'IAEA TRS-492 (2023), Annex I.'),

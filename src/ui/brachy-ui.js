@@ -468,7 +468,33 @@ export function openBrachyRecord(id) {
 // ------------------------------------------------------------ разметка
 function navHtml() {
   const items = [['decay', L('Распад', 'Decay')], ['stab', L('Стабильность', 'Stability')], ['cross', L('Сличение камер', 'Cross-calibration')], ['sweet', L('Максимум отклика', 'Sweet spot')], ['well', L('Колодезная камера', 'Well-type chamber')], ['phantom', L('Фантом PTW 9193', 'PTW 9193 phantom')], ['tg43', L('Доза TG-43', 'TG-43 dose')]];
-  return `<nav class="kv-pages" aria-label="${esc(L('Листы вкладки', 'Tab sheets'))}">${items.map(([k, t]) => `<a href="#brachy/${k}" data-goto="brachy/${k}"${k === sheet ? ' aria-current="page"' : ''}>${esc(t)}</a>`).join('')}</nav>`;
+  return `<nav class="kv-pages" aria-label="${esc(L('Листы вкладки', 'Tab sheets'))}">${items.map(([k, t]) => `<a href="#brachy/${k}" data-goto="brachy/${k}"${k === sheet ? ' aria-current="page"' : ''}${tipAttr(`tab_${k}`)}>${esc(t)}</a>`).join('')}</nav>`;
+}
+
+/** «Сличение камер»: что это, когда и как делается по TRS-492, разд. 7.7 (по просьбе Alex 25.11.2026). */
+function crossHowtoHtml() {
+  const li = (xs) => xs.map((x) => `<li>${sub(x)}</li>`).join('');
+  return `<details class="howto" data-howto="br-cross" open><summary>${esc(L('Что это и как делается по TRS-492', 'What it is and how it is done per TRS-492'))}</summary><div class="howto-body">
+    <h3>${esc(L('Что это', 'What it is'))}</h3>
+    <p>${sub(L('Прослеживаемость к национальному эталону даёт калибровка камеры в лаборатории. Если в лабораторию отправляют только одну колодезную камеру — эталонную, — коэффициент рабочей камеры, которой мерят повседневно, получают в клинике сличением с эталонной: обе камеры мерят один и тот же источник (IAEA TRS-492, разд. 7.7). Так рабочая камера тоже получает прослеживаемый коэффициент.', 'Traceability to the national standard comes from a laboratory calibration. If only one well-type chamber, the reference one, is sent to the laboratory, the coefficient of the field chamber used day to day is obtained in the clinic by cross-calibration against the reference chamber: both measure the same source (IAEA TRS-492, Sec. 7.7). The field chamber thus also gets a traceable coefficient.'))}</p>
+    <h3>${esc(L('Когда нужно', 'When it is needed'))}</h3>
+    <ul>${li([
+      L('Только если в отделении две колодезные камеры: эталонная с сертификатом лаборатории и рабочая. Если камера одна и калибруется в лаборатории сама — сличение не нужно.', 'Only if the department has two well-type chambers: a reference one with a laboratory certificate and a field one. With one chamber calibrated at the laboratory itself, no cross-calibration is needed.'),
+      L('Практически — после каждой калибровки эталонной камеры, при вводе новой рабочей камеры (или нового держателя) и если проверка стабильности рабочей камеры вышла за допуск. Частоту TRS-492 не задаёт.', 'In practice: after each calibration of the reference chamber, for a new field chamber (or a new holder), and if the stability check of the field chamber is out of tolerance. TRS-492 does not set a frequency.'),
+    ])}</ul>
+    <h3>${esc(L('Как делается', 'How it is done'))}</h3>
+    <ol>${li([
+      L('Источник — того же нуклида, что при калибровке эталонной камеры (¹⁹²Ir или ⁶⁰Co); пересчёт между нуклидами, интерполяция и расчётные поправки не допускаются. Если модель источника та же, что при калибровке, — k_sm,sm0 = 1, иначе N_ref умножают на поправку на модель источника.', 'A source of the same nuclide as at the reference calibration (¹⁹²Ir or ⁶⁰Co); conversion between nuclides, interpolation and calculated corrections are not permitted. With the same source model as at calibration, k_sm,sm0 = 1; otherwise N_ref is multiplied by the source model correction.'),
+      L('Эталонная камера — в том держателе, в котором её калибровали; рабочая — в своём (или в том же). Источник — в том же положении, что при калибровке, обычно в максимуме отклика (лист «Максимум отклика»).', 'The reference chamber in the holder it was calibrated with; the field chamber in its own holder (or the same). The source at the same dwell position as at calibration, usually at the sweet spot (Sweet spot sheet).'),
+      L('Камеры и электрометры прогреть; у каждой камеры — своя температура и давление. Показания (ток или заряд за фиксированное время) после стабилизации, с поправками на T, P, утечку, полярность и рекомбинацию: M_ref в эталонной камере, затем M_field в рабочей.', 'Warm up the chambers and electrometers; each chamber has its own temperature and pressure. Readings (current or charge over a fixed time) after stabilization, corrected for T, P, leakage, polarity and recombination: M_ref in the reference chamber, then M_field in the field chamber.'),
+      L('Оба показания приводят к одному моменту t_ref поправкой на распад. Если один источник мерят в обеих камерах подряд, в одно время, распад и k_TP сокращаются.', 'Both readings are referred to the same time t_ref with the decay correction. If one source is measured in both chambers one after another at the same time, decay and k_TP cancel.'),
+    ])}</ol>
+    <h3>${esc(L('Как считается', 'How it is calculated'))}</h3>
+    <p>${sub(L('N_field = M_ref(t_ref)/M_field(t_ref) · N_ref · k_sm,sm0 — для ОМВК (ур. 18), S_K (ур. 19) и мощности дозы в воде (ур. 20). N_field действителен в тех же опорных условиях, что при сличении (держатель, положение источника), — его вносят в сертификат рабочей камеры в «Оборудовании» и применяют на листе «Колодезная камера».', 'N_field = M_ref(t_ref)/M_field(t_ref) · N_ref · k_sm,sm0, for the RAKR (Eq. 18), S_K (Eq. 19) and the dose rate to water (Eq. 20). N_field holds under the same reference conditions as in the cross-calibration (holder, source position); it goes into the field chamber certificate in Equipment and is used on the Well-type chamber sheet.'))}</p>
+    <h3>${esc(L('Отличие от «Перекрёстной калибровки» в «Инструментах»', 'Difference from Cross-calibration in Tools'))}</h3>
+    <p>${sub(L('Идея та же — коэффициент рабочей камеры по эталонной, — но там цилиндрические камеры в пучке ⁶⁰Co или МВ на опорной глубине в воде и N_D,w в Гр/Кл (TRS-398 Rev.1), а здесь колодезные камеры с самим источником брахитерапии и N в Гр·м²·ч⁻¹·А⁻¹ (TRS-492). Одно вместо другого использовать нельзя.', 'The idea is the same, the field chamber coefficient from the reference one, but there it is cylindrical chambers in a ⁶⁰Co or MV beam at the reference depth in water with N_D,w in Gy/C (TRS-398 Rev.1), and here well-type chambers with the brachytherapy source itself and N in Gy·m²·h⁻¹·A⁻¹ (TRS-492). One cannot replace the other.'))}</p>
+    <p class="sub-hint">${esc(L('Источник: IAEA TRS-492 (2023), разд. 7.7, ур. (18)–(20); разд. 8.2.', 'Source: IAEA TRS-492 (2023), Sec. 7.7, Eq. (18)–(20); Sec. 8.2.'))}</p>
+  </div></details>`;
 }
 
 function introHtml() {
@@ -482,7 +508,7 @@ function introHtml() {
     return `<p class="intro">${sub(L(
       'Калибровочный коэффициент рабочей колодезной камеры по эталонной (с сертификатом лаборатории): один и тот же источник того же нуклида поочерёдно в обеих камерах, в положении максимального отклика; эталонная — в своём держателе. N_field = M_ref/M_field · N_ref · k_sm,sm0 (IAEA TRS-492, разд. 7.7, ур. 18–20). Пересчёт между нуклидами (¹⁹²Ir ↔ ⁶⁰Co) не допускается.',
       'Calibration coefficient of the field well-type chamber from the reference one (with a laboratory certificate): the same source of the same nuclide in both chambers in turn, at the sweet spot; the reference chamber in its own holder. N_field = M_ref/M_field · N_ref · k_sm,sm0 (IAEA TRS-492, Sec. 7.7, Eq. 18–20). Conversion between nuclides (¹⁹²Ir ↔ ⁶⁰Co) is not permitted.',
-    ))}</p>`;
+    ))}</p>${crossHowtoHtml()}`;
   }
   if (sheet === 'stab') {
     return `<p class="intro">${sub(L(

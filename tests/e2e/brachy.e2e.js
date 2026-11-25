@@ -54,6 +54,9 @@ test('брахитерапия: колодезная камера и фанто�
   // подсказки к величинам: что обозначает и откуда берётся
   await page.hover('label[for="br_cert_gamma"]');
   assert.match(await page.locator('#hover-pop').innerText(), /Постоянная мощности воздушной кермы[\s\S]*TRS-492[\s\S]*ур\. \(36\)/);
+  // ярлык листа «Доза TG-43» — подсказка, для чего лист (с 0.80.1)
+  await page.hover('a[data-goto="brachy/tg43"]');
+  assert.match(await page.locator('#hover-pop').innerText(), /Не часть измерения[\s\S]*системой планирования[\s\S]*TG-43U1/);
   await page.hover('#br-result th[data-pop]:has-text("kTP")');
   assert.match(await page.locator('#hover-pop').innerText(), /плотность воздуха[\s\S]*ур\. \(28\)/);
   await page.mouse.move(0, 0);
@@ -202,6 +205,8 @@ test('брахитерапия: сличение рабочей камеры п�
   await page.goto(`${server.url}/index.html#brachy/cross`);
   await page.waitForSelector('#br_x_ref_N');
   assert.match(await page.locator('#brachy-root nav a[aria-current="page"]').innerText(), /Сличение камер/);
+  // объяснение по TRS-492, разд. 7.7 (с 0.80.1)
+  assert.match(await page.locator('details[data-howto="br-cross"]').innerText(), /Когда нужно[\s\S]*того же нуклида[\s\S]*ур\. 18[\s\S]*Инструментах/i);
   await page.selectOption('#br_nuclide', 'Ir-192');
   await pause();
   await page.fill('#br_x_ref_N', '4,6e5');
