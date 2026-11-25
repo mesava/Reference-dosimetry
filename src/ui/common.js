@@ -42,12 +42,12 @@ export function esc(s) {
 export const symbolsHtml = (html) =>
   String(html)
     .replace(/%dd\(10\)x(?![A-Za-z])/g, '%dd(10)<sub>x</sub>')
-    .replace(/(^|[^A-Za-z0-9_])([A-Za-zḊṀ]\u0307?)_([A-Za-z0-9]+(?:,[A-Za-z0-9]+)*)(?![A-Za-z0-9_])/g, '$1$2<sub>$3</sub>')
+    .replace(/(^|[^A-Za-z0-9_])([A-Za-zΑ-Ωα-ωḊṀ]\u0307?)_([A-Za-z0-9α-ω]+(?:,[A-Za-z0-9α-ω]+)*)(?![A-Za-z0-9α-ω_])/g, '$1$2<sub>$3</sub>')
     .replace(/(^|[^A-Za-z0-9_])([A-Za-zḊṀ]\u0307?)_([а-яё]+)(?![а-яёA-Za-z0-9_])/g, '$1$2<sub>$3</sub>');
 /** Текст сообщения для вывода в HTML: экранирование и индексы. */
 export const richText = (s) => symbolsHtml(esc(s));
 /** Подпись без разметки (пункт списка, атрибут): k_Q → kQ. */
-export const plainSymbols = (s) => String(s).replace(/(^|[^A-Za-z0-9_])([A-Za-zḊṀ]\u0307?)_([A-Za-z0-9]+(?:,[A-Za-z0-9]+)*)(?![A-Za-z0-9_])/g, '$1$2$3');
+export const plainSymbols = (s) => String(s).replace(/(^|[^A-Za-z0-9_])([A-Za-zΑ-Ωα-ωḊṀ]\u0307?)_([A-Za-z0-9α-ω]+(?:,[A-Za-z0-9α-ω]+)*)(?![A-Za-z0-9α-ω_])/g, '$1$2$3');
 
 export function get(obj, path) {
   return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);

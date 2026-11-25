@@ -1018,6 +1018,8 @@ table.br-log-t td.del { text-align: right; width: 6.5em; }
 table.br-log-t td.del .link-btn { display: block; margin: 2px 0 2px auto; }
 table.br-log-t td small { color: var(--muted); }
 table.br-log-t td:nth-child(2) { min-width: 12em; }
+table.br-decay-at tr.grp th { padding-top: 12px; font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--muted); text-align: left; }
+table.br-decay-at td.v { white-space: nowrap; }
 table.jf-table input.flag-warn { border-color: var(--warn); background: var(--warn-soft); }
 table.jf-table input.flag-error { border-color: var(--err); background: var(--err-soft); }
 .row-tools { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 6px; }

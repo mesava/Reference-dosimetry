@@ -65,6 +65,8 @@ export function sampleBrachy() {
     s_cert_pos: '1230',
     // распад
     d_basis: 'cert',
+    d_at_date: '2026-09-15',
+    d_at_time: '10:00',
     d_from: '2026-09-01',
     d_to: '2026-12-01',
     d_unit: 'w',

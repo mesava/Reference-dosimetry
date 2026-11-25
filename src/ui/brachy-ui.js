@@ -26,7 +26,8 @@ import { sampleBrachy, isBrachySample } from '../core/sample-brachy.js';
 import { BRACHY_RECORD_SHEETS, BRACHY_DATE_KEY, brachySheetText, recordBrachy, formFromRecord, redundantRunningMean } from '../core/brachy-records.js';
 
 const KEY = 'reference-dosimetry.brachy';
-const SHEETS = ['well', 'sweet', 'phantom', 'cross', 'stab', 'decay', 'tg43'];
+// порядок листов — по ходу работы (решение Alex 25.11.2026): распад → стабильность → сличение → максимум отклика → колодезная → фантом → TG-43
+const SHEETS = ['decay', 'stab', 'cross', 'sweet', 'well', 'phantom', 'tg43'];
 let sheet = 'well';
 let form = normalizeBrachy({});
 let statusEl = null;
@@ -77,7 +78,7 @@ function zoneOpts(cur) {
   return items.join('');
 }
 /** Дата, время и часовой пояс (prefix: cert_, w_, p_). */
-const when = (pre, label, timeHint) => `<div class="field"><label for="br_${pre}date">${esc(label)}</label><input type="date" id="br_${pre}date" data-f="${pre}date" value="${esc(form[`${pre}date`])}"></div>
+const when = (pre, label, timeHint) => `<div class="field"><label for="br_${pre}date"${tipAttr(`${pre}date`)}>${esc(label)}</label><input type="date" id="br_${pre}date" data-f="${pre}date" value="${esc(form[`${pre}date`])}"></div>
   <div class="field"><label for="br_${pre}time">${esc(L('Время', 'Time'))}</label><input type="time" id="br_${pre}time" data-f="${pre}time" value="${esc(form[`${pre}time`])}" title="${esc(timeHint)}"></div>
   <div class="field"><label for="br_${pre}zone">${esc(L('Часовой пояс', 'Time zone'))}</label><select id="br_${pre}zone" data-f="${pre}zone">${zoneOpts(form[`${pre}zone`])}</select></div>`;
 
@@ -466,7 +467,7 @@ export function openBrachyRecord(id) {
 
 // ------------------------------------------------------------ разметка
 function navHtml() {
-  const items = [['well', L('Колодезная камера', 'Well-type chamber')], ['sweet', L('Максимум отклика', 'Sweet spot')], ['phantom', L('Фантом PTW 9193', 'PTW 9193 phantom')], ['cross', L('Сличение камер', 'Cross-calibration')], ['stab', L('Стабильность', 'Stability')], ['decay', L('Распад', 'Decay')], ['tg43', L('Доза TG-43', 'TG-43 dose')]];
+  const items = [['decay', L('Распад', 'Decay')], ['stab', L('Стабильность', 'Stability')], ['cross', L('Сличение камер', 'Cross-calibration')], ['sweet', L('Максимум отклика', 'Sweet spot')], ['well', L('Колодезная камера', 'Well-type chamber')], ['phantom', L('Фантом PTW 9193', 'PTW 9193 phantom')], ['tg43', L('Доза TG-43', 'TG-43 dose')]];
   return `<nav class="kv-pages" aria-label="${esc(L('Листы вкладки', 'Tab sheets'))}">${items.map(([k, t]) => `<a href="#brachy/${k}" data-goto="brachy/${k}"${k === sheet ? ' aria-current="page"' : ''}>${esc(t)}</a>`).join('')}</nav>`;
 }
 
@@ -497,8 +498,8 @@ function introHtml() {
   }
   if (sheet === 'decay') {
     return `<p class="intro">${sub(L(
-      'Сила источника по датам: от сертификата или от своего измерения, K̇(t) = K̇(t_0) · 2^(−Δt/T½) (IAEA TRS-492, ур. 8–9, табл. 3). Время — по выбранному поясу и в UTC (ISO 8601, разд. 3.4.2). Можно найти дату, когда сила упадёт до порога замены источника.',
-      'Source strength by date, from the certificate or from your own measurement: K̇(t) = K̇(t_0) · 2^(−Δt/T½) (IAEA TRS-492, Eq. 8–9, Table 3). Times in the chosen zone and in UTC (ISO 8601, Sec. 3.4.2). You can find the date when the strength falls to the source replacement threshold.',
+      'Калькулятор распада: активность и ОМВК источника на выбранную дату по данным паспорта — K̇(t) = K̇(t_0) · 2^(−Δt/T½), A(t) = A_0 · 2^(−Δt/T½) (IAEA TRS-492, ур. 8–9, табл. 3). Даты A_0 и K_0 в паспорте могут быть разными. Справочно — проверка через Γ_δ и диапазон по неопределённости паспорта; ниже — прогноз по неделям и дата, когда сила упадёт до порога замены. Время — по выбранному поясу и в UTC (разд. 3.4.2).',
+      'Decay calculator: the source activity and RAKR at the chosen date from the certificate data, K̇(t) = K̇(t_0) · 2^(−Δt/T½), A(t) = A_0 · 2^(−Δt/T½) (IAEA TRS-492, Eq. 8–9, Table 3). The certificate may give A_0 and K_0 at different dates. For reference: a check via Γ_δ and the range from the certificate uncertainty; below, a weekly forecast and the date when the strength falls to the replacement threshold. Times in the chosen zone and in UTC (Sec. 3.4.2).',
     ))}</p>`;
   }
   return sheet === 'well'
@@ -753,17 +754,29 @@ function sweetChart(box = $('#br-sweet-chart')) {
 }
 
 // ------------------------------------------------------------ лист «Распад»
+/** «Распад», раздел 2: опорная активность A₀ со своей датой (как в книге отделения: даты A₀ и K₀ могут быть разными). */
+function decayA0Html() {
+  return `<section class="step" data-optional><header><span class="step-no">2</span><h2>${esc(L('Опорная активность', 'Reference activity'))}</h2></header>
+    <p class="sub-hint">${sub(L('Если в паспорте активность дана отдельно от ОМВК и на другую дату — введите её здесь. Пусто — активность считается из ОМВК через Γ_δ (или берётся из раздела 1, если сертификат дан в активности).', 'If the certificate gives the activity separately from the RAKR and at another date, enter it here. Blank: the activity is calculated from the RAKR via Γ_δ (or taken from section 1 if the certificate is given as an activity).'))}</p>
+    <div class="grid">
+      ${numUnit('d_A0', L('A₀ — активность', 'A₀, activity'), ACTIVITY_UNITS, 'd_A0_unit', { span: ' span-2' })}
+      ${when('d_A0_', L('Дата A₀', 'A₀ date'), L('Пусто — 00:00', 'Blank: 00:00'))}
+    </div></section>`;
+}
+
+/** «Распад», раздел 3: дата расчёта, отсчёт, прогноз и порог замены. */
 function decayParamsHtml() {
   const bases = [['cert', L('от сертификата источника', 'from the source certificate')], ['well', L('от измерения колодезной камерой', 'from the well-type chamber measurement')], ['phantom', L('от измерения в фантоме PTW 9193', 'from the PTW 9193 phantom measurement')]];
-  const units = [['', L('по нуклиду', 'by nuclide')], ['d', L('сутки', 'days')], ['w', L('недели', 'weeks')], ['m', L('месяцы', 'months')]];
+  const units = [['w', L('недели', 'weeks')], ['d', L('сутки', 'days')], ['m', L('месяцы', 'months')]];
   const tUnits = `<optgroup label="${esc(L('Сила источника', 'Source strength'))}">${unitOpts(STRENGTH_UNITS, form.d_target_unit)}</optgroup><optgroup label="${esc(L('Активность (нужна Γ_δ)', 'Activity (Γ_δ needed)'))}">${unitOpts(ACTIVITY_UNITS, form.d_target_unit)}</optgroup>`;
-  return `<section class="step"><header><span class="step-no">2</span><h2>${esc(L('Таблица', 'Table'))}</h2></header>
+  return `<section class="step"><header><span class="step-no">3</span><h2>${esc(L('Дата расчёта и прогноз', 'Calculation date and forecast'))}</h2></header>
     <div class="grid">
-      ${select('d_basis', L('Отсчёт', 'Base'), bases.map(([k, t]) => opt(k, t, form.d_basis)).join(''), { span: ' span-2' })}
-      <div class="field"><label for="br_d_from">${esc(L('С даты (пусто — с даты отсчёта)', 'From (blank: the base date)'))}</label><input type="date" id="br_d_from" data-f="d_from" value="${esc(form.d_from)}"></div>
-      <div class="field"><label for="br_d_to">${esc(L('По дату (пусто — по умолчанию)', 'To (blank: default)'))}</label><input type="date" id="br_d_to" data-f="d_to" value="${esc(form.d_to)}"></div>
+      ${when('d_at_', L('Дата расчёта (пусто — сейчас)', 'Calculation date (blank: now)'), L('Пусто — 00:00', 'Blank: 00:00'))}
+      ${select('d_basis', L('Отсчёт ОМВК', 'RAKR base'), bases.map(([k, t]) => opt(k, t, form.d_basis)).join(''), { span: ' span-2' })}
+      <div class="field"><label for="br_d_from">${esc(L('Прогноз с даты (пусто — с даты расчёта)', 'Forecast from (blank: the calculation date)'))}</label><input type="date" id="br_d_from" data-f="d_from" value="${esc(form.d_from)}"></div>
+      <div class="field"><label for="br_d_to">${esc(L('По дату (пусто — 8 строк)', 'To (blank: 8 rows)'))}</label><input type="date" id="br_d_to" data-f="d_to" value="${esc(form.d_to)}"></div>
       ${num('d_n', L('Шаг', 'Step'), { ph: '1' })}
-      ${select('d_unit', L('Единица шага', 'Step unit'), units.map(([k, t]) => opt(k, t, form.d_unit)).join(''))}
+      ${select('d_unit', L('Единица шага', 'Step unit'), units.map(([k, t]) => opt(k, t, form.d_unit || 'w')).join(''))}
       <div class="field"><label for="br_d_zone">${esc(L('Часовой пояс таблицы', 'Table time zone'))}</label><select id="br_d_zone" data-f="d_zone">${zoneOpts(form.d_zone)}</select></div>
       ${numUnit('d_target', L('Порог замены источника', 'Source replacement threshold'), tUnits, 'd_target_unit', { span: ' span-2' })}
     </div></section>`;
@@ -789,20 +802,59 @@ function decayCompute() {
   return computeBrachyDecay(form, { ...o, well: computeBrachyWell(form, o), phantom: computeBrachyPhantom(form, o) });
 }
 
+/** Малые числа (Гр/с, λ): «1,790·10⁻⁵». */
+function fmtSci(v, d = 3) {
+  if (!Number.isFinite(v)) return '—';
+  const [m, e] = v.toExponential(d).split('e');
+  const sup = String(Number(e)).replace(/-/g, '⁻').replace(/\d/g, (c) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[c]);
+  return `${L(m.replace('.', ','), m)}·10${sup}`;
+}
+
 function decayResult() {
   const r = decayCompute();
   if (!r.ok) return msgHtml(r.messages);
   const z = form.d_zone;
-  const hasA = r.rows.some((x) => Number.isFinite(x.A));
-  const head = `<div class="plates-dose"><span>${esc(L('Отсчёт', 'Base'))} — ${esc(r.base.label)}</span><b>${esc(fmt(r.base.U / 1e3, 3))} ${esc(L('мГр/ч на 1 м', 'mGy/h at 1 m'))}</b><span>${esc(dateText(r.base.t, z))}</span></div>`;
+  const a = r.at;
+  const when = `${dateText(a.t, form.d_at_zone || z)}${a.now ? L(' (сейчас)', ' (now)') : ''}`;
+  const head = Number.isFinite(a.mGyh)
+    ? `<div class="plates-dose"><span${tipAttr('dec_K', { focus: true })}>${esc(L(`ОМВК на ${when}`, `RAKR at ${when}`))}</span><b>${esc(fmt(a.mGyh, 3))} ${esc(L('мГр/ч на 1 м', 'mGy/h at 1 m'))}</b><span>${sub(`S_K = ${fmt(a.U, 0)} U`)}${Number.isFinite(a.A) ? esc(L(`; A = ${fmt(a.A, 2)} ГБк (${fmt(a.Ci, 3)} Ки)`, `; A = ${fmt(a.A, 2)} GBq (${fmt(a.Ci, 3)} Ci)`)) : ''}</span></div>`
+    : `<div class="plates-dose"><span${tipAttr('dec_A', { focus: true })}>${esc(L(`Активность на ${when}`, `Activity at ${when}`))}</span><b>${esc(fmt(a.A, 2))} ${esc(L('ГБк', 'GBq'))}</b><span>${esc(fmt(a.Ci, 3))} ${esc(L('Ки', 'Ci'))}</span></div>`;
+  const grp = (title) => `<tr class="grp"><th colspan="3">${sub(title)}</th></tr>`;
+  const row = (label, v, unit, tip) => `<tr><td${tip ? tipAttr(tip, { focus: true }) : ''}>${sub(label)}</td><td class="v">${esc(v)}</td><td>${sub(unit)}</td></tr>`;
+  const rows = [grp(L('Временные интервалы', 'Time intervals'))];
+  if (r.a0) rows.push(row(L('От A₀ до даты расчёта', 'From A₀ to the calculation date'), fmt(a.dtA, 3), L('сут', 'd'), 'dec_dt'), row(L('Фактор распада A(t)', 'Decay factor A(t)'), fmt(a.fA, 5), '', 'dec_f'));
+  if (r.base) rows.push(row(L(`От K₀ до даты расчёта (${r.base.label})`, `From K₀ to the calculation date (${r.base.label})`), fmt(a.dtK, 3), L('сут', 'd'), 'dec_dt'), row(L('Фактор распада K(t)', 'Decay factor K(t)'), fmt(a.fK, 5), '', 'dec_f'));
+  rows.push(row(L(`λ = ln 2 / T½ (T½ = ${fmt(r.half, 3)} сут)`, `λ = ln 2 / T½ (T½ = ${fmt(r.half, 3)} d)`), fmtSci(r.lambda, 4), L('с⁻¹', 's⁻¹'), 'dec_lambda'));
+  if (Number.isFinite(a.A)) {
+    rows.push(grp(L(`Активность${a.Avia === 'gamma' ? ' (из ОМВК через Γ_δ, справочно)' : ''}`, `Activity${a.Avia === 'gamma' ? ' (from the RAKR via Γ_δ, reference)' : ''}`)),
+      row(L('Активность A(t)', 'Activity A(t)'), fmt(a.A, 3), L('ГБк', 'GBq'), 'dec_A'), row(L('Активность A(t)', 'Activity A(t)'), fmt(a.Ci, 4), L('Ки', 'Ci'), 'dec_A'));
+    if (Number.isFinite(a.dA)) rows.push(row(L('Изменение от A₀', 'Change from A₀'), fmtSigned(a.dA * 100, 2), '%', 'dec_f'));
+  }
+  if (Number.isFinite(a.mGyh)) {
+    rows.push(grp(L(`Мощность воздушной кермы на 1 м${a.Kvia === 'gamma' ? ' (из активности через Γ_δ)' : ''}`, `Air kerma rate at 1 m${a.Kvia === 'gamma' ? ' (from the activity via Γ_δ)' : ''}`)),
+      row(L('Керма K(t)', 'Kerma K(t)'), fmtSci(a.Gys, 4), L('Гр/с', 'Gy/s'), 'dec_K'), row(L('Керма K(t)', 'Kerma K(t)'), fmt(a.mGyh, 4), L('мГр/ч', 'mGy/h'), 'dec_K'),
+      row(L('Керма K(t)', 'Kerma K(t)'), fmt(a.uGyh, 1), L('мкГр/ч', 'µGy/h'), 'dec_K'), row(L('Сила воздушной кермы S_K', 'Air kerma strength S_K'), fmt(a.U, 1), 'U', 'dec_K'));
+  }
+  if (Number.isFinite(a.KfromA)) rows.push(grp(L('Проверка через Γ_δ (справочно)', 'Check via Γ_δ (reference)')), row(L('Керма из активности и Γ_δ', 'Kerma from the activity and Γ_δ'), fmt(a.KfromA, 4), L('мГр/ч', 'mGy/h'), 'dec_gamma'), row(L('Разница двух оценок', 'Difference of the two estimates'), fmtSigned(a.dGamma * 100, 2), '%', 'dec_gamma'));
+  if (a.uRange) {
+    const u = a.uRange;
+    rows.push(grp(L(`Диапазон с учётом неопределённости паспорта (±${fmt(u.u, 1)} %${u.given ? `, k = ${u.k}` : ', типичные, k = 3'})`, `Range with the certificate uncertainty (±${fmt(u.u, 1)}%${u.given ? `, k = ${u.k}` : ', typical, k = 3'})`)),
+      row(L('Нижняя граница K(t)', 'Lower limit K(t)'), fmt(u.lo, 4), L('мГр/ч', 'mGy/h'), 'dec_range'), row(L('Верхняя граница K(t)', 'Upper limit K(t)'), fmt(u.hi, 4), L('мГр/ч', 'mGy/h'), 'dec_range'));
+  }
+  const atTable = `<div class="table-wrap"><table class="factors br-decay-at"><tbody>${rows.join('')}</tbody></table></div>`;
   const target = r.target && Number.isFinite(r.target.t)
-    ? `<p class="sub-hint"${tipAttr('d_target')}>${sub(L(`Сила ${fmt(r.target.U / 1e3, 3)} мГр/ч на 1 м (${fmt(r.target.U, 0)} U) — ${dateText(r.target.t, z)} (${isoUtc(r.target.t)}), через ${fmt((r.target.t - r.base.t) / 86400000, 1)} сут от отсчёта.`, `Strength ${fmt(r.target.U / 1e3, 3)} mGy/h at 1 m (${fmt(r.target.U, 0)} U): ${dateText(r.target.t, z)} (${isoUtc(r.target.t)}), ${fmt((r.target.t - r.base.t) / 86400000, 1)} d after the base.`))}</p>`
+    ? `<p class="sub-hint"${tipAttr('d_target')}>${sub(L(`Сила ${fmt(r.target.U / 1e3, 3)} мГр/ч на 1 м (${fmt(r.target.U, 0)} U) — ${dateText(r.target.t, z)} (${isoUtc(r.target.t)}).`, `Strength ${fmt(r.target.U / 1e3, 3)} mGy/h at 1 m (${fmt(r.target.U, 0)} U): ${dateText(r.target.t, z)} (${isoUtc(r.target.t)}).`))}</p>`
     : '';
-  const table = `<div class="table-wrap"><table class="factors br-variants br-decay"><thead><tr><th>${esc(L('Дата', 'Date'))}</th><th>UTC</th><th class="v">${esc(L('Сутки', 'Days'))}</th><th class="v"${tipAttr('frac', { focus: true })}>${esc(L('Доля', 'Fraction'))}</th><th class="v"${tipAttr('RAKR', { focus: true })}>${esc(L('ОМВК, мГр/ч', 'RAKR, mGy/h'))}</th><th class="v">S_K, U</th>${hasA ? `<th class="v"${tipAttr('cert_gamma', { focus: true })}>${esc(L('A_app, ГБк', 'A_app, GBq'))}</th>` : ''}</tr></thead><tbody>${r.rows
-    .map((x) => `<tr><td>${esc(dateText(x.t, z))}</td><td><small>${esc(isoUtc(x.t))}</small></td><td class="v">${esc(fmt(x.days, 1))}</td><td class="v">${esc(fmt(x.frac, 4))}</td><td class="v">${esc(fmt(x.mGyh, 3))}</td><td class="v">${esc(fmt(x.U, 0))}</td>${hasA ? `<td class="v">${esc(fmt(x.A, 2))}</td>` : ''}</tr>`)
+  const hasA = r.rows.some((x) => Number.isFinite(x.A));
+  const hasK = r.rows.some((x) => Number.isFinite(x.mGyh));
+  const daysOf = (x) => (r.a0 ? x.daysA : x.days);
+  const fracOf = (x) => (r.a0 ? x.fracA : x.frac);
+  const table = `<div class="table-wrap"><table class="factors br-variants br-decay"><thead><tr><th>${esc(L('Дата и время', 'Date and time'))}</th><th>UTC</th><th class="v"${tipAttr('dec_dt', { focus: true })}>${esc(r.a0 ? L('Прошло от A₀, сут', 'Since A₀, d') : L('Прошло от K₀, сут', 'Since K₀, d'))}</th>${hasA ? `<th class="v"${tipAttr('dec_A', { focus: true })}>${esc(L('A(t), ГБк', 'A(t), GBq'))}</th><th class="v">${esc(L('A(t), Ки', 'A(t), Ci'))}</th>` : ''}${hasK ? `<th class="v"${tipAttr('dec_K', { focus: true })}>${esc(L('K(t), мГр/ч', 'K(t), mGy/h'))}</th><th class="v">S_K, U</th>` : ''}<th class="v"${tipAttr('frac', { focus: true })}>${esc(L('Сохр., %', 'Left, %'))}</th></tr></thead><tbody>${r.rows
+    .map((x) => `<tr><td>${esc(dateText(x.t, z))}</td><td><small>${esc(isoUtc(x.t))}</small></td><td class="v">${esc(fmt(daysOf(x), 2))}</td>${hasA ? `<td class="v">${esc(fmt(x.A, 2))}</td><td class="v">${esc(fmt(x.Ci, 3))}</td>` : ''}${hasK ? `<td class="v">${esc(fmt(x.mGyh, 3))}</td><td class="v">${esc(fmt(x.U, 0))}</td>` : ''}<td class="v">${esc(fmt(fracOf(x) * 100, 2))}</td></tr>`)
     .join('')}</tbody></table></div>`;
   const stepText = { d: L('сут', 'd'), w: L('нед.', 'wk'), m: L('мес.', 'mo') }[r.step.unit];
-  return `${head}<p class="sub-hint">${sub(L(`T½ = ${fmt(r.half, 3)} сут; шаг ${fmt(r.step.n, 0)} ${stepText}; ${r.rows.length} строк.`, `T½ = ${fmt(r.half, 3)} d; step ${fmt(r.step.n, 0)} ${stepText}; ${r.rows.length} rows.`))}</p>${target}
+  return `${head}${atTable}${target}
+    <h3>${esc(L('Прогноз', 'Forecast'))}</h3><p class="sub-hint">${sub(L(`Шаг ${fmt(r.step.n, 0)} ${stepText}; ${r.rows.length} строк.`, `Step ${fmt(r.step.n, 0)} ${stepText}; ${r.rows.length} rows.`))}</p>
     <div class="actions"><button type="button" data-br="d-csv">${esc(L('Скачать таблицу (CSV)', 'Download the table (CSV)'))}</button></div>${table}${msgHtml(r.messages)}`;
 }
 
@@ -812,9 +864,9 @@ function decayCsv() {
   const en = L('ru', 'en') === 'en';
   const sep = en ? ',' : ';';
   const num = (v, d) => (Number.isFinite(v) ? (en ? v.toFixed(d) : v.toFixed(d).replace('.', ',')) : '');
-  const head = [L('Дата', 'Date'), 'UTC', L('Сутки', 'Days'), L('Доля', 'Fraction'), L('ОМВК, мГр/ч на 1 м', 'RAKR, mGy/h at 1 m'), 'S_K, U', L('A_app, ГБк', 'A_app, GBq')];
-  const lines = [head.join(sep), ...r.rows.map((x) => [dateText(x.t, form.d_zone), isoUtc(x.t), num(x.days, 2), num(x.frac, 5), num(x.mGyh, 4), num(x.U, 1), num(x.A, 3)].join(sep))];
-  downloadText(`\ufeff${lines.join('\r\n')}\r\n`, savedFileName(L('таблица-распада', 'decay-table'), [form.src_name, HALF_LIVES[form.nuclide]?.label, new Date(r.base.t).toISOString().slice(0, 10)], 'csv'), 'text/csv;charset=utf-8');
+  const head = [L('Дата', 'Date'), 'UTC', r.a0 ? L('Прошло от A₀, сут', 'Since A₀, d') : L('Прошло от K₀, сут', 'Since K₀, d'), L('A(t), ГБк', 'A(t), GBq'), L('A(t), Ки', 'A(t), Ci'), L('K(t), мГр/ч на 1 м', 'K(t), mGy/h at 1 m'), 'S_K, U', L('Сохр., %', 'Left, %')];
+  const lines = [head.join(sep), ...r.rows.map((x) => [dateText(x.t, form.d_zone), isoUtc(x.t), num(r.a0 ? x.daysA : x.days, 3), num(x.A, 3), num(x.Ci, 4), num(x.mGyh, 4), num(x.U, 1), num((r.a0 ? x.fracA : x.frac) * 100, 3)].join(sep))];
+  downloadText(`﻿${lines.join('\r\n')}\r\n`, savedFileName(L('таблица-распада', 'decay-table'), [form.src_name, HALF_LIVES[form.nuclide]?.label, new Date(r.at.t).toISOString().slice(0, 10)], 'csv'), 'text/csv;charset=utf-8');
   status(L('Таблица распада сохранена.', 'The decay table has been saved.'));
 }
 
@@ -1056,7 +1108,7 @@ function resultCardHtml(n) {
 
 function sheetBody() {
   if (sheet === 'sweet') return `${sweetSetupHtml()}${sweetRowsHtml()}${resultCardHtml(3)}${recordHtml(4)}${protHtml(5)}`;
-  if (sheet === 'decay') return `${sourceHtml()}${decayParamsHtml()}${resultCardHtml(3)}`;
+  if (sheet === 'decay') return `${sourceHtml()}${decayA0Html()}${decayParamsHtml()}${resultCardHtml(4)}`;
   if (sheet === 'cross') return `${crossSetupHtml()}${crossChamberHtml(2, 'x_ref_', L('Эталонная камера', 'Reference chamber'))}${crossChamberHtml(3, 'x_fld_', L('Рабочая камера', 'Field chamber'))}${resultCardHtml(4)}${recordHtml(5)}${protHtml(6)}`;
   if (sheet === 'stab') return `${stabSetupHtml()}${stabMeasureHtml()}${resultCardHtml(3)}${recordHtml(4)}${protHtml(5)}`;
   if (sheet === 'tg43') return `${sourceHtml()}${tg43ParamsHtml()}${tg43RowsHtml()}${resultCardHtml(4)}`;

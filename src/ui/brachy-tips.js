@@ -204,6 +204,42 @@ const TIPS = {
     pop('Отсчёт таблицы распада', ['От сертификата — сила источника по сертификату на его дату. От измерения — результат листа «Колодезная камера» или «Фантом PTW 9193» на время измерения: так получают значения для системы планирования по своему измерению.'], `${T492}, разд. 7.3, 8.6.`),
     pop('Decay table base', ['From the certificate: the certificate source strength at its date. From a measurement: the result of the Well-type chamber or PTW 9193 phantom sheet at the measurement time; this gives values for the treatment planning system from your own measurement.'], 'IAEA TRS-492 (2023), Sec. 7.3, 8.6.'),
   ),
+  d_A0: () => L(
+    pop('Опорная активность A<sub>0</sub>', ['Активность из паспорта источника на её дату. В паспорте даты активности и ОМВК могут быть разными (например, паспорт ИРМ) — поэтому у A<sub>0</sub> своя дата. Пусто — если сертификат дан в активности, A<sub>0</sub> берётся из раздела 1. Кажущаяся активность — производная величина, только для справки.'], `${T492}, прил. I.`),
+    pop('Reference activity A<sub>0</sub>', ['The activity from the source certificate at its date. The certificate may give the activity and the RAKR at different dates, so A<sub>0</sub> has its own date. Blank: if the certificate is given as an activity, A<sub>0</sub> is taken from section 1. The apparent activity is a derived quantity, for reference only.'], 'IAEA TRS-492 (2023), Annex I.'),
+  ),
+  d_at_date: () => L(
+    pop('Дата и время расчёта', ['Дата, на которую считаются активность и ОМВК источника. Пусто — текущий момент.'], `${T492}, разд. 3.4.2 (время в UTC).`),
+    pop('Calculation date and time', ['The date at which the source activity and RAKR are calculated. Blank: the current moment.'], 'IAEA TRS-492 (2023), Sec. 3.4.2 (time in UTC).'),
+  ),
+  dec_dt: () => L(
+    pop('Интервал до даты расчёта', ['Δt = t − t<sub>0</sub>, сутки: от даты A<sub>0</sub> (для активности) или от даты K<sub>0</sub> (для ОМВК) до даты расчёта. Время сводится к UTC.'], `${T492}, разд. 3.4.2, ур. (8).`),
+    pop('Interval to the calculation date', ['Δt = t − t<sub>0</sub>, days: from the A<sub>0</sub> date (for the activity) or the K<sub>0</sub> date (for the RAKR) to the calculation date. Times are converted to UTC.'], 'IAEA TRS-492 (2023), Sec. 3.4.2, Eq. (8).'),
+  ),
+  dec_f: () => L(
+    pop('Фактор распада', ['2<sup>−Δt/T½</sup> = 1/k<sub>dec</sub>: доля, оставшаяся от опорного значения.'], `${T492}, ур. (8)–(9); T½ — табл. 3.`),
+    pop('Decay factor', ['2<sup>−Δt/T½</sup> = 1/k<sub>dec</sub>: the fraction left of the reference value.'], 'IAEA TRS-492 (2023), Eq. (8)–(9); T½ from Table 3.'),
+  ),
+  dec_lambda: () => L(
+    pop('Постоянная распада λ', ['λ = ln 2 / T<sub>½</sub>, с⁻¹ — для сверки с паспортом (в паспорте часто дана округлённо).'], `${T492}, разд. 3.4, табл. 3.`),
+    pop('Decay constant λ', ['λ = ln 2 / T<sub>½</sub>, s⁻¹, for comparison with the certificate (often rounded there).'], 'IAEA TRS-492 (2023), Sec. 3.4, Table 3.'),
+  ),
+  dec_A: () => L(
+    pop('Активность на дату расчёта', ['A(t) = A<sub>0</sub> · 2<sup>−Δt/T½</sup>, в ГБк и Ки (1 Ки = 37 ГБк). Без A<sub>0</sub> — кажущаяся активность из ОМВК: A = K̇/Γ<sub>δ</sub>. Только для справки.'], `${T492}, ур. (8), прил. I.`),
+    pop('Activity at the calculation date', ['A(t) = A<sub>0</sub> · 2<sup>−Δt/T½</sup>, in GBq and Ci (1 Ci = 37 GBq). Without A<sub>0</sub>: the apparent activity from the RAKR, A = K̇/Γ<sub>δ</sub>. For reference only.'], 'IAEA TRS-492 (2023), Eq. (8), Annex I.'),
+  ),
+  dec_K: () => L(
+    pop('Мощность воздушной кермы на 1 м', ['K̇(t) = K̇<sub>0</sub> · 2<sup>−Δt/T½</sup>: ОМВК на дату расчёта в Гр/с, мГр/ч, мкГр/ч и сила воздушной кермы S<sub>K</sub> в U (численно равна ОМВК в мкГр/ч на 1 м). Это значение вводят в систему планирования.'], `${T492}, ур. (8)–(9); TG-43U1.`),
+    pop('Air kerma rate at 1 m', ['K̇(t) = K̇<sub>0</sub> · 2<sup>−Δt/T½</sup>: the RAKR at the calculation date in Gy/s, mGy/h, µGy/h and the air kerma strength S<sub>K</sub> in U (numerically the RAKR in µGy/h at 1 m). This value goes into the treatment planning system.'], 'IAEA TRS-492 (2023), Eq. (8)–(9); TG-43U1.'),
+  ),
+  dec_gamma: () => L(
+    pop('Проверка через Γ<sub>δ</sub> (справочно)', ['K̇ из активности: A(t) · Γ<sub>δ</sub>, с Γ<sub>δ</sub> из того же паспорта. Разница двух оценок показывает, согласованы ли активность и ОМВК в паспорте; большая разница — повод проверить, какие величины и даты указаны в паспорте.'], `${T492}, прил. I.`),
+    pop('Check via Γ<sub>δ</sub> (reference)', ['K̇ from the activity: A(t) · Γ<sub>δ</sub>, with Γ<sub>δ</sub> from the same certificate. The difference of the two estimates shows whether the certificate activity and RAKR agree; a large difference is a reason to check which quantities and dates the certificate gives.'], 'IAEA TRS-492 (2023), Annex I.'),
+  ),
+  dec_range: () => L(
+    pop('Диапазон по неопределённости паспорта', ['K̇(t) · (1 ± U), U — неопределённость ОМВК из паспорта (раздел 1); пусто — типичные 5 % при k = 3. Измерение в больнице должно попадать в этот диапазон.'], `${T492}, разд. 8.6.2.1.`),
+    pop('Range from the certificate uncertainty', ['K̇(t) · (1 ± U), U is the certificate RAKR uncertainty (section 1); blank: the typical 5% at k = 3. The hospital measurement should fall within this range.'], 'IAEA TRS-492 (2023), Sec. 8.6.2.1.'),
+  ),
   // сличение камер
   x_ref_N: () => L(
     pop('Калибровочный коэффициент эталонной камеры N<sub>ref</sub>', ['Из сертификата лаборатории (прослеживаемость к национальному эталону) — для того же нуклида и того же держателя источника, с которыми проводится сличение. Эталонная камера при сличении стоит в держателе, в котором её калибровали.'], `${T492}, разд. 7.7, ур. (18)–(20).`),

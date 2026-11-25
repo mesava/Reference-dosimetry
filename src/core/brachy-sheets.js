@@ -175,6 +175,16 @@ export const BRACHY_DEFAULTS = {
   d_zone: '',
   d_target: '',
   d_target_unit: 'mGy/h',
+  // как лист «Калькулятор распада» книги отделения (с 0.80.0): опорная активность A₀ со своей датой (в паспорте даты A₀ и K₀
+  // могут быть разными), результат на выбранную дату
+  d_A0: '',
+  d_A0_unit: 'GBq',
+  d_A0_date: '',
+  d_A0_time: '',
+  d_A0_zone: '',
+  d_at_date: '', // пусто — сейчас
+  d_at_time: '',
+  d_at_zone: '',
 
   // сличение (кросс-калибровка) рабочей колодезной камеры по эталонной, TRS-492, разд. 7.7
   x_unit: 'nA',
@@ -794,72 +804,159 @@ export function computeBrachySweet(input) {
 
 // ——— Распад ———
 
-/** Шаг таблицы распада по умолчанию: ¹⁹²Ir — неделя до 16 недель, ⁶⁰Co — месяц до 5 лет, прочие — сутки до 2 T½. */
-function decayDefaults(nuclide, half) {
-  if (nuclide === 'Ir-192') return { n: 1, unit: 'w', span: 16 * 7 };
-  if (nuclide === 'Co-60') return { n: 1, unit: 'm', span: 5 * 365.25 };
-  return { n: Math.max(1, Math.round(half / 10)), unit: 'd', span: 2 * half };
-}
+/** Таблица распада по умолчанию — как прогноз в книге отделения: от даты расчёта, по неделям, 8 строк. */
+const DECAY_DEFAULT = { n: 1, unit: 'w', rows: 8 };
+/** Паспортная неопределённость силы источника по умолчанию (типичная, TRS-492, разд. 8.6.2.1): 5 %. */
+const DECAY_CERT_U_DEFAULT = 5;
 
 /**
- * Лист «Распад»: сила источника по датам от сертификата или от измерения (TRS-492, ур. 8–9; разд. 3.4.2 — время в UTC,
- * ISO 8601), дата, когда сила упадёт до заданной. sources — результаты листов (well, phantom) для базы «от измерения».
+ * Лист «Распад» (как «Калькулятор распада» книги отделения): исходные данные паспорта — K₀ (ОМВК или S_K) и отдельно A₀
+ * (активность) со своими датами; результат на выбранную дату — факторы распада A(t) и K(t), λ, активность (ГБк, Ки),
+ * мощность воздушной кермы на 1 м (Гр/с, мГр/ч, мкГр/ч, U), проверка через Γ_δ, диапазон по паспортной неопределённости;
+ * прогноз по датам и дата достижения заданной силы. K(t) = K₀ · 2^(−Δt/T½) (TRS-492, ур. 8–9; T½ — табл. 3; время в UTC,
+ * разд. 3.4.2). sources — результаты листов (well, phantom) для отсчёта «от измерения»; now — «сейчас» для пустой даты.
  */
-export function computeBrachyDecay(input, { offsetMin = 0, well = null, phantom = null } = {}) {
+export function computeBrachyDecay(input, { offsetMin = 0, well = null, phantom = null, now = Date.now() } = {}) {
   const f = normalizeBrachy(input);
   const messages = [];
   const add = makeAdd(messages);
   const cert = readCertificate(f, add, offsetMin);
   const out = { ok: false, messages, cert, rows: [] };
+  const half = cert.half;
+  if (!Number.isFinite(half)) return out;
+  out.half = half;
+  out.lambda = Math.LN2 / (half * 86400);
+  // опорная активность A₀: своя (поле листа) или из сертификата, если он дан в активности
+  let a0 = null;
+  if (!isBlank(f.d_A0)) {
+    const v = parseNumber(f.d_A0);
+    const t = fieldTime(f.d_A0_date, f.d_A0_time, f.d_A0_zone, offsetMin);
+    if (!(v > 0) || !Object.hasOwn(ACTIVITY_UNITS, f.d_A0_unit)) add('error', L('Опорная активность A₀ должна быть больше нуля.', 'The reference activity A₀ must be greater than zero.'), null, 'd_A0');
+    else if (t.missing) add('warn', L('Не указана дата опорной активности A₀: активность на дату не считается.', 'The reference activity A₀ date is not given: the activity at the date is not calculated.'), null, 'd_A0_date');
+    else if (t.error) add('error', L(`Дата A₀: ${t.error}.`, `A₀ date: ${t.error}.`), null, 'd_A0_date');
+    else {
+      a0 = { GBq: v * ACTIVITY_UNITS[f.d_A0_unit].toGBq, t: t.ms, own: true };
+      if (t.dateOnly) add('warn', L(`Время A₀ не указано — принято 00:00; ошибка распада — до ${ru(dateOnlyDecayError(half) * 100, 2)} % за сутки.`, `The A₀ time is not given; 00:00 is assumed; the decay error is up to ${(dateOnlyDecayError(half) * 100).toFixed(2)}% per day.`), `${REF.trs492}, разд. 7.3`, 'd_A0_time');
+    }
+  } else if (Object.hasOwn(ACTIVITY_UNITS, f.cert_unit) && Number.isFinite(cert.tCert) && parseNumber(f.cert_value) > 0) {
+    a0 = { GBq: parseNumber(f.cert_value) * ACTIVITY_UNITS[f.cert_unit].toGBq, t: cert.tCert, own: false };
+  }
+  out.a0 = a0;
+  // отсчёт K₀: сертификат или измерение
   let base = null;
   if (f.d_basis === 'well' || f.d_basis === 'phantom') {
     const r = f.d_basis === 'well' ? well : phantom;
-    if (r?.ok && Number.isFinite(r.U) && Number.isFinite(r.tMeas)) base = { U: r.U, t: r.tMeas, label: f.d_basis === 'well' ? L('измерение колодезной камерой', 'well-type chamber measurement') : L('измерение в фантоме PTW 9193', 'PTW 9193 phantom measurement') };
-    else add('info', L('На выбранном листе нет результата с датой измерения — таблица от сертификата.', 'The chosen sheet has no result with a measurement date; the table starts from the certificate.'), null, 'd_basis');
+    if (r?.ok && Number.isFinite(r.U) && Number.isFinite(r.tMeas)) base = { U: r.U, t: r.tMeas, label: f.d_basis === 'well' ? L('измерение колодезной камерой', 'well-type chamber measurement') : L('измерение в фантоме PTW 9193', 'PTW 9193 phantom measurement'), cert: false };
+    else add('info', L('На выбранном листе нет результата с датой измерения — расчёт от сертификата.', 'The chosen sheet has no result with a measurement date; the calculation starts from the certificate.'), null, 'd_basis');
   }
-  if (!base && cert.ok) base = { U: cert.U, t: cert.tCert, label: L('сертификат источника', 'source certificate') };
-  if (!base) {
-    if (!messages.some((m) => m.level === 'error')) add('info', L('Введите силу источника и дату сертификата в разделе 1.', 'Enter the source strength and the certificate date in section 1.'), null, 'cert_value');
+  if (!base && cert.ok && Number.isFinite(cert.U)) base = { U: cert.U, t: cert.tCert, label: L('сертификат источника', 'source certificate'), cert: true };
+  if (!base && !a0) {
+    if (!messages.some((m) => m.level === 'error')) add('info', L('Введите силу источника (или активность) и дату сертификата в разделе 1.', 'Enter the source strength (or activity) and the certificate date in section 1.'), null, 'cert_value');
     return out;
   }
-  const half = cert.half;
-  if (!Number.isFinite(half)) return out;
   out.base = base;
-  out.half = half;
-  const def = decayDefaults(f.nuclide, half);
-  const tFrom = isBlank(f.d_from) ? base.t : fieldTime(f.d_from, '', f.d_zone, offsetMin).ms;
+  const G = cert.gammaUperGBq; // U на ГБк
+  // дата расчёта
+  let tAt = now;
+  if (!isBlank(f.d_at_date)) {
+    const t = fieldTime(f.d_at_date, f.d_at_time, f.d_at_zone, offsetMin);
+    if (t.error) {
+      add('error', L(`Дата расчёта: ${t.error}.`, `Calculation date: ${t.error}.`), null, 'd_at_date');
+      return out;
+    }
+    tAt = t.ms;
+  }
+  const at = { t: tAt, now: isBlank(f.d_at_date) };
+  if (base) {
+    at.dtK = (tAt - base.t) / 86400000;
+    at.fK = 2 ** (-at.dtK / half);
+    at.U = base.U * at.fK;
+    at.mGyh = at.U / 1e3;
+    at.uGyh = at.U;
+    at.Gys = at.U * 1e-6 / 3600;
+  }
+  if (a0) {
+    at.dtA = (tAt - a0.t) / 86400000;
+    at.fA = 2 ** (-at.dtA / half);
+    at.A = a0.GBq * at.fA;
+    at.Ci = at.A / ACTIVITY_UNITS.Ci.toGBq;
+    at.dA = at.fA - 1;
+  } else if (base && G > 0) {
+    at.A = at.U / G;
+    at.Ci = at.A / ACTIVITY_UNITS.Ci.toGBq;
+    at.Avia = 'gamma';
+  }
+  if (!base && a0 && G > 0) {
+    // сила источника только из активности: K = A·Γ (TRS-492, прил. I — справочно)
+    at.U = at.A * G;
+    at.mGyh = at.U / 1e3;
+    at.uGyh = at.U;
+    at.Gys = at.U * 1e-6 / 3600;
+    at.Kvia = 'gamma';
+  }
+  // проверка через Γ: K из A(t)·Γ против K(t) (TRS-492, прил. I: кажущаяся активность — производная величина, справочно)
+  if (a0 && base && G > 0) {
+    at.KfromA = at.A * G / 1e3;
+    at.dGamma = at.KfromA / at.mGyh - 1;
+  }
+  // диапазон по паспортной неопределённости (как в книге отделения: K(t)·(1 ± U))
+  if (base?.cert && Number.isFinite(at.mGyh)) {
+    const u = cert.uCert > 0 ? cert.uCert : DECAY_CERT_U_DEFAULT;
+    at.uRange = { u, k: cert.uCert > 0 ? f.cert_k : '3', given: cert.uCert > 0, lo: at.mGyh * (1 - u / 100), hi: at.mGyh * (1 + u / 100) };
+  }
+  out.at = at;
+  // прогноз по датам: от даты расчёта (или своей), по неделям, 8 строк — или свой шаг и пределы
+  const tFrom = isBlank(f.d_from) ? tAt : fieldTime(f.d_from, '', f.d_zone, offsetMin).ms;
   if (!Number.isFinite(tFrom)) {
     add('error', L('Не удалось прочитать дату начала таблицы.', 'Could not read the table start date.'), null, 'd_from');
     return out;
   }
-  const tTo = isBlank(f.d_to) ? tFrom + def.span * 86400000 : fieldTime(f.d_to, '', f.d_zone, offsetMin).ms;
-  if (!Number.isFinite(tTo) || tTo < tFrom) {
-    add('error', L('Дата конца таблицы должна быть не раньше начала.', 'The table end date must not be before the start.'), null, 'd_to');
-    return out;
-  }
-  const n = isBlank(f.d_n) ? def.n : parseNumber(f.d_n);
-  const unit = ['d', 'w', 'm'].includes(f.d_unit) ? f.d_unit : def.unit;
+  const n = isBlank(f.d_n) ? DECAY_DEFAULT.n : parseNumber(f.d_n);
+  const unit = ['d', 'w', 'm'].includes(f.d_unit) ? f.d_unit : DECAY_DEFAULT.unit;
   if (!(n > 0)) {
     add('error', L('Шаг таблицы должен быть больше нуля.', 'The table step must be greater than zero.'), null, 'd_n');
+    return out;
+  }
+  let tTo;
+  if (isBlank(f.d_to)) {
+    const d = decayDates(tFrom, tFrom + 400 * 366 * 86400000, n, unit);
+    tTo = d[Math.min(DECAY_DEFAULT.rows, d.length) - 1];
+  } else tTo = fieldTime(f.d_to, '', f.d_zone, offsetMin).ms;
+  if (!Number.isFinite(tTo) || tTo < tFrom) {
+    add('error', L('Дата конца таблицы должна быть не раньше начала.', 'The table end date must not be before the start.'), null, 'd_to');
     return out;
   }
   out.step = { n, unit };
   const dates = decayDates(tFrom, tTo, n, unit);
   if (dates.length >= 500) add('warn', L('Таблица ограничена 500 строками: увеличьте шаг.', 'The table is limited to 500 rows: increase the step.'), null, 'd_n');
   out.rows = dates.map((t) => {
-    const U = strengthAt(base.U, base.t, t, half);
-    return { t, days: (t - base.t) / 86400000, frac: U / base.U, U, mGyh: U / 1e3, A: cert.gammaUperGBq > 0 ? U / cert.gammaUperGBq : NaN };
+    const row = { t };
+    if (base) {
+      row.days = (t - base.t) / 86400000;
+      row.U = strengthAt(base.U, base.t, t, half);
+      row.frac = row.U / base.U;
+    }
+    if (a0) {
+      row.daysA = (t - a0.t) / 86400000;
+      row.A = a0.GBq * 2 ** (-row.daysA / half);
+      row.fracA = row.A / a0.GBq;
+      if (!base && G > 0) row.U = row.A * G;
+    } else if (base && G > 0) row.A = row.U / G;
+    row.mGyh = row.U / 1e3;
+    row.Ci = row.A / ACTIVITY_UNITS.Ci.toGBq;
+    return row;
   });
   // дата достижения заданной силы
   if (!isBlank(f.d_target)) {
     const c = certificateToU({ value: parseNumber(f.d_target), unit: f.d_target_unit, gamma: parseNumber(f.cert_gamma), gammaUnit: f.cert_gamma_unit });
+    const ref = base ?? (G > 0 ? { U: a0.GBq * G, t: a0.t } : null);
     if (c.error) add('error', L(`Пороговая сила источника: ${c.error}.`, `Threshold source strength: ${c.error}.`), null, 'd_target');
-    else {
-      out.target = { U: c.U, t: timeForStrength(base.U, base.t, c.U, half) };
-      if (c.U > base.U) add('info', L('Пороговая сила больше исходной — она была раньше даты отсчёта.', 'The threshold is above the base strength: it was reached before the base date.'), null, 'd_target');
+    else if (ref) {
+      out.target = { U: c.U, t: timeForStrength(ref.U, ref.t, c.U, half) };
+      if (c.U > ref.U) add('info', L('Пороговая сила больше исходной — она была раньше даты отсчёта.', 'The threshold is above the base strength: it was reached before the base date.'), null, 'd_target');
     }
   }
-  out.ok = out.rows.length > 0;
+  out.ok = Number.isFinite(at.mGyh) || Number.isFinite(at.A);
   return out;
 }
 

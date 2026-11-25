@@ -301,19 +301,67 @@ test('Лист «Максимум отклика»: точки из полей, 
   assert.deepEqual(errors(empty), []);
 });
 
-test('Лист «Распад»: от сертификата ⁶⁰Co по месяцам на 5 лет, дата порога 20 ГБк; от измерения; ¹⁹²Ir по неделям', () => {
-  const base = { nuclide: 'Co-60', cert_value: '33,11', cert_unit: 'GBq', cert_gamma: '306', cert_gamma_unit: 'uGy·m2/(h·GBq)', cert_date: '2021-10-27', cert_time: '12:00', cert_zone: '+3' };
-  const r = computeBrachyDecay({ ...base, d_target: '20', d_target_unit: 'GBq' });
+test('Лист «Распад» как калькулятор распада книги отделения: A₀ и K₀ с разными датами, результат на дату, Γ, диапазон, прогноз по неделям', () => {
+  // паспорт ¹⁹²Ir: K₀ = 1,79e-5 Гр/с на 09.10.2026 11:00, A₀ = 537 ГБк на 20.10.2026 08:00 (UTC+3), Γ = 30,18 аГр·м²/(Бк·с)
+  const f = { ...IR_CERT, d_A0: '537', d_A0_unit: 'GBq', d_A0_date: '2026-10-20', d_A0_time: '08:00', d_A0_zone: '+3', d_at_date: '2026-11-02', d_at_time: '10:00', d_at_zone: '+3' };
+  const r = computeBrachyDecay(f);
+  assert.ok(r.ok);
+  assert.deepEqual(errors(r), []);
+  const T = 73.827;
+  const dtK = 23 + 23 / 24;
+  const dtA = 13 + 2 / 24;
+  near(r.at.dtK, dtK, 1e-9);
+  near(r.at.dtA, dtA, 1e-9);
+  near(r.at.fK, 2 ** (-dtK / T), 1e-12);
+  near(r.at.fA, 2 ** (-dtA / T), 1e-12);
+  near(r.lambda, Math.LN2 / (T * 86400), 1e-20);
+  near(r.at.Gys, 1.79e-5 * 2 ** (-dtK / T), 1e-15);
+  near(r.at.mGyh, 1.79e-5 * 3.6e6 * 2 ** (-dtK / T), 1e-9);
+  near(r.at.U, r.at.mGyh * 1e3, 1e-9);
+  near(r.at.A, 537 * 2 ** (-dtA / T), 1e-9);
+  near(r.at.Ci, r.at.A / 37, 1e-12);
+  near(r.at.dA, 2 ** (-dtA / T) - 1, 1e-12);
+  // проверка через Γ: 1 аГр·м²/(Бк·с) = 3,6 мкГр·м²/(ч·ГБк)
+  near(r.at.KfromA, (r.at.A * 30.18 * 3.6) / 1e3, 1e-9);
+  near(r.at.dGamma, r.at.KfromA / r.at.mGyh - 1, 1e-12);
+  // диапазон: U сертификата не указана — 5 %
+  near(r.at.uRange.lo, r.at.mGyh * 0.95, 1e-12);
+  near(r.at.uRange.hi, r.at.mGyh * 1.05, 1e-12);
+  const withU = computeBrachyDecay({ ...f, cert_U: '3,2', cert_k: '2' });
+  near(withU.at.uRange.hi, withU.at.mGyh * 1.032, 1e-12);
+  // прогноз: от даты расчёта по неделям, 8 строк; A — от A₀, K — от K₀
+  assert.deepEqual(r.step, { n: 1, unit: 'w' });
+  assert.equal(r.rows.length, 8);
+  assert.equal(r.rows[0].t, Date.UTC(2026, 10, 2, 7));
+  near(r.rows[7].daysA, dtA + 49, 1e-9);
+  near(r.rows[7].A, 537 * 2 ** (-(dtA + 49) / T), 1e-9);
+  near(r.rows[7].mGyh, r.at.mGyh * 2 ** (-49 / T), 1e-9);
+  near(r.rows[7].fracA, 2 ** (-(dtA + 49) / T), 1e-12);
+  // дата без времени у A₀ — предупреждение
+  assert.ok(computeBrachyDecay({ ...f, d_A0_time: '' }).messages.some((m) => m.field === 'd_A0_time'));
+  // без A₀ — активность из ОМВК через Γ (справочно), проверки через Γ нет
+  const noA = computeBrachyDecay({ ...IR_CERT, d_at_date: '2026-11-02', d_at_time: '10:00', d_at_zone: '+3' });
+  assert.equal(noA.at.Avia, 'gamma');
+  near(noA.at.A, noA.at.U / (30.18 * 3.6), 1e-9);
+  assert.equal(noA.at.KfromA, undefined);
+  // пустая дата расчёта — «сейчас»
+  const now = Date.UTC(2026, 10, 25, 7);
+  assert.equal(computeBrachyDecay(IR_CERT, { now }).at.t, now);
+});
+
+test('Лист «Распад»: ⁶⁰Co из активности, свой шаг, дата порога; отсчёт от измерения', () => {
+  const base = { nuclide: 'Co-60', cert_value: '33,11', cert_unit: 'GBq', cert_gamma: '306', cert_gamma_unit: 'uGy·m2/(h·GBq)', cert_date: '2021-10-27', cert_time: '12:00', cert_zone: '+3', d_at_date: '2021-10-27', d_at_time: '12:00', d_at_zone: '+3' };
+  const r = computeBrachyDecay({ ...base, d_target: '20', d_target_unit: 'GBq', d_unit: 'm', d_to: '2026-10-28', d_zone: '+3' });
   assert.ok(r.ok);
   assert.deepEqual(errors(r), []);
   assert.deepEqual(r.step, { n: 1, unit: 'm' });
   assert.equal(r.rows.length, 61);
   assert.equal(r.rows[0].t, Date.UTC(2021, 9, 27, 9));
+  // сертификат в активности: A₀ = 33,11 ГБк на дату сертификата; K̇ = Γ·A = 10,13 мГр/ч
   near(r.rows[0].A, 33.11, 1e-9);
-  near(r.rows[0].frac, 1, 1e-12);
-  near(r.rows[60].frac, 2 ** (-r.rows[60].days / HALF_LIVES_CO), 1e-12);
-  // K̇_R = Γ·A: 33,11 ГБк · 306 мкГр·м²/(ч·ГБк) = 10,13 мГр/ч
   near(r.rows[0].mGyh, 10.132, 0.001);
+  near(r.at.dGamma, 0, 1e-12);
+  near(r.rows[60].fracA, 2 ** (-r.rows[60].daysA / HALF_LIVES_CO), 1e-12);
   assert.equal(new Date(r.target.t).toISOString().slice(0, 10), '2025-08-27');
   // свой шаг и пределы
   const q = computeBrachyDecay({ ...base, d_from: '2026-01-01', d_to: '2026-12-31', d_n: '3', d_unit: 'm', d_zone: '+3' });
@@ -325,14 +373,10 @@ test('Лист «Распад»: от сертификата ⁶⁰Co по ме�
   assert.ok(noWell.messages.some((m) => m.field === 'd_basis'));
   near(noWell.base.U, r.base.U, 1e-9);
   const tM = Date.UTC(2026, 0, 10, 8);
-  const fromWell = computeBrachyDecay({ ...base, d_basis: 'well' }, { well: { ok: true, U: 5000, tMeas: tM } });
+  const fromWell = computeBrachyDecay({ ...base, d_basis: 'well', d_at_date: '' }, { well: { ok: true, U: 5000, tMeas: tM }, now: tM });
   assert.equal(fromWell.base.U, 5000);
-  assert.equal(fromWell.rows[0].t, tM);
-  // ¹⁹²Ir — по неделям, 16 недель
-  const ir = computeBrachyDecay(IR_CERT);
-  assert.deepEqual(ir.step, { n: 1, unit: 'w' });
-  assert.equal(ir.rows.length, 17);
-  near(ir.rows[16].frac, 2 ** (-112 / 73.827), 1e-12);
+  near(fromWell.at.U, 5000, 1e-9);
+  assert.equal(fromWell.at.uRange, undefined, 'диапазон паспорта — только от сертификата');
   // пусто — подсказка, без ошибок
   assert.deepEqual(errors(computeBrachyDecay({})), []);
 });

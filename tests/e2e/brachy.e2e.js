@@ -165,11 +165,24 @@ test('брахитерапия: максимум отклика колодезн
   await page.fill('#br_cert_time', '12:00');
   await page.selectOption('#br_cert_zone', '+3');
   await page.selectOption('#br_d_zone', '+3');
+  await page.fill('#br_d_at_date', '2021-10-27');
+  await page.fill('#br_d_at_time', '12:00');
+  await page.selectOption('#br_d_at_zone', '+3');
+  await page.selectOption('#br_d_unit', 'm');
+  await page.fill('#br_d_to', '2026-10-28');
   await page.fill('#br_d_target', '20');
   await page.selectOption('#br_d_target_unit', 'GBq');
   await pause();
   const decay = await resText(page);
   assert.match(decay, /27\.08\.2025/);
+  // результат на дату — как в книге отделения: активность, керма в Гр/с, мГр/ч, мкГр/ч, U, проверка через Γ, диапазон
+  const at = await page.locator('#br-result table.br-decay-at').innerText();
+  assert.match(at, /Активность A\(t\)\s+33,110\s+ГБк/);
+  assert.match(at, /0,8949\s+Ки/);
+  assert.match(at, /Керма K\(t\)\s+10,13\d\d\s+мГр\/ч/);
+  assert.match(at, /Гр\/с/);
+  assert.match(at, /Нижняя граница/);
+  assert.match(await page.locator("#br-disp").innerText(), /10,132/);
   assert.equal(await page.locator('#br-result table.br-decay tbody tr').count(), 61);
   assert.match(await page.locator('#br-result table.br-decay tbody tr').first().innerText(), /27\.10\.2021[\s\S]*10,13/);
   const [download] = await Promise.all([page.waitForEvent('download'), page.click('[data-br="d-csv"]')]);
