@@ -53,6 +53,10 @@ test('брахитерапия: пример заполняет все лист�
   // подписи внизу листа (0.77.1): протокол фантома — на двух листах, блок подписей опускается к низу второго
   await page.click('#brachy-root a[data-goto="brachy/phantom"]');
   await pause(400);
+  // в протоколе фантома — только основной вариант, без столбца «Основной» (0.80.5); на листе — все
+  assert.ok((await page.locator('#br-result table.br-variants tbody tr').count()) > 1);
+  assert.equal(await page.locator('#br-prot table.br-variants tbody tr').count(), 1);
+  assert.doesNotMatch(await page.locator('#br-prot table.br-variants thead').innerText(), /Основной/);
   await page.evaluate(() => { window.print = () => {}; });
   await page.click('[data-br="prot-print"]');
   await pause();

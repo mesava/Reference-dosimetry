@@ -330,6 +330,11 @@ function protResult(done) {
   const tmp = document.createElement('div');
   tmp.innerHTML = results[sheet]();
   for (const el of tmp.querySelectorAll(done ? '.actions, .jlink-st.none' : '.actions')) el.remove();
+  // фантом (с 0.80.5): в протоколе — только основной вариант, без столбца выбора
+  for (const t of tmp.querySelectorAll('table.br-variants')) {
+    for (const tr of t.querySelectorAll('tbody tr:not(.current)')) tr.remove();
+    for (const tr of t.querySelectorAll('tr')) tr.firstElementChild?.remove();
+  }
   for (const el of tmp.querySelectorAll('input[type="radio"]')) el.replaceWith(el.checked ? '●' : '');
   for (const el of tmp.querySelectorAll('[id]')) el.removeAttribute('id');
   return (done ? '' : `<p class="sub-hint">${esc(L('Расчёт не выполнен: заполните лист.', 'The calculation is not done: complete the sheet.'))}</p>`) + tmp.innerHTML;
