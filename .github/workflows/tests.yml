@@ -72,5 +72,20 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: .
-      - id: deployment
+      # GitHub не сразу показывает только что загруженный архив сайта: deploy-pages, запущенный через полсекунды
+      # после загрузки, иногда получает «No artifacts named github-pages» (24–25.11.2026 — несколько раз).
+      # Поэтому ждём 20 с, а при неудаче через минуту пробуем ещё раз.
+      - name: подождать, пока архив сайта появится в списке артефактов
+        run: sleep 20
+      - id: deployment_try
         uses: actions/deploy-pages@v5
+        continue-on-error: true
+      - name: пауза перед повторной выкладкой
+        if: steps.deployment_try.outcome == 'failure'
+        run: sleep 60
+      - id: deployment_retry
+        if: steps.deployment_try.outcome == 'failure'
+        uses: actions/deploy-pages@v5
+      - id: deployment
+        name: адрес выложенного сайта
+        run: echo "page_url=${{ steps.deployment_try.outputs.page_url || steps.deployment_retry.outputs.page_url }}" >> "$GITHUB_OUTPUT"
