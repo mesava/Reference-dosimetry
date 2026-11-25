@@ -132,7 +132,7 @@ test('брахитерапия в «Оборудовании»: афтерлоа
   await pause();
 
   // лист «Фантом PTW 9193»: камера из «Оборудования» с N_D,w
-  await page.click('a[data-goto="brachy/phantom"]');
+  await page.click('#brachy-root a[data-goto="brachy/phantom"]');
   await page.waitForSelector('#br_j_phantom');
   const pid = await page.locator('#br_j_phantom option').nth(1).getAttribute('value');
   await page.selectOption('#br_j_phantom', pid);
@@ -142,7 +142,7 @@ test('брахитерапия в «Оборудовании»: афтерлоа
   assert.equal(await page.inputValue('#br_p_N_unit'), 'mGy/nC');
 
   // лист «Сличение камер»: эталонная — из «Оборудования»
-  await page.click('a[data-goto="brachy/cross"]');
+  await page.click('#brachy-root a[data-goto="brachy/cross"]');
   await page.waitForSelector('#br_j_ref');
   await page.selectOption('#br_j_ref', wid);
   await pause();
@@ -150,7 +150,7 @@ test('брахитерапия в «Оборудовании»: афтерлоа
   assert.equal(await page.inputValue('#br_x_ref_serial'), 'W1');
 
   // запись в журнал (0.76.0): лист «Колодезная камера» — измерение за день по аппарату и источнику
-  await page.click('a[data-goto="brachy/well"]');
+  await page.click('#brachy-root a[data-goto="brachy/well"]');
   await page.waitForSelector('#br_w_T');
   await page.fill('#br_w_T', '20');
   await page.fill('#br_w_P', '1013,25');
@@ -189,7 +189,7 @@ test('брахитерапия в «Оборудовании»: афтерлоа
   await page.evaluate(() => document.body.classList.remove('print-br-protocol'));
   await page.emulateMedia({ media: 'screen' });
   // стабильность без камеры из «Оборудования» — не записывается
-  await page.click('a[data-goto="brachy/stab"]');
+  await page.click('#brachy-root a[data-goto="brachy/stab"]');
   await page.waitForSelector('#br_st_method');
   await page.fill('#br_st_date', '2026-10-10');
   await page.click('[data-br="record"]');

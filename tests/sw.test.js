@@ -55,7 +55,7 @@ test('сервис-воркер: без сети — сохранённая ко
 test('сервис-воркер: миниатюры «Литературы» из index.html — в копии при установке, и каждая есть в img/refs/', async () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const used = [...new Set([...html.matchAll(/src="(img\/refs\/[\w.-]+\.webp)"/g)].map((m) => m[1]))];
-  assert.equal(used.length, 11);
+  assert.equal(used.length, 16);
   let shell = [];
   const handlers = {};
   vm.runInNewContext(SRC, {

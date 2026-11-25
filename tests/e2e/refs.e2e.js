@@ -20,7 +20,8 @@ after(async () => {
 /** Все миниатюры страницы загружены (у заглушек картинки нет). */
 async function coversLoaded(page) {
   const items = page.locator('#module-refs .ref-item');
-  await page.locator('#module-refs img.ref-cover').last().scrollIntoViewIfNeeded();
+  // loading="lazy": на телефоне список длинный — прокручиваем к каждой миниатюре, чтобы браузер её загрузил
+  for (const img of await page.locator('#module-refs img.ref-cover').all()) await img.scrollIntoViewIfNeeded();
   await page.waitForFunction(() => [...document.querySelectorAll('#module-refs img.ref-cover')].every((i) => i.complete && i.naturalWidth > 0));
   return {
     items: await items.count(),
@@ -35,9 +36,9 @@ test('«Литература»: на всю ширину, у каждого ис
   await page.goto(`${server.url}/index.html#refs`);
   await page.waitForSelector('#module-refs:not([hidden])');
   const c = await coversLoaded(page);
-  assert.equal(c.items, 15); // 14 источников + «Как цитировать»
+  assert.equal(c.items, 22); // 21 источник + «Как цитировать»
   assert.equal(c.imgs + c.stubs, c.items);
-  assert.equal(c.stubs, 3);
+  assert.equal(c.stubs, 5);
   // ширина — как у шапки (не узкая колонка): страница и подвал шире 1500 px
   const w = await page.locator('main.refs-page').evaluate((e) => e.getBoundingClientRect().width);
   assert.ok(w > 1500, `ширина страницы ${w}`);
@@ -72,7 +73,7 @@ test('«Литература» в автономном файле: миниат�
   await page.goto(`${pathToFileURL(ROOT).href}dist/index.html#refs`);
   await page.waitForSelector('#module-refs:not([hidden])');
   const c = await coversLoaded(page);
-  assert.equal(c.imgs, 12);
+  assert.equal(c.imgs, 17);
   assert.ok(c.srcs.every((s) => s.startsWith('data:image/')), c.srcs.find((s) => !s.startsWith('data:')));
   assert.deepEqual(errors, []);
 });

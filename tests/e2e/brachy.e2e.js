@@ -55,14 +55,14 @@ test('брахитерапия: колодезная камера и фанто�
   await page.hover('label[for="br_cert_gamma"]');
   assert.match(await page.locator('#hover-pop').innerText(), /Постоянная мощности воздушной кермы[\s\S]*TRS-492[\s\S]*ур\. \(36\)/);
   // ярлык листа «Доза TG-43» — подсказка, для чего лист (с 0.80.1)
-  await page.hover('a[data-goto="brachy/tg43"]');
+  await page.hover('#brachy-root a[data-goto="brachy/tg43"]');
   assert.match(await page.locator('#hover-pop').innerText(), /Не часть измерения[\s\S]*системой планирования[\s\S]*TG-43U1/);
   await page.hover('#br-result th[data-pop]:has-text("kTP")');
   assert.match(await page.locator('#hover-pop').innerText(), /плотность воздуха[\s\S]*ур\. \(28\)/);
   await page.mouse.move(0, 0);
 
   // фантом: сертификат тот же (общий для листов)
-  await page.click('a[data-goto="brachy/phantom"]');
+  await page.click('#brachy-root a[data-goto="brachy/phantom"]');
   await pause();
   assert.equal(await page.evaluate(() => location.hash), '#brachy/phantom');
   assert.equal(await page.inputValue('#br_cert_value'), '33,11');

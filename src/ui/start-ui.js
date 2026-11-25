@@ -1,4 +1,4 @@
-// «Начало»: с чего начать — четыре сценария работы и куда в каждом идти. Страница строится целиком из этого модуля
+// «Начало»: с чего начать — пять сценариев работы и куда в каждом идти. Страница строится целиком из этого модуля
 // (тексты парами L(…)), поэтому при смене языка просто перерисовывается.
 import { L } from '../core/i18n.js';
 import { equipmentDue } from '../core/journal.js';
@@ -55,8 +55,8 @@ export function renderStart() {
         <p class="hero-eyebrow">${esc(L('Референсная дозиметрия · расчёт в браузере · работает без интернета', 'Reference dosimetry · runs in the browser · works offline'))}</p>
         <h2 class="hero-title">${esc(L('Клиническая дозиметрия', 'Clinical dosimetry'))}</h2>
         <p class="hero-lead">${L(
-          'Поглощённая доза в воде для пучков <b class="bt" data-beam="co60">⁶⁰Co</b>, <b class="bt" data-beam="photons">МВ фотонов</b>, <b class="bt" data-beam="electrons">электронов</b> и <b class="bt" data-beam="kv">kV-рентгена</b> по TRS-398 Rev.1 — с протоколом, журналом отделения и трендами.',
-          'Absorbed dose to water for <b class="bt" data-beam="co60">⁶⁰Co</b>, <b class="bt" data-beam="photons">MV photon</b>, <b class="bt" data-beam="electrons">electron</b> and <b class="bt" data-beam="kv">kV x-ray</b> beams according to TRS-398 Rev.1, with a report, the department journal and trends.',
+          'Поглощённая доза в воде для пучков <b class="bt" data-beam="co60">⁶⁰Co</b>, <b class="bt" data-beam="photons">МВ фотонов</b>, <b class="bt" data-beam="electrons">электронов</b> и <b class="bt" data-beam="kv">kV-рентгена</b> по TRS-398 Rev.1 и сила источников <b class="bt" data-beam="brachy">брахитерапии</b> по TRS-492 — с протоколом, журналом отделения и трендами.',
+          'Absorbed dose to water for <b class="bt" data-beam="co60">⁶⁰Co</b>, <b class="bt" data-beam="photons">MV photon</b>, <b class="bt" data-beam="electrons">electron</b> and <b class="bt" data-beam="kv">kV x-ray</b> beams according to TRS-398 Rev.1 and <b class="bt" data-beam="brachy">brachytherapy</b> source strength according to TRS-492, with a report, the department journal and trends.',
         )}</p>
         <p class="intro hero-sub">${esc(L(
           'Ещё — проверки рентгенотерапевтического аппарата и «Инструменты»: график Яффе, перекрёстная калибровка, кривая дозы электронов, бюджет неопределённости. TG-51 — справочное сравнение: его можно выбрать в шапке на страницах, где он меняет расчёт (⁶⁰Co, МВ фотоны, электроны, «Инструменты»).',
@@ -71,8 +71,8 @@ export function renderStart() {
       <section class="start-card" data-card="journal">
         <h3>${esc(L('Работа отделения — журнал', 'Department routine: the journal'))}</h3>
         <p class="start-when">${L(
-          '<b>Когда:</b> журнал отделения: аппараты и пучки, камеры и электрометры, тренды калибровок и проверок выхода, контрольные карты, сроки поверки. Измерения записываются в журнал из «Дозиметрии».',
-          '<b>When:</b> the department journal: machines and beams, chambers and electrometers, trends of calibrations and output checks, control charts, calibration due dates. Measurements are recorded to the journal from Dosimetry.',
+          '<b>Когда:</b> журнал отделения: аппараты и пучки, афтерлоадеры и их источники, камеры и электрометры, тренды калибровок и проверок выхода, контрольные карты, сроки поверки. Измерения записываются в журнал из «Дозиметрии».',
+          '<b>When:</b> the department journal: machines and beams, afterloaders and their sources, chambers and electrometers, trends of calibrations and output checks, control charts, calibration due dates. Measurements are recorded to the journal from Dosimetry.',
         )}</p>
         <ol class="start-steps">
           <li>${go('equipment', esc(L('Оборудование', 'Equipment')), { sub: esc(L('камеры, электрометры, аппараты и пучки — один раз', 'chambers, electrometers, machines and beams, once')) })}</li>
@@ -91,6 +91,7 @@ export function renderStart() {
           ${go('co60', '⁶⁰Co')}
           ${go('photons', esc(L('МВ фотоны', 'MV photons')))}
           ${go('electrons', esc(L('Электроны', 'Electrons')))}
+          ${go('kv', esc(L('kV-рентген', 'kV x-rays')))}
         </div>
         <p class="start-note">${esc(L('Все энергии аппарата подряд, каждая записывается в журнал (лист «Сеанс» вкладки):', 'All energies of a machine in a row, each recorded to the journal (the Session sheet of the tab):'))}</p>
         <div class="start-row">
@@ -104,6 +105,19 @@ export function renderStart() {
           ${go('photons/plates', esc(L('МВ фотоны: в пластинах', 'MV photons: in plates')))}
           ${go('electrons/plates', esc(L('Электроны: в пластинах', 'Electrons: in plates')))}
         </div>
+      </section>
+      <section class="start-card" data-card="brachy">
+        <h3>${esc(L('Брахитерапия', 'Brachytherapy'))}</h3>
+        <p class="start-when">${L(
+          '<b>Когда:</b> новый источник HDR/PDR ¹⁹²Ir или ⁶⁰Co и периодическая проверка его силы: колодезной камерой по IAEA TRS-492 или в фантоме PTW 9193 (DGMP-Bericht 13), сравнение с сертификатом, протокол и запись в журнал отделения.',
+          '<b>When:</b> a new HDR/PDR ¹⁹²Ir or ⁶⁰Co source and periodic checks of its strength: with a well-type chamber per IAEA TRS-492 or in the PTW 9193 phantom (DGMP-Bericht 13), comparison with the certificate, a report and a record in the department journal.',
+        )}</p>
+        <ul class="start-steps plain">
+          <li>${go('brachy/decay', esc(L('Распад', 'Decay')), { sub: esc(L('ожидаемая сила источника на дату по сертификату', 'expected source strength on a date from the certificate')) })}</li>
+          <li>${go('brachy/well', esc(L('Колодезная камера', 'Well-type chamber')), { sub: esc(L('сила источника и отклонение от сертификата', 'source strength and deviation from the certificate')) })}</li>
+          <li>${go('brachy/phantom', esc(L('Фантом PTW 9193', 'PTW 9193 phantom')), { sub: esc(L('сила источника и доза в воде по фантому', 'source strength and dose to water in the phantom')) })}</li>
+        </ul>
+        <p class="start-note">${esc(L('Там же: стабильность и сличение камер, максимум отклика, справочная доза по TG-43. Афтерлоадер и колодезная камера заводятся в «Оборудовании».', 'Also there: stability and chamber intercomparison, the sweet spot, reference TG-43 dose. The afterloader and the well-type chamber are added in Equipment.'))}</p>
       </section>
       <section class="start-card" data-card="prep">
         <h3>${esc(L('Инструменты — до измерений', 'Tools: before measurements'))}</h3>

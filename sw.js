@@ -6,7 +6,7 @@
 // и в файлах пользователя. У автономного файла dist/index.html сервис-воркера нет.
 const CACHE = 'reference-dosimetry-v1';
 // миниатюры «Литературы» (с 0.64.0) — тоже в копию при установке: страница без сети открывается с картинками
-const REFS_IMG = ['trs398-rev1', 'trs398-2000', 'andreo-2019', 'din-6809-4', 'tg61', 'ssrmp-9', 'tg51', 'tg51-addendum', 'report-374', 'report-385', 'lloyd-2018'].map((n) => `./img/refs/${n}.webp`);
+const REFS_IMG = ['trs398-rev1', 'trs398-2000', 'andreo-2019', 'din-6809-4', 'tg61', 'ssrmp-9', 'tg51', 'tg51-addendum', 'report-374', 'report-385', 'dgmp-13', 'ptw-9193', 'tg43u1', 'ubrich-2014', 'azhari-2012', 'lloyd-2018'].map((n) => `./img/refs/${n}.webp`);
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './fonts/fonts.css', ...REFS_IMG];
 
 self.addEventListener('install', (e) => {

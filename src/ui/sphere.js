@@ -5,9 +5,9 @@
 // и чтения с экрана рядом есть обычная ссылка на «Литературу».
 
 /** Документы (названия — как на странице «Литература», без перевода) и обозначения величин. */
-const DOCS = ['TG-51', 'TG-51 Addendum', 'Report 374', 'Report 385', 'TRS-398 (2000)', 'TG-61', 'DIN 6809-4', 'SSRMP № 9', 'Andreo 2019', 'Lloyd 2018', 'BIPM-5', 'TG-142'];
+const DOCS = ['TG-51', 'TG-51 Addendum', 'Report 374', 'Report 385', 'TRS-398 (2000)', 'TG-61', 'DIN 6809-4', 'SSRMP № 9', 'Andreo 2019', 'Lloyd 2018', 'BIPM-5', 'TG-142', 'TRS-492', 'TG-43U1', 'DGMP 13', 'HEBD'];
 const MAIN = 'TRS-398 Rev.1';
-const SYMS = ['k<sub>Q</sub>', 'N<sub>D,w</sub>', 'k<sub>TP</sub>', 'k<sub>pol</sub>', 'k<sub>s</sub>', 'D<sub>w</sub>', 'R<sub>50</sub>', 'TPR<sub>20,10</sub>', 'HVL', 'z<sub>ref</sub>', 'k<sub>elec</sub>', 'P<sub>ion</sub>'];
+const SYMS = ['k<sub>Q</sub>', 'N<sub>D,w</sub>', 'k<sub>TP</sub>', 'k<sub>pol</sub>', 'k<sub>s</sub>', 'D<sub>w</sub>', 'R<sub>50</sub>', 'TPR<sub>20,10</sub>', 'HVL', 'z<sub>ref</sub>', 'k<sub>elec</sub>', 'P<sub>ion</sub>', 'S<sub>K</sub>', 'Λ', 'g<sub>L</sub>(r)', 'k<sub>sm</sub>'];
 
 /** Поворот сохраняется между перерисовками «Начала» (смена языка, журнала). */
 const turn = { ay: null, ax: -0.32 };

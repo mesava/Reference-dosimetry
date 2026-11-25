@@ -39,7 +39,7 @@ test('брахитерапия: пример заполняет все лист�
     tg43: /Ḋw,1 = Λ · SK/,
   };
   for (const [sh, re] of Object.entries(expect)) {
-    await page.click(`a[data-goto="brachy/${sh}"]`);
+    await page.click(`#brachy-root a[data-goto="brachy/${sh}"]`);
     await pause(400);
     const res = await resText(page);
     assert.match(res, re, sh);
@@ -51,7 +51,7 @@ test('брахитерапия: пример заполняет все лист�
     }
   }
   // подписи внизу листа (0.77.1): протокол фантома — на двух листах, блок подписей опускается к низу второго
-  await page.click('a[data-goto="brachy/phantom"]');
+  await page.click('#brachy-root a[data-goto="brachy/phantom"]');
   await pause(400);
   await page.evaluate(() => { window.print = () => {}; });
   await page.click('[data-br="prot-print"]');
@@ -62,7 +62,7 @@ test('брахитерапия: пример заполняет все лист�
   await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
   assert.equal(await page.locator('#br-prot .prot-end').evaluate((e) => e.style.paddingTop), '');
   // короткий протокол (стабильность) — на одном листе, подписи сразу за текстом
-  await page.click('a[data-goto="brachy/stab"]');
+  await page.click('#brachy-root a[data-goto="brachy/stab"]');
   await pause(400);
   await page.click('[data-br="prot-print"]');
   await pause();

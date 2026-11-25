@@ -219,13 +219,14 @@ a.sec-link:hover { color: var(--accent); }
 .start { max-width: var(--page-max); margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 18px; }
 .start-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: stretch; }
 @media (min-width: 820px) { .start-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-/* широкий экран (0.65.1): «Начало» на всю ширину шапки, карточки в три столбца — «Дозиметрия» посередине на две строки */
+/* широкий экран (0.65.1): «Начало» на всю ширину шапки, карточки в три столбца — «Дозиметрия» посередине на две строки; «Брахитерапия» (0.80.2) — под «Инструментами» */
 @media (min-width: 1280px) {
-  .start-cards { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr); grid-template-areas: "journal dosimetry prep" "unc dosimetry prep"; }
+  .start-cards { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr); grid-template-areas: "journal dosimetry prep" "unc dosimetry brachy"; }
   .start-card[data-card="journal"] { grid-area: journal; }
   .start-card[data-card="dosimetry"] { grid-area: dosimetry; }
   .start-card[data-card="prep"] { grid-area: prep; }
   .start-card[data-card="unc"] { grid-area: unc; }
+  .start-card[data-card="brachy"] { grid-area: brachy; }
 }
 .start-card { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius); padding: 16px 18px 18px; display: grid; gap: 10px; align-content: start; min-width: 0; }
 .start-card h3 { font-size: 17px; }
@@ -1939,6 +1940,9 @@ table.kv-prot-sign tr.sig-cap td { padding: 1px 0 0; font-size: 10.5px; color: v
   .start-go { border-radius: 10px; transition: background-color .15s, border-color .15s, transform .15s; }
   .start-go[data-beam] { display: inline-flex; align-items: center; gap: 6px; border-color: color-mix(in srgb, var(--tab) 40%, var(--rule)); }
   .start-go[data-beam]:hover { background: var(--tab-soft); border-color: var(--tab); color: var(--tab); transform: translateY(-1px); }
+  /* кнопка пучка с пояснением (карточка «Брахитерапия»): пиктограмма слева, подпись под названием, как у кнопок без цвета */
+  .start-go[data-beam]:has(small) { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 8px; row-gap: 1px; }
+  .start-go[data-beam]:has(small)::before { grid-row: span 2; align-self: center; }
   .start-steps:not(.plain) > li::before { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
   @media (prefers-reduced-motion: reduce) {
